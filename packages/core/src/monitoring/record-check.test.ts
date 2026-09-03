@@ -9,7 +9,7 @@ import { recordCheck } from "./record-check.js";
 describe("recordCheck", () => {
   it("opens an incident on the 3rd consecutive failure and resolves on recovery", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const client = await createClient(db, org!.id, { name: "C" });
       const site = await createSite(db, org!.id, { clientId: client.id, name: "S", primaryUrl: "https://s.test" });
       const monitor = await createMonitor(db, org!.id, { siteId: site.id, target: "https://s.test" });

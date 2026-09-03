@@ -9,7 +9,7 @@ import { runMonitorSweep } from "./monitor-check.js";
 describe("runMonitorSweep", () => {
   it("opens one incident after three failing sweeps and resolves it when the site recovers", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "mw" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const client = await createClient(db, org!.id, { name: "C" });
       const site = await createSite(db, org!.id, { clientId: client.id, name: "S", primaryUrl: "https://s.test" });
       await createMonitor(db, org!.id, { siteId: site.id, target: "https://s.test" });

@@ -5,7 +5,7 @@ import { organisations, clients, sites, monitors, incidents, tickets, agentRuns 
 describe("schema", () => {
   it("inserts an organisation → client → site → monitor → incident chain", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(organisations).values({ name: "LaunchFlow", slug: "launchflow" }).returning();
+      const [org] = await db.insert(organisations).values({ name: "LaunchFlow", slug: `test-${crypto.randomUUID()}` }).returning();
       const [client] = await db.insert(clients).values({ organisationId: org!.id, name: "Grays CabLine" }).returning();
       const [site] = await db.insert(sites).values({ organisationId: org!.id, clientId: client!.id, name: "grayscabline.co.uk", primaryUrl: "https://grayscabline.co.uk" }).returning();
       const [monitor] = await db.insert(monitors).values({ organisationId: org!.id, siteId: site!.id, kind: "http", target: "https://grayscabline.co.uk" }).returning();

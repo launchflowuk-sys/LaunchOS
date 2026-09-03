@@ -18,7 +18,7 @@ const agent: AgentDefinition = { key: "test-agent", name: "Test", description: "
 describe("runAgent", () => {
   it("executes a safe tool, returns the result to the model, and completes with the final text", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t3" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const llm = new FakeLlmClient([
         { content: [toolUse("tu_1", "ping", { host: "a.test" })], stopReason: "tool_use", usage: { inputTokens: 10, outputTokens: 5 } },
         { content: [text("a.test is up")], stopReason: "end_turn", usage: { inputTokens: 20, outputTokens: 4 } },
@@ -40,7 +40,7 @@ describe("runAgent", () => {
 
   it("parks the run as awaiting_approval when a requires_approval tool is called", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t4" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const llm = new FakeLlmClient([
         { content: [toolUse("tu_2", "send_mail", { to: "x@y.test" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
       ]);
@@ -54,7 +54,7 @@ describe("runAgent", () => {
 
   it("parks a batch and preserves already-completed results plus the awaiting tool use id", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t6" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const llm = new FakeLlmClient([
         {
           content: [toolUse("tu_6", "ping", { host: "a.test" }), toolUse("tu_7", "send_mail", { to: "x@y.test" })],
@@ -80,7 +80,7 @@ describe("runAgent", () => {
 
   it("records a tool_call step and returns an error result for an unknown tool, then completes normally", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t7" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const llm = new FakeLlmClient([
         { content: [toolUse("tu_8", "does_not_exist", { any: true })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
         { content: [text("done")], stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } },
@@ -102,7 +102,7 @@ describe("runAgent", () => {
 
   it("fails the run when the tool input is invalid and the model never finishes", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t5" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const llm = new FakeLlmClient([
         { content: [toolUse("tu_3", "ping", { nope: 1 })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
         { content: [toolUse("tu_4", "ping", { nope: 1 })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },

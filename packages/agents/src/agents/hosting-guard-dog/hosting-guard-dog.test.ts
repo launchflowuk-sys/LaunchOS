@@ -11,7 +11,7 @@ import { hostingGuardDog } from "./index.js";
 describe("hosting-guard-dog", () => {
   it("diagnoses an open incident, opens a ticket and acknowledges the incident", async () => {
     await withTestDb(async (db) => {
-      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "gd" }).returning();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       const client = await createClient(db, org!.id, { name: "Grays CabLine" });
       const site = await createSite(db, org!.id, { clientId: client.id, name: "grayscabline.co.uk", primaryUrl: "https://grayscabline.co.uk" });
       const monitor = await createMonitor(db, org!.id, { siteId: site.id, target: site.primaryUrl });

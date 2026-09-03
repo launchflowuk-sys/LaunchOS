@@ -12,7 +12,7 @@ pnpm dev                  # web
 pnpm dev:worker           # worker
 ```
 
-Tests: `pnpm test` needs the docker Postgres running. Integration tests use `DATABASE_URL_TEST` if set, otherwise `DATABASE_URL` with a `launchos_test` database that the test setup creates.
+Tests: `pnpm test` needs the docker Postgres running. Integration tests run against `DATABASE_URL_TEST` if set, otherwise `DATABASE_URL` — no separate test database is created. Each test runs inside a transaction that is always rolled back, and test data uses unique slugs (for example `test-${crypto.randomUUID()}` for `organisations.slug`), so it never collides with the seeded data.
 
 ## Production (Coolify on Hetzner)
 
