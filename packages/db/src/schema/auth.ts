@@ -1,8 +1,12 @@
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
-// Better Auth core tables, reconciled against
-// `pnpm dlx @better-auth/cli generate --config src/lib/auth.ts` run from
-// apps/web (Better Auth 1.4.x, drizzle adapter, pg provider).
+// Better Auth core tables for Better Auth 1.7.x (drizzle adapter, pg provider).
+//
+// Reconciled against `pnpm dlx @better-auth/cli generate --config src/lib/auth.ts`
+// run from apps/web, then corrected against the runtime's own table definition
+// (`getAuthTables` in @better-auth/core/db): the only published CLI is 1.4.x and
+// it omits `account.issuer` plus the unique (issuer, account_id) index that 1.7
+// sign-in requires. Re-check both when better-auth is upgraded.
 //
 // Two deliberate deviations from the generated output:
 //  1. every timestamp is `withTimezone: true`, matching the rest of the schema
@@ -50,6 +54,9 @@ export const account = pgTable(
     id: text("id").primaryKey(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
+    // Synthetic issuer namespace, "local:<providerId>" for credential logins
+    // (createLocalAccountIssuer in @better-auth/core/db).
+    issuer: text("issuer").notNull(),
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
@@ -66,7 +73,10 @@ export const account = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (t) => [index("account_userId_idx").on(t.userId)],
+  (t) => [
+    index("account_userId_idx").on(t.userId),
+    uniqueIndex("account_issuer_accountId_idx").on(t.issuer, t.accountId),
+  ],
 );
 
 export const verification = pgTable(

@@ -1,0 +1,55 @@
+import { schema } from "@launchos/db";
+import { eq } from "drizzle-orm";
+import { PageHeader } from "@/components/page-header";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { agentCatalog } from "@/lib/agent-catalog";
+import { getDb } from "@/lib/db";
+import { requireAdmin } from "@/lib/session";
+import { setAgentEnabled } from "./actions";
+
+export const dynamic = "force-dynamic";
+
+export default async function AgentSettingsPage() {
+  const session = await requireAdmin();
+
+  const rows = await getDb()
+    .select()
+    .from(schema.agentEnablement)
+    .where(eq(schema.agentEnablement.organisationId, session.organisationId));
+
+  const enabledByKey = new Map(rows.map((row) => [row.agentKey, row.enabled]));
+
+  return (
+    <>
+      <PageHeader
+        title="Agents"
+        description="Which autonomous agents run for this organisation."
+      />
+
+      <ul className="divide-y divide-neutral-100 overflow-hidden rounded-lg border border-neutral-200 bg-white">
+        {agentCatalog.map((agent) => {
+          const enabled = enabledByKey.get(agent.key) ?? false;
+          return (
+            <li key={agent.key} className="flex flex-wrap items-center gap-3 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-neutral-900">{agent.name}</p>
+                <p className="font-mono text-xs text-neutral-400">{agent.key}</p>
+              </div>
+              <div className="ml-auto flex items-center gap-3">
+                <StatusBadge value={enabled ? "enabled" : "disabled"} tone={enabled ? "success" : "neutral"} />
+                <form action={setAgentEnabled}>
+                  <input type="hidden" name="agentKey" value={agent.key} />
+                  <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
+                  <Button type="submit" variant={enabled ? "outline" : "default"}>
+                    {enabled ? "Disable" : "Enable"}
+                  </Button>
+                </form>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}

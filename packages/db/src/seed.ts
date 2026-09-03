@@ -21,6 +21,10 @@ const OWNER_EMAIL = "shujaat@nexusedu.co.uk";
 const OWNER_NAME = "Shoji";
 const ORGANISATION = { slug: "launchflow", name: "LaunchFlow" } as const;
 const AGENT_KEY = "hosting-guard-dog";
+// Better Auth namespaces credential accounts as "local:<providerId>"
+// (createLocalAccountIssuer in @better-auth/core/db, not publicly exported).
+const CREDENTIAL_PROVIDER = "credential";
+const CREDENTIAL_ISSUER = `local:${CREDENTIAL_PROVIDER}`;
 
 const SEED_CLIENTS = [
   { name: "Grays CabLine", email: "info@grayscabline.co.uk", url: "https://grayscabline.co.uk" },
@@ -89,12 +93,17 @@ async function seedOwner(db: Db) {
   const [credential] = await db
     .select()
     .from(schema.account)
-    .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, "credential")));
+    .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
   if (!credential) {
     const password = await hashPassword(process.env.SEED_OWNER_PASSWORD ?? "change-me-now");
-    await db
-      .insert(schema.account)
-      .values({ id: randomUUID(), accountId: user.id, providerId: "credential", userId: user.id, password });
+    await db.insert(schema.account).values({
+      id: randomUUID(),
+      accountId: user.id,
+      providerId: CREDENTIAL_PROVIDER,
+      issuer: CREDENTIAL_ISSUER,
+      userId: user.id,
+      password,
+    });
   }
   return user;
 }

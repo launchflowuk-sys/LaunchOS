@@ -15,6 +15,13 @@
       "when": 1788474136427,
       "tag": "0001_equal_hitman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788475379974,
+      "tag": "0002_natural_retro_girl",
+      "breakpoints": true
     }
   ]
 }

@@ -19,7 +19,10 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@launchos/db": ["../../packages/db/src/index.ts"],
+      "@launchos/db/*": ["../../packages/db/src/*"],
+      "@launchos/core": ["../../packages/core/src/index.ts"]
     }
   },
   "include": [
