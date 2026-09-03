@@ -8,11 +8,11 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "lint": "eslint src"
   },
   "dependencies": { "@launchos/agents": "workspace:*", "@launchos/core": "workspace:*", "@launchos/db": "workspace:*", "@launchos/integrations": "workspace:*", "dotenv": "^17.4.2", "drizzle-orm": "^0.45.2", "pg-boss": "^10", "zod": "^4.4.3" },
-  "devDependencies": { "@launchos/config": "workspace:*", "@types/node": "^24", "tsx": "^4", "typescript": "^5", "vitest": "^3" }
+  "devDependencies": { "@launchos/config": "workspace:*", "@types/node": "^24", "tsup": "^8", "tsx": "^4", "typescript": "^5", "vitest": "^3" }
 }
