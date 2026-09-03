@@ -4,3 +4,8 @@ export * from "./kernel/tool-registry.js";
 export * from "./kernel/llm.js";
 export * from "./kernel/run-recorder.js";
 export * from "./kernel/run-agent.js";
+export * from "./agents/index.js";
+export { uptimeCheckSite } from "./tools/uptime-check-site.js";
+export { hostingGetResources } from "./tools/hosting-get-resources.js";
+export { incidentsUpdate } from "./tools/incidents-update.js";
+export { ticketsCreate } from "./tools/tickets-create.js";
