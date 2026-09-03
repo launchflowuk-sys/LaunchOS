@@ -17,5 +17,9 @@
     "db:studio": "pnpm --filter @launchos/db studio",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "typescript-eslint": "^8"
   }
 }
