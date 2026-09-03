@@ -8,7 +8,9 @@ export async function GET() {
     await getDb().execute(sql`select 1`);
     return Response.json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "database unreachable";
-    return Response.json({ ok: false, error: message }, { status: 503 });
+    // This endpoint is unauthenticated, so the driver error never reaches the
+    // caller: postgres.js messages carry the host, user and role names.
+    console.error("[health] database check failed", error);
+    return Response.json({ ok: false }, { status: 503 });
   }
 }

@@ -1,2 +1,3 @@
-ALTER TABLE "account" ADD COLUMN "issuer" text NOT NULL;--> statement-breakpoint
+ALTER TABLE "account" ADD COLUMN "issuer" text NOT NULL DEFAULT 'local:credential';--> statement-breakpoint
+ALTER TABLE "account" ALTER COLUMN "issuer" DROP DEFAULT;--> statement-breakpoint
 CREATE UNIQUE INDEX "account_issuer_accountId_idx" ON "account" USING btree ("issuer","account_id");
