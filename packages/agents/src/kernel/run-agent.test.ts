@@ -52,6 +52,54 @@ describe("runAgent", () => {
     });
   });
 
+  it("parks a batch and preserves already-completed results plus the awaiting tool use id", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t6" }).returning();
+      const llm = new FakeLlmClient([
+        {
+          content: [toolUse("tu_6", "ping", { host: "a.test" }), toolUse("tu_7", "send_mail", { to: "x@y.test" })],
+          stopReason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        },
+      ]);
+      const result = await runAgent(agent, { db, organisationId: org!.id, trigger: "manual", payload: {}, llm, policy: "safe", logger: console });
+      expect(result.status).toBe("awaiting_approval");
+      expect(calls).toContainEqual({ host: "a.test" });
+      const [run] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, result.runId));
+      const pending = (
+        run!.metadata as {
+          pending: { completedResults: Array<{ tool_use_id: string; content: string }>; awaitingToolUseId: string; remainingToolUseIds: string[] };
+        }
+      ).pending;
+      expect(pending.awaitingToolUseId).toBe("tu_7");
+      expect(pending.remainingToolUseIds).toEqual([]);
+      expect(pending.completedResults).toHaveLength(1);
+      expect(pending.completedResults[0]).toMatchObject({ tool_use_id: "tu_6", content: JSON.stringify({ ok: true, host: "a.test" }) });
+    });
+  });
+
+  it("records a tool_call step and returns an error result for an unknown tool, then completes normally", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t7" }).returning();
+      const llm = new FakeLlmClient([
+        { content: [toolUse("tu_8", "does_not_exist", { any: true })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
+        { content: [text("done")], stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } },
+      ]);
+      const result = await runAgent(agent, { db, organisationId: org!.id, trigger: "manual", payload: {}, llm, policy: "safe", logger: console });
+      expect(result.status).toBe("completed");
+      expect(result.summary).toBe("done");
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId)).orderBy(schema.agentSteps.seq);
+      expect(steps.map((s) => s.kind)).toEqual(["llm", "tool_call", "llm"]);
+      const toolCallStep = steps.find((s) => s.kind === "tool_call")!;
+      expect(toolCallStep.toolName).toBe("does_not_exist");
+      expect(toolCallStep.output).toMatchObject({ error: "unknown tool" });
+      const second = llm.requests[1]!;
+      const last = second.messages[second.messages.length - 1]! as { role: string; content: Array<{ tool_use_id: string; is_error?: boolean }> };
+      expect(last.role).toBe("user");
+      expect(last.content[0]).toMatchObject({ tool_use_id: "tu_8", is_error: true });
+    });
+  });
+
   it("fails the run when the tool input is invalid and the model never finishes", async () => {
     await withTestDb(async (db) => {
       const [org] = await db.insert(schema.organisations).values({ name: "T", slug: "t5" }).returning();
