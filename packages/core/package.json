@@ -12,6 +12,6 @@
     "test": "vitest run",
     "lint": "eslint src"
   },
-  "dependencies": { "@launchos/db": "workspace:*" },
+  "dependencies": { "@launchos/db": "workspace:*", "drizzle-orm": "^0.45.2", "zod": "^4.4.3" },
   "devDependencies": { "@launchos/config": "workspace:*", "@types/node": "^24", "typescript": "^5", "vitest": "^3" }
 }
