@@ -1,0 +1,10 @@
+FROM node:24-alpine AS base
+RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
+WORKDIR /app
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+COPY apps/worker/package.json apps/worker/
+COPY packages ./packages
+RUN pnpm install --frozen-lockfile --filter @launchos/worker...
+COPY apps/worker ./apps/worker
+RUN pnpm --filter @launchos/worker... build
+CMD ["node", "apps/worker/dist/index.js"]

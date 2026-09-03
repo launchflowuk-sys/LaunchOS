@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+.next
+dist
+.git
+.superpowers
+.env*
+!.env.example
+playwright-report
+test-results
+coverage
