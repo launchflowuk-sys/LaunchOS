@@ -53,7 +53,7 @@ export interface AgentRunResult {
 3. Call `LlmClient.complete({ system, messages, tools })`.
 4. Record an `llm` step with token usage.
 5. If `stop_reason` is `end_turn`, record the final text as the run summary and finish `completed`.
-6. If `stop_reason` is `refusal`, record it and finish `failed`; the worker opens an escalation ticket.
+6. If `stop_reason` is `refusal`, finish the run `failed` with `agent_runs.error = "refusal"`. The refused run is visible in Agent Runs and a human picks it up from there; the automatic escalation ticket arrives in Plan 2.
 7. If `stop_reason` is `tool_use`, for every tool_use block (in parallel):
    - Validate input with the tool's Zod schema. Invalid input becomes a `tool_result` with `is_error: true`.
    - Ask `PolicyGate.decide(tool, policy)`.

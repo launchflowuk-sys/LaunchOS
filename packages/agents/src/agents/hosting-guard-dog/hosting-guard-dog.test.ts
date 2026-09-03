@@ -20,7 +20,7 @@ describe("hosting-guard-dog", () => {
       const integrations = { uptime: new MockUptimeProbe(new Set([site.primaryUrl])), hosting: new MockHostingProvider({ app_1: { status: "exited" } }) };
       const agent = hostingGuardDog(integrations);
       const llm = new FakeLlmClient([
-        { content: [toolUse("t1", "uptime_check_site", { url: site.primaryUrl }), toolUse("t2", "hosting_get_resources", { hostingRef: "app_1" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
+        { content: [toolUse("t1", "uptime_check_site", { siteId: site.id }), toolUse("t2", "hosting_get_resources", { hostingRef: "app_1" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
         { content: [toolUse("t3", "tickets_create", { clientId: client.id, siteId: site.id, subject: "Site down: container exited", body: "Container exited; 503 from origin.", severity: "critical", category: "hosting" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
         { content: [toolUse("t4", "incidents_update", { incidentId: incident.id, status: "acknowledged", summaryMd: "## Diagnosis\nContainer exited." })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
         { content: [text("Acknowledged incident and opened a critical ticket.")], stopReason: "end_turn", usage: { inputTokens: 1, outputTokens: 1 } },

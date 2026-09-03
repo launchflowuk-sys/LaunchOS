@@ -16,7 +16,7 @@ function buildAuth() {
         verification: schema.verification,
       },
     }),
-    emailAndPassword: { enabled: true },
+    emailAndPassword: { enabled: true, disableSignUp: true },
     secret,
     baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? "http://localhost:3000",
   });

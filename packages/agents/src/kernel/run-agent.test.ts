@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
 import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
@@ -10,12 +10,18 @@ import { defineTool, type AgentDefinition } from "./types.js";
 const calls: unknown[] = [];
 const ping = defineTool({ name: "ping", description: "ping", input: z.object({ host: z.string() }), risk: "safe",
   execute: async (input) => { calls.push(input); return { ok: true, host: input.host }; } });
+const sendMailCalls: unknown[] = [];
 const sendMail = defineTool({ name: "send_mail", description: "send", input: z.object({ to: z.string() }), risk: "requires_approval",
-  execute: async () => ({ sent: true }) });
+  execute: async (input) => { sendMailCalls.push(input); return { sent: true }; } });
 
 const agent: AgentDefinition = { key: "test-agent", name: "Test", description: "", trigger: { kind: "manual" }, systemPrompt: "You test.", tools: [ping, sendMail], maxTurns: 3 };
 
 describe("runAgent", () => {
+  beforeEach(() => {
+    calls.length = 0;
+    sendMailCalls.length = 0;
+  });
+
   it("executes a safe tool, returns the result to the model, and completes with the final text", async () => {
     await withTestDb(async (db) => {
       const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
@@ -49,6 +55,7 @@ describe("runAgent", () => {
       const [approval] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, result.runId));
       expect(approval!.status).toBe("pending");
       expect(approval!.payload).toMatchObject({ toolName: "send_mail", input: { to: "x@y.test" } });
+      expect(sendMailCalls).toEqual([]);
     });
   });
 
@@ -75,6 +82,7 @@ describe("runAgent", () => {
       expect(pending.remainingToolUseIds).toEqual([]);
       expect(pending.completedResults).toHaveLength(1);
       expect(pending.completedResults[0]).toMatchObject({ tool_use_id: "tu_6", content: JSON.stringify({ ok: true, host: "a.test" }) });
+      expect(sendMailCalls).toEqual([]);
     });
   });
 
@@ -111,6 +119,24 @@ describe("runAgent", () => {
       const result = await runAgent(agent, { db, organisationId: org!.id, trigger: "manual", payload: {}, llm, policy: "safe", logger: console });
       expect(result.status).toBe("failed");
       expect(result.summary).toMatch(/maxTurns/);
+    });
+  });
+
+  it("records a refusal as a failed run with error \"refusal\" and executes no tool", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
+      const llm = new FakeLlmClient([
+        { content: [text("I cannot help with that.")], stopReason: "refusal", usage: { inputTokens: 1, outputTokens: 1 } },
+      ]);
+      const result = await runAgent(agent, { db, organisationId: org!.id, trigger: "manual", payload: {}, llm, policy: "safe", logger: console });
+      expect(result.status).toBe("failed");
+      const [run] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, result.runId));
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toBe("refusal");
+      expect(calls).toEqual([]);
+      expect(sendMailCalls).toEqual([]);
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId)).orderBy(schema.agentSteps.seq);
+      expect(steps.map((s) => s.kind)).toEqual(["llm"]);
     });
   });
 });

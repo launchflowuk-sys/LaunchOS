@@ -17,7 +17,7 @@ export async function runMonitorSweep(db: Db, organisationId: string, probe: Upt
     }
     if (outcome.shouldResolveIncident) {
       const open = await db.select({ id: schema.incidents.id }).from(schema.incidents)
-        .where(and(eq(schema.incidents.monitorId, m.id), ne(schema.incidents.status, "resolved")));
+        .where(and(eq(schema.incidents.organisationId, organisationId), eq(schema.incidents.monitorId, m.id), ne(schema.incidents.status, "resolved")));
       for (const inc of open) { await updateIncident(db, organisationId, { incidentId: inc.id, status: "resolved" }); incidentsResolved += 1; }
     }
   }

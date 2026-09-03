@@ -1,7 +1,21 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { runAgent, type AgentDefinition, type AgentPolicy, type LlmClient } from "@launchos/agents";
+
+const EnablementConfig = z.object({ policy: z.enum(["safe", "approval_all"]).optional() });
+
+/**
+ * The effective policy is the stricter of the environment default and the
+ * per-organisation setting. Unparseable or absent config contributes nothing,
+ * so a corrupt `agent_enablement.config` can never loosen the gate.
+ */
+export function resolvePolicy(envPolicy: AgentPolicy, config: unknown): AgentPolicy {
+  const parsed = EnablementConfig.safeParse(config);
+  const dbPolicy = parsed.success ? parsed.data.policy : undefined;
+  return envPolicy === "approval_all" || dbPolicy === "approval_all" ? "approval_all" : "safe";
+}
 
 export interface AgentRunJob { agentKey: string; organisationId: string; trigger: "cron" | "event" | "manual"; payload: Record<string, unknown>; }
 export interface AgentRunDeps { db: Db; registry: Record<string, AgentDefinition>; llm: LlmClient; policy: AgentPolicy; logger: Console; }
@@ -12,7 +26,7 @@ export async function handleAgentRun(deps: AgentRunDeps, job: AgentRunJob) {
   const [enablement] = await deps.db.select().from(schema.agentEnablement)
     .where(and(eq(schema.agentEnablement.organisationId, job.organisationId), eq(schema.agentEnablement.agentKey, job.agentKey)));
   if (!enablement?.enabled) { deps.logger.info(`agent ${job.agentKey} disabled for ${job.organisationId}; skipping`); return; }
-  const policy = (enablement.config as { policy?: AgentPolicy }).policy ?? deps.policy;
+  const policy = resolvePolicy(deps.policy, enablement.config);
   return runAgent(def, { db: deps.db, organisationId: job.organisationId, trigger: job.trigger, payload: job.payload, llm: deps.llm, policy, logger: deps.logger });
 }
 

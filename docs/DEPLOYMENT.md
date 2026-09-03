@@ -70,8 +70,17 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Auto-deploy: enable "auto deploy on push" for `main`.
    - Deploy after the web resource so migrations have already run once; set it to start after the web resource's health check passes.
    - Env vars: `DATABASE_URL` (same as web), `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`.
+   - Keep the worker at a **single replica**. The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
 
-5. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
+5. **First owner account** — sign-up is disabled in the app (`emailAndPassword.disableSignUp`), so seeding is the only way to create the first account. Run the seed once, inside the running web container:
+
+   ```bash
+   docker exec <web-container> pnpm --filter @launchos/db seed
+   ```
+
+   Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. The seed refuses to run when `NODE_ENV=production` and `SEED_OWNER_PASSWORD` is unset, so it can never install the default development password in production. The seed is idempotent; re-running it will not change an existing password.
+
+6. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
 
 ## Branch flow
 

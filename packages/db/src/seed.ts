@@ -6,7 +6,9 @@
  * before inserting, so `pnpm db:seed` can be run repeatedly.
  *
  * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now").
- * Never commit a real password here.
+ * Never commit a real password here. Under NODE_ENV=production the seed refuses
+ * to run unless SEED_OWNER_PASSWORD is set, so the default can never reach a
+ * live database.
  */
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
@@ -46,6 +48,13 @@ function loadRootEnv() {
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required to seed");
+  if (process.env.NODE_ENV === "production" && !process.env.SEED_OWNER_PASSWORD) {
+    throw new Error(
+      "SEED_OWNER_PASSWORD is required when NODE_ENV=production. " +
+        "Refusing to seed the owner account with the default development password. " +
+        "Set SEED_OWNER_PASSWORD in the resource environment, run the seed once, then remove it.",
+    );
+  }
   const db = createDb(url);
 
   try {
