@@ -60,9 +60,18 @@ importers:
       '@launchos/core':
         specifier: workspace:*
         version: link:../core
+      '@launchos/db':
+        specifier: workspace:*
+        version: link:../db
       '@launchos/integrations':
         specifier: workspace:*
         version: link:../integrations
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(pg@8.23.0)(postgres@3.4.9)
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
     devDependencies:
       '@launchos/config':
         specifier: workspace:*
@@ -91,6 +100,12 @@ importers:
       '@launchos/db':
         specifier: workspace:*
         version: link:../db
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(pg@8.23.0)(postgres@3.4.9)
+      zod:
+        specifier: ^4.4.3
+        version: 4.5.4
     devDependencies:
       '@launchos/config':
         specifier: workspace:*
