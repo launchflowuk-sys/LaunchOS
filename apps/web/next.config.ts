@@ -21,6 +21,9 @@ const nextConfig: NextConfig = {
   // compiled dist from the workspace packages or move them off NodeNext, and
   // then this app can go back to Turbopack.
   experimental: { extensionAlias: { ".js": [".ts", ".tsx", ".js"] } },
+  // Dev-only: let a Cloudflare quick tunnel load the dev server's scripts and HMR
+  // resources, so the app can be previewed from a phone. Ignored by next start.
+  allowedDevOrigins: ["*.trycloudflare.com"],
 };
 
 export default nextConfig;
