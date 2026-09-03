@@ -1,5 +1,6 @@
+import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
-config({ path: new URL("../../.env", import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1") });
+config({ path: fileURLToPath(new URL("../../.env", import.meta.url)) });
 
 import { defineConfig } from "vitest/config";
 
