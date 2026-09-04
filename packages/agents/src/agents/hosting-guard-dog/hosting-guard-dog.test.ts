@@ -4,6 +4,7 @@ import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { createClient, createMonitor, createSite, openIncident } from "@launchos/core";
 import { MockHostingProvider, MockUptimeProbe } from "@launchos/integrations";
+import type { AgentIntegrations } from "../integrations.js";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
 import { runAgent } from "../../kernel/run-agent.js";
 import { hostingGuardDog } from "./index.js";
@@ -17,7 +18,7 @@ describe("hosting-guard-dog", () => {
       const monitor = await createMonitor(db, org!.id, { siteId: site.id, target: site.primaryUrl });
       const incident = await openIncident(db, org!.id, { siteId: site.id, monitorId: monitor.id, title: "grayscabline.co.uk is down" });
 
-      const integrations = { uptime: new MockUptimeProbe(new Set([site.primaryUrl])), hosting: new MockHostingProvider({ app_1: { status: "exited" } }) };
+      const integrations: AgentIntegrations = { uptime: new MockUptimeProbe(new Set([site.primaryUrl])), hosting: new MockHostingProvider({ app_1: { status: "exited" } }) };
       const agent = hostingGuardDog(integrations);
       const llm = new FakeLlmClient([
         { content: [toolUse("t1", "uptime_check_site", { siteId: site.id }), toolUse("t2", "hosting_get_resources", { hostingRef: "app_1" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },

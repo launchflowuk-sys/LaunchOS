@@ -1,4 +1,4 @@
-import type { Integrations } from "@launchos/integrations";
+import type { AgentIntegrations } from "../integrations.js";
 import type { AgentDefinition } from "../../kernel/types.js";
 import { uptimeCheckSite } from "../../tools/uptime-check-site.js";
 import { hostingGetResources } from "../../tools/hosting-get-resources.js";
@@ -14,7 +14,7 @@ Your job, in order:
 4. Update the incident with incidents_update: status "acknowledged" and a Markdown summary (Diagnosis, Evidence, Recommended next step).
 Finish with one sentence describing what you did. Do not invent evidence. If the site responds OK on your check, say so, set severity "medium", and still acknowledge the incident.`;
 
-export function hostingGuardDog(integrations: Integrations): AgentDefinition {
+export function hostingGuardDog(integrations: AgentIntegrations): AgentDefinition {
   return {
     key: "hosting-guard-dog",
     name: "Hosting Guard-Dog",

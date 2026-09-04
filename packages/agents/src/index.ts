@@ -6,6 +6,7 @@ export * from "./kernel/run-recorder.js";
 export * from "./kernel/run-loop.js";
 export * from "./kernel/run-agent.js";
 export * from "./kernel/resume-agent.js";
+export * from "./agents/integrations.js";
 export * from "./agents/index.js";
 export { uptimeCheckSite } from "./tools/uptime-check-site.js";
 export { hostingGetResources } from "./tools/hosting-get-resources.js";
