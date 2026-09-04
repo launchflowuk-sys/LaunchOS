@@ -14,13 +14,22 @@
  * Idempotent: every step looks the row up (by slug / email / name / target /
  * calendar month) before inserting, so `pnpm db:seed` can be run repeatedly.
  *
+ * The organisation comes from SEED_ORG_NAME / SEED_ORG_SLUG, read through the
+ * same helper `pnpm db:bootstrap` uses, so seeding a bootstrapped database
+ * fills the organisation that is already there instead of creating a second
+ * one beside it. Defaults are unchanged: "LaunchFlow" / "launchflow".
+ *
  * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now")
  * and the portal login's from its own SEED_CLIENT_PASSWORD (default
  * "change-me-client") — never the owner's, because those two accounts are on
  * opposite sides of a privilege boundary. Never commit a real password here.
- * Under NODE_ENV=production the seed refuses to run while either password is
- * still its published default, or while the two are equal, so neither default
- * can ever reach a live database.
+ * **In every environment** both must clear MIN_PASSWORD_LENGTH, the same floor
+ * `apps/web/src/lib/auth.ts` enforces on every other account. Under
+ * NODE_ENV=production the seed additionally refuses to run while either
+ * password is still its published default, or while the two are equal, so
+ * neither default can ever reach a live database.
+ *
+ * Every refusal names the guard that tripped and exits non-zero.
  *
  * **It also refuses to run at all under NODE_ENV=production unless SEED_DEMO=1.**
  * The demo fixtures below — invoices with numbers from a live sequence
@@ -44,17 +53,25 @@ import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import {
-  CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL,
-  DEFAULT_OWNER_PASSWORD, ensureOrganisation, ensureOwnerMembership, ensureOwnerUser, loadRootEnv,
+  BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, describeDatabase, ensureOrganisation,
+  ensureOwnerMembership, ensureOwnerUser, loadRootEnv, organisationFromEnv,
 } from "./bootstrap.js";
 import { createDb } from "./client.js";
+import {
+  DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH,
+  shortPasswordMessage,
+} from "./passwords.js";
 import * as schema from "./schema/index.js";
 
 loadRootEnv();
 
 const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL;
 const OWNER_NAME = "Shoji";
-const ORGANISATION = { slug: "launchflow", name: "LaunchFlow" } as const;
+// The same two variables `pnpm db:bootstrap` reads, through the same helper.
+// Hardcoding "launchflow" here meant a developer who bootstrapped `acme` and
+// then seeded got a *second* organisation holding every fixture, and signed in
+// to the empty one.
+const ORGANISATION = organisationFromEnv(process.env);
 // Enabled up front so the events that dispatch them have somewhere to land:
 // `incident.opened` for the Guard-Dog, `ticket.created` for Support Triage.
 // The Sentinel is enabled beside its ad data, in `seedBillingAndAds`.
@@ -245,13 +262,26 @@ const CLIENT_PACKAGES: Record<string, string> = {
 
 async function main() {
   const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is required to seed");
+  if (!url) throw new BootstrapGuardError("database-url", "DATABASE_URL is required to seed");
+  // The floor first, and in every environment: both of these accounts are
+  // written straight into `account`, which Better Auth never re-validates, so
+  // a short password set here would stand for the life of the account. This is
+  // the same constant `apps/web/src/lib/auth.ts` enforces on everyone else.
+  for (const [name, value] of [
+    ["SEED_OWNER_PASSWORD", OWNER_PASSWORD],
+    ["SEED_CLIENT_PASSWORD", CLIENT_USER.password],
+  ] as const) {
+    if (value.length < MIN_PASSWORD_LENGTH) {
+      throw new BootstrapGuardError("password-floor", shortPasswordMessage(name, value));
+    }
+  }
   // No account this seed creates may reach a live database on a password that
   // is published in this repository — the owner's or the portal user's. The
   // two are also required to differ: satisfying the guard by setting them to
   // the same value would put the owner's password into a client's hands.
   if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "1") {
-    throw new Error(
+    throw new BootstrapGuardError(
+      "demo-fixtures-in-production",
       "pnpm db:seed writes demo clients, invoices with numbers from a live sequence, ad data and a " +
         "portal login. It must not run against a production database. Use `pnpm db:bootstrap`, which " +
         "creates only the organisation and the owner account. If you really do want the fixtures here, " +
@@ -264,20 +294,25 @@ async function main() {
       CLIENT_USER.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
     ].filter((name): name is string => name !== null);
     if (defaulted.length > 0) {
-      throw new Error(
+      throw new BootstrapGuardError(
+        "published-default",
         `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} required when NODE_ENV=production. ` +
           "Refusing to seed an account with a default password published in this repository. " +
           "Set them in the resource environment, run the seed once, then remove them.",
       );
     }
     if (CLIENT_USER.password === OWNER_PASSWORD) {
-      throw new Error(
+      throw new BootstrapGuardError(
+        "shared-password",
         "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
           "The portal login is a client's credential and the owner's opens the whole admin shell; " +
           "they must never be the same secret.",
       );
     }
   }
+  console.log("database      ", describeDatabase(url));
+  console.log("organisation  ", ORGANISATION.slug, `(${ORGANISATION.name})`);
+
   const db = createDb(url);
 
   try {
@@ -913,4 +948,15 @@ async function seedMonitor(db: Db, organisationId: string, siteId: string, targe
   return created!;
 }
 
-await main();
+// A refused seed must never look like one that ran: name the guard that
+// stopped it and exit non-zero.
+try {
+  await main();
+} catch (error) {
+  if (error instanceof BootstrapGuardError) {
+    console.error(`\ndb:seed refused — guard "${error.guard}"\n${error.message}`);
+  } else {
+    console.error("\ndb:seed failed", error);
+  }
+  process.exitCode = 1;
+}

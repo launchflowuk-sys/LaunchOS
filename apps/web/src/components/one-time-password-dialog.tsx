@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 
 /**
- * Shell for the two flows that mint a login and show its one-time password
- * exactly once: Team → Add member, and Client → Portal users → Invite user.
+ * Shell for the three flows that mint a login and show its one-time password
+ * exactly once: Team → Add member, Team → Re-issue password, and Client →
+ * Portal users → Invite user.
  *
  * The body is supplied as a render prop and remounted on every close via
  * `key={round}`, so the `useActionState` that lives inside it starts fresh each
@@ -21,9 +22,18 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
  */
 export function OneTimePasswordDialog({
   triggerLabel,
+  trigger,
   children,
 }: {
+  /** Label for the default primary-button trigger; also the accessible name. */
   triggerLabel: string;
+  /**
+   * Replaces the default `<Button>` when the caller needs a different control —
+   * the per-row "Re-issue password" is a plain text button inside a table cell,
+   * not a primary action. Must be a single element that accepts a ref and the
+   * props Radix spreads onto it (`asChild`).
+   */
+  trigger?: ReactNode;
   children: (props: { close: () => void }) => ReactNode;
 }) {
   const router = useRouter();
@@ -38,9 +48,7 @@ export function OneTimePasswordDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
-      <DialogTrigger asChild>
-        <Button>{triggerLabel}</Button>
-      </DialogTrigger>
+      <DialogTrigger asChild>{trigger ?? <Button>{triggerLabel}</Button>}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <Fragment key={round}>{children({ close })}</Fragment>
       </DialogContent>

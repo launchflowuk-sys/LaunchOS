@@ -83,7 +83,15 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    docker exec <web-container> pnpm db:bootstrap
    ```
 
-   It creates exactly two things: the organisation, from `SEED_ORG_NAME` and `SEED_ORG_SLUG` (defaults `LaunchFlow` / `launchflow`), and the owner user and its credential, from `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD`, with an owner membership joining them. Nothing else. Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. Under `NODE_ENV=production` it refuses a password that is still one of the defaults published in this repository. It is idempotent, and re-running it never changes an existing password — to rotate one, sign in and change it.
+   It creates exactly two things: the organisation, from `SEED_ORG_NAME` and `SEED_ORG_SLUG` (defaults `LaunchFlow` / `launchflow`), and the owner user and its credential, from `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD`, with an owner membership joining them. Nothing else. Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. It is idempotent, and re-running it never changes an existing password — to rotate one, sign in and change it.
+
+   Three guards run before anything is written. Each refusal prints the guard's name and the reason, and exits non-zero — a bootstrap that did not do what you asked never looks like one that did:
+
+   - **`password-floor`** (every environment) — `SEED_OWNER_PASSWORD` must be at least 12 characters, the same floor the app enforces on every staff and client account. Better Auth only re-checks a password on sign-up, change and reset, none of which this account will go through, so this is the only place the floor can be applied to it.
+   - **`published-default`** (production) — the password must not be one of the defaults printed in this repository.
+   - **`confirm-slug`** (production) — `BOOTSTRAP_CONFIRM` must be set to exactly the `SEED_ORG_SLUG` you are creating. The bootstrap creates an organisation whenever it finds no row with that slug, so without this a typo would silently make a second, empty organisation and sign you in to that instead. Set it in the web resource's environment beside `SEED_OWNER_PASSWORD`, and remove both together afterwards.
+
+   A fourth refusal comes later: if the owner email already belongs to a member of that organisation who is not an active owner — an invited staff account, say — the bootstrap stops and says so rather than reporting success, and writes no credential onto that account. An email that already has any `account` row keeps the credential it has ("existing credential kept" in the output).
 
    Agents are left disabled; turn on the ones you want in **Settings → Agents**.
 

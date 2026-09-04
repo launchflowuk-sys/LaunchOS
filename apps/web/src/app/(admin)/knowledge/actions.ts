@@ -122,9 +122,11 @@ export async function deleteArticleAction(formData: FormData): Promise<void> {
       actorId: session.userId,
     });
   } catch (error) {
-    redirect(
-      `/knowledge/${target.data.articleId}?error=${encodeURIComponent(messageOf(error, "Could not delete the article."))}`,
-    );
+    // Never back to the article: the commonest failure here is a second delete
+    // (double click, or the same article open in two tabs), and that article's
+    // own page `notFound()`s on a soft-deleted row — the admin would get a 404
+    // instead of the mapped sentence. The list renders `?error=` itself.
+    redirect(`/knowledge?error=${encodeURIComponent(messageOf(error, "Could not delete the article."))}`);
   }
 
   revalidatePath("/knowledge");

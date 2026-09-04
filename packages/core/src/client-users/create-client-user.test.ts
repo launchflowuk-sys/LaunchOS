@@ -123,6 +123,32 @@ describe("createClientUser", () => {
     });
   });
 
+  it("names the inviting admin on both the audit row and the client timeline entry", async () => {
+    await withTestDb(async (db) => {
+      const org = await newOrg(db);
+      const client = await newClient(db, org.id);
+      const email = `portal-${crypto.randomUUID()}@client.test`;
+      const actorId = `user-${crypto.randomUUID()}`;
+
+      const result = await createClientUser(db, org.id, { clientId: client.id, email, name: "Jo", actorId });
+
+      const [audit] = await db
+        .select()
+        .from(schema.auditLog)
+        .where(and(eq(schema.auditLog.organisationId, org.id), eq(schema.auditLog.targetId, result.clientUser.id)));
+      expect(audit!.action).toBe("client_user.created");
+      expect(audit!.actorKind).toBe("user");
+      expect(audit!.actorId).toBe(actorId);
+
+      const timeline = await db
+        .select()
+        .from(schema.activityEvents)
+        .where(eq(schema.activityEvents.clientId, client.id));
+      expect(timeline.map((e) => e.kind)).toEqual(["portal.user_invited"]);
+      expect(timeline[0]!.actorId).toBe(actorId);
+    });
+  });
+
   it("refuses a client id from another organisation", async () => {
     await withTestDb(async (db) => {
       const org = await newOrg(db);
