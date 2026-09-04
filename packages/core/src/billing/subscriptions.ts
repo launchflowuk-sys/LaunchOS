@@ -42,7 +42,7 @@ export async function createSubscription(
   const customerId = profile.stripeCustomerId
     ?? (await payments.createCustomer({
       name: profile.billingName ?? client!.name,
-      email: client!.email ?? undefined,
+      ...(client!.email ? { email: client!.email } : {}),
       clientRef: client!.slug,
     })).id;
 

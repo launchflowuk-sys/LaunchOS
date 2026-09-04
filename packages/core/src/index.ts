@@ -81,11 +81,7 @@ export { setTaskVisibility, toggleChecklistItem, SetTaskVisibilityInput, ToggleC
 export { generateOnboardingTasks } from "./tasks/generate-onboarding-tasks.js";
 export { generateRecurringTasks, quantityFor, GenerateRecurringTasksInput } from "./tasks/generate-recurring-tasks.js";
 export { findOverdueTasks, notifyOverdueTasks, OverdueInput } from "./tasks/find-overdue-tasks.js";
-// `slugify` here is not re-exported from the barrel: `clients/slug.js` already
-// exports a `slugify` of its own (different length cap and diacritics
-// handling) under the same name, so re-exporting this one too would collide.
-// It stays reachable via the direct module path for anything that needs it.
-export { createKnowledgeArticle, CreateKnowledgeArticleInput } from "./knowledge/create-article.js";
+export { createKnowledgeArticle, CreateKnowledgeArticleInput, slugifyArticleTitle } from "./knowledge/create-article.js";
 export { updateKnowledgeArticle, UpdateKnowledgeArticleInput } from "./knowledge/update-article.js";
 export { deleteKnowledgeArticle, DeleteKnowledgeArticleInput } from "./knowledge/delete-article.js";
 export { listKnowledgeArticles } from "./knowledge/list-articles.js";
@@ -97,3 +93,22 @@ export {
   createSubscription, cancelSubscription, activeSubscriptionForClient,
   CreateSubscriptionServiceInput, CancelSubscriptionInput,
 } from "./billing/subscriptions.js";
+export { nextInvoiceNumber, INVOICE_NUMBER_PREFIX } from "./billing/invoice-number.js";
+export {
+  createInvoiceFromSubscription, markInvoiceSent, markInvoicePaid, voidInvoice,
+  CreateInvoiceFromSubscriptionInput, MarkInvoicePaidInput,
+  VAT_RATE_DEFAULT_PERCENT, PAYMENT_TERMS_DEFAULT_DAYS,
+} from "./billing/invoices.js";
+export { findOverdueInvoices, FindOverdueInvoicesInput } from "./billing/overdue.js";
+export type { OverdueOutcome } from "./billing/overdue.js";
+export { createAdAccount, listAdAccounts, CreateAdAccountInput } from "./ads/accounts.js";
+export type { AdAccountRow } from "./ads/accounts.js";
+export { ingestDailyMetrics, IngestDailyMetricsInput } from "./ads/ingest.js";
+export type { IngestResult } from "./ads/ingest.js";
+export {
+  computeAccountSignals, SIGNAL_WINDOW_DAYS, ROAS_DROP_THRESHOLD_PERCENT, CPC_RISE_THRESHOLD_PERCENT,
+} from "./ads/signals.js";
+export type { AccountSignals, SignalWindow } from "./ads/signals.js";
+export {
+  saveDraftAdReport, approveAdReport, sendAdReport, SaveDraftAdReportInput, AdReportActionInput,
+} from "./ads/reports.js";
