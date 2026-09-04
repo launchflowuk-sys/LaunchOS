@@ -30,7 +30,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { label: "Payments", href: "/payments" },
       { label: "Invoices", href: "/invoices" },
-      { label: "Ads", href: "/ads", plan: 5 },
+      { label: "Ads", href: "/ads" },
+      { label: "Ad reports", href: "/ads/reports" },
+      { label: "Reports", href: "/reports" },
     ],
   },
   {
@@ -47,6 +49,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { label: "Team", href: "/team" },
       { label: "Settings", href: "/settings/organisation" },
+      { label: "Billing", href: "/settings/billing" },
       { label: "Packages", href: "/settings/packages" },
       { label: "Task templates", href: "/settings/task-templates" },
     ],

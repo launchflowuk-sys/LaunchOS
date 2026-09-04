@@ -5,14 +5,14 @@ import { cn } from "@/lib/utils";
 export type ClientTabKey = "overview" | "contacts" | "sites";
 
 /**
- * Tasks, Support and Portal users are routes of their own rather than `?tab=`
- * sections: each owns its own queries, forms and server actions, which would
- * push the detail page well past the file-size rule.
+ * Tasks, Support, Portal users, Invoices and Reports are routes of their own
+ * rather than `?tab=` sections: each owns its own queries, forms and server
+ * actions, which would push the detail page well past the file-size rule.
  */
-export type ClientTabRoute = "tasks" | "support" | "portal-users";
+export type ClientTabRoute = "tasks" | "support" | "portal-users" | "invoices" | "reports";
 export type ClientTabActive = ClientTabKey | ClientTabRoute;
 
-const ROUTES: readonly ClientTabRoute[] = ["tasks", "support", "portal-users"];
+const ROUTES: readonly ClientTabRoute[] = ["tasks", "support", "portal-users", "invoices", "reports"];
 
 const TABS = [
   { key: "overview", label: "Overview" },
@@ -21,6 +21,8 @@ const TABS = [
   { key: "tasks", label: "Tasks" },
   { key: "support", label: "Support" },
   { key: "portal-users", label: "Portal users" },
+  { key: "invoices", label: "Invoices" },
+  { key: "reports", label: "Reports" },
 ] as const satisfies readonly { key: ClientTabActive; label: string }[];
 
 /** The `?tab=` keys the detail page accepts — every tab that is not its own route. */
@@ -31,12 +33,6 @@ function hrefFor(clientId: string, key: ClientTabActive): string {
     ? `/clients/${clientId}/${key}`
     : `/clients/${clientId}?tab=${key}`;
 }
-
-// Invoices and Reports arrive with Plan 5.
-const LATER_TABS = [
-  { label: "Invoices", plan: 5 },
-  { label: "Reports", plan: 5 },
-] as const;
 
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTabActive }) {
   return (
@@ -55,11 +51,6 @@ export function ClientTabs({ clientId, active }: { clientId: string; active: Cli
         >
           {tab.label}
         </Link>
-      ))}
-      {LATER_TABS.map((tab) => (
-        <span key={tab.label} title={`Arrives in Plan ${tab.plan}`} className="px-3 py-2 text-sm text-neutral-300">
-          {tab.label}
-        </span>
       ))}
     </div>
   );
