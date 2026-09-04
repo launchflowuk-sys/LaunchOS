@@ -33,14 +33,12 @@ export function installWebEnqueue(): void {
       return;
     }
     const boss = await getBoss(url);
-    if (event.name === "client.created") {
-      await boss.send(
-        "tasks.generate-onboarding",
-        { organisationId: event.organisationId, clientId: event.clientId },
-        { singletonKey: `onboarding:${event.clientId}` },
-      );
-      return;
-    }
+    // Every event — including client.created — goes onto the single
+    // domain.event queue. The worker's dispatchEvent (apps/worker/src/jobs/
+    // dispatch-event.ts) is the only place event names map to specific job
+    // queues; keeping that mapping in one spot means a consumer added there
+    // later (e.g. Plan 4's ensureEmailIdentity on client.created) fires for
+    // every client, not just the ones created from the worker process.
     await boss.send(QUEUE_DOMAIN_EVENT, event);
   });
 }

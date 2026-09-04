@@ -16,28 +16,60 @@ async function organisationIds(db: Db) {
   return rows.map((r) => r.id);
 }
 
-/** Daily 06:00 Europe/London: this period's service work for every organisation. */
-export async function runRecurringSweep(db: Db, now: Date) {
+export interface RecurringSweepDeps { generateRecurringTasks: typeof generateRecurringTasks; }
+const defaultRecurringSweepDeps: RecurringSweepDeps = { generateRecurringTasks };
+
+/**
+ * Daily 06:00 Europe/London: this period's service work for every organisation.
+ * One organisation's failure is logged and does not stop the rest; if any
+ * organisation failed, the sweep still throws once every organisation has
+ * been attempted, so pg-boss retries the job.
+ */
+export async function runRecurringSweep(db: Db, now: Date, deps: RecurringSweepDeps = defaultRecurringSweepDeps) {
   const ids = await organisationIds(db);
   let created = 0;
   let skipped = 0;
+  const failedOrganisationIds: string[] = [];
   for (const organisationId of ids) {
-    const result = await generateRecurringTasks(db, organisationId, { now });
-    created += result.created;
-    skipped += result.skipped;
+    try {
+      const result = await deps.generateRecurringTasks(db, organisationId, { now });
+      created += result.created;
+      skipped += result.skipped;
+    } catch (error) {
+      console.error({ organisationId, error }, "recurring task sweep failed for organisation");
+      failedOrganisationIds.push(organisationId);
+    }
+  }
+  if (failedOrganisationIds.length > 0) {
+    throw new Error(`recurring task sweep failed for ${failedOrganisationIds.length} of ${ids.length} organisation(s): ${failedOrganisationIds.join(", ")}`);
   }
   return { organisations: ids.length, created, skipped };
 }
 
-/** Daily 08:00 Europe/London: chase everything past its due date. */
-export async function runOverdueSweep(db: Db, now: Date) {
+export interface OverdueSweepDeps { notifyOverdueTasks: typeof notifyOverdueTasks; }
+const defaultOverdueSweepDeps: OverdueSweepDeps = { notifyOverdueTasks };
+
+/**
+ * Daily 08:00 Europe/London: chase everything past its due date. Same
+ * per-organisation isolation as the recurring sweep.
+ */
+export async function runOverdueSweep(db: Db, now: Date, deps: OverdueSweepDeps = defaultOverdueSweepDeps) {
   const ids = await organisationIds(db);
   let overdue = 0;
   let notified = 0;
+  const failedOrganisationIds: string[] = [];
   for (const organisationId of ids) {
-    const result = await notifyOverdueTasks(db, organisationId, { now });
-    overdue += result.overdue;
-    notified += result.notified;
+    try {
+      const result = await deps.notifyOverdueTasks(db, organisationId, { now });
+      overdue += result.overdue;
+      notified += result.notified;
+    } catch (error) {
+      console.error({ organisationId, error }, "overdue task sweep failed for organisation");
+      failedOrganisationIds.push(organisationId);
+    }
+  }
+  if (failedOrganisationIds.length > 0) {
+    throw new Error(`overdue task sweep failed for ${failedOrganisationIds.length} of ${ids.length} organisation(s): ${failedOrganisationIds.join(", ")}`);
   }
   return { organisations: ids.length, overdue, notified };
 }

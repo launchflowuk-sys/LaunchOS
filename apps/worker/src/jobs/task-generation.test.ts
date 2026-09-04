@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { createTaskTemplate } from "@launchos/core";
@@ -41,6 +41,46 @@ describe("task generation jobs", () => {
 
       const overdue = await runOverdueSweep(db, new Date("2026-12-01T08:00:00.000Z"));
       expect(overdue.notified).toBe(2);
+    });
+  });
+
+  it("recurring sweep isolates a failing organisation: the rest still run, then it throws", async () => {
+    await withTestDb(async (db) => {
+      const a = await world(db);
+      const b = await world(db);
+      const now = new Date("2026-10-14T06:00:00.000Z");
+      const calls: string[] = [];
+      const generateRecurringTasks = vi.fn(async (_db, organisationId: string) => {
+        calls.push(organisationId);
+        if (organisationId === a.organisationId) throw new Error("boom");
+        return { created: 1, skipped: 0 };
+      });
+
+      // >= 2 active organisations may already exist (see the sweep test above),
+      // so assert on the one that must have failed rather than an exact count.
+      await expect(runRecurringSweep(db, now, { generateRecurringTasks })).rejects.toThrow(
+        /recurring task sweep failed for 1 of \d+ organisation/,
+      );
+      expect(calls).toEqual(expect.arrayContaining([a.organisationId, b.organisationId]));
+    });
+  });
+
+  it("overdue sweep isolates a failing organisation: the rest still run, then it throws", async () => {
+    await withTestDb(async (db) => {
+      const a = await world(db);
+      const b = await world(db);
+      const now = new Date("2026-12-01T08:00:00.000Z");
+      const calls: string[] = [];
+      const notifyOverdueTasks = vi.fn(async (_db, organisationId: string) => {
+        calls.push(organisationId);
+        if (organisationId === a.organisationId) throw new Error("boom");
+        return { overdue: 0, notified: 1 };
+      });
+
+      await expect(runOverdueSweep(db, now, { notifyOverdueTasks })).rejects.toThrow(
+        /overdue task sweep failed for 1 of \d+ organisation/,
+      );
+      expect(calls).toEqual(expect.arrayContaining([a.organisationId, b.organisationId]));
     });
   });
 });
