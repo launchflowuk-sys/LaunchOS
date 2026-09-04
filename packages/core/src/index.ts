@@ -64,3 +64,4 @@ export { createTask, CreateTaskInput } from "./tasks/create-task.js";
 export { listTasks, TaskFilters } from "./tasks/list-tasks.js";
 export type { TaskListRow } from "./tasks/list-tasks.js";
 export { getTask } from "./tasks/get-task.js";
+export { updateTaskStatus, UpdateTaskStatusInput, FINISHED_STATUSES } from "./tasks/update-task-status.js";
