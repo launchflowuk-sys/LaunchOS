@@ -11,3 +11,5 @@ export * from "./monitoring.js";
 export * from "./agents.js";
 export * from "./email.js";
 export * from "./knowledge.js";
+export * from "./ads.js";
+export * from "./reports.js";
