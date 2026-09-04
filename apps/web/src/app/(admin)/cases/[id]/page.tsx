@@ -1,8 +1,9 @@
-import { isCourtesyNotice, listMembers } from "@launchos/core";
+import { listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, asc, desc, eq, not } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { excludingCourtesyNotice } from "@/app/(admin)/inbox/thread-filters";
 import { ActionForm } from "@/components/action-form";
 import { MessageThread } from "@/components/message-thread";
 import { PageHeader } from "@/components/page-header";
@@ -109,8 +110,9 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               eq(schema.messages.organisationId, session.organisationId),
               // The "sign in to the portal to read it" nudge is addressed to
               // the client, not to us: on the staff thread it would sit under
-              // every answer telling a colleague to go and read it.
-              not(isCourtesyNotice()),
+              // every answer telling a colleague to go and read it. The
+              // predicate is shared with the Inbox — see `thread-filters.ts`.
+              excludingCourtesyNotice(),
             ),
           )
           .orderBy(asc(schema.messages.createdAt))

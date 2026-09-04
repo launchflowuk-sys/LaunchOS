@@ -205,8 +205,13 @@ export async function replyToConversation(db: Db, organisationId: string, input:
     // the row as it is at the moment of writing. Without the lock, "Hide from
     // the client" committing between the read and the insert would let a
     // client-facing reply land on a case that is now internal — visible to
-    // them, on a thread neither screen will admit to. `replyAsClient` reads
-    // its ticket inside its transaction for the same reason.
+    // them, on a thread neither screen will admit to.
+    //
+    // Lock order: **tickets → conversations → tickets**. `replyAsClient` takes
+    // the same order for the same case, which is the only reason a staff reply
+    // and a client reply arriving together cannot deadlock (`40P01`). Keep this
+    // select above the `conversations` update below, and keep the two files in
+    // step: whichever way the order changes, it has to change in both.
     const [ticket] = conversation.ticketId
       ? await tx
           .select()

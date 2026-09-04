@@ -1,6 +1,5 @@
-import { isCourtesyNotice } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { desc, eq, sql } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
@@ -9,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { lastMessageDirection } from "./thread-filters";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +34,8 @@ export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
       clientName: schema.clients.name,
       // The courtesy nudge is `outbound` and always the newest row on a
       // portal thread, so counting it would answer "who spoke last" with a
-      // machine rather than with either party.
-      lastDirection: sql<string | null>`(
-        select m.direction from messages m
-        where m.conversation_id = ${schema.conversations.id}
-          and not ${isCourtesyNotice(sql`m.metadata`)}
-        order by m.created_at desc limit 1
-      )`,
+      // machine rather than with either party. See `thread-filters.ts`.
+      lastDirection: lastMessageDirection(),
     })
     .from(schema.conversations)
     .innerJoin(schema.clients, eq(schema.conversations.clientId, schema.clients.id))

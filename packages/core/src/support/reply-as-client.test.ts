@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
-import { schema, type Db } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { createDb, schema, type Db } from "@launchos/db";
+import { and, eq, sql } from "drizzle-orm";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
 import { createClient } from "../clients/create-client.js";
 import { createTicket } from "./create-ticket.js";
@@ -222,5 +222,85 @@ describe("replyAsClient", () => {
         replyAsClient(db, organisationId, { conversationId: other.conversation.id, body: "hi", actorId: "x" }),
       ).rejects.toThrow(/not found in organisation/);
     });
+  });
+
+  // The `client_visible` refusal above is a *boundary* only because the ticket
+  // is read `for("update")` inside the transaction: under `READ COMMITTED` an
+  // unlocked read would see the row as it was before a concurrent hide and let
+  // the reply through. Proving that needs two connections holding two real
+  // transactions at once, so this test cannot use `withTestDb` (one rolled-back
+  // transaction on one connection). It runs against a pooled handle and deletes
+  // its organisation afterwards; the cascade takes the case with it.
+  it("waits for a concurrent hide to commit and then refuses, because the ticket is read FOR UPDATE", async () => {
+    const url = process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL;
+    const db = createDb(url!);
+    let organisationId: string | undefined;
+    // Declared out here so the cleanup can always let the holding transaction
+    // go: a failed assertion must not leave it sitting on the ticket's row lock
+    // while the delete below waits behind it.
+    let release: (() => void) | undefined;
+    let hide: Promise<unknown> | undefined;
+    try {
+      // Seed first and record the organisation id straight away: if anything
+      // below throws, the finally block still has an id to clean up with.
+      const seeded = await seedCase(db);
+      organisationId = seeded.organisationId;
+      expect(seeded.ticket.clientVisible).toBe(true);
+
+      // Force the pool to open a second connection before the race: otherwise
+      // the reply spends its first milliseconds on a TCP and auth handshake and
+      // the two transactions never overlap.
+      await Promise.all([db.execute(sql`select pg_sleep(0.05)`), db.execute(sql`select pg_sleep(0.05)`)]);
+
+      // Connection A: what "Hide from the client" does, held open. The lock is
+      // taken by the update itself, exactly as `setTicketClientVisibility`
+      // would take it.
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      hide = db.transaction(async (tx) => {
+        await tx
+          .update(schema.tickets)
+          .set({ clientVisible: false })
+          .where(eq(schema.tickets.id, seeded.ticket.id));
+        await held;
+      });
+      await new Promise((r) => setTimeout(r, 100));
+
+      // Connection B: the client's reply, which must block on the row lock
+      // rather than read around it.
+      const reply = replyAsClient(db, organisationId, {
+        conversationId: seeded.conversation.id, body: "Any news?", actorId: "portal-user-1",
+      });
+      let settled = false;
+      const outcome = reply.then(
+        () => { settled = true; return "resolved" as const; },
+        () => { settled = true; return "rejected" as const; },
+      );
+      await new Promise((r) => setTimeout(r, 250));
+      // Without `for("update")` this is where the reply has already committed.
+      expect(settled).toBe(false);
+
+      release!();
+      await hide;
+      await expect(reply).rejects.toThrow(/not visible to the client/);
+      expect(await outcome).toBe("rejected");
+
+      // And nothing was written: the refusal happens before the insert, so the
+      // thread still holds only the message the case was raised with.
+      const messages = await db
+        .select({ body: schema.messages.body })
+        .from(schema.messages)
+        .where(and(
+          eq(schema.messages.conversationId, seeded.conversation.id),
+          eq(schema.messages.direction, "inbound"),
+        ));
+      expect(messages.map((m) => m.body)).toEqual(["Nothing arrives."]);
+    } finally {
+      release?.();
+      await hide?.catch(() => undefined);
+      if (organisationId) await db.delete(schema.organisations).where(eq(schema.organisations.id, organisationId));
+      await db.$client.end({ timeout: 5 });
+    }
   });
 });

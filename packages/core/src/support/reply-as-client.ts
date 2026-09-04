@@ -61,19 +61,35 @@ export async function replyAsClient(db: Db, organisationId: string, input: Reply
     const tx = txRaw as unknown as Db;
     const now = new Date();
 
+    // Lock order: **tickets → conversations → tickets**, the same order
+    // `replyToConversation` takes. A staff reply and a client reply can land on
+    // one case in the same instant; if one took the conversation row first and
+    // the other the ticket, Postgres would break the cycle by aborting one of
+    // them with `40P01` and the loser would be told their message could not be
+    // posted. Taking the ticket first here — before the `conversations` update
+    // below — is what keeps the two paths in step, so this select must stay
+    // above that update and must keep its `for("update")`.
+    //
+    // Locked, not merely read: under `READ COMMITTED` an unlocked read inside a
+    // transaction is a snapshot, not a boundary. `setTicketClientVisibility`
+    // committing between the read and the insert would let a client's words
+    // land on a case that is now internal, reopen it, and notify its assignee
+    // about work the client was never shown.
     const [ticket] = conversation.ticketId
       ? await tx
           .select()
           .from(schema.tickets)
           .where(and(eq(schema.tickets.id, conversation.ticketId), eq(schema.tickets.organisationId, organisationId)))
+          .for("update")
       : [];
 
     // The boundary itself, not a repeat of the caller's. `replyAsClient` is
     // exported from `@launchos/core`, so a second portal surface, an agent
     // tool or a digest link that forgets the ticket lookup must still not be
     // able to put a client's words on an internal case — nor reopen one and
-    // notify its assignee about work the client was never shown. Nothing has
-    // been written at this point, so throwing here leaves no trace.
+    // notify its assignee about work the client was never shown. Decided
+    // against the locked row above, so it holds against a concurrent hide.
+    // Nothing has been written at this point, so throwing here leaves no trace.
     if (ticket && !ticket.clientVisible) {
       throw new Error(`ticket ${ticket.id} is not visible to the client`);
     }
