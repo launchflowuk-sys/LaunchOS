@@ -44,7 +44,13 @@ import { z } from "zod";
 import { createDb, type Db } from "../client.js";
 import * as schema from "../schema/index.js";
 
-const DEFAULT_SUPPORT_EMAIL_DOMAIN = "support.launchflow.co.uk";
+/**
+ * Same value as `DEFAULT_SUPPORT_EMAIL_DOMAIN` in
+ * `packages/core/src/config.ts`. Exported so the cross-check test can hold the
+ * two against each other — see the note on `Domain` below for why they are not
+ * simply one constant.
+ */
+export const DEFAULT_SUPPORT_EMAIL_DOMAIN = "support.launchflow.co.uk";
 
 /**
  * Same value as `HOLDING_CLIENT_SLUG` in
@@ -52,12 +58,19 @@ const DEFAULT_SUPPORT_EMAIL_DOMAIN = "support.launchflow.co.uk";
  * bucket that unroutable mail is filed under, not a routable client: its
  * `support_email` is deliberately NULL and it must never be given an address,
  * or mail addressed to `unmatched@<domain>` becomes deliverable into it.
+ *
+ * Exported for the same reason as the constant above.
  */
-const HOLDING_CLIENT_SLUG = "unmatched";
+export const HOLDING_CLIENT_SLUG = "unmatched";
 
-// Same shape as `supportEmailDomain` in packages/core/src/config.ts. Duplicated
-// rather than imported because `@launchos/core` is only a devDependency here and
-// this script has to run in a production image.
+// Same shape as `supportEmailDomain` in packages/core/src/config.ts.
+//
+// Duplicated rather than imported, deliberately: `@launchos/core` is a
+// *devDependency* of this package, so it is not installed in the production
+// image this script has to run in — importing it would turn a repair tool into
+// a module-not-found at the exact moment someone needs it. The duplication is
+// held in step by `support-email-constants.cross-check.test.ts`, which fails
+// the build if either copy moves without the other.
 const Domain = z
   .string()
   .min(4)

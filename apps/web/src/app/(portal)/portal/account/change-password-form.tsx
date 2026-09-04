@@ -1,16 +1,15 @@
 "use client";
 
 import { useState } from "react";
+// The same constant Better Auth is configured with server-side
+// (`minPasswordLength` in `lib/auth.ts`), imported rather than repeated so the
+// two cannot drift. The `/passwords` subpath is dependency-free, so pulling it
+// into a client component does not drag `@launchos/db`'s Postgres client into
+// the browser bundle. The server is still what enforces the floor: this check
+// and the `minLength` attribute below are both bypassable.
+import { MIN_PASSWORD_LENGTH } from "@launchos/db/passwords";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
-
-/**
- * The same number Better Auth is configured with server-side
- * (`minPasswordLength` in `lib/auth.ts`), repeated here only so the client is
- * told before the round trip rather than after it. The server is what enforces
- * it: this check and the `minLength` attribute are both bypassable.
- */
-const MIN_PASSWORD_LENGTH = 12;
 
 const CONTROL =
   "h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none";

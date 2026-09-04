@@ -105,6 +105,53 @@ describe("buildClientReport", () => {
     });
   });
 
+  it("counts uptime with a SQL aggregate, ignoring another client's monitors", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await busyClient(db);
+      // A second client in the same organisation, monitored and entirely down.
+      // Its checks must not move the first client's percentage — the join is
+      // what scopes the aggregate, and an aggregate is easy to leave unscoped.
+      const [neighbour] = await db.insert(schema.clients)
+        .values({ organisationId: orgId, name: "Next Door", slug: `nd-${randomUUID()}` }).returning();
+      const [site] = await db.insert(schema.sites)
+        .values({ organisationId: orgId, clientId: neighbour!.id, name: "N", primaryUrl: "https://n.test" }).returning();
+      const [monitor] = await db.insert(schema.monitors)
+        .values({ organisationId: orgId, siteId: site!.id, target: "https://n.test" }).returning();
+      await db.insert(schema.uptimeChecks).values([
+        { organisationId: orgId, monitorId: monitor!.id, checkedAt: new Date("2026-08-05T00:00:00Z"), ok: false },
+        { organisationId: orgId, monitorId: monitor!.id, checkedAt: new Date("2026-08-06T00:00:00Z"), ok: false },
+      ]);
+
+      // 3 of 4 in-period checks passed for the busy client; the check outside
+      // the period and the neighbour's two failures are both excluded.
+      expect((await buildClientReport(db, orgId, clientId, PERIOD)).stats.uptimePercent).toBeCloseTo(75, 5);
+      expect((await buildClientReport(db, orgId, neighbour!.id, PERIOD)).stats.uptimePercent).toBe(0);
+    });
+  });
+
+  it("reads the report currency off the client's own money, and null when it is ambiguous", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await busyClient(db);
+      // Both August invoices default to GBP, and there are no ad accounts yet.
+      expect((await buildClientReport(db, orgId, clientId, PERIOD)).stats.currency).toBe("GBP");
+
+      // An ad account billed in euros: the pence totals in this report are now
+      // sums of unlike things, so neither symbol may be put in front of them.
+      const [account] = await db.insert(schema.adAccounts).values({
+        organisationId: orgId, clientId, platform: "meta", externalId: "eur-1", name: "EU", currency: "EUR",
+      }).returning();
+      expect((await buildClientReport(db, orgId, clientId, PERIOD)).stats.currency).toBeNull();
+
+      // Once the euro account is the only thing left in the period, it decides.
+      await db.delete(schema.invoices).where(eq(schema.invoices.clientId, clientId));
+      expect((await buildClientReport(db, orgId, clientId, PERIOD)).stats.currency).toBe("EUR");
+
+      // Nothing billed and nothing advertised: there is nothing to read it off.
+      await db.delete(schema.adAccounts).where(eq(schema.adAccounts.id, account!.id));
+      expect((await buildClientReport(db, orgId, clientId, PERIOD)).stats.currency).toBeNull();
+    });
+  });
+
   it("reports uptime as null, not zero, when there are no checks in the period", async () => {
     await withTestDb(async (db) => {
       const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `rep-${randomUUID()}` }).returning();

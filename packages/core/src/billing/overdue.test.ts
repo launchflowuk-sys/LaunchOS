@@ -9,7 +9,7 @@ import { MockPaymentsAdapter } from "@launchos/integrations";
 import { createSubscription } from "./subscriptions.js";
 import { createInvoiceFromSubscription, markInvoiceSent } from "./invoices.js";
 import { requestInvoiceSend, sendApprovedInvoice } from "./invoice-send.js";
-import { findOverdueInvoices } from "./overdue.js";
+import { findOverdueInvoices, OVERDUE_CHASE_COOLDOWN_MS } from "./overdue.js";
 
 /** A sent, past-due invoice on a client with an email address, ready to chase. */
 async function chaseable(db: Db) {
@@ -145,6 +145,63 @@ describe("findOverdueInvoices", () => {
       const messages = await db.select().from(schema.messages)
         .where(eq(schema.messages.conversationId, firstTicket!.conversationId!));
       expect(messages).toHaveLength(2);
+    });
+  });
+
+  it("waits out the cooldown before chasing again, even once the ticket is closed", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, invoice } = await chaseable(db);
+      const firstSweep = new Date("2026-09-04T07:30:00Z");
+      const first = await findOverdueInvoices(db, orgId, { now: firstSweep });
+      expect(first).toHaveLength(1);
+
+      // Shoji works the case the same afternoon and closes it. Without the
+      // cooldown the very next sweep opens another one, and another every
+      // morning after that, until the client pays.
+      await db.update(schema.tickets).set({ status: "closed", resolvedAt: new Date() })
+        .where(eq(schema.tickets.id, first[0]!.ticketId));
+
+      const nextMorning = new Date(firstSweep.getTime() + 86_400_000);
+      expect(await findOverdueInvoices(db, orgId, { now: nextMorning })).toHaveLength(0);
+      const dayBeforeCooldownExpires = new Date(firstSweep.getTime() + OVERDUE_CHASE_COOLDOWN_MS - 1);
+      expect(await findOverdueInvoices(db, orgId, { now: dayBeforeCooldownExpires })).toHaveLength(0);
+      expect(await billingTickets(db, orgId)).toHaveLength(1);
+
+      // A week on and still unpaid: chase it again.
+      const afterCooldown = new Date(firstSweep.getTime() + OVERDUE_CHASE_COOLDOWN_MS);
+      const second = await findOverdueInvoices(db, orgId, { now: afterCooldown });
+      expect(second).toHaveLength(1);
+      expect(second[0]!.ticketId).not.toBe(first[0]!.ticketId);
+      expect(await billingTickets(db, orgId)).toHaveLength(2);
+
+      // And the clock restarts from the second chase, not the first.
+      const [chased] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoice.id));
+      expect(chased!.metadata["lastChasedAt"]).toBe(afterCooldown.toISOString());
+    });
+  });
+
+  it("merges the chase stamp into the invoice metadata instead of overwriting it", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, invoice } = await chaseable(db);
+      // Everything a send leaves behind. A whole-object write would take the
+      // row as it stood when the sweep read it and put every one of these keys
+      // back — dropping anything a concurrent send had added in between.
+      const before = {
+        sentAt: "2026-08-02T09:00:00.000Z",
+        emailedAt: "2026-08-02T09:00:01.000Z",
+        sendHistory: [{ approvalId: randomUUID(), at: "2026-08-02T09:00:00.000Z", actorId: "u1" }],
+      };
+      await db.update(schema.invoices).set({ metadata: before }).where(eq(schema.invoices.id, invoice.id));
+
+      const now = new Date("2026-09-04T07:30:00Z");
+      const [outcome] = await findOverdueInvoices(db, orgId, { now });
+
+      const [after] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoice.id));
+      expect(after!.metadata).toEqual({
+        ...before,
+        overdueTicketId: outcome!.ticketId,
+        lastChasedAt: now.toISOString(),
+      });
     });
   });
 

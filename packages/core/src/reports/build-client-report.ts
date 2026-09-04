@@ -67,8 +67,21 @@ async function collectTaskStats(db: Db, organisationId: string, clientId: string
   return { tasksDone: done!.value, tasksOpen: open!.value };
 }
 
+/**
+ * Aggregated in SQL, for the same reason as `collectTaskStats`: a monitor
+ * checked every minute produces ~43,000 rows a month *per site*, and the
+ * previous version pulled every one of them into the worker to count how many
+ * were `true`. Nothing but the ratio was ever used.
+ *
+ * `null` when the period holds no checks at all — a site added mid-month, or
+ * monitoring switched off — which is a different statement from 0% and is
+ * rendered as one.
+ */
 async function collectUptimeStats(db: Db, organisationId: string, clientId: string, period: ReportPeriod) {
-  const checks = await db.select({ ok: schema.uptimeChecks.ok })
+  const [row] = await db.select({
+    total: count(),
+    ok: sql<number>`count(*) filter (where ${schema.uptimeChecks.ok})`.mapWith(Number),
+  })
     .from(schema.uptimeChecks)
     .innerJoin(schema.monitors, eq(schema.uptimeChecks.monitorId, schema.monitors.id))
     .innerJoin(schema.sites, eq(schema.monitors.siteId, schema.sites.id))
@@ -80,8 +93,41 @@ async function collectUptimeStats(db: Db, organisationId: string, clientId: stri
       gte(schema.uptimeChecks.checkedAt, period.start),
       lt(schema.uptimeChecks.checkedAt, period.end),
     ));
-  if (checks.length === 0) return { uptimePercent: null as number | null };
-  return { uptimePercent: (checks.filter((c) => c.ok).length / checks.length) * 100 };
+  if (!row || row.total === 0) return { uptimePercent: null as number | null };
+  return { uptimePercent: (row.ok / row.total) * 100 };
+}
+
+/**
+ * The currency the money figures in this report are denominated in.
+ *
+ * Every `*Pence` total above is a plain integer sum, so it only means anything
+ * once a reader knows what it is counting. Both sources are per-row — an ad
+ * account and an invoice each carry their own `currency` — so the honest answer
+ * is only available when they all agree. One distinct value across the client's
+ * ad accounts and the invoices issued in the period is that answer; anything
+ * else is `null`, because a client billed in two currencies has totals that
+ * are sums of unlike things and labelling them with either one would be a lie.
+ * No rows at all is `null` for the same reason: there is nothing to read it off.
+ */
+async function collectCurrency(db: Db, organisationId: string, clientId: string, period: ReportPeriod) {
+  const [fromAds, fromInvoices] = [
+    await db.selectDistinct({ currency: schema.adAccounts.currency })
+      .from(schema.adAccounts)
+      .where(and(
+        eq(schema.adAccounts.organisationId, organisationId),
+        eq(schema.adAccounts.clientId, clientId),
+      )),
+    await db.selectDistinct({ currency: schema.invoices.currency })
+      .from(schema.invoices)
+      .where(and(
+        eq(schema.invoices.organisationId, organisationId),
+        eq(schema.invoices.clientId, clientId),
+        gte(schema.invoices.issuedAt, period.start),
+        lt(schema.invoices.issuedAt, period.end),
+      )),
+  ];
+  const distinct = new Set([...fromAds, ...fromInvoices].map((r) => r.currency));
+  return { currency: distinct.size === 1 ? [...distinct][0]! : null };
 }
 
 /**
@@ -232,7 +278,7 @@ export async function buildClientReport(
   period: ReportPeriod,
   actor: ReportActor = SYSTEM_ACTOR,
 ) {
-  // One transaction for the whole build: the five collectors must read from a
+  // One transaction for the whole build: every collector must read from a
   // single snapshot, or a webhook committing mid-build lands in one number and
   // not the others and the report contradicts itself. Sequential, not
   // Promise.all: a transaction holds one Postgres connection, which serves one
@@ -251,7 +297,10 @@ export async function buildClientReport(
     const ticketStats = await collectTicketStats(tx, organisationId, clientId, period);
     const adStats = await collectAdStats(tx, organisationId, clientId, period);
     const invoiceStats = await collectInvoiceStats(tx, organisationId, clientId, period);
-    const stats: ClientReportStats = { ...taskStats, ...uptimeStats, ...ticketStats, ...adStats, ...invoiceStats };
+    const currency = await collectCurrency(tx, organisationId, clientId, period);
+    const stats: ClientReportStats = {
+      ...taskStats, ...uptimeStats, ...ticketStats, ...adStats, ...invoiceStats, ...currency,
+    };
 
     const summaryMd = renderSummary(client!.name, period, stats);
     const periodStart = isoDay(period.start);

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
-import { createTaskTemplate } from "@launchos/core";
+import { createTaskTemplate, generateRecurringTasks, notifyOverdueTasks } from "@launchos/core";
 import { randomUUID } from "node:crypto";
 import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep } from "./task-generation.js";
 
@@ -34,13 +34,37 @@ describe("task generation jobs", () => {
       for (const w of [a, b]) {
         await createTaskTemplate(db, w.organisationId, { phase: "recurring", kind: "content", title: "Blog post", recurrence: "monthly" });
       }
-      const now = new Date("2026-10-14T06:00:00.000Z");
-      const recurring = await runRecurringSweep(db, now);
-      expect(recurring.created).toBe(2);
-      expect(recurring.organisations).toBeGreaterThanOrEqual(2);
 
-      const overdue = await runOverdueSweep(db, new Date("2026-12-01T08:00:00.000Z"));
-      expect(overdue.notified).toBe(2);
+      // The sweeps run over every active organisation in the database, and this
+      // test shares that database with the dev seed and with whatever the other
+      // suites left behind — so the totals they return are not the test's to
+      // predict. The real functions are wrapped rather than replaced, so the
+      // sweep still does its actual work everywhere; only the *assertion* is
+      // narrowed to the two organisations this test created.
+      const recurringByOrg = new Map<string, Awaited<ReturnType<typeof generateRecurringTasks>>>();
+      const now = new Date("2026-10-14T06:00:00.000Z");
+      const recurring = await runRecurringSweep(db, now, {
+        generateRecurringTasks: async (sweepDb, organisationId, options) => {
+          const result = await generateRecurringTasks(sweepDb, organisationId, options);
+          recurringByOrg.set(organisationId, result);
+          return result;
+        },
+      });
+      expect(recurring.organisations).toBeGreaterThanOrEqual(2);
+      expect(recurringByOrg.get(a.organisationId)?.created).toBe(1);
+      expect(recurringByOrg.get(b.organisationId)?.created).toBe(1);
+
+      const overdueByOrg = new Map<string, Awaited<ReturnType<typeof notifyOverdueTasks>>>();
+      const overdue = await runOverdueSweep(db, new Date("2026-12-01T08:00:00.000Z"), {
+        notifyOverdueTasks: async (sweepDb, organisationId, options) => {
+          const result = await notifyOverdueTasks(sweepDb, organisationId, options);
+          overdueByOrg.set(organisationId, result);
+          return result;
+        },
+      });
+      expect(overdue.organisations).toBeGreaterThanOrEqual(2);
+      expect(overdueByOrg.get(a.organisationId)?.notified).toBe(1);
+      expect(overdueByOrg.get(b.organisationId)?.notified).toBe(1);
     });
   });
 

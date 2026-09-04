@@ -1,4 +1,5 @@
 import { schema } from "@launchos/db";
+import { MIN_PASSWORD_LENGTH } from "@launchos/db/passwords";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { getDb } from "./db";
@@ -16,10 +17,13 @@ function buildAuth() {
         verification: schema.verification,
       },
     }),
-    // The 12 is the floor for everyone, staff and clients alike. Better Auth's
-    // own default is 8, and the portal's change-password form is a browser
-    // control anyone can POST past — this is the line that actually enforces it.
-    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
+    // The floor for everyone, staff and clients alike. Better Auth's own
+    // default is 8, and the portal's change-password form is a browser control
+    // anyone can POST past — this is the line that actually enforces it. The
+    // number is shared with `db:bootstrap` and `db:seed`, which write
+    // credentials straight into the `account` table where Better Auth never
+    // re-validates them; a literal here would let the two drift.
+    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: MIN_PASSWORD_LENGTH },
     secret,
     baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? "http://localhost:3000",
   });

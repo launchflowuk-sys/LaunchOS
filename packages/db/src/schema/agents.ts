@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { boolean, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { actorKindEnum } from "./support.js";
@@ -52,7 +53,22 @@ export const approvals = pgTable("approvals", {
   decidedBy: text("decided_by"),
   decidedAt: timestamp("decided_at", { withTimezone: true }),
   decisionNote: text("decision_note"),
-});
+}, (t) => [
+  // At most one *pending* invoice send per invoice, enforced by the database
+  // rather than by a read-then-insert in `requestInvoiceSendOnce`. Approving
+  // two pending sends for the same invoice emails the client the same invoice
+  // twice — the send claim is per-approval, so nothing downstream refuses the
+  // second — and a check-then-insert loses that race by construction.
+  //
+  // Partial on purpose: once an approval is decided it stops occupying the
+  // slot, so a resend or an overdue chase can file a fresh one. The predicate
+  // is a constant expression over immutable operators, which is what Postgres
+  // requires of an index predicate. Approvals that are not invoice sends carry
+  // no `invoiceId` and are excluded outright by the `action` test.
+  uniqueIndex("approvals_pending_invoice_send")
+    .on(t.organisationId, sql`(${t.payload} ->> 'invoiceId')`)
+    .where(sql`${t.status} = 'pending' and ${t.kind} = 'message_send' and ${t.payload} ->> 'action' = 'invoice_send'`),
+]);
 
 export const auditLog = pgTable("audit_log", {
   ...tenantColumns(),

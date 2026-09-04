@@ -100,4 +100,23 @@ describe("decideApproval", () => {
       expect(row!.status).toBe("pending");
     });
   });
+
+  it("treats a soft-deleted approval as undecidable", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, approval } = await fixture(db);
+      // A withdrawn approval keeps `status = 'pending'` — nothing rewrites it
+      // on delete — so `deleted_at` is the only thing standing between a stale
+      // link and an agent resuming from a card no screen shows any more.
+      await db.update(schema.approvals).set({ deletedAt: new Date() })
+        .where(eq(schema.approvals.id, approval.id));
+
+      const result = await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: "u1",
+      });
+
+      expect(result).toEqual({ alreadyDecided: true, approval: undefined });
+      const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
+      expect([row!.status, row!.decidedBy, row!.decidedAt]).toEqual(["pending", null, null]);
+    });
+  });
 });

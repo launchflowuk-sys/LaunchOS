@@ -7,7 +7,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { createAdAccount } from "./accounts.js";
-import { approveAdReport, saveDraftAdReport, sendAdReport } from "./reports.js";
+import { approveAdReport, MAX_AD_REPORT_SUMMARY_CHARS, saveDraftAdReport, sendAdReport } from "./reports.js";
 
 const ENV = { MAIL_FROM: "LaunchFlow <reports@launchflow.test>" };
 const PORTAL = "https://portal.test";
@@ -170,6 +170,25 @@ describe("approveAdReport", () => {
 
       await expect(approveAdReport(db, orgId, { adReportId: report.id, actorId: "u1" }))
         .rejects.toThrow(/already been sent/);
+    });
+  });
+});
+
+describe("saveDraftAdReport input", () => {
+  it("refuses a summary past the ceiling and accepts one exactly on it", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, accountId } = await orgClientAccount(db);
+      const period = { adAccountId: accountId, periodStart: "2026-09-01", periodEnd: "2026-09-07" };
+
+      // The Sentinel writes this field, and nothing downstream bounds an LLM's
+      // output — so a runaway generation has to be refused here rather than
+      // stored and then rendered on every screen that shows the report.
+      await expect(saveDraftAdReport(db, orgId, { ...period, summaryMd: "x".repeat(MAX_AD_REPORT_SUMMARY_CHARS + 1) }))
+        .rejects.toThrow();
+      await expect(saveDraftAdReport(db, orgId, { ...period, summaryMd: "" })).rejects.toThrow();
+
+      const saved = await saveDraftAdReport(db, orgId, { ...period, summaryMd: "x".repeat(MAX_AD_REPORT_SUMMARY_CHARS) });
+      expect(saved.summaryMd).toHaveLength(MAX_AD_REPORT_SUMMARY_CHARS);
     });
   });
 });

@@ -7,12 +7,54 @@ import { assertOwned } from "../tenancy/assert-owned.js";
 
 type ApprovalRow = typeof schema.approvals.$inferSelect;
 
+/** Postgres `unique_violation`. */
+const UNIQUE_VIOLATION = "23505";
+
+/** The partial unique index in `packages/db/src/schema/agents.ts` that backs the guarantee below. */
+export const PENDING_INVOICE_SEND_INDEX = "approvals_pending_invoice_send";
+
+/**
+ * True when `error` is the index above refusing a second pending send request.
+ *
+ * Matched by constraint name rather than by error code alone: any other unique
+ * index on `approvals` firing here would be a different bug, and swallowing it
+ * as "already pending" would return an approval that has nothing to do with
+ * this invoice.
+ *
+ * Drizzle wraps a driver failure in a `DrizzleQueryError` whose `message` is
+ * the SQL, and hangs the real `PostgresError` off `cause` — so the chain is
+ * walked rather than only the thrown object inspected. Exported so a test can
+ * prove the driver really does report the field and the name this matches on:
+ * get that wrong and the recovery below never runs, and a race surfaces to the
+ * operator as a raw Postgres error instead.
+ */
+export function isPendingSendCollision(error: unknown): boolean {
+  for (let node: unknown = error, depth = 0; node !== null && node !== undefined && depth < 5; depth += 1) {
+    if (typeof node !== "object") return false;
+    const candidate = node as { code?: unknown; constraint_name?: unknown; constraint?: unknown; cause?: unknown };
+    // postgres-js exposes `constraint_name`; the driver-agnostic `constraint`
+    // is checked too so this does not silently stop working behind another
+    // client. Both must line up with a unique violation — any other index on
+    // `approvals` firing here is a different bug.
+    if (
+      candidate.code === UNIQUE_VIOLATION &&
+      (candidate.constraint_name === PENDING_INVOICE_SEND_INDEX || candidate.constraint === PENDING_INVOICE_SEND_INDEX)
+    ) {
+      return true;
+    }
+    node = candidate.cause;
+  }
+  return false;
+}
+
 /**
  * The approvals row a queued send is parked in, if one is still waiting.
  *
  * An invoice send has no `runId` and no dedicated approval kind, so it is
  * identified the same way the invoice screen identifies it: by the `action`
- * and `invoiceId` keys of the payload.
+ * and `invoiceId` keys of the payload. The predicate is deliberately the same
+ * one the partial unique index uses, so this read and that index can never
+ * disagree about what "pending send for this invoice" means.
  */
 export async function findPendingInvoiceSendApproval(
   db: Db,
@@ -25,6 +67,7 @@ export async function findPendingInvoiceSendApproval(
     .where(and(
       eq(schema.approvals.organisationId, organisationId),
       eq(schema.approvals.status, "pending"),
+      eq(schema.approvals.kind, "message_send"),
       sql`${schema.approvals.payload}->>'action' = ${INVOICE_SEND_ACTION}`,
       sql`${schema.approvals.payload}->>'invoiceId' = ${invoiceId}`,
     ))
@@ -43,16 +86,21 @@ export async function findPendingInvoiceSendApproval(
  * pending approval is returned instead, so the caller can point the user at the
  * decision that is already waiting rather than raising a duplicate.
  *
- * This is a check-then-insert rather than a database constraint, and it is a
- * **UX guard, not a safety guarantee.** The approvals table has no unique index
- * over a JSON payload key, so the losing side of a genuine race files a second
- * pending row — and because the send claim is per-approval, approving both of
- * them emails the client twice. There is no backstop underneath: `draft -> sent`,
+ * **The guarantee is the database's, not this function's.** The partial unique
+ * index `approvals_pending_invoice_send` — unique on
+ * `(organisation_id, payload->>'invoiceId')` where the row is a *pending*
+ * `message_send` whose `payload->>'action'` is `invoice_send` — is what makes
+ * "at most one pending send per invoice" true. The read below is only a fast
+ * path that keeps the common case free of a rolled-back INSERT; the loser of a
+ * genuine race gets a `23505` from the index and is answered from the row that
+ * won, so both callers are handed the same approval and neither files a
+ * second. Nothing downstream would catch a duplicate: `draft -> sent`,
  * `sent -> sent` and `overdue -> overdue` are all legal, so `sendApprovedInvoice`
- * has no reason to refuse the second one. If a real guarantee is wanted the
- * cheap one is a partial unique index on `(organisation_id, (payload->>'invoiceId'))`
- * where `status = 'pending' AND payload->>'action' = 'invoice_send'`; that is a
- * `packages/db` migration, deliberately deferred.
+ * has no reason to refuse the second one.
+ *
+ * The index is partial so a decided approval stops occupying the slot: a
+ * resend, or the next overdue chase, files a fresh request exactly as an
+ * operator expects.
  *
  * The status check is done here rather than left to `requestInvoiceSend`: a
  * `paid` or `void` invoice must be refused even when a stale pending approval
@@ -70,6 +118,23 @@ export async function requestInvoiceSendOnce(
 
   const existing = await findPendingInvoiceSendApproval(db, organisationId, v.invoiceId);
   if (existing) return { approval: existing, alreadyPending: true };
-  const approval = await requestInvoiceSend(db, organisationId, v);
-  return { approval, alreadyPending: false };
+
+  try {
+    // Wrapped so the losing insert rolls back on its own: at the top level this
+    // is an ordinary transaction, and inside a caller's transaction drizzle
+    // issues a SAVEPOINT. Either way the recovery SELECT below runs on a
+    // connection that is not in an aborted transaction — without the savepoint,
+    // a nested caller would get "current transaction is aborted" instead of the
+    // approval it asked for. It also makes the approval row and its audit row
+    // one unit, which they were not before.
+    const approval = await db.transaction(async (tx) => requestInvoiceSend(tx as unknown as Db, organisationId, v));
+    return { approval, alreadyPending: false };
+  } catch (error) {
+    if (!isPendingSendCollision(error)) throw error;
+    // The winner committed between our read and our insert. Its row is the
+    // decision that is now waiting, so return that rather than the error.
+    const winner = await findPendingInvoiceSendApproval(db, organisationId, v.invoiceId);
+    if (!winner) throw error;
+    return { approval: winner, alreadyPending: true };
+  }
 }

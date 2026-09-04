@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
@@ -29,6 +29,29 @@ const SWEEPABLE_STATUSES = statusesThatCanBecome("overdue");
 const SETTLED_TICKET_STATUSES = ["resolved", "closed"] as const;
 
 /**
+ * How long an invoice is left alone after a chase, once that chase's ticket has
+ * been settled. Without it, resolving the ticket on the same day hands the
+ * invoice straight back to the next morning's sweep: a fresh ticket, a fresh
+ * owner notification and another note on the client's thread, every day, for an
+ * arrear the operator has already dealt with. A week is the shortest interval
+ * that reads as a chase rather than as nagging.
+ */
+export const OVERDUE_CHASE_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * When this invoice was last chased. `metadata` is untyped JSON that anything
+ * could have written, so an unparseable value is treated as "never chased"
+ * rather than allowed to throw the whole sweep — the open-ticket guard is
+ * still underneath it.
+ */
+export function lastChasedAt(metadata: Record<string, unknown>): Date | undefined {
+  const parsed = z.string().datetime({ offset: true }).safeParse(metadata["lastChasedAt"]);
+  if (!parsed.success) return undefined;
+  const at = new Date(parsed.data);
+  return Number.isNaN(at.getTime()) ? undefined : at;
+}
+
+/**
  * Flips every sent invoice whose due date has passed to `overdue`, raises one
  * billing ticket per invoice and notifies the owner once.
  *
@@ -42,14 +65,25 @@ const SETTLED_TICKET_STATUSES = ["resolved", "closed"] as const;
  * conversation** so the whole chase reads as one thread rather than a pile of
  * identical cases.
  *
+ * **And not before a week has passed.** A settled ticket alone is not licence
+ * to chase again: `metadata.lastChasedAt` records when the last chase went out,
+ * and an invoice inside `OVERDUE_CHASE_COOLDOWN_MS` of it is skipped. Resolving
+ * the ticket the same afternoon would otherwise hand the invoice back to the
+ * next morning's sweep — a new ticket, a new owner notification and another
+ * note on the client's thread every single day — which is how a chase becomes
+ * something the operator learns to ignore.
+ *
  * Each invoice is isolated in its own transaction that (a) takes the invoice
  * row lock with `SELECT ... FOR UPDATE` as its first statement, so two
  * overlapping sweeps serialise: the second one re-reads the row the first
  * committed, sees the open ticket it just raised, and skips; (b) re-checks
  * under that lock that the invoice is still sweepable — a `paid` or `void` that
  * landed between the candidate query and the lock ends the work here; (c)
- * raises the ticket via `createTicketInTx` on the same `tx`; (d) stamps
- * `metadata.overdueTicketId`; (e) audits. `ticket.created` is emitted and the
+ * raises the ticket via `createTicketInTx` on the same `tx`; (d) merges
+ * `metadata.overdueTicketId` and `metadata.lastChasedAt` into the existing
+ * jsonb with `||`, rather than writing back the whole object this transaction
+ * read — a spread would drop whatever a concurrent send stamped on it; (e)
+ * audits. `ticket.created` is emitted and the
  * owner notified only after that transaction commits — never a partial state.
  *
  * One invoice's failure — a data problem, a transient error — is caught and
@@ -101,10 +135,16 @@ export async function findOverdueInvoices(
         const prior = await priorChase(inner, organisationId, locked);
         if (prior?.open) return undefined; // the last chase is still being worked
 
-        const [claimed] = await tx.update(schema.invoices)
+        // The chase ticket is settled, but a settled ticket is not permission to
+        // chase again this morning. Read under the same row lock as the write
+        // below, so two overlapping sweeps cannot both decide the cooldown has
+        // expired.
+        const chasedAt = lastChasedAt(locked.metadata);
+        if (chasedAt && v.now.getTime() - chasedAt.getTime() < OVERDUE_CHASE_COOLDOWN_MS) return undefined;
+
+        await tx.update(schema.invoices)
           .set({ status: "overdue", updatedAt: new Date() })
-          .where(eq(schema.invoices.id, locked.id))
-          .returning();
+          .where(eq(schema.invoices.id, locked.id));
 
         // A finished chase leaves its conversation behind: reuse it so a second
         // chase reads as the next chapter of one thread. `createTicketInTx`
@@ -123,8 +163,17 @@ export async function findOverdueInvoices(
         });
         if (reuseConversationId) await appendChaseNote(inner, organisationId, reuseConversationId, body);
 
+        // Merged in the database rather than spread from the row this
+        // transaction read: a whole-object write sends back every key as it
+        // stood at the SELECT, so anything another writer added in between —
+        // `emailedAt`, `lastSendError`, a `sendHistory` entry — is silently
+        // dropped. `||` touches only the two keys named here.
+        const stamp = JSON.stringify({ overdueTicketId: ticket.id, lastChasedAt: v.now.toISOString() });
         const [after] = await tx.update(schema.invoices)
-          .set({ metadata: { ...claimed!.metadata, overdueTicketId: ticket.id }, updatedAt: new Date() })
+          .set({
+            metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb) || ${stamp}::jsonb`,
+            updatedAt: new Date(),
+          })
           .where(eq(schema.invoices.id, locked.id))
           .returning();
         await recordAudit(inner, organisationId, {

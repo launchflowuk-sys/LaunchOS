@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schema": "./src/schema/index.ts",
+    "./passwords": "./src/passwords.ts",
     "./test": "./src/test/db.ts"
   },
   "scripts": {

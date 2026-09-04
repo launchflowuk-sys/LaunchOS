@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
@@ -22,7 +23,18 @@ export const billingProfiles = pgTable(
     preferredMethod: text("preferred_method"),
     notes: text("notes"),
   },
-  (t) => [uniqueIndex("billing_profiles_client").on(t.clientId)],
+  (t) => [
+    uniqueIndex("billing_profiles_client").on(t.clientId),
+    // A Stripe customer belongs to exactly one billing profile. The Stripe
+    // webhook route resolves tenancy by looking this id up, so a second profile
+    // carrying it would make that lookup ambiguous — and it would resolve
+    // whichever row came back first, silently filing another organisation's
+    // payment. NULL means "not linked to Stripe" and is left unconstrained, so
+    // any number of profiles may have no customer id.
+    uniqueIndex("billing_profiles_stripe_customer")
+      .on(t.stripeCustomerId)
+      .where(sql`${t.stripeCustomerId} is not null`),
+  ],
 );
 
 export const subscriptionStatusEnum = pgEnum("subscription_status", ["trialing", "active", "past_due", "cancelled", "paused"]);

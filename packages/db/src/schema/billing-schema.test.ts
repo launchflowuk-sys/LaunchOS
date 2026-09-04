@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { withTestDb } from "../test/db.js";
 import {
-  adAccounts, adMetricSnapshots, adReports, clientReports, clients, invoices,
+  adAccounts, adMetricSnapshots, adReports, billingProfiles, clientReports, clients, invoices,
   organisations, payments, subscriptions,
 } from "./index.js";
 
@@ -78,6 +78,38 @@ describe("P5 schema", () => {
       await expect(
         db.transaction((tx) => tx.insert(adMetricSnapshots).values(row)),
       ).rejects.toThrow();
+    });
+  });
+
+  it("refuses two billing profiles sharing a Stripe customer, and ignores unlinked ones", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(organisations).values({ name: "T", slug: `p5-${randomUUID()}` }).returning();
+      const client = async () => {
+        const [row] = await db.insert(clients)
+          .values({ organisationId: org!.id, name: "C", slug: `c-${randomUUID()}` }).returning();
+        return row!.id;
+      };
+      const customerId = `cus_${randomUUID().slice(0, 8)}`;
+
+      await db.insert(billingProfiles).values({ organisationId: org!.id, clientId: await client(), stripeCustomerId: customerId });
+
+      // The Stripe webhook resolves tenancy from this id, so a second profile
+      // carrying it would make that lookup ambiguous — including across
+      // organisations, which is why the index is global rather than per tenant.
+      const [other] = await db.insert(organisations).values({ name: "O", slug: `p5-${randomUUID()}` }).returning();
+      const [otherClient] = await db.insert(clients)
+        .values({ organisationId: other!.id, name: "C", slug: `c-${randomUUID()}` }).returning();
+      await expect(
+        db.transaction((tx) => tx.insert(billingProfiles)
+          .values({ organisationId: other!.id, clientId: otherClient!.id, stripeCustomerId: customerId })),
+      ).rejects.toThrow();
+
+      // NULL means "not linked to Stripe" and is outside the index: any number
+      // of profiles may sit there.
+      await db.insert(billingProfiles).values({ organisationId: org!.id, clientId: await client() });
+      await expect(
+        db.insert(billingProfiles).values({ organisationId: org!.id, clientId: await client() }),
+      ).resolves.toBeDefined();
     });
   });
 });

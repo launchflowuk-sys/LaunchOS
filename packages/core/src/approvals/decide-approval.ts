@@ -69,7 +69,11 @@ export async function decideApproval(
   const [before] = await db
     .select()
     .from(schema.approvals)
-    .where(and(eq(schema.approvals.id, v.approvalId), eq(schema.approvals.organisationId, organisationId)));
+    .where(and(
+      eq(schema.approvals.id, v.approvalId),
+      eq(schema.approvals.organisationId, organisationId),
+      isNull(schema.approvals.deletedAt),
+    ));
   if (!before) return { alreadyDecided: true, approval: undefined };
 
   const [after] = await db
@@ -86,6 +90,11 @@ export async function decideApproval(
       eq(schema.approvals.organisationId, organisationId),
       eq(schema.approvals.status, "pending"),
       isNull(schema.approvals.decidedAt),
+      // A soft-deleted approval is a decision that was withdrawn. It is still
+      // `pending` — nothing rewrites the status on delete — so without this the
+      // claim below would succeed and set an agent resuming, or an invoice
+      // emailing, from a card no screen shows any more.
+      isNull(schema.approvals.deletedAt),
     ))
     .returning();
 

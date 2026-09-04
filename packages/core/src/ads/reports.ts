@@ -11,11 +11,24 @@ import { assertOwned } from "../tenancy/assert-owned.js";
 
 const IsoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
+/**
+ * The ceiling on a report body, in characters.
+ *
+ * `ad_reports.summary_md` is unbounded `text`, and its usual author is the Ad
+ * Performance Sentinel — an LLM, whose output length nothing downstream
+ * constrains. A run that loops or pastes a whole metrics dump would write a
+ * row every admin and portal screen then renders as Markdown, and email as the
+ * body of a client-facing message. 20,000 characters is roughly ten pages:
+ * far more than any monthly summary needs, and small enough that a runaway
+ * generation is refused at the boundary rather than stored.
+ */
+export const MAX_AD_REPORT_SUMMARY_CHARS = 20_000;
+
 export const SaveDraftAdReportInput = z.object({
   adAccountId: z.string().uuid(),
   periodStart: IsoDate,
   periodEnd: IsoDate,
-  summaryMd: z.string().min(1),
+  summaryMd: z.string().min(1).max(MAX_AD_REPORT_SUMMARY_CHARS),
   agentRunId: z.string().uuid().optional(),
 });
 export type SaveDraftAdReportInput = z.input<typeof SaveDraftAdReportInput>;

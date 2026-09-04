@@ -13,6 +13,15 @@ export interface ClientReportStats {
   ticketsResolved: number;
   ads: { spendPence: number; clicks: number; conversions: number; roas: number } | null;
   invoices: { issued: number; paidPence: number; outstandingPence: number };
+  /**
+   * The ISO currency every `*Pence` figure above is denominated in — read from
+   * the client's own ad accounts and invoices rather than assumed. `null` when
+   * that is genuinely ambiguous: the client has nothing billed or advertised
+   * in the period, or has more than one currency in play and the totals above
+   * are therefore sums of unlike things. A reader must not be shown a currency
+   * symbol we cannot stand behind, so `null` means "do not label these".
+   */
+  currency: string | null;
 }
 
 export const clientReports = pgTable("client_reports", {

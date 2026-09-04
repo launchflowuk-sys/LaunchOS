@@ -6,15 +6,21 @@
  * `pnpm db:seed` — read their rules from here, so the two cannot drift and
  * neither can be more permissive than the application.
  *
- * `MIN_PASSWORD_LENGTH` mirrors `minPasswordLength` in
- * `apps/web/src/lib/auth.ts`. Better Auth applies that option on sign-up,
- * change and reset only — `sign-in` never re-checks it — so a credential
- * written straight into the `account` table is never validated again for the
- * life of the account. That is why the floor is enforced here, in every
- * environment, rather than only in production: a short password installed by a
- * script is a short password forever.
+ * `MIN_PASSWORD_LENGTH` is the floor itself, not a copy of one. It is what
+ * Better Auth is configured with in `apps/web/src/lib/auth.ts`
+ * (`minPasswordLength`) and what the portal's change-password form checks
+ * before the round trip — both import it from here, via the
+ * `@launchos/db/passwords` subpath, so the number cannot drift between the
+ * scripts and the application. That subpath exists because this module has no
+ * imports at all: a React client component can pull the constant in without
+ * dragging the Postgres client `@launchos/db`'s main entry point loads.
  *
- * Keep the two numbers equal. If the app's floor moves, move this one.
+ * Better Auth applies its option on sign-up, change and reset only — `sign-in`
+ * never re-checks it — so a credential written straight into the `account`
+ * table is never validated again for the life of the account. That is why the
+ * floor is enforced here too, in every environment rather than only in
+ * production: a short password installed by a script is a short password
+ * forever.
  */
 export const MIN_PASSWORD_LENGTH = 12;
 

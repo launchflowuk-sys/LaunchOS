@@ -1,0 +1,2 @@
+CREATE UNIQUE INDEX "billing_profiles_stripe_customer" ON "billing_profiles" USING btree ("stripe_customer_id") WHERE "billing_profiles"."stripe_customer_id" is not null;--> statement-breakpoint
+CREATE UNIQUE INDEX "approvals_pending_invoice_send" ON "approvals" USING btree ("organisation_id",("payload" ->> 'invoiceId')) WHERE "approvals"."status" = 'pending' and "approvals"."kind" = 'message_send' and "approvals"."payload" ->> 'action' = 'invoice_send';
