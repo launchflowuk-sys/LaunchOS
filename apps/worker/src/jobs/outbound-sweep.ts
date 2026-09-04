@@ -1,6 +1,7 @@
+import { CLAIM_TTL_MINUTES, notifyOwner } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, gt, isNull, lt } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
 import { QUEUE } from "../boss.js";
 import type { BossSender } from "./dispatch-event.js";
 import { sweep, throwOnSweepFailure, type SweepLogger, type SweepSummary } from "./sweep.js";
@@ -22,7 +23,11 @@ export const OUTBOUND_UNDELIVERED_AFTER_MS = 60_000;
  */
 export const OUTBOUND_GIVE_UP_AFTER_MS = 24 * 60 * 60_000;
 
+/** Stamped on a message once its give-up has been announced, so it is announced once. */
+const GIVE_UP_NOTIFIED = "outboundGiveUpNotifiedAt";
+
 const LABEL = "outbound message sweep";
+const GIVE_UP_LABEL = "outbound message give-up";
 
 export interface OutboundSweepDeps {
   readonly db: Db;
@@ -43,10 +48,12 @@ export interface UndeliveredMessage {
  * before this sweep existed, nothing ever revisited it: the reply sat on the
  * thread, visible to staff and in the client's history, and was never sent.
  *
- * Deliberately not filtered on a claim: `sendQueuedMessage` claims in one
- * conditional UPDATE and returns the row untouched when it cannot, so a
- * duplicate delivery is already a no-op. A message it has given up on is
- * `failed`, not `queued`, so it drops out of here on its own.
+ * A message another worker is actively holding is skipped: `sendQueuedMessage`
+ * takes a `CLAIM_TTL_MINUTES` lease, and while that lease is live a re-enqueued
+ * job would only claim nothing and return. Matching the lease here means the
+ * sweep never enqueues against a send that is still in flight — which also
+ * removes the four wasted jobs a slow send used to collect. A message the send
+ * has given up on is `failed`, not `queued`, so it drops out of here on its own.
  */
 export async function findUndeliveredMessages(
   db: Db,
@@ -66,9 +73,93 @@ export async function findUndeliveredMessages(
         isNull(schema.messages.deletedAt),
         lt(schema.messages.createdAt, cutoff),
         gt(schema.messages.createdAt, floor),
+        unclaimed(),
       ),
     );
   return rows.map((row) => ({ id: row.id }));
+}
+
+/** The same predicate `sendQueuedMessage`'s claim uses: free, or the lease has expired. */
+function unclaimed() {
+  return sql`(
+    ${schema.messages.metadata}->>'claimedAt' IS NULL
+    OR (${schema.messages.metadata}->>'claimedAt')::timestamptz < now() - (${CLAIM_TTL_MINUTES} * interval '1 minute')
+  )`;
+}
+
+/**
+ * Messages that have crossed the far edge of the window still undelivered.
+ *
+ * The give-up bound is the one moment a permanently undeliverable reply is
+ * knowable, and until now it was also the moment the system went quiet about it:
+ * the row simply stopped matching `findUndeliveredMessages` and nothing was
+ * written or said. One notification per message closes that, keyed on a metadata
+ * marker so a sweep running every minute for the rest of the message's life
+ * announces it exactly once.
+ */
+export async function findGivenUpMessages(db: Db, organisationId: string, now: Date): Promise<UndeliveredMessage[]> {
+  const floor = new Date(now.getTime() - OUTBOUND_GIVE_UP_AFTER_MS);
+  const rows = await db
+    .select({ id: schema.messages.id })
+    .from(schema.messages)
+    .where(
+      and(
+        eq(schema.messages.organisationId, organisationId),
+        eq(schema.messages.direction, "outbound"),
+        eq(schema.messages.status, "queued"),
+        isNull(schema.messages.deletedAt),
+        lte(schema.messages.createdAt, floor),
+        sql`${schema.messages.metadata} ->> ${GIVE_UP_NOTIFIED} is null`,
+      ),
+    );
+  return rows.map((row) => ({ id: row.id }));
+}
+
+/**
+ * Tells the owner about every message this sweep has stopped re-enqueueing, once.
+ *
+ * The marker is stamped *after* the notification, on purpose and for the same
+ * reason as `sendQueuedMessage`'s: a crash between the two costs a duplicate
+ * alert, and a duplicate is much cheaper than a reply nobody ever hears about.
+ */
+export async function notifyGivenUpMessages(
+  deps: Omit<OutboundSweepDeps, "boss">,
+  organisationId: string,
+  now: Date = new Date(),
+): Promise<SweepSummary> {
+  const logger = deps.logger ?? console;
+  const givenUp = await findGivenUpMessages(deps.db, organisationId, now);
+  const summary = await sweep(
+    givenUp,
+    { label: GIVE_UP_LABEL, id: (row) => row.id, logger },
+    async (row) => {
+      const [message] = await deps.db
+        .select({ toEmail: schema.messages.toEmail, conversationId: schema.messages.conversationId })
+        .from(schema.messages)
+        .where(and(eq(schema.messages.id, row.id), eq(schema.messages.organisationId, organisationId)));
+      const to = message?.toEmail ?? "the client";
+      await notifyOwner(deps.db, organisationId, {
+        kind: "message.undelivered",
+        title: `A reply to ${to} has been queued for a day and never sent`,
+        body:
+          "The outbound sweep has re-enqueued it every minute for 24 hours without it leaving. " +
+          "It will not be retried again — open the thread and send it by hand once the cause is fixed.",
+        ...(message ? { link: `/inbox/${message.conversationId}` } : {}),
+      });
+      await deps.db
+        .update(schema.messages)
+        .set({
+          metadata: sql`coalesce(${schema.messages.metadata}, '{}'::jsonb) || ${JSON.stringify({ [GIVE_UP_NOTIFIED]: now.toISOString() })}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(schema.messages.id, row.id), eq(schema.messages.organisationId, organisationId)));
+    },
+  );
+  if (summary.processed > 0 || summary.failed > 0) {
+    logger.info({ organisationId, gaveUp: summary.processed, failed: summary.failed }, GIVE_UP_LABEL);
+  }
+  throwOnSweepFailure(GIVE_UP_LABEL, summary);
+  return summary;
 }
 
 /**
@@ -76,6 +167,9 @@ export async function findUndeliveredMessages(
  * same `outbound:<messageId>` key the web request and `dispatchEvent` use, so a
  * job already queued is deduped rather than duplicated. Isolated per message:
  * one failed send must not cost the rest of the sweep its turn.
+ *
+ * Also announces the give-up edge (`notifyGivenUpMessages`) on the way past,
+ * because the two questions share a window and a cron tick.
  */
 export async function runOutboundSweep(
   deps: OutboundSweepDeps,
@@ -83,6 +177,13 @@ export async function runOutboundSweep(
   now: Date = new Date(),
 ): Promise<SweepSummary> {
   const logger = deps.logger ?? console;
+  // The give-up edge first: a message that crossed it is about to stop matching
+  // the re-enqueue query below, and this is the last chance to say so. Its
+  // failures are logged rather than thrown — an alert that cannot be written
+  // must not cost the messages that can still be delivered their re-enqueue.
+  await notifyGivenUpMessages(deps, organisationId, now).catch((err: unknown) => {
+    logger.error({ organisationId, err: String(err) }, "outbound give-up notification failed");
+  });
   const pending = await findUndeliveredMessages(deps.db, organisationId, now);
   const summary = await sweep(
     pending,

@@ -3,7 +3,9 @@ import { schema } from "@launchos/db";
 import type { EmailAdapter } from "@launchos/channels";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
+import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { notifyOwner } from "../notifications/notify.js";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -63,6 +65,56 @@ async function claim(db: Db, organisationId: string, messageId: string): Promise
     )
     .returning();
   return row;
+}
+
+/** Set once a give-up has been announced, so the announcement cannot be doubled. */
+const SEND_FAILURE_NOTIFIED = "sendFailureNotifiedAt";
+
+/**
+ * A reply that has spent every attempt and will not be sent.
+ *
+ * Without this the give-up is silent: the message flips to `failed`, one
+ * `audit_log` row is written and that is the end of it — the reply still renders
+ * on the thread exactly like a delivered one, `outbound.sweep` deliberately only
+ * looks at `queued` rows, and the first anyone hears of it is the client chasing
+ * a case that looks, from the inside, like it was answered.
+ *
+ * So it gets the same treatment `invoice.send_failed` and `ad_report.send_failed`
+ * already have: an entry on the client's timeline and one notification for the
+ * owner. Announced *before* the marker is stamped, deliberately — a crash
+ * between the two costs a duplicate notification, and a duplicate is far cheaper
+ * than a give-up nobody hears about.
+ */
+async function announceSendFailure(db: Db, organisationId: string, message: Message, lastError: string) {
+  const [conversation] = await db
+    .select({ clientId: schema.conversations.clientId })
+    .from(schema.conversations)
+    .where(
+      and(
+        eq(schema.conversations.id, message.conversationId),
+        eq(schema.conversations.organisationId, organisationId),
+      ),
+    );
+  const to = message.toEmail ?? "the client";
+  const link = `/inbox/${message.conversationId}`;
+  const title = `A reply to ${to} was never sent`;
+  const body = `${MAX_SEND_ATTEMPTS} send attempts failed and the message has been given up on. Last error: ${lastError}`;
+  await recordActivity(db, organisationId, {
+    ...(conversation ? { clientId: conversation.clientId } : {}),
+    actorKind: "system",
+    kind: "message.send_failed",
+    title,
+    body,
+    link,
+  });
+  await notifyOwner(db, organisationId, { kind: "message.send_failed", title, body, link });
+  await db
+    .update(schema.messages)
+    .set({
+      metadata: sql`coalesce(${schema.messages.metadata}, '{}'::jsonb) || ${JSON.stringify({ [SEND_FAILURE_NOTIFIED]: new Date().toISOString() })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.messages.id, message.id), eq(schema.messages.organisationId, organisationId)));
 }
 
 /**
@@ -126,7 +178,12 @@ export async function sendQueuedMessage(
     });
     // Exhausted is a terminal state, not a job failure: rethrowing would make
     // pg-boss retry a message we have already given up on.
-    if (exhausted) return after;
+    if (exhausted) {
+      if (typeof claimed.metadata[SEND_FAILURE_NOTIFIED] !== "string") {
+        await announceSendFailure(db, organisationId, after, lastError);
+      }
+      return after;
+    }
     throw err;
   }
 }

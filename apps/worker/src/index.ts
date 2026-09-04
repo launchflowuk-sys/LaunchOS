@@ -2,7 +2,7 @@ import { createDb } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry } from "@launchos/agents";
 import { createEmailAdapter } from "@launchos/channels";
-import { createIntegrations } from "@launchos/integrations";
+import { createIntegrations, describeAdapters } from "@launchos/integrations";
 import { loadEnv } from "./env.js";
 import { FakeAgentLlmClient } from "./llm/fake.js";
 import { QUEUE, createBoss } from "./boss.js";
@@ -160,11 +160,17 @@ async function main() {
   // and after invoices.check-overdue (07:30), so the drafted report reports a
   // full month of ad spend and current invoice statuses.
   await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
-  // Which brain is in the box, in the first line of the log. `LLM=fake` in a
-  // deployment that meant to use Anthropic is otherwise invisible until an
-  // agent answers from a scripted stub.
+  // Which brain is in the box and which adapters are wired, in the first line of
+  // the log. `LLM=fake`, or an `EMAIL_ADAPTER` lost in a redeploy, is otherwise
+  // invisible until an agent answers from a stub or a week of replies turns out
+  // never to have left. Names only — no hosts, keys or addresses.
   console.info(
-    { llm: env.LLM, model: env.LLM === "fake" ? "fake-agent-llm" : env.AGENT_MODEL, policy: env.AGENT_POLICY },
+    {
+      llm: env.LLM,
+      model: env.LLM === "fake" ? "fake-agent-llm" : env.AGENT_MODEL,
+      policy: env.AGENT_POLICY,
+      adapters: describeAdapters(process.env),
+    },
     "worker started",
   );
 }

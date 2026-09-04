@@ -1,7 +1,7 @@
 import { notifyOwner, recordAudit } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, gt, inArray, isNotNull, isNull, lt, max, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, lte, max, sql } from "drizzle-orm";
 import { QUEUE } from "../boss.js";
 import type { BossSender } from "./dispatch-event.js";
 import { z } from "zod";
@@ -37,7 +37,11 @@ export const RESUME_GIVE_UP_AFTER_MS = 24 * 60 * 60_000;
 export const RUN_STUCK_AFTER_MS = 30 * 60_000;
 
 const RESUME_LABEL = "approval resume sweep";
+const RESUME_GIVE_UP_LABEL = "approval resume give-up";
 const STUCK_LABEL = "stranded agent run sweep";
+
+/** Stamped on an approval once its give-up has been announced, so it is announced once. */
+const GIVE_UP_NOTIFIED = "resumeGiveUpNotifiedAt";
 
 export interface ResumeSweepDeps {
   readonly db: Db;
@@ -125,10 +129,108 @@ export async function findUndeliveredResumes(
 }
 
 /**
+ * The same shape as `findUndeliveredResumes`, past the far edge of the window.
+ *
+ * `RESUME_GIVE_UP_AFTER_MS` is the point at which this sweep stops re-driving a
+ * decision — and until now it was silent about it: the row simply stopped
+ * matching, the run stayed parked, the decision stayed decided, and nobody was
+ * told. That edge is the one moment a permanently un-resumable decision is
+ * knowable, so it gets one notification, keyed on a metadata marker so a sweep
+ * running every minute for the rest of the approval's life says it once.
+ */
+export async function findGivenUpResumes(
+  db: Db,
+  organisationId: string,
+  now: Date,
+): Promise<UndeliveredResume[]> {
+  const floor = new Date(now.getTime() - RESUME_GIVE_UP_AFTER_MS);
+  const rows = await db
+    .select({
+      approvalId: schema.approvals.id,
+      runId: schema.agentRuns.id,
+      decision: schema.approvals.status,
+      note: schema.approvals.decisionNote,
+    })
+    .from(schema.approvals)
+    .innerJoin(
+      schema.agentRuns,
+      and(
+        eq(schema.agentRuns.id, schema.approvals.runId),
+        eq(schema.agentRuns.organisationId, schema.approvals.organisationId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.approvals.organisationId, organisationId),
+        isNotNull(schema.approvals.runId),
+        inArray(schema.approvals.status, ["approved", "rejected"]),
+        isNull(schema.approvals.deletedAt),
+        lte(schema.approvals.decidedAt, floor),
+        eq(schema.agentRuns.status, "awaiting_approval"),
+        isNull(schema.agentRuns.deletedAt),
+        sql`${schema.agentRuns.metadata} -> 'pending' is not null`,
+        sql`${schema.agentRuns.metadata} -> 'pending' ->> 'awaitingToolUseId' = ${schema.approvals.payload} ->> 'toolUseId'`,
+        sql`${schema.approvals.metadata} ->> ${GIVE_UP_NOTIFIED} is null`,
+      ),
+    );
+  return rows.map((row) => ({
+    approvalId: row.approvalId,
+    runId: row.runId,
+    decision: row.decision as "approved" | "rejected",
+    note: row.note,
+  }));
+}
+
+/**
+ * Tells the owner about every decision this sweep has stopped re-driving, once.
+ *
+ * The marker is stamped *after* the notification, on purpose: a crash between
+ * the two costs a duplicate alert, and a duplicate is much cheaper than an
+ * approved outward action that quietly never happened.
+ */
+export async function notifyGivenUpResumes(
+  deps: Omit<ResumeSweepDeps, "boss">,
+  organisationId: string,
+  now: Date = new Date(),
+): Promise<SweepSummary> {
+  const logger = deps.logger ?? console;
+  const givenUp = await findGivenUpResumes(deps.db, organisationId, now);
+  const summary = await sweep(
+    givenUp,
+    { label: RESUME_GIVE_UP_LABEL, id: (row) => row.approvalId, logger },
+    async (row) => {
+      await notifyOwner(deps.db, organisationId, {
+        kind: "approval.resume_undelivered",
+        title: `An ${row.decision} decision never reached its agent run`,
+        body:
+          "The resume sweep has re-enqueued it every minute for 24 hours and the run is still parked on this tool " +
+          "call. It will not be retried again — the decision stands, but the action it authorised has not happened.",
+        link: `/approvals`,
+      });
+      await deps.db
+        .update(schema.approvals)
+        .set({
+          metadata: sql`coalesce(${schema.approvals.metadata}, '{}'::jsonb) || ${JSON.stringify({ [GIVE_UP_NOTIFIED]: now.toISOString() })}::jsonb`,
+          updatedAt: new Date(),
+        })
+        .where(and(eq(schema.approvals.id, row.approvalId), eq(schema.approvals.organisationId, organisationId)));
+    },
+  );
+  if (summary.processed > 0 || summary.failed > 0) {
+    logger.info({ organisationId, gaveUp: summary.processed, failed: summary.failed }, RESUME_GIVE_UP_LABEL);
+  }
+  throwOnSweepFailure(RESUME_GIVE_UP_LABEL, summary);
+  return summary;
+}
+
+/**
  * Re-enqueues every undelivered decision for one organisation, under the same
  * `resume:<approvalId>` key the web request uses, so a job already queued is
  * deduped rather than duplicated. Isolated per approval: one failed send must
  * not cost the rest of the sweep its turn.
+ *
+ * Also announces the give-up edge (`notifyGivenUpResumes`) on the way past,
+ * because the two questions share a window and a cron tick.
  */
 export async function runResumeSweep(
   deps: ResumeSweepDeps,
@@ -136,6 +238,13 @@ export async function runResumeSweep(
   now: Date = new Date(),
 ): Promise<SweepSummary> {
   const logger = deps.logger ?? console;
+  // The give-up edge first: an approval that crossed it is about to stop
+  // matching the re-enqueue query below. Its failures are logged rather than
+  // thrown — an alert that cannot be written must not cost the decisions that
+  // can still be delivered their re-enqueue.
+  await notifyGivenUpResumes(deps, organisationId, now).catch((err: unknown) => {
+    logger.error({ organisationId, err: String(err) }, "resume give-up notification failed");
+  });
   const pending = await findUndeliveredResumes(deps.db, organisationId, now);
   const summary = await sweep(
     pending,

@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
+import { productionAdapterIssues } from "@launchos/integrations";
 import { z } from "zod";
 
 // The worker's cwd at runtime may not be the repo root (e.g. `tsx watch src/index.ts`
@@ -32,11 +33,20 @@ const EnvShape = z.object({
    * end of the approvals it raises.
    */
   ALLOW_FAKE_LLM: z.string().optional(),
+  /** Read only by the adapter guard below; `createPaymentsAdapter` reads them from `process.env` itself. */
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  /**
+   * The same escape hatch as `ALLOW_FAKE_LLM`, for the adapters: a production
+   * deployment that genuinely means to run on mocks (a staging resource, a dry
+   * run before the SPF and DKIM records verify) says so out loud.
+   */
+  ALLOW_MOCK_ADAPTERS: z.string().optional(),
 });
 
 /**
- * Two rules no single field can express, both about the same failure: a worker
- * that boots happily and then cannot think.
+ * Three rules no single field can express, all about the same failure: a worker
+ * that boots happily and then cannot do the thing it was deployed to do.
  *
  * 1. `LLM=anthropic` (the default) needs `ANTHROPIC_API_KEY`. Without it every
  *    agent run fails at its first LLM call — after `RunRecorder.open` has
@@ -46,6 +56,12 @@ const EnvShape = z.object({
  * 2. `LLM=fake` is refused under `NODE_ENV=production` unless `ALLOW_FAKE_LLM=1`.
  *    The fake client is a scripted stub; a production worker running it would
  *    file tickets and raise approvals from canned text.
+ * 3. The same rule for every adapter that can silently resolve to a mock, which
+ *    is worse than the LLM case because a mock *succeeds*: `MockEmailAdapter`
+ *    returns a message id, so a worker without `EMAIL_ADAPTER=smtp` marks every
+ *    reply, ad report and invoice email `sent` and delivers none of them. The
+ *    rule itself is `productionAdapterIssues` in `packages/integrations`, so the
+ *    web app applies exactly the same one.
  */
 export const Env = EnvShape.superRefine((value, ctx) => {
   if (value.LLM === "anthropic" && !value.ANTHROPIC_API_KEY) {
@@ -63,6 +79,9 @@ export const Env = EnvShape.superRefine((value, ctx) => {
       message:
         "LLM=fake is refused in production: the agents would answer from a scripted stub. Set ANTHROPIC_API_KEY and LLM=anthropic, or set ALLOW_FAKE_LLM=1 to say you meant it.",
     });
+  }
+  for (const issue of productionAdapterIssues(value)) {
+    ctx.addIssue({ code: "custom", path: [issue.variable], message: issue.message });
   }
 });
 export type Env = z.infer<typeof Env>;

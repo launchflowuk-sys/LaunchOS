@@ -53,7 +53,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
      - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk` in the app; the reconcile script refuses to run on that fallback unless you pass `--allow-default-domain`, because a mass rewrite onto a domain you do not own is the failure it exists to repair. Changing it later does **not** rewrite addresses already stored on existing clients, and migration `0007_backfill_support_email.sql` fills older rows in with the fallback domain because a migration cannot read env — so **after setting or changing this, run the reconcile script** (see step 6). Inbound routing matches on `email_identities.address` alone, so a client left on the wrong domain silently never receives mail.
      - `OWNER_NOTIFY_EMAIL` → optional. In-app notifications always reach the owner's bell; set this to also email them. Leave unset to keep notifications in-app only.
      - `INBOUND_EMAIL_PROVIDER` → `postmark`, `cloudflare` or `generic`; the payload shape the webhook expects when the URL carries no `?provider=`.
-     - `EMAIL_ADAPTER` → `mock` until the DNS records verify, then `smtp`.
+     - `EMAIL_ADAPTER` → `smtp`. **The app refuses to start on `mock` under `NODE_ENV=production`** (see *Production refuses mock adapters* below); until the DNS records verify, set `ALLOW_MOCK_ADAPTERS=1` alongside it and remove that variable the moment they do.
      - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` — required once `EMAIL_ADAPTER=smtp`.
      - `INBOUND_EMAIL_SECRET` → the shared secret the inbound provider sends back in `x-launchos-inbound-secret`.
      - `STORAGE_DIR` → where inbound attachments are written; must be a persistent volume (see **Inbound email** below).
@@ -62,9 +62,10 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
      - `GOOGLE_ADS_DEVELOPER_TOKEN`
      - `META_ADS_ACCESS_TOKEN`
      - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
-     - `UPTIME_PROBE=http` (mock is for local/test only)
+     - `UPTIME_PROBE=http` (mock is for local/test only, and is refused in production)
      - `LLM=anthropic` (fake is for local/test only)
      - `AGENT_POLICY=safe`
+     - `ALLOW_MOCK_ADAPTERS` → leave **unset**. Set it to `1` only for a staging resource, or for the window before the SPF and DKIM records verify. Any other value is still a refusal.
 
 4. **Worker resource (Docker build)**
    - New resource → Docker (build from Dockerfile) → same GitHub repo, branch `main`.
@@ -74,8 +75,10 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Health check: process-based (no HTTP endpoint); configure Coolify's restart policy to restart on exit.
    - Auto-deploy: enable "auto deploy on push" for `main`.
    - Deploy after the web resource so migrations have already run once; set it to start after the web resource's health check passes.
-   - Env vars: `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, plus `EMAIL_ADAPTER`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker means replies queue and never leave.
-   - Keep the worker at a **single replica**. The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
+   - Env vars: `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, `PAYMENTS_ADAPTER` and the `STRIPE_*` pair, plus `EMAIL_ADAPTER=smtp`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker used to mean replies were marked `sent` and never left — the worker now refuses to start instead. Its first log line names the LLM, the model, the policy and every resolved adapter.
+   - Keep the worker at a **single replica**, for two reasons:
+     - The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
+     - `sendQueuedMessage`'s claim is a **five-minute lease, not a lock** (`CLAIM_TTL_MINUTES`), so it only guarantees that a second delivery cannot claim a message whose claim is under five minutes old. What actually prevents a client receiving the same reply twice is that one worker's `boss.work` does not overlap handlers. `SmtpEmailAdapter` sets no `socketTimeout`, so nodemailer's ten-minute default outlives the lease comfortably. A second replica would make a hung send re-sendable at t+5m — do not add one without either a lock that outlives the send or an SMTP timeout below five minutes.
 
 5. **First owner account** — sign-up is disabled in the app (`emailAndPassword.disableSignUp`), so the first account has to be written directly. Run the **bootstrap**, once, inside the running web container:
 
@@ -138,6 +141,30 @@ Four record sets on the domain, all before anything will route:
 4. Point the domain's MX at Postmark's inbound host.
 5. Verify the sending signature (the SPF and DKIM records above) in Postmark's sender signatures screen before switching `EMAIL_ADAPTER` to `smtp`.
 
+### Production refuses mock adapters
+
+Under `NODE_ENV=production` both the web app and the worker validate their environment before opening a connection, and **refuse to start when an adapter resolves to a mock**. The rule lives in one place, `packages/integrations/src/adapter-guard.ts`, so the two processes cannot disagree.
+
+The reasoning is `ALLOW_FAKE_LLM`'s, one step worse: a mock adapter does not fail, it *succeeds*. `MockEmailAdapter` returns a message id, so a worker whose `EMAIL_ADAPTER` was lost in a redeploy marks every client reply, ad report and invoice email `sent` — with a `delivered_at` and a `mock-…` external id — and delivers none of them. Nothing anywhere says otherwise. A doc listing the variable is not a guard.
+
+Refused:
+
+| Variable | Refused value | Why |
+|---|---|---|
+| `EMAIL_ADAPTER` | `mock` (including unset) | every outbound email is recorded as delivered and sent nowhere |
+| `PAYMENTS_ADAPTER` | `mock` (including unset) | invoices are raised against a fake ledger |
+| `UPTIME_PROBE` | `mock` (including unset) | every site reports up, so no incident is ever opened |
+| `PAYMENTS_ADAPTER` | `stripe` with `STRIPE_SECRET_KEY` or `STRIPE_WEBHOOK_SECRET` missing | the factory silently builds the mock, so the deployment believes it is live |
+| `ADS_ADAPTER` | `google` / `meta` | interface-only adapters; the factory still builds the mock |
+
+Not refused, because they have no real implementation yet: `ADS_ADAPTER=mock`, and the hosting, DNS and CMS providers, which no env var selects. Refusing those would refuse production outright and teach everyone to set the opt-out permanently, which would disarm the whole guard. They are printed at startup instead.
+
+**The opt-out is `ALLOW_MOCK_ADAPTERS=1`**, spelled exactly — `true`, `yes` and `1 ` are all still refusals. Use it for a staging resource, or for the window between the first production deploy and the SPF/DKIM records verifying, and remove it as soon as the real adapters are configured. Every refusal names the variable and says what the mock would have done, and all of them are reported at once rather than one per restart.
+
+One exemption, deliberately: `next build` sets `NODE_ENV=production` itself and imports every module a page reaches, and `infra/Dockerfile.web` runs that build long before the runtime environment exists. The web app therefore skips the refusal while `NEXT_PHASE=phase-production-build` — a build sends nothing — and applies it at `next start`, where a real request could be served on a mock. The worker has no build-time import of its env at all.
+
+Both processes log the resolved adapter names — names only, never hosts, keys or addresses — in their first line: the worker's `worker started` line carries `adapters: { email, payments, uptime, ads, hosting, dns, cms }`, and the web app logs the same set as `web adapters`. Check that line after every redeploy; it is the cheapest way to notice a variable that did not survive one.
+
 ### Cloudflare Email Routing
 
 1. Enable Email Routing on the zone; Cloudflare adds the MX records for you.
@@ -148,7 +175,9 @@ Cloudflare Email Routing does not forward attachments in this shape. Attachments
 
 ### Outbound
 
-Set `EMAIL_ADAPTER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM` to a verified sender on the same domain the SPF and DKIM records were published for. Leave `EMAIL_ADAPTER=mock` until those records verify — the mock records the send in `messages` without delivering it, so nothing is lost and nothing goes out misaligned.
+Set `EMAIL_ADAPTER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM` to a verified sender on the same domain the SPF and DKIM records were published for. Leaving `EMAIL_ADAPTER=mock` until those records verify is a deliberate choice, not a default — the mock marks the message `sent` in `messages` without delivering it, so nothing goes out misaligned but nothing goes out at all — and in production it needs `ALLOW_MOCK_ADAPTERS=1` beside it. Remove that variable and redeploy the moment the records verify.
+
+A reply the client never receives no longer passes silently either. When a send exhausts `MAX_SEND_ATTEMPTS` (5) the message flips to `failed`, and that now writes a `message.send_failed` entry on the client's timeline and one notification for the owner. A message still `queued` 24 hours later — the point at which `outbound.sweep` stops re-driving it — gets one owner notification too. Both are stamped in `messages.metadata` so they are said once, however often the sweep runs.
 
 ### Storage
 

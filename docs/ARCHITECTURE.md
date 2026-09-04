@@ -57,8 +57,8 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | `payments.webhook` | short | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
 | `ads.sentinel` | standard | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
 | `invoices.check-overdue` | standard | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
-| `approvals.resume-sweep` | standard | cron every minute | worker | `{}` — per organisation, re-enqueues `agent.resume` for every approval decided more than 30s ago whose run is still `awaiting_approval` **and still parked on that approval's own tool call** (`metadata.pending ->> 'awaitingToolUseId' = payload ->> 'toolUseId'`, the binding the kernel enforces — a re-parked run therefore stops matching). The decision is final; only its *delivery* is repaired here, keyed `resume:<approvalId>` so an already-queued job is deduped |
-| `outbound.sweep` | standard | cron every minute | worker | `{}` — per organisation, re-enqueues `outbound.message` for every message still `status = 'queued'` between 60s and 24h old, keyed `outbound:<messageId>`. The row is committed before the job is sent, so a lost enqueue would otherwise leave a reply on the thread that is never delivered and never noticed |
+| `approvals.resume-sweep` | standard | cron every minute | worker | `{}` — per organisation, re-enqueues `agent.resume` for every approval decided more than 30s ago whose run is still `awaiting_approval` **and still parked on that approval's own tool call** (`metadata.pending ->> 'awaitingToolUseId' = payload ->> 'toolUseId'`, the binding the kernel enforces — a re-parked run therefore stops matching). The decision is final; only its *delivery* is repaired here, keyed `resume:<approvalId>` so an already-queued job is deduped. Crossing the 24h bound still undelivered notifies the owner **once** (`approval.resume_undelivered`, marked by `approvals.metadata.resumeGiveUpNotifiedAt`) — the one moment a permanently un-resumable decision is knowable |
+| `outbound.sweep` | standard | cron every minute | worker | `{}` — per organisation, re-enqueues `outbound.message` for every message still `status = 'queued'` between 60s and 24h old **whose send claim is free or expired**, keyed `outbound:<messageId>`. The row is committed before the job is sent, so a lost enqueue would otherwise leave a reply on the thread that is never delivered and never noticed. Crossing the 24h bound still queued notifies the owner **once** (`message.undelivered`, marked by `messages.metadata.outboundGiveUpNotifiedAt`) |
 | `agent-runs.stuck-sweep` | standard | cron every ten minutes | worker | `{}` — per organisation, fails runs still `running` with no step for 30 minutes (and a `metadata.resume.claimedAt` at least that old), writing `agent.run_stranded` and notifying the owner. The status flip and the audit row are one transaction; the notification is best effort after it. This is the only mechanism that closes a stranded run — the kernel's in-band five-minute equivalent is gone, because it guessed from a timestamp and could fail a resume that was still working |
 | `reports.monthly` | standard | cron 07:45 Europe/London on the 1st — deliberately after `ads.ingest` (06:30) so the final day of the month's ad spend is in, and after `invoices.check-overdue` (07:30) | worker | `{}` — drafts last month's report for every active client in every organisation |
 
@@ -73,6 +73,34 @@ Queue names, policies and retry settings are defined once, in `packages/core/src
 - Everything stronger is enforced at the domain layer, not the queue: the unique `(organisation_id, provider, provider_ref)` index behind `syncFromPaymentsEvent`, `resumeAgent` refusing an already-decided approval, the idempotent report upsert.
 
 **Retries.** `retryLimit: 5` with exponential backoff, set on the queue row itself by `ensureQueues` (`JOB_RETRY`). It has to live on the queue, not on a `PgBoss` constructor: pg-boss resolves a job's limit as `COALESCE(job, queue, sending-process default, 2)`, so a constructor-only setting would give web-enqueued jobs — the whole interactive path — two attempts and no delay while worker-enqueued jobs got five. Both constructors pass `JOB_RETRY` as well, as a fallback for a queue `ensureQueues` has not reached yet. No dead-letter queue is configured; an exhausted job lands in `failed`.
+
+**The outbound send claim is a lease, not a lock.** `sendQueuedMessage` takes the message with one conditional
+`UPDATE … RETURNING` on `status = 'queued'`, and the predicate also passes when `metadata.claimedAt` is older than
+`CLAIM_TTL_MINUTES` (5) — otherwise a worker killed mid-send would hold the message for ever. So the honest
+guarantee is: **a second delivery cannot claim a message whose claim is under five minutes old.** A send still in
+flight after five minutes has no lock at all. Two things keep that from double-sending a client's reply, and both
+should be understood as load-bearing:
+
+- `apps/worker` runs a **single replica** (see `docs/DEPLOYMENT.md`), and `boss.work` does not overlap handlers, so
+  a duplicate `outbound.message` job cannot start until the first one has returned and found the row `sent`. This
+  is the actual guarantee today; the lease is a recovery mechanism, not the thing preventing duplicates.
+- `outbound.sweep` matches the same claim predicate, so it never enqueues against a live claim. That removes the
+  churn (a job a minute against a message another job is holding) and shrinks the window rather than closing it.
+
+Closing it properly means either a lock that outlives the send or an SMTP `socketTimeout` below
+`CLAIM_TTL_MINUTES`; neither is in place, so **do not raise the worker above one replica** without doing one of
+them first.
+
+**A give-up is announced, not swallowed.** Both minute sweeps have a 24h upper bound past which they stop
+re-driving an item. Each now writes one owner notification on that transition, keyed on a metadata marker so a
+sweep running every minute for the rest of the row's life says it once. The notification is best effort inside the
+sweep — a failure there is logged and never costs the items that can still be delivered their re-enqueue.
+
+**A send that exhausts its attempts is announced too.** `sendQueuedMessage` gives up after `MAX_SEND_ATTEMPTS` (5)
+by writing `status = 'failed'`, and that branch now records a `message.send_failed` activity on the client timeline
+and notifies the owner, once, marked by `messages.metadata.sendFailureNotifiedAt` — the same treatment
+`invoice.send_failed` and `ad_report.send_failed` already have. Without it the only record was one `audit_log` row,
+and the unsent reply rendered on the thread exactly like a delivered one.
 
 Every cron sweep isolates each organisation (and each client/invoice/ad account inside it) behind its own try/catch, logs the failure with the id, finishes the rest of the list, and re-throws once at the end so the job is still marked failed — one bad row can never cost the other organisations their sweep. That loop is `apps/worker/src/jobs/sweep-organisations.ts`, and the Sentinel fan-out is `apps/worker/src/jobs/ads-sentinel.ts`; both live outside `main()` so they can be tested.
 
@@ -126,3 +154,7 @@ See `docs/AGENT_FRAMEWORK.md`.
 ## Integrations
 
 Each integration in `packages/integrations` exports an interface and two implementations: `Mock*` and the real client. `createIntegrations(env)` picks the real one only when its env vars are present. Agents and core only ever see the interface.
+
+**Production refuses a mock.** Selection is spread across four factories — `createEmailAdapter` (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapter` and the `UPTIME_PROBE` branch in `createIntegrations` — so `packages/integrations/src/adapter-guard.ts` is the one place that *names* the outcome of all of them. `apps/worker/src/env.ts` and `apps/web/src/lib/env.ts` both call `productionAdapterIssues` before anything connects, and under `NODE_ENV=production` a mock is a refusal unless `ALLOW_MOCK_ADAPTERS=1` says it was meant.
+
+The reasoning is the one already written out for `LLM=fake`, one step worse: a mock adapter does not fail, it *succeeds*. `MockEmailAdapter` returns a provider message id, so `sendQueuedMessage` marks the reply `sent`, stamps `deliveredAt` and audits `message.sent` — a worker deployed without `EMAIL_ADAPTER=smtp` black-holes every client reply, ad report and invoice email while reporting all of them delivered. Two shapes are refused: a mock where a real adapter exists (`EMAIL_ADAPTER`, `PAYMENTS_ADAPTER`, `UPTIME_PROBE`), and a *silent downgrade* where the environment asked for something the factory cannot build and got the mock instead (`PAYMENTS_ADAPTER=stripe` with a secret missing, `ADS_ADAPTER=google|meta`). The adapters that are mock-only by construction — ads, hosting, DNS, CMS — are not refused, because refusing them would refuse production outright and teach everyone to set the opt-out. Both processes log the resolved names (names only) at startup instead, so what is actually wired is visible in the first line of the log.

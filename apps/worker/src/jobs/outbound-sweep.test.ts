@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { BossSender } from "./dispatch-event.js";
+import { CLAIM_TTL_MINUTES } from "@launchos/core";
 import { OUTBOUND_GIVE_UP_AFTER_MS, runOutboundSweep } from "./outbound-sweep.js";
 
 const LATER = new Date(Date.now() + 5 * 60_000);
@@ -31,6 +32,22 @@ async function thread(db: Db) {
   const [conversation] = await db.insert(schema.conversations)
     .values({ organisationId: org!.id, clientId: client!.id, subject: "Hosting" }).returning();
   return { organisationId: org!.id, conversationId: conversation!.id };
+}
+
+/** Somewhere for `notifyOwner` to go: an organisation with no owner swallows it. */
+async function withOwner(db: Db, organisationId: string) {
+  const userId = crypto.randomUUID();
+  await db.insert(schema.user)
+    .values({ id: userId, name: "Owner", email: `owner-${userId}@example.test`, emailVerified: true });
+  await db.insert(schema.organisationMembers).values({ organisationId, userId, role: "owner" });
+  return userId;
+}
+
+async function giveUpNotifications(db: Db, organisationId: string) {
+  return db.select().from(schema.notifications).where(and(
+    eq(schema.notifications.organisationId, organisationId),
+    eq(schema.notifications.kind, "message.undelivered"),
+  ));
 }
 
 async function message(
@@ -112,6 +129,66 @@ describe("runOutboundSweep", () => {
       await runOutboundSweep({ db, boss, logger: silentLogger() }, where.organisationId, LATER);
 
       expect(sent).toEqual([]);
+    });
+  });
+
+  it("leaves a message another worker is holding alone until its claim expires", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      const row = await message(db, where);
+      // `sendQueuedMessage` takes a CLAIM_TTL_MINUTES lease before it sends;
+      // re-enqueueing against a live one would only claim nothing.
+      await db.update(schema.messages)
+        .set({ metadata: { claimedAt: new Date().toISOString() } })
+        .where(eq(schema.messages.id, row.id));
+      const first = fakeBoss();
+
+      await runOutboundSweep({ db, boss: first.boss, logger: silentLogger() }, where.organisationId, LATER);
+      expect(first.sent).toEqual([]);
+
+      // Once the lease has expired the worker holding it is presumed dead.
+      await db.update(schema.messages)
+        .set({ metadata: { claimedAt: new Date(Date.now() - (CLAIM_TTL_MINUTES + 1) * 60_000).toISOString() } })
+        .where(eq(schema.messages.id, row.id));
+      const second = fakeBoss();
+
+      await runOutboundSweep({ db, boss: second.boss, logger: silentLogger() }, where.organisationId, LATER);
+      expect(second.sent).toHaveLength(1);
+    });
+  });
+
+  it("tells the owner once when a message crosses the give-up bound undelivered", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      const userId = await withOwner(db, where.organisationId);
+      const row = await message(db, where);
+      await db.update(schema.messages)
+        .set({ createdAt: new Date(Date.now() - OUTBOUND_GIVE_UP_AFTER_MS - 60_000) })
+        .where(eq(schema.messages.id, row.id));
+      const { boss, sent } = fakeBoss();
+
+      await runOutboundSweep({ db, boss, logger: silentLogger() }, where.organisationId, LATER);
+      // A minute later the cron runs again and finds the same row.
+      await runOutboundSweep({ db, boss, logger: silentLogger() }, where.organisationId, new Date(LATER.getTime() + 60_000));
+
+      expect(sent).toEqual([]);
+      const notifications = await giveUpNotifications(db, where.organisationId);
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.userId).toBe(userId);
+      expect(notifications[0]!.link).toBe(`/inbox/${where.conversationId}`);
+    });
+  });
+
+  it("says nothing about a message still inside the window", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      await message(db, where);
+      const { boss } = fakeBoss();
+
+      await runOutboundSweep({ db, boss, logger: silentLogger() }, where.organisationId, LATER);
+
+      expect(await giveUpNotifications(db, where.organisationId)).toHaveLength(0);
     });
   });
 

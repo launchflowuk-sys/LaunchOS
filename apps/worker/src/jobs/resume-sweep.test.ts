@@ -2,11 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { decideApproval } from "@launchos/core";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { FakeLlmClient, defineTool, resumeAgent, runAgent, toolUse, type AgentDefinition } from "@launchos/agents";
 import type { BossSender } from "./dispatch-event.js";
-import { RUN_STUCK_AFTER_MS, runResumeSweep, runStuckRunSweep } from "./resume-sweep.js";
+import { RESUME_GIVE_UP_AFTER_MS, RUN_STUCK_AFTER_MS, runResumeSweep, runStuckRunSweep } from "./resume-sweep.js";
 
 const sendMail = defineTool({
   name: "send_mail", description: "send", input: z.object({ to: z.string() }), risk: "requires_approval",
@@ -63,6 +63,25 @@ async function parkedAndDecidedIn(
 async function parkedAndDecided(db: Db, opts: { decision?: "approved" | "rejected"; note?: string } = {}) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `sweep-${crypto.randomUUID()}` }).returning();
   return parkedAndDecidedIn(db, org!.id, opts);
+}
+
+/** Somewhere for `notifyOwner` to go: an organisation with no owner swallows it. */
+async function withOwner(db: Db, organisationId: string) {
+  const userId = crypto.randomUUID();
+  await db.insert(schema.user)
+    .values({ id: userId, name: "Owner", email: `owner-${userId}@example.test`, emailVerified: true });
+  await db.insert(schema.organisationMembers).values({ organisationId, userId, role: "owner" });
+  return userId;
+}
+
+/** An instant past the far edge of the window, where the sweep gives up. */
+const GAVE_UP = new Date(Date.now() + RESUME_GIVE_UP_AFTER_MS + 60_000);
+
+async function giveUpNotifications(db: Db, organisationId: string) {
+  return db.select().from(schema.notifications).where(and(
+    eq(schema.notifications.organisationId, organisationId),
+    eq(schema.notifications.kind, "approval.resume_undelivered"),
+  ));
 }
 
 describe("runResumeSweep", () => {
@@ -123,6 +142,51 @@ describe("runResumeSweep", () => {
       await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, new Date(Date.now() + 25 * 60 * 60_000));
 
       expect(sent).toEqual([]);
+    });
+  });
+
+  it("tells the owner once when a decision crosses the give-up bound undelivered", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId } = await parkedAndDecided(db);
+      const userId = await withOwner(db, organisationId);
+      const { boss, sent } = fakeBoss();
+
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, GAVE_UP);
+      // A minute later the cron runs again and finds the same row.
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, new Date(GAVE_UP.getTime() + 60_000));
+
+      expect(sent).toEqual([]);
+      const notifications = await giveUpNotifications(db, organisationId);
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.userId).toBe(userId);
+      expect(notifications[0]!.title).toMatch(/never reached its agent run/);
+    });
+  });
+
+  it("says nothing about a decision still inside the window", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId } = await parkedAndDecided(db);
+      await withOwner(db, organisationId);
+      const { boss } = fakeBoss();
+
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, LATER);
+
+      expect(await giveUpNotifications(db, organisationId)).toHaveLength(0);
+    });
+  });
+
+  it("says nothing about a decision whose run has since moved on", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, runId } = await parkedAndDecided(db);
+      await withOwner(db, organisationId);
+      // The resume did land, just late — there is nothing undelivered here.
+      await db.update(schema.agentRuns).set({ status: "completed", metadata: {} })
+        .where(eq(schema.agentRuns.id, runId));
+      const { boss } = fakeBoss();
+
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, GAVE_UP);
+
+      expect(await giveUpNotifications(db, organisationId)).toHaveLength(0);
     });
   });
 

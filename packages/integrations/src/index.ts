@@ -11,6 +11,7 @@ export * from "./payments/index.js";
 export * from "./ads/index.js";
 export * from "./cloudflare/index.js";
 export * from "./cms/index.js";
+export * from "./adapter-guard.js";
 
 export interface Integrations {
   uptime: UptimeProbe;
