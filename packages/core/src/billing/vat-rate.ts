@@ -2,8 +2,11 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 
-/** UK standard rate, used whenever `VAT_RATE` is unset or unusable. */
-export const VAT_RATE_DEFAULT_PERCENT = 20;
+import { DEFAULT_VAT_RATE_PERCENT } from "@launchos/integrations";
+
+/** UK standard rate, used whenever `VAT_RATE` is unset or unusable. The integrations
+ * leaf owns the value so the web env schema and core cannot drift. */
+export const VAT_RATE_DEFAULT_PERCENT: number = DEFAULT_VAT_RATE_PERCENT;
 
 /**
  * Whether the supplier holds a VAT registration.

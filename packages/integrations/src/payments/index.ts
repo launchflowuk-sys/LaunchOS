@@ -7,7 +7,7 @@ export { MockPaymentsAdapter } from "./mock.js";
 export { StripePaymentsAdapter } from "./stripe.js";
 
 /** UK standard rate, used whenever `VAT_RATE` is unset or unusable. */
-const DEFAULT_VAT_RATE_PERCENT = 20;
+export const DEFAULT_VAT_RATE_PERCENT = 20;
 
 /**
  * VAT rate as a whole-number percentage; UK standard rate when unset.

@@ -1,6 +1,8 @@
-import { VAT_RATE_DEFAULT_PERCENT } from "@launchos/core";
+// Only leaf packages here: this module is imported from `instrumentation.ts`, which
+// Next bundles for the edge runtime too, so the core barrel (and nodemailer behind
+// it) must stay out of the graph.
 import { isPublishedDefaultPassword } from "@launchos/db/passwords";
-import { describeAdapters, productionAdapterIssues } from "@launchos/integrations";
+import { DEFAULT_VAT_RATE_PERCENT, describeAdapters, productionAdapterIssues } from "@launchos/integrations";
 import { z } from "zod";
 
 /**
@@ -290,5 +292,5 @@ if (process.env.NODE_ENV !== "test" && process.env.NEXT_PHASE !== "phase-product
 
 /** The VAT rate the organisation charges, as a whole-number percentage. */
 export function vatRateFromEnv(): number {
-  return env.VAT_RATE ?? VAT_RATE_DEFAULT_PERCENT;
+  return env.VAT_RATE ?? DEFAULT_VAT_RATE_PERCENT;
 }
