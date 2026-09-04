@@ -1,5 +1,5 @@
 import { createDb, schema } from "@launchos/db";
-import { setEnqueue } from "@launchos/core";
+import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, FakeLlmClient, agentRegistry } from "@launchos/agents";
 import { createIntegrations } from "@launchos/integrations";
 import { env } from "./env.js";
@@ -14,12 +14,24 @@ async function main() {
   const registry = agentRegistry(integrations);
   const llm = env.LLM === "fake" ? new FakeLlmClient([]) : new AnthropicLlmClient();
 
-  setEnqueue(async (event) => {
+  // One mapping for both entry points: events emitted inside the worker, and
+  // events the web process sent through the domain.event queue.
+  async function dispatchEvent(event: DomainEvent) {
     if (event.name === "incident.opened") {
       const payload = await incidentPayload(db, event.organisationId, event.incidentId);
       const job: AgentRunJob = { agentKey: "hosting-guard-dog", organisationId: event.organisationId, trigger: "event", payload };
       await boss.send(QUEUE.agentRun, job, { singletonKey: `guard-dog:${event.incidentId}` });
+      return;
     }
+    // client.created / site.created / domain.created / member.created have no
+    // consumer until Plan 3's task engine; logged and ignored on purpose.
+    console.info({ event: event.name }, "domain event with no consumer");
+  }
+
+  setEnqueue(dispatchEvent);
+
+  await boss.work<DomainEvent>(QUEUE.domainEvent, async ([job]) => {
+    await dispatchEvent(job!.data);
   });
 
   await boss.work(QUEUE.monitorCheck, async () => {

@@ -1,5 +1,9 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
+export { supportEmailDomain, supportEmailFor, DEFAULT_SUPPORT_EMAIL_DOMAIN } from "./config.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";
+export { updateClient, archiveClient, UpdateClientInput, ArchiveClientInput } from "./clients/update-client.js";
+export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
+export type { ClientListRow } from "./clients/list-clients.js";
 export { slugify, uniqueClientSlug } from "./clients/slug.js";
 export { createSite, CreateSiteInput } from "./sites/create-site.js";
 export { createMonitor, CreateMonitorInput } from "./monitoring/create-monitor.js";
