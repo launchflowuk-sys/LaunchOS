@@ -187,6 +187,14 @@ export async function findGivenUpResumes(
  * The marker is stamped *after* the notification, on purpose: a crash between
  * the two costs a duplicate alert, and a duplicate is much cheaper than an
  * approved outward action that quietly never happened.
+ *
+ * It is stamped after a *failed* notification too, for the same reason as
+ * `notifyGivenUpMessages`: a notification that can never succeed would otherwise
+ * hold the row at the front of every cron tick for the rest of its life, logging
+ * an error a minute and announcing nothing. Nothing client-controlled reaches
+ * this title — `row.decision` is one of two words — so the case is remote here;
+ * the two sweeps behave identically all the same, because "the alert failed" is
+ * not a reason to keep retrying an alert.
  */
 export async function notifyGivenUpResumes(
   deps: Omit<ResumeSweepDeps, "boss">,
@@ -199,14 +207,25 @@ export async function notifyGivenUpResumes(
     givenUp,
     { label: RESUME_GIVE_UP_LABEL, id: (row) => row.approvalId, logger },
     async (row) => {
-      await notifyOwner(deps.db, organisationId, {
+      const alert = {
         kind: "approval.resume_undelivered",
         title: `An ${row.decision} decision never reached its agent run`,
         body:
           "The resume sweep has re-enqueued it every minute for 24 hours and the run is still parked on this tool " +
           "call. It will not be retried again — the decision stands, but the action it authorised has not happened.",
         link: `/approvals`,
-      });
+      };
+      try {
+        await notifyOwner(deps.db, organisationId, alert);
+      } catch (err: unknown) {
+        logger.error(
+          { organisationId, approvalId: row.approvalId, runId: row.runId, alert, err: String(err) },
+          `${RESUME_GIVE_UP_LABEL} notification failed; marking it announced so it is not retried every minute`,
+        );
+      }
+      // Outside the try on purpose: if *this* write fails the item fails and the
+      // next tick tries the whole thing again, which is right — nothing has been
+      // recorded yet.
       await deps.db
         .update(schema.approvals)
         .set({

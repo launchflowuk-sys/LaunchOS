@@ -17,6 +17,21 @@ const agent: AgentDefinition = {
   systemPrompt: "You test.", tools: [sendMail], maxTurns: 3,
 };
 
+/**
+ * Lets one test make `notifyOwner` fail for one kind. Everything else goes to
+ * the real implementation and the real table.
+ */
+const mocks = vi.hoisted(() => ({ failNotifyKinds: new Set<string>() }));
+
+vi.mock("@launchos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@launchos/core")>();
+  const notifyOwner: typeof actual.notifyOwner = async (db, organisationId, input) => {
+    if (mocks.failNotifyKinds.has(input.kind)) throw new Error("the notifications table is unreachable");
+    return actual.notifyOwner(db, organisationId, input);
+  };
+  return { ...actual, notifyOwner };
+});
+
 const LATER = new Date(Date.now() + 60_000);
 
 function silentLogger() {
@@ -160,6 +175,38 @@ describe("runResumeSweep", () => {
       expect(notifications).toHaveLength(1);
       expect(notifications[0]!.userId).toBe(userId);
       expect(notifications[0]!.title).toMatch(/never reached its agent run/);
+    });
+  });
+
+  it("stamps the give-up marker even when the notification fails, so no row is retried for ever", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, approvalId } = await parkedAndDecided(db);
+      await withOwner(db, organisationId);
+      const first = silentLogger();
+      mocks.failNotifyKinds.add("approval.resume_undelivered");
+      try {
+        await runResumeSweep({ db, boss: fakeBoss().boss, logger: first }, organisationId, GAVE_UP);
+      } finally {
+        mocks.failNotifyKinds.clear();
+      }
+
+      // Said once, loudly, with the whole alert in the line so it is not lost.
+      expect(first.error).toHaveBeenCalledTimes(1);
+      const [approval] = await db
+        .select({ metadata: schema.approvals.metadata })
+        .from(schema.approvals)
+        .where(eq(schema.approvals.id, approvalId));
+      expect(approval!.metadata["resumeGiveUpNotifiedAt"]).toEqual(expect.any(String));
+
+      // …and the next tick a minute later is silent rather than trying again.
+      const second = silentLogger();
+      await runResumeSweep(
+        { db, boss: fakeBoss().boss, logger: second },
+        organisationId,
+        new Date(GAVE_UP.getTime() + 60_000),
+      );
+      expect(second.error).not.toHaveBeenCalled();
+      expect(await giveUpNotifications(db, organisationId)).toHaveLength(0);
     });
   });
 

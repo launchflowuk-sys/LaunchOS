@@ -1,4 +1,4 @@
-import { CLAIM_TTL_MINUTES, notifyOwner } from "@launchos/core";
+import { CLAIM_TTL_MINUTES, MAX_ADDRESS_CHARS, notifyOwner, truncate } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, gt, isNull, lt, lte, sql } from "drizzle-orm";
@@ -121,6 +121,18 @@ export async function findGivenUpMessages(db: Db, organisationId: string, now: D
  * The marker is stamped *after* the notification, on purpose and for the same
  * reason as `sendQueuedMessage`'s: a crash between the two costs a duplicate
  * alert, and a duplicate is much cheaper than a reply nobody ever hears about.
+ *
+ * But it is stamped after a *failed* notification too. `notifyOwner` validates
+ * `title` at 200 characters, and the title below interpolates
+ * `messages.to_email` — a `text` column whose value on a reply is copied off the
+ * inbound sender's `From` header. A structurally over-long one used to throw
+ * here every minute for the life of the row: the marker was never reached, so
+ * the same row was retried on every cron tick, logged an error every minute and
+ * had its give-up announced never. Truncating the address is what stops that
+ * happening at all; stamping on failure is what stops any residual permanent
+ * failure becoming the same loop. A transient failure therefore costs the alert
+ * — which is why the whole alert is logged with the error, so it survives in the
+ * worker's log rather than nowhere.
  */
 export async function notifyGivenUpMessages(
   deps: Omit<OutboundSweepDeps, "boss">,
@@ -137,15 +149,26 @@ export async function notifyGivenUpMessages(
         .select({ toEmail: schema.messages.toEmail, conversationId: schema.messages.conversationId })
         .from(schema.messages)
         .where(and(eq(schema.messages.id, row.id), eq(schema.messages.organisationId, organisationId)));
-      const to = message?.toEmail ?? "the client";
-      await notifyOwner(deps.db, organisationId, {
+      const to = truncate(message?.toEmail ?? "the client", MAX_ADDRESS_CHARS);
+      const alert = {
         kind: "message.undelivered",
         title: `A reply to ${to} has been queued for a day and never sent`,
         body:
           "The outbound sweep has re-enqueued it every minute for 24 hours without it leaving. " +
           "It will not be retried again — open the thread and send it by hand once the cause is fixed.",
         ...(message ? { link: `/inbox/${message.conversationId}` } : {}),
-      });
+      };
+      try {
+        await notifyOwner(deps.db, organisationId, alert);
+      } catch (err: unknown) {
+        logger.error(
+          { organisationId, messageId: row.id, alert, err: String(err) },
+          `${GIVE_UP_LABEL} notification failed; marking it announced so it is not retried every minute`,
+        );
+      }
+      // Outside the try on purpose: if *this* write fails the item fails, the
+      // sweep reports it, and the next tick tries the whole thing again — which
+      // is right, because nothing has been recorded yet.
       await deps.db
         .update(schema.messages)
         .set({

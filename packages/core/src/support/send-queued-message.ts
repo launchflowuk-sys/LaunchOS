@@ -6,6 +6,7 @@ import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { notifyOwner } from "../notifications/notify.js";
+import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -71,23 +72,6 @@ async function claim(db: Db, organisationId: string, messageId: string): Promise
 const SEND_FAILURE_NOTIFIED = "sendFailureNotifiedAt";
 
 /**
- * Caps for the two client-controlled strings that go into the announcement.
- *
- * `recordActivity` and `notify` both validate `title` at 200 characters and
- * `body` at 4000, and both of the values below arrive from outside: `toEmail`
- * is copied off an inbound message's `From` header into a `text` column, and
- * `lastError` is whatever the relay said, which can be a whole SMTP transcript.
- * An over-long one used to make the announcement throw — see the wrapper at the
- * call site for what that cost.
- */
-const MAX_ADDRESS_CHARS = 120;
-const MAX_ERROR_CHARS = 500;
-
-function truncate(value: string, max: number): string {
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
-}
-
-/**
  * A reply that has spent every attempt and will not be sent.
  *
  * Without this the give-up is silent: the message flips to `failed`, one
@@ -101,6 +85,14 @@ function truncate(value: string, max: number): string {
  * owner. Announced *before* the marker is stamped, deliberately — a crash
  * between the two costs a duplicate notification, and a duplicate is far cheaper
  * than a give-up nobody hears about.
+ *
+ * The two client-controlled strings — `toEmail`, copied off an inbound message's
+ * `From` header, and the relay's own error — are capped by `MAX_ADDRESS_CHARS`
+ * and `MAX_ERROR_CHARS` from `../text.js`, which carries the reasoning. An
+ * over-long one used to make this throw; see the wrapper at the call site for
+ * what that cost. The caps live in `text.ts` rather than here because
+ * `apps/worker/src/jobs/outbound-sweep.ts` builds the same title from the same
+ * column and needs the same bound.
  */
 async function announceSendFailure(db: Db, organisationId: string, message: Message, lastError: string) {
   const [conversation] = await db

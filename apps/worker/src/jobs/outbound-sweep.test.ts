@@ -6,7 +6,28 @@ import type { BossSender } from "./dispatch-event.js";
 import { CLAIM_TTL_MINUTES } from "@launchos/core";
 import { OUTBOUND_GIVE_UP_AFTER_MS, runOutboundSweep } from "./outbound-sweep.js";
 
+/**
+ * Lets one test make `notifyOwner` fail for one kind. Everything else goes to
+ * the real implementation and the real table, so the rest of the file is
+ * untouched by this.
+ */
+const mocks = vi.hoisted(() => ({ failNotifyKinds: new Set<string>() }));
+
+vi.mock("@launchos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@launchos/core")>();
+  const notifyOwner: typeof actual.notifyOwner = async (db, organisationId, input) => {
+    if (mocks.failNotifyKinds.has(input.kind)) throw new Error("the notifications table is unreachable");
+    return actual.notifyOwner(db, organisationId, input);
+  };
+  return { ...actual, notifyOwner };
+});
+
 const LATER = new Date(Date.now() + 5 * 60_000);
+
+/** Old enough that the sweep has stopped re-enqueueing and announces the give-up. */
+function pastGiveUp() {
+  return new Date(Date.now() - OUTBOUND_GIVE_UP_AFTER_MS - 60_000);
+}
 
 function silentLogger() {
   return { error: vi.fn(), info: vi.fn() };
@@ -48,6 +69,15 @@ async function giveUpNotifications(db: Db, organisationId: string) {
     eq(schema.notifications.organisationId, organisationId),
     eq(schema.notifications.kind, "message.undelivered"),
   ));
+}
+
+/** What the give-up marker is stamped as, or undefined if it never was. */
+async function giveUpMarker(db: Db, messageId: string) {
+  const [row] = await db
+    .select({ metadata: schema.messages.metadata })
+    .from(schema.messages)
+    .where(eq(schema.messages.id, messageId));
+  return row!.metadata["outboundGiveUpNotifiedAt"];
 }
 
 async function message(
@@ -176,6 +206,62 @@ describe("runOutboundSweep", () => {
       expect(notifications).toHaveLength(1);
       expect(notifications[0]!.userId).toBe(userId);
       expect(notifications[0]!.link).toBe(`/inbox/${where.conversationId}`);
+    });
+  });
+
+  it("bounds a give-up title built from a client-controlled address", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      // `messages.to_email` is a `text` column copied off the inbound sender's
+      // own `From` header, so its length is the sender's choice — and `notify`
+      // validates `title` at 200 characters. Untruncated, this title is 364
+      // characters, the notification throws, the marker is never stamped, and
+      // the row is retried and logged every minute for the rest of its life.
+      const row = await message(db, where, { toEmail: `${"a".repeat(300)}@client.test` });
+      await db.update(schema.messages).set({ createdAt: pastGiveUp() }).where(eq(schema.messages.id, row.id));
+      const logger = silentLogger();
+      const { boss } = fakeBoss();
+
+      await runOutboundSweep({ db, boss, logger }, where.organisationId, LATER);
+
+      const notifications = await giveUpNotifications(db, where.organisationId);
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.title.length).toBeLessThanOrEqual(200);
+      // Truncated, not replaced: enough of the address survives to identify it.
+      expect(notifications[0]!.title).toContain("a".repeat(100));
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(await giveUpMarker(db, row.id)).toEqual(expect.any(String));
+    });
+  });
+
+  it("stamps the give-up marker even when the notification fails, so no row is retried for ever", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      const row = await message(db, where);
+      await db.update(schema.messages).set({ createdAt: pastGiveUp() }).where(eq(schema.messages.id, row.id));
+      const first = silentLogger();
+      mocks.failNotifyKinds.add("message.undelivered");
+      try {
+        await runOutboundSweep({ db, boss: fakeBoss().boss, logger: first }, where.organisationId, LATER);
+      } finally {
+        mocks.failNotifyKinds.clear();
+      }
+
+      // Said once, loudly, with the whole alert in the line so it is not lost.
+      expect(first.error).toHaveBeenCalledTimes(1);
+      expect(await giveUpMarker(db, row.id)).toEqual(expect.any(String));
+
+      // …and the next tick a minute later is silent rather than trying again.
+      const second = silentLogger();
+      await runOutboundSweep(
+        { db, boss: fakeBoss().boss, logger: second },
+        where.organisationId,
+        new Date(LATER.getTime() + 60_000),
+      );
+      expect(second.error).not.toHaveBeenCalled();
+      expect(await giveUpNotifications(db, where.organisationId)).toHaveLength(0);
     });
   });
 
