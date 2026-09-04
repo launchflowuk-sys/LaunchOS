@@ -79,9 +79,11 @@ export async function POST(request: Request) {
   const header = request.headers.get("content-length");
   const contentLength = header === null ? Number.NaN : Number(header);
   if (!Number.isFinite(contentLength) || contentLength < 0) {
+    console.warn({ route: "webhooks/stripe", contentLength: header }, "refused webhook: missing or invalid content-length");
     return NextResponse.json({ error: "missing or invalid content-length" }, { status: 411 });
   }
   if (contentLength > MAX_BODY_BYTES) {
+    console.warn({ route: "webhooks/stripe", contentLength }, "refused webhook: payload too large");
     return NextResponse.json({ error: "payload too large" }, { status: 413 });
   }
 

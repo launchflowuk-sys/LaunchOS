@@ -97,3 +97,33 @@ describe("installWebEnqueue", () => {
     expect(send).toHaveBeenCalledWith("domain.event", { name: "client.created", organisationId: "org-1", clientId: "client-1" });
   });
 });
+
+describe("getBoss failure caching", () => {
+  it("does not pin a failed pg-boss start: the next send starts a fresh instance", async () => {
+    // A rejected promise is not nullish, so a plain `??=` cache would keep the
+    // first boot failure for the life of the process and every webhook,
+    // inbound email and approval would fail until a restart.
+    vi.resetModules();
+    (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
+    process.env.DATABASE_URL = "postgres://test/db";
+    start.mockClear();
+    start.mockRejectedValueOnce(new Error("boot failed"));
+    const { sendJob } = await import("./queue.js");
+
+    await expect(sendJob("domain.event", { a: 1 })).rejects.toThrow("boot failed");
+    await expect(sendJob("domain.event", { a: 1 })).resolves.toBe("job-id");
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+
+  it("throws instead of dropping a domain event when the bus cannot be reached", async () => {
+    vi.resetModules();
+    (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
+    delete process.env.DATABASE_URL;
+    const { installWebEnqueue: install } = await import("./queue.js");
+    install();
+
+    await expect(captured!({ name: "client.created", organisationId: "org-1", clientId: "client-1" })).rejects.toThrow(
+      /DATABASE_URL is not set/,
+    );
+  });
+});

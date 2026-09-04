@@ -33,7 +33,15 @@ function getBoss(url: string): Promise<PgBoss> {
     // dedupe the send sites below rely on.
     await ensureQueues(boss);
     return boss;
-  })();
+  })().catch((error: unknown) => {
+    // A rejected promise is not nullish, so without this `??=` would pin the
+    // failure for the life of the process: one bad `boss.start()` at deploy
+    // time and every webhook, inbound email and approval would fail until a
+    // restart. Drop the cache so the next request tries again.
+    bossPromise = undefined;
+    if (process.env.NODE_ENV !== "production") delete globalForQueue.__launchosBoss;
+    throw error;
+  });
   if (process.env.NODE_ENV !== "production") globalForQueue.__launchosBoss = bossPromise;
   return bossPromise;
 }
@@ -120,17 +128,14 @@ export function installWebEnqueue(): void {
           { singletonKey: `resume:${event.approvalId}` },
         );
         return;
-      default: {
-        const url = process.env.DATABASE_URL;
-        if (!url) {
-          console.error("DATABASE_URL not set; dropping domain event", event);
-          return;
-        }
-        const boss = await getBoss(url);
+      default:
         // No singletonKey: domain.event carries every event kind, and its queue
-        // is deliberately left on the `standard` policy for that reason.
-        await boss.send(QUEUE.domainEvent, event);
-      }
+        // is deliberately left on the `standard` policy for that reason. Goes
+        // through sendJob so a bus that cannot be reached throws like every
+        // other send here — a dropped client.created would mean a client with
+        // no onboarding tasks and a success toast.
+        await sendJob(QUEUE.domainEvent, event);
+        return;
     }
   });
 }
