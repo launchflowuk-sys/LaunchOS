@@ -1,13 +1,13 @@
 /**
- * The queue topology — names and dedupe policies — in the one place both
- * processes read it.
+ * The queue topology — names, dedupe policies and retry settings — in the one
+ * place both processes read it.
  *
  * The worker (`apps/worker/src/boss.ts`) and the web app
  * (`apps/web/src/lib/queue.ts`) both create queues, and whichever process
  * boots first wins: pg-boss's `create_queue` is `ON CONFLICT DO NOTHING`, so a
  * queue created without a policy by one process can never be corrected by the
  * other. Both therefore go through `ensureQueues` below, which creates and
- * then converges the policy of every queue in this table.
+ * then converges every queue in this table.
  *
  * This module holds data and a structurally typed applier only — `core` still
  * imports nothing from pg-boss (see CLAUDE.md's dependency direction).
@@ -24,21 +24,75 @@
  *
  * So the guarantee is bought two ways, and both are used here:
  *
- * 1. **Queue policy `stately`** — at most one job per `(queue, singletonKey)`
- *    in each of the `created`, `retry` and `active` states. A duplicate send
- *    while the first is still queued or running collapses. Given to every
- *    queue where *every* send carries a key. Not given to `domain.event`,
- *    whose sends carry no key at all: `COALESCE(singleton_key, '')` would
- *    collapse every unrelated event into one job.
+ * 1. **Queue policy `short`** — `job_i1` is
+ *    `UNIQUE (name, COALESCE(singleton_key, '')) WHERE state = 'created'`.
+ *    The exact guarantee is therefore: **a duplicate is collapsed only while
+ *    the first job is still queued.** Once the first job starts running the
+ *    key is free again, and nothing stronger is claimed. Given to every queue
+ *    where *every* send carries a key. Not given to `domain.event`, whose
+ *    sends carry no key at all: `COALESCE(singleton_key, '')` would collapse
+ *    every unrelated event into one job.
+ *
+ *    `stately` was tried and reverted. Its index is
+ *    `UNIQUE (name, state, COALESCE(singleton_key, '')) WHERE state <= 'active'`,
+ *    which constrains `created`, `retry` and `active` *separately*. A send
+ *    arriving while the first job is `active` therefore inserts a second
+ *    `created` row quite legally, and pg-boss's `fetchNextJob` — whose only
+ *    singleton guard is a `row_number()` partition within one fetched batch,
+ *    and which does not even apply that at the default `batchSize` of 1 —
+ *    then tries to promote it to `active` and violates `job_i3`. The whole
+ *    `UPDATE` aborts, and `manager.fetch` swallows the error on purpose
+ *    ("errors from fetchquery should only be unique constraint violations",
+ *    `manager.js:442-448`), so the fetch returns an empty array: **no job is
+ *    fetched and nothing is logged.** Because the fetch orders by `created_on`
+ *    and takes `LIMIT 1`, that stuck row is the head of the queue, so nothing
+ *    behind it moves either — for every tenant — until the active job ends.
+ *    Measured against pg-boss 10.4.2 on Postgres 17: under `stately` the
+ *    second fetch returns 0 rows and the job stays `created`; under `short`
+ *    both jobs are fetched.
+ *
+ *    Two paths here produce that without any failure at all: a second press of
+ *    Approve while `agent.resume` is running, and a retried `domain.event`
+ *    re-sending `tasks.generate-onboarding`. `short` cannot abort a fetch: its
+ *    index covers only `created`, and the fetch's `UPDATE` moves rows *out* of
+ *    `created`.
+ *
  * 2. **`singletonSeconds` on the send** — a time window that also covers
- *    already-completed jobs, so a retried fan-out cannot re-run work that
- *    already succeeded. Used where a duplicate costs money or messages a
- *    client (the Sentinel fan-out and the Stripe webhook); see
- *    `DEDUPE_WINDOW_SECONDS`.
+ *    already-completed *and failed* jobs, so a retried fan-out cannot re-run
+ *    work that already succeeded. Reserved for the one send where a duplicate
+ *    costs real money and there is no domain-level equivalent: the Ad
+ *    Performance Sentinel fan-out (`ad-sentinel:<org>:<yyyy-mm-dd>`); see
+ *    `DEDUPE_WINDOW_SECONDS` and the caveat on `dailyDedupe`.
+ *
+ *    It is deliberately *not* used on `payments.webhook`. `job_i4` covers
+ *    `failed`, so a window there would mean a Stripe event whose sync failed
+ *    could not be re-delivered for the rest of the UTC day — silently, since
+ *    a dropped insert just returns a null job id. Stripe redelivery is the
+ *    only recovery path a failed payment sync has. The duplicate protection
+ *    that matters for payments is the domain layer's instead (below).
  *
  * Anything beyond those two is enforced at the domain layer (e.g. the unique
  * `(organisation_id, provider, provider_ref)` index behind
- * `syncFromPaymentsEvent`), not by the queue.
+ * `syncFromPaymentsEvent`, which answers `{ handled: false, action:
+ * "duplicate" }` with the row in front of it rather than dropping an insert).
+ *
+ * ## Key conventions per queue
+ *
+ * The keys are chosen at the send sites; they are listed here because this
+ * module is the single source of truth for what a key buys.
+ *
+ * | Queue | Key | Sent from |
+ * |---|---|---|
+ * | `agent.run` | `guard-dog:<incidentId>` | `apps/worker/src/jobs/dispatch-event.ts` |
+ * | `agent.run` | `support-triage:<ticketId>` | `apps/worker/src/jobs/dispatch-event.ts` |
+ * | `agent.run` | `support-triage:<ticketId>:manual:<epochMs>` — timestamped **on purpose**, so an operator's "run now" is never deduped away | `apps/web/src/app/(admin)/cases/[id]/actions.ts` |
+ * | `agent.run` | `ad-sentinel:<org>:<yyyy-mm-dd>` + `singletonSeconds` | `apps/worker/src/jobs/ads-sentinel.ts` |
+ * | `agent.resume` | `resume:<approvalId>` | `dispatch-event.ts`, `apps/web/src/app/(admin)/approvals/actions.ts` |
+ * | `inbound.message` | `inbound:<providerMessageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
+ * | `outbound.message` | `outbound:<messageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
+ * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
+ * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
+ * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
  */
 
 export type QueuePolicy = "standard" | "short" | "singleton" | "stately";
@@ -64,26 +118,41 @@ export const QUEUE = {
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
 
 /**
- * `stately` wherever every send to the queue carries a `singletonKey`;
+ * `short` wherever every send to the queue carries a `singletonKey`;
  * `standard` for the cron queues (payload `{}`, no key, one job per tick is
  * the point) and for `domain.event`, whose sends carry no key.
  */
 export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "monitor.check": "standard",
-  "agent.run": "stately",
-  "agent.resume": "stately",
-  "inbound.message": "stately",
-  "outbound.message": "stately",
+  "agent.run": "short",
+  "agent.resume": "short",
+  "inbound.message": "short",
+  "outbound.message": "short",
   "domain.event": "standard",
-  "tasks.generate-onboarding": "stately",
+  "tasks.generate-onboarding": "short",
   "tasks.generate-recurring": "standard",
   "tasks.check-overdue": "standard",
-  "payments.webhook": "stately",
+  "payments.webhook": "short",
   "ads.ingest": "standard",
   "ads.sentinel": "standard",
   "invoices.check-overdue": "standard",
   "reports.monthly": "standard",
 };
+
+/**
+ * Retry configuration for every queue, in one place.
+ *
+ * pg-boss resolves a job's retry limit as
+ * `COALESCE(job.retry_limit, queue.retry_limit, sender_constructor_default, 2)`
+ * — where the constructor default comes from *the process that sent the job*.
+ * Set only on the worker's `PgBoss`, the web process's jobs (the whole
+ * interactive path: inbound/outbound mail, agent resume, payments webhook,
+ * domain events) would quietly retry twice with no delay. Applied here at the
+ * *queue* level by `ensureQueues`, so it is the same number whichever process
+ * enqueues, and passed to both `PgBoss` constructors as a belt-and-braces
+ * default for any queue this table has not reached yet.
+ */
+export const JOB_RETRY = { retryLimit: 5, retryBackoff: true } as const;
 
 export interface QueueSpec {
   readonly name: QueueName;
@@ -96,16 +165,35 @@ export const QUEUE_SPECS: readonly QueueSpec[] = Object.values(QUEUE).map((name)
 }));
 
 /**
- * One day, in seconds. Paired with `singletonKey` on the sends whose
- * duplicates cost real money or reach a client — a Sentinel agent run and a
- * Stripe event. `singleton_on` buckets on the epoch, so this reads as "once
- * per key per UTC day" rather than "once per rolling 24 hours".
+ * One day, in seconds. Paired with `singletonKey` on the one send whose
+ * duplicate costs real money — a Sentinel agent run. `singleton_on` buckets on
+ * the epoch, so this reads as "once per key per UTC day" rather than "once per
+ * rolling 24 hours".
  */
 export const DEDUPE_WINDOW_SECONDS = 86_400;
 
-/** The dedupe options for a send that must not repeat within a day. */
+/**
+ * The dedupe options for a send that must not repeat within a day.
+ *
+ * Caveat, because the window is stronger than it looks: `job_i4` covers
+ * `failed` and `completed` too, so a key sent under this window cannot be sent
+ * again that UTC day *whatever happened to the first job*. That is the point
+ * for the Sentinel (a repeat is an Opus-priced re-run), but it means a failed
+ * Sentinel run cannot be re-dispatched by waiting — the escape hatch is a
+ * manual send with a timestamped key, the way the support-triage "run now"
+ * does it (`apps/web/src/app/(admin)/cases/[id]/actions.ts`). Do not reach for
+ * this on a send whose only recovery path is a redelivery of the same id.
+ */
 export function dailyDedupe(key: string): { singletonKey: string; singletonSeconds: number } {
   return { singletonKey: key, singletonSeconds: DEDUPE_WINDOW_SECONDS };
+}
+
+/** The queue settings `ensureQueues` applies. A subset of pg-boss's `Queue`. */
+export interface QueueSettings {
+  readonly name: string;
+  readonly policy?: QueuePolicy;
+  readonly retryLimit?: number;
+  readonly retryBackoff?: boolean;
 }
 
 /**
@@ -113,23 +201,29 @@ export function dailyDedupe(key: string): { singletonKey: string; singletonSecon
  * to import pg-boss to describe it — a `PgBoss` instance satisfies it.
  */
 export interface QueueAdmin {
-  createQueue(name: string, options?: { name: string; policy?: QueuePolicy }): Promise<void>;
-  updateQueue(name: string, options?: { name: string; policy?: QueuePolicy }): Promise<void>;
+  createQueue(name: string, options?: QueueSettings): Promise<void>;
+  updateQueue(name: string, options?: QueueSettings): Promise<void>;
+}
+
+/** The exact settings applied to one queue. Exported so tests can assert them. */
+export function queueSettings(spec: QueueSpec): QueueSettings {
+  return { name: spec.name, policy: spec.policy, ...JOB_RETRY };
 }
 
 /**
- * Creates every queue with its policy, then updates it to the same policy.
+ * Creates every queue with its policy and retry settings, then updates it to
+ * the same values.
  *
  * The update is not redundant: `create_queue` ignores conflicts, so a queue
  * that already exists (every deploy after the first, and every local database
- * created before this table did) keeps whatever policy it was first created
- * with. The update is what actually converges an existing deployment. Only
- * `policy` is sent, so queue-level retry/expiry settings are left untouched
- * (the SQL COALESCEs each column against its current value).
+ * created before this table did) keeps whatever settings it was first created
+ * with. The update is what actually converges an existing deployment. Only the
+ * columns named here are sent; the SQL COALESCEs every other column against
+ * its current value, so expiry and retention are left alone.
  */
 export async function ensureQueues(boss: QueueAdmin): Promise<void> {
   for (const spec of QUEUE_SPECS) {
-    const options = { name: spec.name, policy: spec.policy };
+    const options = queueSettings(spec);
     await boss.createQueue(spec.name, options);
     await boss.updateQueue(spec.name, options);
   }

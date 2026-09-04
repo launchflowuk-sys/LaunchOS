@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomainEvent } from "@launchos/core";
-import { QUEUE_SPECS } from "@launchos/core/queue";
+import { QUEUE_SPECS, queueSettings } from "@launchos/core/queue";
 
 const send = vi.fn(async () => "job-id");
 const createQueue = vi.fn(async () => undefined);
@@ -27,15 +27,18 @@ describe("installWebEnqueue", () => {
     installWebEnqueue();
   });
 
-  it("creates every queue with the shared policy, so the web process cannot fix a queue on the wrong one", async () => {
+  it("creates every queue with the shared policy and retry settings, so the web process cannot fix a queue on the wrong ones", async () => {
     // pg-boss's create_queue is ON CONFLICT DO NOTHING, so whichever process
     // boots first would otherwise decide the policy for good — hence the
     // update as well, and hence the shared table in @launchos/core/queue.
+    // Retry has to be on the queue too: pg-boss otherwise falls back to the
+    // *sending* process's constructor default, which would give web-enqueued
+    // jobs two attempts and worker-enqueued jobs five.
     await captured!({ name: "client.created", organisationId: "org-1", clientId: "client-1" });
 
     for (const spec of QUEUE_SPECS) {
-      expect(createQueue).toHaveBeenCalledWith(spec.name, { name: spec.name, policy: spec.policy });
-      expect(updateQueue).toHaveBeenCalledWith(spec.name, { name: spec.name, policy: spec.policy });
+      expect(createQueue).toHaveBeenCalledWith(spec.name, queueSettings(spec));
+      expect(updateQueue).toHaveBeenCalledWith(spec.name, queueSettings(spec));
     }
   });
 

@@ -1,5 +1,5 @@
 import { setEnqueue, type DomainEvent } from "@launchos/core";
-import { QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
+import { JOB_RETRY, QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
 
 /**
@@ -18,14 +18,19 @@ function getBoss(url: string): Promise<PgBoss> {
   if (process.env.NODE_ENV !== "production") bossPromise ??= globalForQueue.__launchosBoss;
   // Cached as a promise so two concurrent requests share one pg-boss instance.
   bossPromise ??= (async () => {
-    const boss = new PgBoss({ connectionString: url, schema: "pgboss" });
+    // pg-boss resolves a job's retry limit against the *sending* instance's
+    // constructor config when the queue row has none, so without JOB_RETRY
+    // here the whole interactive path (inbound/outbound mail, agent resume,
+    // payments webhook, domain events) would retry twice with no delay while
+    // the worker's own jobs retried five times with backoff.
+    const boss = new PgBoss({ connectionString: url, schema: "pgboss", ...JOB_RETRY });
     boss.on("error", (e) => console.error("pg-boss error (web)", e));
     await boss.start();
     // Same topology as the worker, from the same table (@launchos/core). Both
-    // processes must create queues with the same policy: pg-boss's create_queue
-    // ignores conflicts, so a queue this process created with the default
-    // policy would keep it forever and silently disable the dedupe the send
-    // sites below rely on.
+    // processes must create queues with the same policy and retry settings:
+    // pg-boss's create_queue ignores conflicts, so a queue this process created
+    // with the default policy would keep it forever and silently disable the
+    // dedupe the send sites below rely on.
     await ensureQueues(boss);
     return boss;
   })();
@@ -38,16 +43,27 @@ function getBoss(url: string): Promise<PgBoss> {
  * for jobs the web app addresses by queue name directly, bypassing the generic
  * domain.event bus below. The name is a `QueueName`, so a queue this process
  * sends to is always one `ensureQueues` created with its intended policy.
+ *
+ * Returns pg-boss's job id, or `null` when the send was deduped away (the
+ * insert is `ON CONFLICT DO NOTHING`). A dropped send is logged rather than
+ * swallowed: it is the difference between "already queued" and "silently lost"
+ * and the caller — the Stripe route especially — has no other way to tell.
+ *
+ * A send that cannot happen at all **throws**. It used to log and return
+ * `null`, which is indistinguishable from a dedupe: a caller that had already
+ * committed a database change (an approval claimed for a decision, say) would
+ * carry on believing the work was queued when nothing was. Callers must be
+ * able to undo their own write when the enqueue fails, and that needs an error.
  */
-export async function sendJob(name: QueueName, data: object, opts?: PgBoss.SendOptions): Promise<void> {
+export async function sendJob(name: QueueName, data: object, opts?: PgBoss.SendOptions): Promise<string | null> {
   const url = process.env.DATABASE_URL;
-  if (!url) {
-    console.error(`DATABASE_URL not set; dropping job "${name}"`, data);
-    return;
-  }
+  if (!url) throw new Error(`DATABASE_URL is not set; cannot queue "${name}"`);
   const boss = await getBoss(url);
-  if (opts) await boss.send(name, data, opts);
-  else await boss.send(name, data);
+  const jobId = opts ? await boss.send(name, data, opts) : await boss.send(name, data);
+  if (jobId === null) {
+    console.info({ queue: name, singletonKey: opts?.singletonKey }, "job deduped; an identical job is already queued");
+  }
+  return jobId;
 }
 
 /**
@@ -69,13 +85,13 @@ export function installWebEnqueue(): void {
     // consumer added there later fires for every client, not just the ones
     // created from the worker process.
     //
-    // What the singletonKey below buys: these queues are created with pg-boss's
-    // `stately` policy, so a second send with the same key collapses while the
-    // first job is still queued, retrying or running. It is not a permanent
-    // "exactly once" — once a job has completed, the same key can be sent
-    // again. Anything stronger is enforced at the domain layer (a redelivered
-    // message is matched on its provider Message-ID; `resumeAgent` refuses an
-    // approval that has already been decided).
+    // What the singletonKey below buys, exactly: these queues are created with
+    // pg-boss's `short` policy, so a duplicate is collapsed only while the
+    // first job is still queued. The moment the worker picks that job up the
+    // key is free again — this is not "exactly once", not even for the
+    // duration of the run. Anything stronger is enforced at the domain layer
+    // (a redelivered message is matched on its provider Message-ID;
+    // `resumeAgent` refuses an approval that has already been decided).
     switch (event.name) {
       case "email.received":
         await sendJob(

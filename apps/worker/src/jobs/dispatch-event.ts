@@ -1,7 +1,7 @@
 import { ensureEmailIdentity, type DomainEvent } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import type PgBoss from "pg-boss";
-import { QUEUE, dailyDedupe } from "../boss.js";
+import { QUEUE } from "../boss.js";
 import { incidentPayload, ticketPayload, type AgentRunJob } from "./agent-run.js";
 import type { AgentResumeJob } from "./agent-resume.js";
 import type { InboundMessageJob } from "./inbound-message.js";
@@ -72,10 +72,11 @@ export async function dispatchEvent(deps: DispatchEventDeps, event: DomainEvent)
     // The Stripe route enqueues this job directly (apps/web/src/lib/queue.ts's
     // `sendJob`) rather than through `emit`, so this branch only matters if
     // something inside the worker process ever raises the event itself.
-    // The key is paired with a dedupe window because the queue policy alone
-    // only collapses duplicates still in flight, and Stripe redelivers an
-    // event for days (see packages/core/src/queue/queues.ts).
-    await boss.send(QUEUE.paymentsWebhook, job, dailyDedupe(`stripe:${event.providerEvent.id}`));
+    // A plain key, matching the route: it collapses a burst of identical
+    // deliveries while the job is queued. A `singletonSeconds` window would
+    // also cover `failed` and so block the redelivery that is the only
+    // recovery path a failed sync has — see packages/core/src/queue/queues.ts.
+    await boss.send(QUEUE.paymentsWebhook, job, { singletonKey: `stripe:${event.providerEvent.id}` });
     return;
   }
   // site.created / domain.created / member.created / task.created /

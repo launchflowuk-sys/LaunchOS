@@ -141,7 +141,9 @@ describe("dispatchEvent", () => {
       expect(boss.send).toHaveBeenCalledWith(
         "payments.webhook",
         { organisationId, providerEvent },
-        { singletonKey: `stripe:${providerEvent.id}`, singletonSeconds: 86_400 },
+        // No singletonSeconds: the window would also cover `failed`, blocking
+        // the redelivery that is a failed payment sync's only recovery path.
+        { singletonKey: `stripe:${providerEvent.id}` },
       );
     });
   });

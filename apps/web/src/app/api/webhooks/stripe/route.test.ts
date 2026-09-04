@@ -51,9 +51,17 @@ import { POST } from "./route.js";
 
 const ENDPOINT = "http://localhost/api/webhooks/stripe";
 
-function req(body: string, signature?: string): Request {
+/**
+ * `new Request(...)` does not set `content-length` — the runtime adds it at
+ * network time — so the tests set it explicitly, the way a real HTTP client
+ * (Stripe included) always does. `contentLength: null` models the chunked
+ * request that has none.
+ */
+function req(body: string, signature?: string, contentLength?: string | null): Request {
   const headers: Record<string, string> = {};
   if (signature !== undefined) headers["stripe-signature"] = signature;
+  const declared = contentLength === undefined ? String(Buffer.byteLength(body, "utf8")) : contentLength;
+  if (declared !== null) headers["content-length"] = declared;
   return new Request(ENDPOINT, { method: "POST", headers, body });
 }
 
@@ -98,6 +106,34 @@ describe("POST /api/webhooks/stripe", () => {
     const oversized = "x".repeat(1024 * 1024 + 1);
 
     const res = await POST(req(oversized, VALID_SIGNATURE));
+
+    expect(res.status).toBe(413);
+    expect(sendJobMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a request that declares no content-length, before buffering it", async () => {
+    // A chunked POST with no declared length used to slip past the cap
+    // entirely: Number(null ?? "0") is 0, which passes, and request.text()
+    // then reads the whole stream into memory. Stripe always declares a length.
+    const res = await POST(req("{}", VALID_SIGNATURE, null));
+
+    expect(res.status).toBe(411);
+    expect(sendJobMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a request whose content-length does not parse", async () => {
+    // The safe reading of an unparseable length on a public endpoint is
+    // "reject", not "skip the check".
+    const res = await POST(req("{}", VALID_SIGNATURE, "not-a-number"));
+
+    expect(res.status).toBe(411);
+    expect(sendJobMock).not.toHaveBeenCalled();
+  });
+
+  it("still rejects a body that is larger than the content-length it declared", async () => {
+    const oversized = "x".repeat(1024 * 1024 + 1);
+
+    const res = await POST(req(oversized, VALID_SIGNATURE, "10"));
 
     expect(res.status).toBe(413);
     expect(sendJobMock).not.toHaveBeenCalled();
@@ -156,7 +192,10 @@ describe("POST /api/webhooks/stripe", () => {
       const [name, data, opts] = sendJobMock.mock.calls[0]!;
       expect(name).toBe("payments.webhook");
       expect(data).toEqual({ organisationId: org!.id, providerEvent });
-      expect(opts).toEqual({ singletonKey: "stripe:evt_3", singletonSeconds: 86_400 });
+      // A plain key, with no singletonSeconds window: job_i4 covers `failed`,
+      // so a window here would silently drop the Stripe "Resend" that is the
+      // only recovery path an event whose sync failed has.
+      expect(opts).toEqual({ singletonKey: "stripe:evt_3" });
     });
   });
 });

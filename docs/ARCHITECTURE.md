@@ -45,29 +45,33 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | Queue | Policy | Producer | Consumer | Payload |
 |---|---|---|---|---|
 | `monitor.check` | standard | cron every minute | worker | `{}` — sweeps every organisation, per-monitor checks inside |
-| `agent.run` | stately | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
-| `agent.resume` | stately | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
-| `inbound.message` | stately | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
-| `outbound.message` | stately | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
+| `agent.run` | short | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
+| `agent.resume` | short | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
+| `inbound.message` | short | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
+| `outbound.message` | short | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
 | `domain.event` | standard | any web server action that emits a domain event | worker | the `DomainEvent` itself — no `singletonKey`, hence `standard` |
 | `ads.ingest` | standard | cron daily 06:30 Europe/London | worker | `{}` — sweeps every organisation, ingesting yesterday's ad metrics |
-| `tasks.generate-onboarding` | stately | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
+| `tasks.generate-onboarding` | short | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
 | `tasks.generate-recurring` | standard | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
 | `tasks.check-overdue` | standard | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
-| `payments.webhook` | stately | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
+| `payments.webhook` | short | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
 | `ads.sentinel` | standard | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
 | `invoices.check-overdue` | standard | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
 | `reports.monthly` | standard | cron 07:45 Europe/London on the 1st — deliberately after `ads.ingest` (06:30) so the final day of the month's ad spend is in, and after `invoices.check-overdue` (07:30) | worker | `{}` — drafts last month's report for every active client in every organisation |
 
-Queue names and policies are defined once, in `packages/core/src/queue/queues.ts`, and applied by both processes through `ensureQueues` — pg-boss's `create_queue` ignores conflicts, so whichever process booted first would otherwise fix a queue's policy for good.
+Queue names, policies and retry settings are defined once, in `packages/core/src/queue/queues.ts`, and applied by both processes through `ensureQueues` — pg-boss's `create_queue` ignores conflicts, so whichever process booted first would otherwise fix a queue's settings for good. `apps/worker/src/queues.integration.test.ts` asserts that convergence, and the dedupe behaviour below, against a real pg-boss in a throwaway schema.
 
 **What deduplication actually guarantees.** A `singletonKey` on `send` is inert on its own: pg-boss enforces dedupe only through partial unique indexes, and none of them apply under the default `standard` policy. So:
 
-- Queues whose every send carries a key are created `stately`: at most one job per `(queue, singletonKey)` in each of the `created`, `retry` and `active` states. A duplicate send collapses **while the first job is still in flight** — it is not "exactly once for all time": once a job completes, the same key can be sent again.
-- Two sends need a guarantee that outlives completion, because a duplicate costs Opus tokens or reaches a client: the Sentinel fan-out (`ad-sentinel:<org>:<date>`) and the Stripe webhook (`stripe:<eventId>`). Both pass `singletonSeconds` (one day, `dailyDedupe`), which is the only thing that makes pg-boss's `singleton_on` index apply.
+- Queues whose every send carries a key are created `short`, whose index is `UNIQUE (name, COALESCE(singleton_key,'')) WHERE state = 'created'`. The exact guarantee is therefore: **a duplicate is collapsed only while the first job is still queued.** The moment the worker picks that job up the key is free again — not "exactly once", and not even "once per run".
+- `stately` (which also constrains `retry` and `active`) is deliberately **not** used. Its index is keyed on `(name, state, key)`, so a duplicate sent while the first job is `active` inserts legally as `created` and then violates the index when pg-boss promotes it. The `UPDATE` aborts and pg-boss swallows the error, so the fetch returns nothing and logs nothing — and since it orders by `created_on LIMIT 1`, that stuck row blocks the queue for every tenant until the active job ends. Two ordinary paths trigger it: a second press of Approve while `agent.resume` runs, and a retried `domain.event` re-sending `tasks.generate-onboarding`.
+- One send needs a guarantee that outlives completion, because a duplicate costs Opus tokens and there is no domain-level equivalent: the Sentinel fan-out (`ad-sentinel:<org>:<date>`), which passes `singletonSeconds` (one day, `dailyDedupe`). That window also covers `failed`, so a Sentinel run that fails cannot be re-dispatched by this path until the next UTC day; the escape hatch is a manual send with a timestamped key, as the support-triage "run now" already does.
+- The Stripe webhook uses a plain key and no window, on purpose: a window would drop the "Resend" that is a failed payment sync's only recovery path, silently. Redelivery is answered by the domain layer instead.
 - Everything stronger is enforced at the domain layer, not the queue: the unique `(organisation_id, provider, provider_ref)` index behind `syncFromPaymentsEvent`, `resumeAgent` refusing an already-decided approval, the idempotent report upsert.
 
-Retry limit 5 with exponential backoff, then dead-letter. Every cron sweep isolates each organisation (and each client/invoice/ad account inside it) behind its own try/catch, logs the failure with the id, finishes the rest of the list, and re-throws once at the end so the job is still marked failed — one bad row can never cost the other organisations their sweep.
+**Retries.** `retryLimit: 5` with exponential backoff, set on the queue row itself by `ensureQueues` (`JOB_RETRY`). It has to live on the queue, not on a `PgBoss` constructor: pg-boss resolves a job's limit as `COALESCE(job, queue, sending-process default, 2)`, so a constructor-only setting would give web-enqueued jobs — the whole interactive path — two attempts and no delay while worker-enqueued jobs got five. Both constructors pass `JOB_RETRY` as well, as a fallback for a queue `ensureQueues` has not reached yet. No dead-letter queue is configured; an exhausted job lands in `failed`.
+
+Every cron sweep isolates each organisation (and each client/invoice/ad account inside it) behind its own try/catch, logs the failure with the id, finishes the rest of the list, and re-throws once at the end so the job is still marked failed — one bad row can never cost the other organisations their sweep. That loop is `apps/worker/src/jobs/sweep-organisations.ts`, and the Sentinel fan-out is `apps/worker/src/jobs/ads-sentinel.ts`; both live outside `main()` so they can be tested.
 
 ## Events
 

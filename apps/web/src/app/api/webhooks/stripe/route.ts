@@ -1,5 +1,5 @@
 import { findOrganisationByStripeCustomer } from "@launchos/core";
-import { QUEUE, dailyDedupe } from "@launchos/core/queue";
+import { QUEUE } from "@launchos/core/queue";
 import { createPaymentsAdapter, type PaymentsAdapter } from "@launchos/integrations";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -70,8 +70,18 @@ export async function POST(request: Request) {
   const signature = request.headers.get("stripe-signature");
   if (!signature) return NextResponse.json({ error: "missing stripe-signature" }, { status: 400 });
 
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+  // A declared length is required, and it must parse. Without this a
+  // `Transfer-Encoding: chunked` POST carrying no `content-length` sails past
+  // the cap and `request.text()` below buffers the whole stream — the same
+  // unauthenticated memory exhaustion the cap exists to stop. An unparseable
+  // length is refused rather than waved through for the same reason. Stripe
+  // always sends a numeric `content-length`.
+  const header = request.headers.get("content-length");
+  const contentLength = header === null ? Number.NaN : Number(header);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return NextResponse.json({ error: "missing or invalid content-length" }, { status: 411 });
+  }
+  if (contentLength > MAX_BODY_BYTES) {
     return NextResponse.json({ error: "payload too large" }, { status: 413 });
   }
 
@@ -105,13 +115,18 @@ export async function POST(request: Request) {
   const owner = await findOrganisationByStripeCustomer(getDb(), parsed.data.object.customer);
   if (!owner) return NextResponse.json({ ok: true, ignored: "unknown customer" });
 
-  // The key is paired with a dedupe window: the queue policy alone only
-  // collapses a duplicate still in flight, and Stripe redelivers an event for
-  // days (packages/core/src/queue/queues.ts).
+  // A plain key, deliberately: it collapses a burst of identical deliveries
+  // while the job is still queued, and nothing more. A `singletonSeconds`
+  // window here would also cover `failed`, so a Stripe "Resend" — the only
+  // recovery path an event whose sync failed has — would be dropped on insert
+  // and answered 200 with nothing enqueued. Redelivery is instead answered by
+  // the domain layer: `syncFromPaymentsEvent`'s unique
+  // (organisation_id, provider, provider_ref) index returns
+  // `{ handled: false, action: "duplicate" }` with the row in front of it.
   await sendJob(
     QUEUE.paymentsWebhook,
     { organisationId: owner.organisationId, providerEvent },
-    dailyDedupe(`stripe:${providerEvent.id}`),
+    { singletonKey: `stripe:${providerEvent.id}` },
   );
   return NextResponse.json({ ok: true });
 }

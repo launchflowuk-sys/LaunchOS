@@ -72,8 +72,16 @@ describe("runMonthlyReports", () => {
         return buildClientReport(...args);
       });
 
-      await expect(runMonthlyReports(db, org!.id, { now: NOW, build, logger: { error: vi.fn() } }))
+      const logger = { error: vi.fn(), info: vi.fn() };
+      await expect(runMonthlyReports(db, org!.id, { now: NOW, build, logger }))
         .rejects.toThrow(AggregateError);
+
+      // The throw discards the return value, so the counts have to be logged
+      // before it or the operator never learns how many clients did get a draft.
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.objectContaining({ organisationId: org!.id, clients: 2, reports: 1, failed: 1 }),
+        "monthly reports",
+      );
 
       // The surviving client still has its draft: one bad client must not cost
       // the rest of the agency its month.

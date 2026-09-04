@@ -19,10 +19,14 @@ export interface MonthlyReportsResult {
 /** Injectable so a test can make exactly one client fail. */
 export type ReportBuilder = typeof buildClientReport;
 
+export interface MonthlyReportsLogger extends SweepLogger {
+  info(...args: unknown[]): void;
+}
+
 export interface MonthlyReportsOptions {
   now: Date;
   build?: ReportBuilder;
-  logger?: SweepLogger;
+  logger?: MonthlyReportsLogger;
 }
 
 /**
@@ -74,6 +78,11 @@ export async function runMonthlyReports(
     failed: summary.failed,
     periodStart: period.start.toISOString().slice(0, 10),
   };
+  // Logged here, not by the caller: the throw below discards the return value,
+  // and the failing run is the one case where the operator most needs to know
+  // how many of the other clients did get a draft.
+  const logger = options.logger ?? console;
+  logger.info({ organisationId, ...result }, "monthly reports");
   throwOnSweepFailure(`monthly reports (${organisationId})`, summary);
   return result;
 }
