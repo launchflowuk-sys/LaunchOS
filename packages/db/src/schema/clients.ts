@@ -1,5 +1,6 @@
-import { boolean, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
+import { packages } from "./packages.js";
 
 export const clientStatusEnum = pgEnum("client_status", ["active", "paused", "archived"]);
 
@@ -24,8 +25,9 @@ export const clients = pgTable(
     // "<slug>@<SUPPORT_EMAIL_DOMAIN>". Globally unique: inbound mail is routed
     // by address alone, so two organisations must never share one.
     supportEmail: text("support_email"),
-    // Plain uuid today; Plan 3 adds the FK to packages once that table exists.
-    packageId: uuid("package_id"),
+    packageId: uuid("package_id").references(() => packages.id, { onDelete: "set null" }),
+    onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
+    handoverAt: timestamp("handover_at", { withTimezone: true }),
     status: clientStatusEnum("status").default("active").notNull(),
     notes: text("notes"),
   },

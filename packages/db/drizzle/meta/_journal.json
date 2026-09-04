@@ -29,6 +29,13 @@
       "when": 1788487361549,
       "tag": "0003_client_system",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788489931924,
+      "tag": "0004_conscious_klaw",
+      "breakpoints": true
     }
   ]
 }
