@@ -6,6 +6,7 @@ import { env } from "./env.js";
 import { QUEUE, createBoss } from "./boss.js";
 import { runMonitorSweep } from "./jobs/monitor-check.js";
 import { handleAgentRun, incidentPayload, type AgentRunJob } from "./jobs/agent-run.js";
+import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type GenerateOnboardingJob } from "./jobs/task-generation.js";
 
 async function main() {
   const db = createDb(env.DATABASE_URL);
@@ -23,8 +24,14 @@ async function main() {
       await boss.send(QUEUE.agentRun, job, { singletonKey: `guard-dog:${event.incidentId}` });
       return;
     }
-    // client.created / site.created / domain.created / member.created have no
-    // consumer until Plan 3's task engine; logged and ignored on purpose.
+    if (event.name === "client.created") {
+      const job: GenerateOnboardingJob = { organisationId: event.organisationId, clientId: event.clientId };
+      await boss.send(QUEUE.tasksGenerateOnboarding, job, { singletonKey: `onboarding:${event.clientId}` });
+      return;
+    }
+    // site.created / domain.created / member.created / task.created /
+    // task.completed / task.overdue have no consumer yet; logged and ignored
+    // on purpose.
     console.info({ event: event.name }, "domain event with no consumer");
   }
 
@@ -45,7 +52,19 @@ async function main() {
     const result = await handleAgentRun({ db, registry, llm, policy: env.AGENT_POLICY, logger: console }, job!.data);
     console.info({ result }, "agent run");
   });
+  await boss.work<GenerateOnboardingJob>(QUEUE.tasksGenerateOnboarding, async ([job]) => {
+    const result = await handleGenerateOnboarding(db, job!.data);
+    console.info({ client: job!.data.clientId, ...result }, "onboarding tasks generated");
+  });
+  await boss.work(QUEUE.tasksGenerateRecurring, async () => {
+    console.info(await runRecurringSweep(db, new Date()), "recurring task sweep");
+  });
+  await boss.work(QUEUE.tasksCheckOverdue, async () => {
+    console.info(await runOverdueSweep(db, new Date()), "overdue task sweep");
+  });
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
   console.info("worker started");
 }
 main().catch((e) => { console.error(e); process.exit(1); });

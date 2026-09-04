@@ -1,6 +1,13 @@
 import PgBoss from "pg-boss";
 
-export const QUEUE = { monitorCheck: "monitor.check", agentRun: "agent.run", domainEvent: "domain.event" } as const;
+export const QUEUE = {
+  monitorCheck: "monitor.check",
+  agentRun: "agent.run",
+  domainEvent: "domain.event",
+  tasksGenerateOnboarding: "tasks.generate-onboarding",
+  tasksGenerateRecurring: "tasks.generate-recurring",
+  tasksCheckOverdue: "tasks.check-overdue",
+} as const;
 
 export async function createBoss(connectionString: string) {
   const boss = new PgBoss({ connectionString, schema: "pgboss", retryLimit: 5, retryBackoff: true });

@@ -48,6 +48,9 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | `inbound.message` | webhook route handler | worker | `{ channel, raw }` |
 | `outbound.message` | core / approval | worker | `{ messageId }` |
 | `ads.ingest` | cron daily | worker | `{ organisationId }` |
+| `tasks.generate-onboarding` | `client.created` event (web or worker) | worker | `{ organisationId, clientId }` |
+| `tasks.generate-recurring` | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
+| `tasks.check-overdue` | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
 
 Every job carries a `singletonKey` derived from its natural key so duplicates collapse. Retry limit 5 with exponential backoff, then dead-letter.
 

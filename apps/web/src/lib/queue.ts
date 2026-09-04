@@ -33,6 +33,14 @@ export function installWebEnqueue(): void {
       return;
     }
     const boss = await getBoss(url);
+    if (event.name === "client.created") {
+      await boss.send(
+        "tasks.generate-onboarding",
+        { organisationId: event.organisationId, clientId: event.clientId },
+        { singletonKey: `onboarding:${event.clientId}` },
+      );
+      return;
+    }
     await boss.send(QUEUE_DOMAIN_EVENT, event);
   });
 }
