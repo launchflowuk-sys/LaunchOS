@@ -66,6 +66,32 @@ describe("createClient", () => {
     });
   });
 
+  it("refuses a packageId owned by another organisation", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db);
+      const orgB = await makeOrg(db);
+      const [ownPackage] = await db
+        .insert(schema.packages)
+        .values({ organisationId: orgA.id, name: "Care", slug: `care-${crypto.randomUUID().slice(0, 8)}` })
+        .returning();
+      const [foreignPackage] = await db
+        .insert(schema.packages)
+        .values({ organisationId: orgB.id, name: "Care B", slug: `care-b-${crypto.randomUUID().slice(0, 8)}` })
+        .returning();
+
+      await expect(
+        createClient(db, orgA.id, { name: "Borrowed Package", packageId: foreignPackage!.id }),
+      ).rejects.toThrow(`package ${foreignPackage!.id} not found in organisation`);
+
+      // Nothing was written before the guard ran.
+      const clients = await db.select().from(schema.clients).where(eq(schema.clients.organisationId, orgA.id));
+      expect(clients).toHaveLength(0);
+
+      const ok = await createClient(db, orgA.id, { name: "Own Package", packageId: ownPackage!.id });
+      expect(ok.packageId).toBe(ownPackage!.id);
+    });
+  });
+
   it("keeps support emails globally unique across organisations", async () => {
     await withTestDb(async (db) => {
       const orgA = await makeOrg(db);

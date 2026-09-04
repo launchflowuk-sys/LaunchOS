@@ -50,6 +50,8 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
      - `BETTER_AUTH_URL` → same as `APP_URL`
      - `ANTHROPIC_API_KEY`
      - `AGENT_MODEL` → `claude-opus-5`
+     - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk`; changing it later does **not** rewrite addresses already stored on existing clients.
+     - `OWNER_NOTIFY_EMAIL` → optional. In-app notifications always reach the owner's bell; set this to also email them. Leave unset to keep notifications in-app only.
      - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`
      - `INBOUND_EMAIL_SECRET`
      - `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`

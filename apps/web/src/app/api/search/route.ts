@@ -5,7 +5,7 @@ import { getSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
-const EMPTY: SearchResults = { clients: [], sites: [], domains: [], tickets: [] };
+const EMPTY: SearchResults = { clients: [], sites: [], domains: [], tickets: [], tasks: [] };
 const MIN_QUERY_LENGTH = 2;
 
 export async function GET(request: Request) {

@@ -93,6 +93,46 @@ describe("createMember", () => {
     });
   });
 
+  it("completes a pending invitation instead of refusing it as an existing member", async () => {
+    await withTestDb(async (db) => {
+      const { org, ownerUserId } = await makeOrgWithOwner(db);
+      const email = `invited-${crypto.randomUUID()}@example.test`;
+      const userId = crypto.randomUUID();
+      // What `db:seed` writes for the demo staff member: a user and an
+      // "invited" membership, but no credential, so they cannot sign in.
+      await db.insert(schema.user).values({ id: userId, name: "Sam Staff", email, emailVerified: true });
+      const [invited] = await db
+        .insert(schema.organisationMembers)
+        .values({ organisationId: org.id, userId, role: "staff", status: "invited", displayName: "Sam Staff" })
+        .returning();
+
+      const { member, oneTimePassword } = await createMember(db, org.id, {
+        email, displayName: "Sam Staff", role: "staff", title: "Support", invitedBy: ownerUserId,
+      });
+
+      // The invitation is completed in place — no second membership row.
+      expect(member.id).toBe(invited!.id);
+      expect(member.userId).toBe(userId);
+      expect(member.status).toBe("active");
+      expect(member.title).toBe("Support");
+      expect(member.initialPasswordSetAt).toBeInstanceOf(Date);
+
+      const [credential] = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, "credential")));
+      expect(await verifyPassword({ password: oneTimePassword, hash: credential!.password! })).toBe(true);
+
+      const rows = await listMembers(db, org.id);
+      expect(rows.filter((r) => r.email === email)).toHaveLength(1);
+
+      // Completing it once is enough: the member is active with a credential now.
+      await expect(createMember(db, org.id, { email, displayName: "Sam again", role: "staff" })).rejects.toThrow(
+        `${email} is already a member of this organisation`,
+      );
+    });
+  });
+
   it("creates a credential for an existing user who doesn't have one yet", async () => {
     await withTestDb(async (db) => {
       const { org } = await makeOrgWithOwner(db);

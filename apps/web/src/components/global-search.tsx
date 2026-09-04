@@ -4,7 +4,7 @@ import type { SearchResults } from "@launchos/core";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-const EMPTY: SearchResults = { clients: [], sites: [], domains: [], tickets: [] };
+const EMPTY: SearchResults = { clients: [], sites: [], domains: [], tickets: [], tasks: [] };
 const DEBOUNCE_MS = 200;
 const MIN_QUERY_LENGTH = 2;
 const BLUR_DISMISS_MS = 150;
@@ -45,6 +45,7 @@ export function GlobalSearch() {
     { label: "Websites", rows: results.sites.map((s) => ({ id: s.id, label: s.name, hint: s.primaryUrl, href: `/websites/${s.id}` })) },
     { label: "Domains", rows: results.domains.map((d) => ({ id: d.id, label: d.name, hint: "", href: `/domains/${d.id}` })) },
     { label: "Open cases", rows: results.tickets.map((t) => ({ id: t.id, label: t.subject, hint: t.status, href: "/tickets" })) },
+    { label: "Tasks", rows: results.tasks.map((t) => ({ id: t.id, label: t.title, hint: t.status, href: `/tasks/${t.id}` })) },
   ].filter((g) => g.rows.length > 0);
 
   return (
@@ -52,7 +53,7 @@ export function GlobalSearch() {
       <input
         type="search"
         aria-label="Search"
-        placeholder="Search clients, websites, domains, cases"
+        placeholder="Search clients, websites, domains, cases, tasks"
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

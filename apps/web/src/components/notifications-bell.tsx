@@ -8,6 +8,15 @@ import type { AdminSession } from "@/lib/session";
 const LIST_LIMIT = 10;
 
 /**
+ * `notifications.link` is free text written by services (and, later, agents).
+ * Only an in-app path is ever rendered as a link, so a stored `javascript:` or
+ * off-site `https:` value can never become a clickable target in the shell.
+ */
+function isInAppPath(link: string | null): link is string {
+  return link !== null && link.startsWith("/");
+}
+
+/**
  * A `<details>` dropdown rather than a popover: the list is server-rendered on
  * every request, so the count can never drift from the rows below it.
  */
@@ -40,7 +49,7 @@ export async function NotificationsBell({ session }: { session: AdminSession }) 
               <div key={row.id} className="rounded-md px-2 py-2 hover:bg-neutral-50">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    {row.link ? (
+                    {isInAppPath(row.link) ? (
                       <Link href={row.link} className="block truncate text-sm font-medium text-neutral-900 hover:underline">
                         {row.title}
                       </Link>

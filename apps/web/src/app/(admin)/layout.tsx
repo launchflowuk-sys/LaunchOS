@@ -30,7 +30,9 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         <footer className="border-t border-neutral-200 bg-white px-6 py-4 text-xs text-neutral-500">
           Powered by LaunchFlow
         </footer>
-        <Toaster position="top-right" richColors />
+        {/* Pinned light: the admin shell is a white/light surface, so sonner must
+            not follow the OS colour scheme and render dark toasts on it. */}
+        <Toaster position="top-right" richColors theme="light" />
       </div>
     </div>
   );

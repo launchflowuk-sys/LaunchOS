@@ -22,7 +22,10 @@ export async function listNotifications(db: Db, organisationId: string, input: L
         v.unreadOnly ? isNull(schema.notifications.readAt) : undefined,
       ),
     )
-    .orderBy(desc(schema.notifications.createdAt))
+    // `created_at` alone is not a total order: several notifications written in
+    // one transaction share a timestamp, and the bell would then shuffle them
+    // between requests. `id desc` breaks the tie deterministically.
+    .orderBy(desc(schema.notifications.createdAt), desc(schema.notifications.id))
     .limit(v.limit);
 }
 

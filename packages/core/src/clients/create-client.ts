@@ -5,6 +5,7 @@ import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { supportEmailFor } from "../config.js";
 import { emit } from "../events/emit.js";
+import { assertOwned } from "../tenancy/assert-owned.js";
 import { uniqueClientSlug } from "./slug.js";
 
 export const CreateClientInput = z.object({
@@ -37,6 +38,9 @@ export type CreateClientInput = z.input<typeof CreateClientInput>;
  */
 export async function createClient(db: Db, organisationId: string, input: CreateClientInput) {
   const { actorKind, actorId, slug: desiredSlug, ...fields } = CreateClientInput.parse(input);
+  // `packageId` arrives from a form post or an agent tool, so it is only ever
+  // trusted after it is proven to belong to this organisation.
+  if (fields.packageId) await assertOwned(db, organisationId, schema.packages, fields.packageId);
   const slug = await uniqueClientSlug(db, organisationId, desiredSlug ?? fields.name);
   const supportEmail = supportEmailFor(slug);
 

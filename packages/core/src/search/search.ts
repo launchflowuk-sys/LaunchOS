@@ -16,14 +16,15 @@ export type SearchResults = {
   sites: { id: string; name: string; primaryUrl: string }[];
   domains: { id: string; name: string }[];
   tickets: { id: string; subject: string; status: string }[];
+  tasks: { id: string; title: string; status: string }[];
 };
 
 type OrgScopedTable = PgTable & { organisationId: PgColumn };
 
 /**
  * The WHERE clause shared by every kind below: organisation-scoped, ILIKE
- * across one or more columns for the same term. Extracted so the four kinds
- * (clients/sites/domains/tickets) don't each repeat
+ * across one or more columns for the same term. Extracted so the five kinds
+ * (clients/sites/domains/tickets/tasks) don't each repeat
  * `and(eq(table.organisationId, ...), or(ilike(...), ...))`.
  */
 function matchesInOrg(table: OrgScopedTable, organisationId: string, term: string, columns: PgColumn[]) {
@@ -31,14 +32,14 @@ function matchesInOrg(table: OrgScopedTable, organisationId: string, term: strin
 }
 
 /**
- * Header search: name/subject ILIKE, organisation-scoped, a handful of rows per
- * kind. Tasks join this in Plan 3 and knowledge articles in Plan 4.
+ * Header search: name/subject/title ILIKE, organisation-scoped, a handful of
+ * rows per kind. Knowledge articles join this in Plan 4.
  */
 export async function search(db: Db, organisationId: string, input: SearchInput): Promise<SearchResults> {
   const v = SearchInput.parse(input);
   const term = `%${escapeLike(v.q)}%`;
 
-  const [clients, sites, domains, tickets] = await Promise.all([
+  const [clients, sites, domains, tickets, tasks] = await Promise.all([
     db
       .select({ id: schema.clients.id, name: schema.clients.name, slug: schema.clients.slug })
       .from(schema.clients)
@@ -63,7 +64,13 @@ export async function search(db: Db, organisationId: string, input: SearchInput)
       .where(matchesInOrg(schema.tickets, organisationId, term, [schema.tickets.subject]))
       .orderBy(schema.tickets.subject)
       .limit(v.limit),
+    db
+      .select({ id: schema.tasks.id, title: schema.tasks.title, status: schema.tasks.status })
+      .from(schema.tasks)
+      .where(matchesInOrg(schema.tasks, organisationId, term, [schema.tasks.title]))
+      .orderBy(schema.tasks.title)
+      .limit(v.limit),
   ]);
 
-  return { clients, sites, domains, tickets };
+  return { clients, sites, domains, tickets, tasks };
 }
