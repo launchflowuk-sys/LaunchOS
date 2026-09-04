@@ -18,11 +18,12 @@ import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, ensureOrganisation } from "./bootstrap.js";
-import { DEFAULT_OWNER_EMAIL } from "./passwords.js";
+import { DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD } from "./passwords.js";
 import * as schema from "./schema/index.js";
 import {
   assertDemoOptIn,
   assertSeedOwnerEmail,
+  assertSeedPasswords,
   runSeed,
   seedClientUser,
   seedConfigFromEnv,
@@ -118,6 +119,84 @@ describe("assertDemoOptIn", () => {
         DATABASE_URL: "postgres://u:p@db.launchflow.co.uk:5432/launchos",
       } as NodeJS.ProcessEnv),
     ).not.toThrow();
+  });
+});
+
+describe("assertSeedPasswords", () => {
+  /** `cp .env.example .env` and nothing else: the flag set, both passwords still the shipped defaults. */
+  const SHIPPED = { SEED_DEMO: "1" };
+  const LOCAL = { ...SHIPPED, NODE_ENV: "development", DATABASE_URL: "postgres://u:p@localhost:5432/launchos" };
+  /** The flag carried across to a production resource, which is the scenario these two guards exist for. */
+  const PRODUCTION = { ...SHIPPED, NODE_ENV: "production", DATABASE_URL: "postgres://u:p@localhost:5432/launchos" };
+  /** Nobody exported NODE_ENV; only the host says this is live. */
+  const REMOTE = { ...SHIPPED, DATABASE_URL: "postgres://u:p@db.launchflow.co.uk:5432/launchos" };
+
+  const guardFor = (env: Record<string, string>) => {
+    try {
+      assertSeedPasswords(env as NodeJS.ProcessEnv, seedConfigFromEnv(env as NodeJS.ProcessEnv));
+      return null;
+    } catch (error) {
+      return error as BootstrapGuardError;
+    }
+  };
+
+  it("lets a local seed run on the defaults `.env.example` ships", () => {
+    // The whole cost of keeping these guards, and it is zero: the quick start
+    // is still `cp .env.example .env && pnpm db:seed`. Neither half of
+    // `isProductionTarget` fires on a laptop's docker Postgres.
+    expect(seedConfigFromEnv(LOCAL as NodeJS.ProcessEnv).ownerPassword).toBe(DEFAULT_OWNER_PASSWORD);
+    expect(seedConfigFromEnv(LOCAL as NodeJS.ProcessEnv).clientUser.password).toBe(DEFAULT_CLIENT_PASSWORD);
+    expect(guardFor(LOCAL)).toBeNull();
+  });
+
+  it("refuses a published default under NODE_ENV=production, SEED_DEMO=1 and all", () => {
+    // SEED_DEMO=1 is consent to write demo fixtures, not consent to write an
+    // owner account on a password printed in this repository and in README.md.
+    const error = guardFor(PRODUCTION);
+    expect(error?.guard).toBe("published-default");
+    expect(error?.message).toMatch(/SEED_OWNER_PASSWORD and SEED_CLIENT_PASSWORD are still a default/);
+    expect(error?.message).toMatch(/NODE_ENV=production/);
+  });
+
+  it("refuses a published default against a remote host with NODE_ENV unset", () => {
+    const error = guardFor(REMOTE);
+    expect(error?.guard).toBe("published-default");
+    // Which half of the predicate fired, for an operator who never set NODE_ENV.
+    expect(error?.message).toMatch(/not a local host/);
+  });
+
+  it("names only the variable that is still a default", () => {
+    const error = guardFor({ ...PRODUCTION, SEED_CLIENT_PASSWORD: "a-real-client-password" });
+    expect(error?.guard).toBe("published-default");
+    expect(error?.message).toMatch(/SEED_OWNER_PASSWORD is still a default/);
+    expect(error?.message).not.toMatch(/SEED_CLIENT_PASSWORD/);
+  });
+
+  it("catches a swapped default — the check is by value, not by variable", () => {
+    const error = guardFor({
+      ...PRODUCTION,
+      SEED_OWNER_PASSWORD: DEFAULT_CLIENT_PASSWORD,
+      SEED_CLIENT_PASSWORD: "a-real-client-password",
+    });
+    expect(error?.guard).toBe("published-default");
+    expect(error?.message).toMatch(/SEED_OWNER_PASSWORD is still a default/);
+  });
+
+  it("refuses a client password equal to the owner's", () => {
+    // The cheap way to satisfy published-default, and it hands a client a
+    // credential that opens the whole admin shell.
+    const shared = "one-real-password";
+    const error = guardFor({ ...PRODUCTION, SEED_OWNER_PASSWORD: shared, SEED_CLIENT_PASSWORD: shared });
+    expect(error?.guard).toBe("shared-password");
+    expect(error?.message).toMatch(/must differ from SEED_OWNER_PASSWORD/);
+  });
+
+  it("accepts two real, different passwords against a production target", () => {
+    for (const env of [PRODUCTION, REMOTE]) {
+      expect(
+        guardFor({ ...env, SEED_OWNER_PASSWORD: "a-real-owner-password", SEED_CLIENT_PASSWORD: "a-real-client-password" }),
+      ).toBeNull();
+    }
   });
 });
 

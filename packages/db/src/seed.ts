@@ -33,18 +33,27 @@
  *
  * **This script refuses to run at all unless SEED_DEMO=1** — the `demo-opt-in`
  * guard, in every environment, against every host, before a connection is
- * opened. That single flag is now the whole of the protection, and deliberately
- * so. The guards it replaces (`demo-fixtures-in-production`, and the seed's own
- * copies of `published-default` and `shared-password`) were keyed on a
- * host-derived "production target", and **no host string can tell a local
- * database from a live one**: `ssh -L 5433:<coolify-postgres>:5432` presents
- * production as `localhost:5433`, a Hetzner private network is `10.0.0.0/16`,
- * and `infra/docker-compose.coolify.yml` — this repository's own *production*
- * topology — names its database host `postgres`. Each reads as local, so each
- * was one tunnel away from writing demo invoices numbered from a live sequence,
- * and an owner credential whose password is published in this repository, into
- * a live tenant. An affirmative flag is a sentence the operator has to type; a
- * hostname is a guess.
+ * opened. That flag is the *gate*, and it is the only guard that can be trusted
+ * on its own, because **no host string can tell a local database from a live
+ * one**: `ssh -L 5433:<coolify-postgres>:5432` presents production as
+ * `localhost:5433`, a Hetzner private network is `10.0.0.0/16`, and
+ * `infra/docker-compose.coolify.yml` — this repository's own *production*
+ * topology — names its database host `postgres`. Each reads as local, so the
+ * old `demo-fixtures-in-production` gate was one tunnel away from writing demo
+ * invoices numbered from a live sequence into a live tenant. An affirmative
+ * flag is a sentence the operator has to type; a hostname is a guess. That gate
+ * is gone and this one replaces it.
+ *
+ * The seed's two **credential** refusals — `published-default` and
+ * `shared-password`, in `assertSeedPasswords` — are kept on top of it as belt
+ * and braces. A host guess cannot be the only thing between a published
+ * password and a live database, but it is worth having *beside* the flag: the
+ * plainly-detectable production shapes (`NODE_ENV=production`, or a database
+ * that is not demonstrably local) are exactly the ones where a carried-across
+ * `SEED_DEMO=1` from `.env.example` would otherwise write an owner account on
+ * `change-me-now` — a password printed in this repository and in `README.md`.
+ * Being wrong the local way costs the developer nothing, because those two
+ * conditions cannot fire on a laptop's docker Postgres.
  *
  * The cost is nothing locally: `.env.example` ships SEED_DEMO=1, so the quick
  * start is still `cp .env.example .env` and `pnpm db:seed`. `docs/DEPLOYMENT.md`
@@ -54,12 +63,14 @@
  * same reason. The two share their organisation, user and membership helpers,
  * so a bootstrapped database and a seeded one are the same shape underneath.
  *
- * `isProductionTarget` (`./env-target.ts`) survives here for exactly two things
- * and guards nothing else: the `(production target)` / `(local)` annotation on
- * the printed database line, and the requirement that SEED_OWNER_EMAIL be *set*
- * rather than defaulted when the target is not demonstrably local. Being wrong
- * about a host there costs one environment variable, which is the direction
- * that inference is worth having in.
+ * `isProductionTarget` (`./env-target.ts`) survives here for exactly three
+ * things and guards nothing else: the `(production target)` / `(local)`
+ * annotation on the printed database line, the requirement that
+ * SEED_OWNER_EMAIL be *set* rather than defaulted when the target is not
+ * demonstrably local, and the two credential refusals above. Being wrong about
+ * a host in any of the three costs a local developer one environment variable
+ * or nothing at all, which is the only direction that inference is worth
+ * having in.
  *
  * Every refusal names the guard that tripped and exits non-zero.
  *
@@ -86,8 +97,8 @@ import {
 import { createDb } from "./client.js";
 import { isProductionTarget, productionTargetReason } from "./env-target.js";
 import {
-  DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH,
-  shortPasswordMessage,
+  DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD, isPublishedDefaultPassword,
+  MIN_PASSWORD_LENGTH, shortPasswordMessage,
 } from "./passwords.js";
 import * as schema from "./schema/index.js";
 
@@ -154,16 +165,22 @@ export function seedConfigFromEnv(env: NodeJS.ProcessEnv): SeedConfig {
 }
 
 /**
- * The one gate on this script: `SEED_DEMO=1`, or it does not run.
+ * The gate on this script: `SEED_DEMO=1`, or it does not run.
  *
  * **Unconditional** — no environment branch, no host check — and called before
- * `createDb`, so a refusal never opens a connection. It used to fire only
- * against a "production target", which meant a live database reached through an
- * SSH tunnel, over a private network, or by the compose hostname `postgres`
- * skipped it along with the seed's published-default and shared-password
- * guards, and wrote demo invoices and a repository-published owner credential
- * into a live tenant. Those three guards are gone; this one replaces all of
- * them, because it asks the only question a host string cannot answer.
+ * `createDb`, so a refusal never opens a connection. Its predecessor,
+ * `demo-fixtures-in-production`, fired only against a "production target",
+ * which meant a live database reached through an SSH tunnel, over a private
+ * network, or by the compose hostname `postgres` skipped it entirely and took
+ * demo invoices and a repository-published owner credential into a live tenant.
+ * This guard replaces it, because it asks the only question a host string
+ * cannot answer.
+ *
+ * It is the gate but not the whole of the protection: `assertSeedPasswords`
+ * still refuses a published or shared credential on the production shapes a
+ * host string *can* recognise, so a `SEED_DEMO=1` carried across from
+ * `.env.example` into a production resource does not by itself install an owner
+ * account on `change-me-now`.
  *
  * Exactly `"1"`, not "any truthy value": `SEED_DEMO=0` and `SEED_DEMO=false`
  * are the shapes of someone turning it *off*, and must not be read as consent.
@@ -183,6 +200,62 @@ export function assertDemoOptIn(env: NodeJS.ProcessEnv): void {
       "network. `.env.example` ships SEED_DEMO=1 for local work. On a live install use `pnpm db:bootstrap`, " +
       "which creates only the organisation and the owner account.",
   );
+}
+
+/**
+ * The seed's two credential refusals, beside `demo-opt-in` rather than instead
+ * of it.
+ *
+ * **`published-default`** — neither account this seed creates may be written
+ * with a password printed in this repository. `.env.example` ships
+ * `SEED_OWNER_PASSWORD=change-me-now` and `SEED_CLIENT_PASSWORD=change-me-client`,
+ * both of which clear `MIN_PASSWORD_LENGTH`, and `README.md` prints the owner's.
+ * Checked by *value* against every published literal (`isPublishedDefaultPassword`),
+ * not by variable, so swapping the two around is caught as well.
+ *
+ * **`shared-password`** — the two must differ. The owner's password opens the
+ * whole admin shell; the portal login is a client's credential. Satisfying
+ * `published-default` by setting both to the same real value would hand a client
+ * the owner's sign-in, which is the failure the separate variable exists to
+ * prevent.
+ *
+ * **When they fire.** `NODE_ENV === "production"`, or `isProductionTarget(env)`
+ * — the second already subsumes the first, and both halves are named because
+ * each is a reason on its own and the next reader should not have to open
+ * `./env-target.ts` to learn that. These are the production shapes a host
+ * string *can* recognise; the ones it cannot (a tunnel, a private network, the
+ * compose name `postgres`) are why `demo-opt-in` exists above and is
+ * unconditional. Being wrong the local way is free: nobody exports
+ * `NODE_ENV=production` on a laptop, and `localhost` / `postgres` / `db` /
+ * RFC1918 all read as local, so `cp .env.example .env && pnpm db:seed` still
+ * runs on the shipped defaults.
+ *
+ * Exported, and taking its environment as an argument, so both refusals can be
+ * tested without a database and without `main`'s connection.
+ */
+export function assertSeedPasswords(env: NodeJS.ProcessEnv, config: SeedConfig): void {
+  if (env.NODE_ENV !== "production" && !isProductionTarget(env)) return;
+  const because = `Refusing because ${productionTargetReason(env)}.`;
+  const defaulted = [
+    isPublishedDefaultPassword(config.ownerPassword) ? "SEED_OWNER_PASSWORD" : null,
+    isPublishedDefaultPassword(config.clientUser.password) ? "SEED_CLIENT_PASSWORD" : null,
+  ].filter((name): name is string => name !== null);
+  if (defaulted.length > 0) {
+    throw new BootstrapGuardError(
+      "published-default",
+      `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} still a default published in ` +
+        "this repository. Refusing to seed an account with it. " +
+        `Set them in the resource environment, run the seed once, then remove them. ${because}`,
+    );
+  }
+  if (config.clientUser.password === config.ownerPassword) {
+    throw new BootstrapGuardError(
+      "shared-password",
+      "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
+        "The portal login is a client's credential and the owner's opens the whole admin shell; " +
+        `they must never be the same secret. ${because}`,
+    );
+  }
 }
 
 /**
@@ -417,10 +490,17 @@ async function main() {
   // than finding the one that is already there.
   assertOrganisationSlug(config.organisation.slug);
 
-  // The only remaining use of the target inference, and it decides one thing:
-  // whether SEED_OWNER_EMAIL must have been *set* rather than defaulted to the
-  // address this repository ships. Being wrong the local way costs one
-  // variable, which is the direction this guess is worth making.
+  // Belt and braces beside `demo-opt-in`, on the production shapes a host
+  // string can actually recognise: no account this seed creates may reach one
+  // of those on a password published in this repository, and the owner's and
+  // the client's may never be the same secret. Free locally — neither half of
+  // `isProductionTarget` fires on a laptop's docker Postgres.
+  assertSeedPasswords(process.env, config);
+
+  // The last use of the target inference, and it decides one thing: whether
+  // SEED_OWNER_EMAIL must have been *set* rather than defaulted to the address
+  // this repository ships. Being wrong the local way costs one variable, which
+  // is the direction this guess is worth making.
   assertSeedOwnerEmail(process.env, config.ownerEmail, productionTarget);
   console.log("organisation  ", config.organisation.slug, `(${config.organisation.name})`);
 
