@@ -22,6 +22,13 @@
       "when": 1788475379974,
       "tag": "0002_natural_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788487361549,
+      "tag": "0003_client_system",
+      "breakpoints": true
     }
   ]
 }

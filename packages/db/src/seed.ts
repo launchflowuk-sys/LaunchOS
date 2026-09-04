@@ -28,9 +28,11 @@ const AGENT_KEY = "hosting-guard-dog";
 const CREDENTIAL_PROVIDER = "credential";
 const CREDENTIAL_ISSUER = `local:${CREDENTIAL_PROVIDER}`;
 
+const SUPPORT_EMAIL_DOMAIN = process.env.SUPPORT_EMAIL_DOMAIN ?? "support.launchflow.co.uk";
+
 const SEED_CLIENTS = [
-  { name: "Grays CabLine", email: "info@grayscabline.co.uk", url: "https://grayscabline.co.uk" },
-  { name: "Mobile PC Doctor", email: "info@mobilepcdoctor.co.uk", url: "https://mobilepcdoctor.co.uk" },
+  { name: "Grays CabLine", slug: "grays-cabline", email: "info@grayscabline.co.uk", url: "https://grayscabline.co.uk" },
+  { name: "Mobile PC Doctor", slug: "mobile-pc-doctor", email: "info@mobilepcdoctor.co.uk", url: "https://mobilepcdoctor.co.uk" },
 ] as const;
 
 function loadRootEnv() {
@@ -159,7 +161,13 @@ async function seedClient(db: Db, organisationId: string, spec: (typeof SEED_CLI
   if (existing) return existing;
   const [created] = await db
     .insert(schema.clients)
-    .values({ organisationId, name: spec.name, email: spec.email })
+    .values({
+      organisationId,
+      name: spec.name,
+      slug: spec.slug,
+      email: spec.email,
+      supportEmail: `${spec.slug}@${SUPPORT_EMAIL_DOMAIN}`,
+    })
     .returning();
   return created!;
 }

@@ -1,5 +1,6 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";
+export { slugify, uniqueClientSlug } from "./clients/slug.js";
 export { createSite, CreateSiteInput } from "./sites/create-site.js";
 export { createMonitor, CreateMonitorInput } from "./monitoring/create-monitor.js";
 export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/record-check.js";
