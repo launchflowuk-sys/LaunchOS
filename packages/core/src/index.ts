@@ -11,6 +11,8 @@ export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/r
 export { openIncident, OpenIncidentInput } from "./incidents/open-incident.js";
 export { updateIncident, UpdateIncidentInput } from "./incidents/update-incident.js";
 export { createTicket, CreateTicketInput } from "./support/create-ticket.js";
+export { ensureEmailIdentity, supportAddress, EnsureEmailIdentityInput } from "./email/ensure-email-identity.js";
+export { ingestInboundEmail, HOLDING_CLIENT_SLUG } from "./support/ingest-inbound-email.js";
 export {
   assertOwned, assertClientInOrganisation, assertSiteInOrganisation, assertOrgMember,
 } from "./tenancy/assert-owned.js";

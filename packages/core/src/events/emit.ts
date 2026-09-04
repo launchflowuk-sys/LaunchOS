@@ -1,3 +1,5 @@
+import type { InboundEmail } from "@launchos/channels";
+
 export type DomainEvent =
   | { name: "incident.opened"; organisationId: string; incidentId: string }
   | { name: "ticket.created"; organisationId: string; ticketId: string }
@@ -7,7 +9,17 @@ export type DomainEvent =
   | { name: "member.created"; organisationId: string; memberId: string }
   | { name: "task.created"; organisationId: string; taskId: string }
   | { name: "task.completed"; organisationId: string; taskId: string }
-  | { name: "task.overdue"; organisationId: string; taskId: string };
+  | { name: "task.overdue"; organisationId: string; taskId: string }
+  | { name: "email.received"; organisationId: string; inbound: InboundEmail }
+  | { name: "message.queued"; organisationId: string; messageId: string }
+  | {
+      name: "approval.decided";
+      organisationId: string;
+      approvalId: string;
+      runId: string;
+      decision: "approved" | "rejected";
+      note?: string;
+    };
 
 export type EnqueueFn = (event: DomainEvent) => Promise<void>;
 let enqueue: EnqueueFn = async () => {}; // no-op until the worker or web sets one

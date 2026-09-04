@@ -234,6 +234,9 @@ importers:
 
   packages/core:
     dependencies:
+      '@launchos/channels':
+        specifier: workspace:*
+        version: link:../channels
       '@launchos/db':
         specifier: workspace:*
         version: link:../db
