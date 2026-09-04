@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { createClient } from "../clients/create-client.js";
 import { createSite } from "../sites/create-site.js";
 import { createTicket } from "../support/create-ticket.js";
-import { assertClientInOrganisation, assertSiteInOrganisation } from "./assert-owned.js";
+import { assertClientInOrganisation, assertOwned, assertSiteInOrganisation } from "./assert-owned.js";
 
 async function makeOrg(db: Db, name: string) {
   const [org] = await db.insert(schema.organisations).values({ name, slug: `test-${crypto.randomUUID()}` }).returning();
@@ -75,6 +75,46 @@ describe("tenancy assertions", () => {
 
       const tickets = await db.select().from(schema.tickets).where(eq(schema.tickets.organisationId, orgB.id));
       expect(tickets).toHaveLength(0);
+    });
+  });
+});
+
+describe("assertOwned", () => {
+  it("names the table in its error and works for any tenant table", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db, "A");
+      const orgB = await makeOrg(db, "B");
+      const client = await createClient(db, orgA.id, { name: "A client" });
+      const [domain] = await db
+        .insert(schema.domains)
+        .values({ organisationId: orgA.id, clientId: client.id, name: `${crypto.randomUUID()}.test` })
+        .returning();
+
+      await expect(assertOwned(db, orgA.id, schema.domains, domain!.id)).resolves.toBeUndefined();
+      await expect(assertOwned(db, orgB.id, schema.domains, domain!.id)).rejects.toThrow(
+        `domain ${domain!.id} not found in organisation`,
+      );
+      await expect(assertOwned(db, orgB.id, schema.clients, client.id)).rejects.toThrow(
+        `client ${client.id} not found in organisation`,
+      );
+    });
+  });
+
+  it("assertClientInOrganisation and assertSiteInOrganisation stay thin wrappers over assertOwned", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db, "A");
+      const orgB = await makeOrg(db, "B");
+      const client = await createClient(db, orgA.id, { name: "A client" });
+      const site = await createSite(db, orgA.id, { clientId: client.id, name: "S", primaryUrl: "https://a.test" });
+
+      await expect(assertClientInOrganisation(db, orgA.id, client.id)).resolves.toBeUndefined();
+      await expect(assertSiteInOrganisation(db, orgA.id, site.id)).resolves.toBeUndefined();
+      await expect(assertClientInOrganisation(db, orgB.id, client.id)).rejects.toThrow(
+        `client ${client.id} not found in organisation`,
+      );
+      await expect(assertSiteInOrganisation(db, orgB.id, site.id)).rejects.toThrow(
+        `site ${site.id} not found in organisation`,
+      );
     });
   });
 });

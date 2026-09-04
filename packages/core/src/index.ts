@@ -7,6 +7,7 @@ export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/r
 export { openIncident, OpenIncidentInput } from "./incidents/open-incident.js";
 export { updateIncident, UpdateIncidentInput } from "./incidents/update-incident.js";
 export { createTicket, CreateTicketInput } from "./support/create-ticket.js";
-export { assertClientInOrganisation, assertSiteInOrganisation } from "./tenancy/assert-owned.js";
+export { assertOwned, assertClientInOrganisation, assertSiteInOrganisation } from "./tenancy/assert-owned.js";
+export type { OwnedTable } from "./tenancy/assert-owned.js";
 export { emit, setEnqueue } from "./events/emit.js";
 export type { DomainEvent, EnqueueFn } from "./events/emit.js";
