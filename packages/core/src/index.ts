@@ -89,6 +89,8 @@ export type { ListKnowledgeArticlesInput } from "./knowledge/list-articles.js";
 export { searchKnowledge, KNOWLEDGE_SEARCH_LIMIT } from "./knowledge/search-knowledge.js";
 export type { KnowledgeHit } from "./knowledge/search-knowledge.js";
 export { createClientUser, CreateClientUserInput } from "./client-users/create-client-user.js";
+export { listClientUsers } from "./client-users/list-client-users.js";
+export type { ClientUserRow } from "./client-users/list-client-users.js";
 export {
   createSubscription, cancelSubscription, activeSubscriptionForClient,
   CreateSubscriptionServiceInput, CancelSubscriptionInput,
@@ -112,6 +114,13 @@ export type { AccountSignals, SignalWindow } from "./ads/signals.js";
 export {
   saveDraftAdReport, approveAdReport, sendAdReport, SaveDraftAdReportInput, AdReportActionInput,
 } from "./ads/reports.js";
+export { recordPayment, reconcileInvoice, RecordPaymentInput } from "./billing/payments.js";
+export { findOrganisationByStripeCustomer, syncFromPaymentsEvent } from "./billing/webhook-sync.js";
+export type { SyncResult } from "./billing/webhook-sync.js";
+export {
+  requestInvoiceSend, sendApprovedInvoice, INVOICE_SEND_ACTION,
+  RequestInvoiceSendInput, SendApprovedInvoiceInput,
+} from "./billing/invoice-send.js";
 export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";
 export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";

@@ -1,4 +1,5 @@
 import type { InboundEmail } from "@launchos/channels";
+import type { PaymentsWebhookEvent } from "@launchos/integrations";
 
 export type DomainEvent =
   | { name: "incident.opened"; organisationId: string; incidentId: string }
@@ -20,7 +21,8 @@ export type DomainEvent =
       runId: string;
       decision: "approved" | "rejected";
       note?: string;
-    };
+    }
+  | { name: "payments.webhook"; organisationId: string; providerEvent: PaymentsWebhookEvent };
 
 export type EnqueueFn = (event: DomainEvent) => Promise<void>;
 let enqueue: EnqueueFn = async () => {}; // no-op until the worker or web sets one
