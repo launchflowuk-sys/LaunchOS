@@ -1,11 +1,18 @@
 "use server";
 
-import { assignTicket, escalateTicket, replyToConversation, updateTicket } from "@launchos/core";
+import {
+  assignTicket,
+  escalateTicket,
+  replyToConversation,
+  setTicketClientVisibility,
+  updateTicket,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 import {
@@ -15,6 +22,7 @@ import {
   NoteInput,
   StatusInput,
   TicketId,
+  VisibilityInput,
 } from "./schemas";
 import { hasTriageInFlight } from "./triage-status";
 
@@ -105,22 +113,48 @@ export async function escalateTicketAction(formData: FormData): Promise<ActionRe
 }
 
 /**
- * An internal note on the case thread. A human writing here is never an
- * outbound email — `replyToConversation` writes it `internal` and emits
- * nothing, so nothing leaves LaunchOS.
+ * Core's own strings name tables and internal helpers. Logged, and mapped to
+ * the one thing a staff member can act on.
+ */
+function composerError(error: unknown): ActionResult {
+  console.error("case composer failed", error);
+  const raw = error instanceof Error ? error.message : "";
+  if (raw.includes("visible to the client")) {
+    return { status: "error", message: "This case is internal. Share it with the client before replying." };
+  }
+  if (raw.includes("support email identity")) {
+    return { status: "error", message: "This client has no support address yet. Add one on their client screen, then try again." };
+  }
+  return { status: "error", message: "That message could not be posted. Please try again." };
+}
+
+/**
+ * The one composer on the case screen, in either of its two modes.
+ *
+ * `note` is internal and never leaves LaunchOS. `reply` reaches the client:
+ * `replyToConversation` emails it when the thread has a participant address
+ * and otherwise delivers it in the portal, which is what a portal-raised case
+ * has always needed and never had — the case screen used to offer only the
+ * note, so the client's own request could not be answered anywhere.
  *
  * The thread is read off the ticket rather than taken from the form: the
  * ticket id is the thing the operator actually chose, and two ids that can
- * disagree would let a stale form drop a note into another client's
+ * disagree would let a stale form drop a message into another client's
  * conversation with nothing in the case history to show for it.
  */
-export async function addCaseNote(formData: FormData): Promise<ActionResult> {
+export async function postCaseMessage(formData: FormData): Promise<ActionResult> {
   const session = await requireAdmin();
   const parsed = NoteInput.safeParse({
     ticketId: formData.get("ticketId"),
     body: formData.get("body"),
+    // An absent field is a note: the safe half of the switch.
+    mode: formData.get("mode") ?? undefined,
   });
   if (!parsed.success) return invalid(parsed.error);
+
+  // A client-facing reply on an email thread emits `message.queued`; without
+  // this the event is dropped and the reply never reaches a mail server.
+  installWebEnqueue();
 
   try {
     const [ticket] = await getDb()
@@ -140,10 +174,37 @@ export async function addCaseNote(formData: FormData): Promise<ActionResult> {
       body: parsed.data.body,
       actorKind: "user",
       actorId: session.userId,
-      internal: true,
+      internal: parsed.data.mode === "note",
+      portalUrl: env.APP_URL,
     });
     revalidateCase(parsed.data.ticketId);
     revalidatePath(`/inbox/${ticket.conversationId}`);
+    return { status: "ok" };
+  } catch (error) {
+    return composerError(error);
+  }
+}
+
+/**
+ * Shares an internal case with the client, or takes it back. Audited in core,
+ * and on the case history, because it changes who can read the thread.
+ */
+export async function setCaseVisibility(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = VisibilityInput.safeParse({
+    ticketId: formData.get("ticketId"),
+    clientVisible: formData.get("clientVisible"),
+  });
+  if (!parsed.success) return invalid(parsed.error);
+
+  try {
+    await setTicketClientVisibility(getDb(), session.organisationId, {
+      ticketId: parsed.data.ticketId,
+      clientVisible: parsed.data.clientVisible,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidateCase(parsed.data.ticketId);
     return { status: "ok" };
   } catch (error) {
     return failed(error);

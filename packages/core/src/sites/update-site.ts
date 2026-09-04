@@ -7,7 +7,15 @@ import { recordAudit } from "../audit/record-audit.js";
 export const UpdateSiteInput = z.object({
   siteId: z.string().uuid(),
   name: z.string().min(1).max(200).optional(),
-  primaryUrl: z.string().url().optional(),
+  // The same rule `createSite` applies, and for the same reason: `.url()` is
+  // `new URL()`, which happily accepts `javascript:` and `data:`, and the
+  // value is rendered as an href on the admin site screens. An update that
+  // could set what a create refuses is a hole, not an asymmetry.
+  primaryUrl: z
+    .string()
+    .url()
+    .refine((u) => /^https?:$/.test(new URL(u).protocol), "primaryUrl must be an http(s) URL")
+    .optional(),
   platform: z.enum(["wordpress", "static", "nextjs", "other"]).optional(),
   hostingProvider: z.enum(["coolify", "other"]).optional(),
   hostingRef: z.string().max(200).nullish(),

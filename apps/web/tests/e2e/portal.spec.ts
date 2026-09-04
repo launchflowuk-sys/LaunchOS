@@ -30,6 +30,7 @@ const OWN_TICKET_SUBJECT = `Seeded ticket ${STAMP}`;
 const OTHER_TICKET_SUBJECT = `Other client ticket ${STAMP}`;
 const INTERNAL_TICKET_SUBJECT = `Internal collections case ${STAMP}`;
 const INTERNAL_NOTE = `Internal staff note ${STAMP} — must never reach the portal`;
+const STAFF_ANSWER = `We have rerouted the form to the new address (${STAMP}).`;
 const NEW_TICKET_SUBJECT = `Portal raised ${STAMP}`;
 const NEW_TICKET_BODY = `The contact form stopped emailing us on ${STAMP}.`;
 const REPLY_BODY = `Thanks — it started on Tuesday (${STAMP}).`;
@@ -106,6 +107,16 @@ test.beforeAll(async () => {
     internal: true,
   });
 
+  // And a real answer to the client on the same portal thread. There is no
+  // participant email on a portal conversation, so this is delivered by the
+  // portal itself — the half of the loop that did not exist before.
+  await replyToConversation(db, organisationId, {
+    conversationId: own.conversation.id,
+    body: STAFF_ANSWER,
+    actorKind: "user",
+    actorId: "staff-e2e",
+  });
+
   // Raised by us, about them: the overdue sweep and the agents' `tickets_create`
   // both look like this. It is the client's own ticket by `client_id` and must
   // still never appear in their portal.
@@ -175,6 +186,11 @@ test.describe("client portal", () => {
     await page.getByRole("link", { name: OWN_TICKET_SUBJECT }).click();
     await expect(page.getByRole("heading", { name: OWN_TICKET_SUBJECT })).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByText(INTERNAL_NOTE)).toHaveCount(0);
+    // The staff answer does, which is the point of the thread existing.
+    await expect(page.getByText(STAFF_ANSWER)).toBeVisible();
+    // The courtesy email that tells them to sign in is a record of an email,
+    // not a message on the thread they are already reading.
+    await expect(page.getByText("Sign in to the portal to read it")).toHaveCount(0);
 
     // Raise a ticket from the portal.
     await page.getByRole("navigation").getByRole("link", { name: "Support" }).click();

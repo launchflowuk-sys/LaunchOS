@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { MockEmailAdapter, type EmailAdapter, type SendResult } from "@launchos/channels";
+import { createClient } from "../clients/create-client.js";
 import { ensureEmailIdentity } from "../email/ensure-email-identity.js";
+import { setEnqueue, type DomainEvent } from "../events/emit.js";
+import { createTicket } from "./create-ticket.js";
 import { ingestInboundEmail } from "./ingest-inbound-email.js";
-import { replyToConversation } from "./reply-to-conversation.js";
+import { PORTAL_REPLY_NOTICE_KIND, replyToConversation } from "./reply-to-conversation.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
 
 const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "LaunchFlow <support@launchflow.test>" };
@@ -30,6 +33,144 @@ async function seedThread(db: Db) {
   });
   return { organisationId: org!.id, identity, ingested };
 }
+
+/** Captures what `emit` would have put on the queue for the duration of a test. */
+async function withCapturedEvents<T>(run: (events: DomainEvent[]) => Promise<T>): Promise<T> {
+  const events: DomainEvent[] = [];
+  setEnqueue(async (event) => {
+    events.push(event);
+  });
+  try {
+    return await run(events);
+  } finally {
+    setEnqueue(async () => {});
+  }
+}
+
+/** A case the client raised in the portal: `portal` channel, no participant address. */
+async function seedPortalCase(db: Db, source: "portal" | "agent" = "portal") {
+  const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
+  const client = await createClient(db, org!.id, { name: "C" });
+  const created = await createTicket(db, org!.id, {
+    clientId: client!.id,
+    subject: "Contact form is down",
+    body: "Nothing arrives.",
+    severity: "medium",
+    source,
+    actorKind: source === "portal" ? "client" : "agent",
+    ...(source === "portal" ? { actorId: "portal-user-1" } : {}),
+  });
+  return { organisationId: org!.id, client, ...created };
+}
+
+describe("replyToConversation on a portal thread", () => {
+  it("delivers the reply in the portal and moves the case to waiting_client", async () => {
+    await withTestDb(async (db) => {
+      await withCapturedEvents(async (events) => {
+        const { organisationId, client, ticket, conversation } = await seedPortalCase(db);
+        events.length = 0;
+
+        const reply = await replyToConversation(db, organisationId, {
+          conversationId: conversation.id, body: "Fixed — the form was pointing at the old address.",
+          actorKind: "user", actorId: "u1",
+        });
+
+        // Outbound and already delivered: the portal is the channel, so there
+        // is nothing to queue and nothing to address.
+        expect(reply.direction).toBe("outbound");
+        expect(reply.status).toBe("sent");
+        expect(reply.deliveredAt).toBeInstanceOf(Date);
+        expect(reply.toEmail).toBeNull();
+        expect(reply.fromEmail).toBeNull();
+        expect(reply.subject).toBeNull();
+        // Nothing was handed to the mail worker.
+        expect(events).toEqual([]);
+
+        const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ticket.id));
+        expect(after!.status).toBe("waiting_client");
+        expect(after!.firstResponseAt).toBeInstanceOf(Date);
+
+        const moved = await db
+          .select()
+          .from(schema.ticketEvents)
+          .where(and(eq(schema.ticketEvents.ticketId, ticket.id), eq(schema.ticketEvents.kind, "status_changed")));
+        expect(moved[0]!.data).toMatchObject({ to: "waiting_client" });
+
+        const activity = await db
+          .select()
+          .from(schema.activityEvents)
+          .where(and(
+            eq(schema.activityEvents.clientId, client.id),
+            eq(schema.activityEvents.kind, "support.portal_reply_sent"),
+          ));
+        expect(activity).toHaveLength(1);
+
+        // No address on file and no identity, so no courtesy email — and the
+        // reply went through anyway, which is the whole point.
+        const outbound = await db
+          .select()
+          .from(schema.messages)
+          .where(and(
+            eq(schema.messages.conversationId, conversation.id),
+            eq(schema.messages.direction, "outbound"),
+          ));
+        expect(outbound).toHaveLength(1);
+      });
+    });
+  });
+
+  it("queues a courtesy email that carries no part of the reply", async () => {
+    await withTestDb(async (db) => {
+      await withCapturedEvents(async (events) => {
+        const { organisationId, client, conversation } = await seedPortalCase(db);
+        await ensureEmailIdentity(db, organisationId, { clientId: client.id }, ENV);
+        await db.update(schema.clients).set({ email: "jo@client.test" }).where(eq(schema.clients.id, client.id));
+        events.length = 0;
+
+        const secret = "Your admin password is hunter2.";
+        await replyToConversation(db, organisationId, {
+          conversationId: conversation.id, body: secret, actorKind: "user", actorId: "u1",
+          portalUrl: "https://os.launchflow.test",
+        });
+
+        const [notice] = await db
+          .select()
+          .from(schema.messages)
+          .where(and(
+            eq(schema.messages.conversationId, conversation.id),
+            eq(schema.messages.authorKind, "system"),
+          ));
+        expect(notice!.status).toBe("queued");
+        expect(notice!.toEmail).toBe("jo@client.test");
+        expect(notice!.metadata["kind"]).toBe(PORTAL_REPLY_NOTICE_KIND);
+        // The nudge, never the answer.
+        expect(notice!.body).not.toContain(secret);
+        expect(notice!.body).toContain("https://os.launchflow.test/portal/support/");
+
+        // Exactly one thing to send: the notice, not the reply.
+        expect(events).toEqual([{ name: "message.queued", organisationId, messageId: notice!.id }]);
+      });
+    });
+  });
+
+  it("refuses a client-facing reply on a case the client was never shown", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, conversation } = await seedPortalCase(db, "agent");
+
+      await expect(
+        replyToConversation(db, organisationId, {
+          conversationId: conversation.id, body: "Here is the update.", actorKind: "user", actorId: "u1",
+        }),
+      ).rejects.toThrow(/visible to the client/);
+
+      // An internal note on the same thread is still fine.
+      const note = await replyToConversation(db, organisationId, {
+        conversationId: conversation.id, body: "Chasing the invoice.", actorKind: "user", actorId: "u1", internal: true,
+      });
+      expect(note.direction).toBe("internal");
+    });
+  });
+});
 
 describe("replyToConversation + sendQueuedMessage", () => {
   it("queues an outbound reply, stamps first_response_at, then sends it via the adapter", async () => {

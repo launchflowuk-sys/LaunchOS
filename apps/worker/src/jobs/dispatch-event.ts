@@ -45,6 +45,15 @@ export async function dispatchEvent(deps: DispatchEventDeps, event: DomainEvent)
     await boss.send(QUEUE.agentRun, job, { singletonKey: `support-triage:${event.ticketId}` });
     return;
   }
+  if (event.name === "ticket.client_replied") {
+    // Routed nowhere on purpose. A client reply already reopens the case,
+    // records the activity and notifies the assignee inside `replyAsClient`;
+    // what it must NOT do is start a second Support Triage run over a ticket
+    // that may already hold a triage result and a decided approval, which is
+    // exactly what routing it to `agent.run` would do. Named and handled here
+    // so the next person sees the decision rather than the fall-through log.
+    return;
+  }
   if (event.name === "email.received") {
     const job: InboundMessageJob = { organisationId: event.organisationId, inbound: event.inbound };
     // The provider's Message-ID is the natural dedupe key for a redelivery.

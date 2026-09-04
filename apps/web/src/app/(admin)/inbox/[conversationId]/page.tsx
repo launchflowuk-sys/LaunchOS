@@ -61,6 +61,10 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[co
     )
     .orderBy(asc(schema.messages.createdAt));
 
+  // The same line core draws: an email thread is delivered by mail (and throws
+  // if it has no address), anything else is delivered by the portal.
+  const emailThread = conversation.channel === "email";
+
   return (
     <>
       <PageHeader
@@ -84,13 +88,22 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[co
       <div className="space-y-4">
         <MessageThread messages={messages} />
 
+        {/* Labelled by how it is actually delivered. The same action serves
+            both: `replyToConversation` emails a thread that has an address and
+            posts one that has not straight into the client's portal. */}
         <ThreadComposer
           action={sendThreadReply}
           conversationId={conversation.id}
-          label="Reply"
+          label={emailThread ? "Reply by email" : "Reply in the portal"}
           submitLabel="Send reply"
-          placeholder="Your reply to the client"
-          success="Reply queued"
+          placeholder={
+            emailThread
+              ? conversation.participantEmail
+                ? `Emailed to ${conversation.participantEmail}`
+                : "This thread has no email address — answer it on the case instead"
+              : "Appears in the client's portal straight away"
+          }
+          success={emailThread ? "Reply queued" : "Reply posted"}
         />
 
         <ThreadComposer

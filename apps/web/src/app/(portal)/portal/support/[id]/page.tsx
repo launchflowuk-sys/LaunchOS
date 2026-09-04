@@ -14,6 +14,15 @@ import { replyToPortalThread } from "../actions";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * `messages.metadata.kind` on the courtesy notice queued by
+ * `replyToConversation` — see `PORTAL_REPLY_NOTICE_KIND` in
+ * packages/core/src/support/reply-to-conversation.ts. Copied rather than
+ * imported: `@launchos/core` in a portal page would pull the whole domain
+ * layer into this route.
+ */
+const REPLY_NOTICE_KIND = "portal_reply_notice";
+
 export default async function PortalTicketPage({ params }: PageProps<"/portal/support/[id]">) {
   const session = await requireClient();
   const { id } = await params;
@@ -57,6 +66,7 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
           authorKind: schema.messages.authorKind,
           body: schema.messages.body,
           createdAt: schema.messages.createdAt,
+          metadata: schema.messages.metadata,
         })
         .from(schema.messages)
         .where(
@@ -68,7 +78,13 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
         .orderBy(asc(schema.messages.createdAt))
     : [];
 
-  const visible = messages.filter(isVisibleToClient);
+  // `isVisibleToClient` stays a single clause on `direction` — widening it is
+  // how the internal-note hole gets reopened. This is a second, narrower
+  // filter for one thing: the courtesy email that tells a client a reply is
+  // waiting is an `outbound` message like any other, and rendering it here
+  // would put "sign in to read it" directly under the reply they are already
+  // reading. It is the record of an email, not part of the conversation.
+  const visible = messages.filter((m) => isVisibleToClient(m) && m.metadata["kind"] !== REPLY_NOTICE_KIND);
 
   return (
     <>

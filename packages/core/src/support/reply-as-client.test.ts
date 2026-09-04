@@ -66,7 +66,7 @@ describe("replyAsClient", () => {
     });
   });
 
-  it("reopens a resolved ticket, records the status change and re-emits ticket.created", async () => {
+  it("reopens a resolved ticket, records the status change and emits ticket.client_replied", async () => {
     await withTestDb(async (db) => {
       await withCapturedEvents(async (events) => {
         const { organisationId, ticket, conversation } = await seedCase(db);
@@ -88,12 +88,14 @@ describe("replyAsClient", () => {
         const reopen = changes.find((e) => e.actorKind === "client");
         expect(reopen?.data).toMatchObject({ from: "resolved", to: "open" });
 
-        expect(events).toEqual([{ name: "ticket.created", organisationId, ticketId: ticket.id }]);
+        // Not `ticket.created`: this ticket already has a history, and that
+        // event would start a second Support Triage run over it.
+        expect(events).toEqual([{ name: "ticket.client_replied", organisationId, ticketId: ticket.id }]);
       });
     });
   });
 
-  it("clears waiting_client without re-emitting, and leaves an open ticket alone", async () => {
+  it("clears waiting_client and leaves an open ticket alone, emitting client_replied either way", async () => {
     await withTestDb(async (db) => {
       await withCapturedEvents(async (events) => {
         const { organisationId, ticket, conversation } = await seedCase(db);
@@ -106,15 +108,17 @@ describe("replyAsClient", () => {
 
         const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ticket.id));
         expect(after!.status).toBe("open");
-        // The case was never closed, so Support Triage is not woken again.
-        expect(events).toEqual([]);
+        // The fact is "the client replied", whether or not it revived the case.
+        // Nothing routes it to an agent — see apps/worker/src/jobs/dispatch-event.ts.
+        expect(events).toEqual([{ name: "ticket.client_replied", organisationId, ticketId: ticket.id }]);
 
         await replyAsClient(db, organisationId, {
           conversationId: conversation.id, body: "One more thing.", actorId: "portal-user-1",
         });
         const [stillOpen] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ticket.id));
         expect(stillOpen!.status).toBe("open");
-        expect(events).toEqual([]);
+        expect(events).toHaveLength(2);
+        expect(events.every((e) => e.name === "ticket.client_replied")).toBe(true);
       });
     });
   });
@@ -166,6 +170,39 @@ describe("replyAsClient", () => {
         .from(schema.activityEvents)
         .where(and(eq(schema.activityEvents.clientId, client.id), eq(schema.activityEvents.kind, "support.portal_reply")));
       expect(activity).toHaveLength(1);
+    });
+  });
+
+  it("refuses a case the client was never shown, writing nothing", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, client } = await seedCase(db);
+      // A case the agency raised about the client: `client_visible` is false,
+      // and the portal never lists it.
+      const internal = await createTicket(db, organisationId, {
+        clientId: client.id, subject: "Overdue invoice chase", body: "Chasing INV-1.",
+        severity: "low", source: "agent", actorKind: "agent",
+      });
+      expect(internal.ticket.clientVisible).toBe(false);
+
+      await expect(
+        replyAsClient(db, organisationId, {
+          conversationId: internal.conversation.id, body: "Who are you?", actorId: "portal-user-1",
+          clientId: client.id,
+        }),
+      ).rejects.toThrow(/not visible to the client/);
+
+      // The guard is the boundary, not a message that got written and then
+      // apologised for: nothing landed and the case did not move.
+      const messages = await db
+        .select()
+        .from(schema.messages)
+        .where(and(
+          eq(schema.messages.conversationId, internal.conversation.id),
+          eq(schema.messages.direction, "inbound"),
+        ));
+      expect(messages).toHaveLength(0);
+      const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, internal.ticket.id));
+      expect(after!.status).toBe("open");
     });
   });
 

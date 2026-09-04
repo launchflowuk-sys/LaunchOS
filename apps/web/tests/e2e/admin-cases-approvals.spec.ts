@@ -12,6 +12,9 @@ const COLD_COMPILE = 60_000;
 const db = createDb(DATABASE_URL);
 const stamp = Date.now();
 const subject = `E2E contact form down ${stamp}`;
+const portalSubject = `E2E portal request ${stamp}`;
+const internalSubject = `E2E internal renewal ${stamp}`;
+const portalAnswer = `We have updated the signature template. ${stamp}`;
 const note = `Checked the SMTP logs at ${stamp}`;
 const toolUseId = `toolu_e2e_${stamp}`;
 const approvalTitle = `E2E reply to client ${stamp}`;
@@ -22,6 +25,10 @@ let ownerUserId = "";
 let ownerName = "";
 let ticketId = "";
 let conversationId = "";
+// A case the client raised in the portal, and one the agency raised about
+// them: the two halves of `tickets.client_visible`.
+let portalTicketId = "";
+let internalTicketId = "";
 let runId = "";
 let approvalId = "";
 
@@ -57,6 +64,28 @@ test.beforeAll(async () => {
   });
   ticketId = created.ticket.id;
   conversationId = created.conversation.id;
+
+  const portal = await createTicket(db, organisationId, {
+    clientId: client.id,
+    subject: portalSubject,
+    body: "My email signature is showing the old logo.",
+    severity: "low",
+    source: "portal",
+    actorKind: "client",
+    actorId: "e2e-portal-user",
+  });
+  portalTicketId = portal.ticket.id;
+
+  const internal = await createTicket(db, organisationId, {
+    clientId: client.id,
+    subject: internalSubject,
+    body: "Chasing the renewal before it lapses.",
+    severity: "low",
+    source: "manual",
+    actorKind: "user",
+    actorId: ownerUserId,
+  });
+  internalTicketId = internal.ticket.id;
 
   // A parked approval, shaped exactly as the policy gate parks one: the
   // resume kernel matches `payload.toolUseId` against `metadata.pending`.
@@ -112,8 +141,16 @@ test.afterAll(async () => {
   if (runId) await db.delete(schema.agentRuns).where(eq(schema.agentRuns.id, runId));
   // tickets first: ticket_events cascade from the ticket, messages from the
   // conversation, and tickets.conversation_id points at the conversation.
-  if (ticketId) await db.delete(schema.tickets).where(eq(schema.tickets.id, ticketId));
-  if (conversationId) await db.delete(schema.conversations).where(eq(schema.conversations.id, conversationId));
+  for (const id of [ticketId, portalTicketId, internalTicketId].filter(Boolean)) {
+    const [row] = await db
+      .select({ conversationId: schema.tickets.conversationId })
+      .from(schema.tickets)
+      .where(eq(schema.tickets.id, id));
+    await db.delete(schema.tickets).where(eq(schema.tickets.id, id));
+    if (row?.conversationId) {
+      await db.delete(schema.conversations).where(eq(schema.conversations.id, row.conversationId));
+    }
+  }
 });
 
 test("open cases: list, thread, internal note, assign and status", async ({ page }) => {
@@ -137,9 +174,10 @@ test("open cases: list, thread, internal note, assign and status", async ({ page
   await expect(page.getByText("Not triaged yet.")).toBeVisible();
 
   // An internal note never leaves LaunchOS, and lands on the thread labelled.
-  const noteForm = page.getByRole("form", { name: "Internal note" });
-  await noteForm.locator('textarea[name="body"]').fill(note);
-  await noteForm.getByRole("button", { name: "Add internal note" }).click();
+  const composer = page.getByRole("form", { name: "Case message" });
+  await composer.getByLabel("Message type").selectOption("note");
+  await composer.locator('textarea[name="body"]').fill(note);
+  await composer.getByRole("button", { name: "Post message" }).click();
   await expect(page.getByText(note)).toBeVisible({ timeout: 30_000 });
 
   // Assign to the owner.
@@ -161,6 +199,57 @@ test("open cases: list, thread, internal note, assign and status", async ({ page
   await expect(row).toContainText("in progress");
 });
 
+test("a portal case can be answered from the case screen", async ({ page }) => {
+  test.setTimeout(300_000);
+  await signIn(page);
+
+  await page.goto(`/cases/${portalTicketId}`);
+  await expect(page.getByRole("heading", { level: 1, name: portalSubject })).toBeVisible({ timeout: COLD_COMPILE });
+  // The client raised it, so the header says they can read it and the
+  // composer opens on "reply" rather than on a note.
+  await expect(page.getByRole("group", { name: "Case status" })).toContainText("Visible to the client");
+
+  const composer = page.getByRole("form", { name: "Case message" });
+  await expect(composer.getByLabel("Message type")).toHaveValue("reply");
+  await composer.locator('textarea[name="body"]').fill(portalAnswer);
+  await composer.getByRole("button", { name: "Post message" }).click();
+
+  // On the thread, and not as an internal note.
+  await expect(page.getByText(portalAnswer)).toBeVisible({ timeout: 30_000 });
+  // Answering moves the case to the client's court.
+  await expect(page.getByRole("group", { name: "Case status" })).toContainText("waiting client", { timeout: 30_000 });
+
+  const [message] = await db
+    .select()
+    .from(schema.messages)
+    .where(eq(schema.messages.body, portalAnswer));
+  expect(message!.direction).toBe("outbound");
+  // The portal is the delivery channel: nothing was queued for a mail server.
+  expect(message!.status).toBe("sent");
+  expect(message!.toEmail).toBeNull();
+});
+
+test("an internal case must be shared before it can be answered", async ({ page }) => {
+  test.setTimeout(300_000);
+  await signIn(page);
+
+  await page.goto(`/cases/${internalTicketId}`);
+  await expect(page.getByRole("heading", { level: 1, name: internalSubject })).toBeVisible({ timeout: COLD_COMPILE });
+  await expect(page.getByRole("group", { name: "Case status" })).toContainText("Internal");
+
+  // Nothing to reply to yet: the only thing on offer is a note.
+  const composer = page.getByRole("form", { name: "Case message" });
+  await expect(composer.getByLabel("Message type")).toHaveValue("note");
+  await expect(composer.getByRole("option", { name: "Reply to the client" })).toHaveCount(0);
+
+  await page.getByRole("form", { name: "Client visibility" }).getByRole("button", { name: "Share with the client" }).click();
+  await expect(page.getByRole("group", { name: "Case status" })).toContainText("Visible to the client", { timeout: 30_000 });
+  await expect(composer.getByRole("option", { name: "Reply to the client" })).toHaveCount(1);
+
+  const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, internalTicketId));
+  expect(after!.clientVisible).toBe(true);
+});
+
 test("inbox lists the conversation and opens the thread", async ({ page }) => {
   test.setTimeout(300_000);
   await signIn(page);
@@ -170,10 +259,16 @@ test("inbox lists the conversation and opens the thread", async ({ page }) => {
 
   await page.getByRole("link", { name: subject }).click();
   await expect(page.getByRole("heading", { level: 1, name: subject })).toBeVisible({ timeout: COLD_COMPILE });
-  await expect(page.getByRole("form", { name: "Reply" })).toBeVisible();
+  // This thread came in by email, so the composer says so rather than
+  // promising a portal delivery it will not make.
+  await expect(page.getByRole("form", { name: "Reply by email" })).toBeVisible();
   await expect(page.getByRole("form", { name: "Internal note" })).toBeVisible();
-  // The thread links back to the case the conversation opened.
-  await expect(page.getByRole("link", { name: "Open case" })).toHaveAttribute("href", `/cases/${ticketId}`);
+  // The thread links back to the case the conversation opened. `exact`
+  // because the sidebar's "Open Cases" is a substring match otherwise.
+  await expect(page.getByRole("link", { name: "Open case", exact: true })).toHaveAttribute(
+    "href",
+    `/cases/${ticketId}`,
+  );
 });
 
 test("approving a parked tool call queues the agent resume", async ({ page }) => {

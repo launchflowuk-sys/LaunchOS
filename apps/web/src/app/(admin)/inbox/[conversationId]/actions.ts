@@ -3,9 +3,29 @@
 import { replyToConversation } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { installWebEnqueue } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 import { type ActionResult, ReplyInput } from "./schemas";
+
+/**
+ * Core's own strings name tables, ids and internal helpers; they belong in the
+ * server log, not in a toast. These are the two a staff member can act on.
+ */
+function replyError(error: unknown): ActionResult {
+  console.error("inbox reply failed", error);
+  const raw = error instanceof Error ? error.message : "";
+  if (raw.includes("participant email")) {
+    return { status: "error", message: "This thread has no email address to reply to. Answer it on the case instead." };
+  }
+  if (raw.includes("support email identity")) {
+    return { status: "error", message: "This client has no support address yet. Add one on their client screen, then try again." };
+  }
+  if (raw.includes("visible to the client")) {
+    return { status: "error", message: "This case is internal. Share it with the client on the case screen before replying." };
+  }
+  return { status: "error", message: "That reply could not be sent. Please try again." };
+}
 
 /**
  * A staff member sending from the Inbox is a human action, so it does not go
@@ -35,12 +55,13 @@ async function reply(formData: FormData, internal: boolean): Promise<ActionResul
       actorKind: "user",
       actorId: session.userId,
       internal,
+      portalUrl: env.APP_URL,
     });
     revalidatePath(`/inbox/${parsed.data.conversationId}`);
     revalidatePath("/inbox");
     return { status: "ok" };
   } catch (error) {
-    return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
+    return replyError(error);
   }
 }
 

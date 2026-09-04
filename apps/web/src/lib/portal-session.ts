@@ -68,11 +68,19 @@ export const getClientSession = cache(async (): Promise<ClientSession | null> =>
  * organisation that has been switched off. The distinction is worth one extra
  * query on the failure path: otherwise somebody whose access was removed keeps
  * retrying a password that was never the problem.
+ *
+ * Rule 1 asks every query to be organisation-scoped, and this one resolves the
+ * row through its `organisations` row rather than dangling on `user_id` alone.
+ * What it deliberately does not do is filter on any *status*: a switched-off
+ * organisation is one of the three revocations this exists to detect, so
+ * narrowing it the way `getClientSession` narrows would make the function
+ * always answer false for the very case it was written for.
  */
-async function hasRevokedPortalAccess(userId: string): Promise<boolean> {
+export async function hasRevokedPortalAccess(userId: string): Promise<boolean> {
   const [row] = await getDb()
-    .select({ id: schema.clientUsers.id })
+    .select({ organisationId: schema.clientUsers.organisationId })
     .from(schema.clientUsers)
+    .innerJoin(schema.organisations, eq(schema.clientUsers.organisationId, schema.organisations.id))
     .where(eq(schema.clientUsers.userId, userId))
     .limit(1);
   return !!row;

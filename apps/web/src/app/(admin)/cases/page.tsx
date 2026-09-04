@@ -60,6 +60,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
         severity: schema.tickets.severity,
         status: schema.tickets.status,
         slaDueAt: schema.tickets.slaDueAt,
+        clientVisible: schema.tickets.clientVisible,
         resolvedAt: schema.tickets.resolvedAt,
         createdAt: schema.tickets.createdAt,
         clientName: schema.clients.name,
@@ -173,8 +174,12 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
                     <TableCell>
                       <StatusBadge value={row.severity} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="whitespace-nowrap">
                       <StatusBadge value={row.status} />
+                      {/* Only the exception is called out: most cases the list
+                          shows are the client's own, and a badge on every row
+                          would say nothing. */}
+                      {row.clientVisible ? null : <StatusBadge value="Internal" tone="neutral" />}
                     </TableCell>
                     <TableCell className="text-neutral-600">{row.assigneeName ?? "Unassigned"}</TableCell>
                     <TableCell

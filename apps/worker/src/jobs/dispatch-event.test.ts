@@ -68,6 +68,25 @@ describe("dispatchEvent", () => {
     });
   });
 
+  it("starts no job for ticket.client_replied, so a reopen does not re-run triage", async () => {
+    await withTestDb(async (db) => {
+      const boss = fakeBoss();
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${randomUUID()}` }).returning();
+      const client = await createClient(db, org!.id, { name: "C" });
+      const { ticket } = await createTicket(db, org!.id, {
+        clientId: client.id, subject: "Help", body: "Broken", source: "portal", severity: "medium",
+        actorKind: "client", actorId: "portal-user-1",
+      });
+
+      await dispatchEvent({ db, boss }, { name: "ticket.client_replied", organisationId: org!.id, ticketId: ticket.id });
+
+      // The point of the event existing at all: `ticket.created` here would
+      // pay for a second Claude run over a ticket that may already carry a
+      // triage result and a decided approval.
+      expect(boss.send).not.toHaveBeenCalled();
+    });
+  });
+
   it("routes email.received to inbound.message keyed by the provider Message-ID", async () => {
     await withTestDb(async (db) => {
       const boss = fakeBoss();

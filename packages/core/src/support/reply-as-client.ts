@@ -7,6 +7,7 @@ import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
 import { notify, notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
+import { shortSubject } from "./subject.js";
 
 export const ReplyAsClientInput = z.object({
   conversationId: z.string().uuid(),
@@ -21,16 +22,6 @@ export const ReplyAsClientInput = z.object({
   clientId: z.string().uuid().optional(),
 });
 export type ReplyAsClientInput = z.input<typeof ReplyAsClientInput>;
-
-/**
- * `activity_events.title` and `notifications.title` are both capped at 200, and
- * a subject is allowed 200 of its own — so a long one would throw at the Zod
- * boundary and roll back the whole reply. Trim rather than lose the message.
- */
-const TITLE_SUBJECT_LIMIT = 120;
-function shortSubject(subject: string): string {
-  return subject.length <= TITLE_SUBJECT_LIMIT ? subject : `${subject.slice(0, TITLE_SUBJECT_LIMIT - 1)}…`;
-}
 
 /** A reply lands on a live thread; these two mean the case had been put to bed. */
 const CLOSED_TICKET_STATUSES: readonly string[] = ["resolved", "closed"];
@@ -70,6 +61,23 @@ export async function replyAsClient(db: Db, organisationId: string, input: Reply
     const tx = txRaw as unknown as Db;
     const now = new Date();
 
+    const [ticket] = conversation.ticketId
+      ? await tx
+          .select()
+          .from(schema.tickets)
+          .where(and(eq(schema.tickets.id, conversation.ticketId), eq(schema.tickets.organisationId, organisationId)))
+      : [];
+
+    // The boundary itself, not a repeat of the caller's. `replyAsClient` is
+    // exported from `@launchos/core`, so a second portal surface, an agent
+    // tool or a digest link that forgets the ticket lookup must still not be
+    // able to put a client's words on an internal case — nor reopen one and
+    // notify its assignee about work the client was never shown. Nothing has
+    // been written at this point, so throwing here leaves no trace.
+    if (ticket && !ticket.clientVisible) {
+      throw new Error(`ticket ${ticket.id} is not visible to the client`);
+    }
+
     const [message] = await tx
       .insert(schema.messages)
       .values({
@@ -88,13 +96,6 @@ export async function replyAsClient(db: Db, organisationId: string, input: Reply
       .update(schema.conversations)
       .set({ lastMessageAt: now, status: "open", updatedAt: now })
       .where(eq(schema.conversations.id, conversation.id));
-
-    const [ticket] = conversation.ticketId
-      ? await tx
-          .select()
-          .from(schema.tickets)
-          .where(and(eq(schema.tickets.id, conversation.ticketId), eq(schema.tickets.organisationId, organisationId)))
-      : [];
 
     let reopened = false;
     if (ticket && REOPENED_FROM.includes(ticket.status)) {
@@ -137,11 +138,17 @@ export async function replyAsClient(db: Db, organisationId: string, input: Reply
   // After commit: nobody is told about an id the transaction rolled back.
   await notifyCaseOwner(db, organisationId, conversation.subject, result.ticket, conversation.id);
 
-  // A ticket that had been resolved or closed is, to the agency, a new piece of
-  // work — which is exactly when the email path opens a ticket and emits this.
-  // Support Triage reruns on the revived case rather than nobody noticing it.
-  if (result.reopened && result.ticket && CLOSED_TICKET_STATUSES.includes(result.ticket.status)) {
-    await emit({ name: "ticket.created", organisationId, ticketId: result.ticket.id });
+  // Its own event, not `ticket.created`. The email path emits that for a
+  // ticket made milliseconds earlier with no triage, no history and no
+  // approvals; this id may already carry a triage result, an assignee and a
+  // decided client reply, and `support-triage:<ticketId>` only dedupes jobs
+  // still queued or active — so re-emitting `ticket.created` on a reopen would
+  // pay for a second Claude run and park a duplicate approval on a case a
+  // human had already closed out. The payload is not a new ticket, so it is
+  // not that event. `reopened` is not part of it: the client replying is the
+  // fact, and whether it revived the case is on the ticket row itself.
+  if (result.ticket) {
+    await emit({ name: "ticket.client_replied", organisationId, ticketId: result.ticket.id });
   }
 
   return result;
