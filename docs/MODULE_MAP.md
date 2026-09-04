@@ -10,7 +10,10 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 | `/clients`, `/clients/[id]` | Clients | 2 | clients, contacts, billing profile, sites, domains, activity events | create/update/archive client, contacts, billing profile, sites, domains |
 | `/websites`, `/websites/[id]` | Websites | 2 | sites, domains, monitors, incidents | — (a site is created on the client page) |
 | `/domains`, `/domains/[id]` | Domains | 2 | domains, dns records, sites | attach/detach a domain to a site, edit domain, dns record CRUD (a domain is created on the client page) |
-| `/tasks` | Tasks | 3 | — | — |
+| `/tasks`, `/tasks/[id]` | Tasks | 3 | tasks, clients, members, comments | create, status, assign, comment, checklist, visibility |
+| `/clients/[id]/tasks` | Client tasks tab | 3 | tasks for one client, phase progress | status, visibility, regenerate onboarding |
+| `/settings/packages` | Packages | 3 | packages | create, edit, archive |
+| `/settings/task-templates` | Task templates | 3 | task_templates, packages | create, edit, reorder, delete |
 | `/inbox` | Inbox | 4 | — | — |
 | `/tickets` | Open Cases | 1 (list), 4 (full) | tickets | — |
 | `/incidents`, `/incidents/[id]` | Incidents | 1 | incidents, checks, agent run | acknowledge, resolve |

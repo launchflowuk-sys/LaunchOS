@@ -140,4 +140,17 @@ describe("generateRecurringTasks", () => {
       expect(await listTasks(db, organisationId, { clientId: clientB!.id, phase: "recurring" })).toHaveLength(1);
     });
   });
+
+  it("creates the seeded monthly mix for a Website + SEO + Social client", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId } = await seedOrgWithClient(db); // package includes 4 social, 1 blog, 2 GBP
+      await createTaskTemplate(db, organisationId, { phase: "recurring", kind: "social", title: "Social post", recurrence: "monthly" });
+      await createTaskTemplate(db, organisationId, { phase: "recurring", kind: "content", title: "Blog post", recurrence: "monthly" });
+      await createTaskTemplate(db, organisationId, { phase: "recurring", kind: "gbp", title: "Google Business Profile update", recurrence: "monthly" });
+      expect(await generateRecurringTasks(db, organisationId, { now: NOW })).toEqual({ created: 7, skipped: 0 });
+      expect(await generateRecurringTasks(db, organisationId, { now: NOW })).toEqual({ created: 0, skipped: 7 });
+      expect(await listTasks(db, organisationId, { clientId, kind: "social" })).toHaveLength(4);
+      expect(await listTasks(db, organisationId, { clientId, kind: "gbp" })).toHaveLength(2);
+    });
+  });
 });

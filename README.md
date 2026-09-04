@@ -4,7 +4,9 @@ Agency operating system for LaunchFlow: hosting, web design and ad management, w
 
 ## Status
 
-**Plans 1 and 2 are implemented** on branch `build/agency-os`: the foundation plus the first vertical slice (the Hosting Guard-Dog), then the client system.
+**Plans 1, 2 and 3 are implemented** on branch `build/agency-os`: the foundation plus the first vertical slice (the Hosting Guard-Dog), the client system, then the task engine.
+
+**Plan 3 is implemented**: packages and task templates, automatic onboarding task generation on client creation, daily recurring service generation from package quantities, overdue chasing, a Tasks list and board, per-client task progress and Settings screens for the catalogue.
 
 Working today:
 

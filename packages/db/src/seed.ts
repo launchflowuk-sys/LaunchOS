@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { hashPassword } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { createDb } from "./client.js";
 import * as schema from "./schema/index.js";
 
@@ -58,6 +58,49 @@ const SEED_CLIENTS = [
   },
 ] as const;
 
+const SEED_PACKAGES = [
+  {
+    slug: "website-care", name: "Website Care",
+    description: "Hosting, maintenance and monthly content for a brochure site.",
+    monthlyPricePence: 9900, setupPricePence: 49900,
+    includes: { website: true, seo: false, ads: false, socialPostsPerMonth: 0, blogPostsPerMonth: 1, gbpUpdatesPerMonth: 2 },
+  },
+  {
+    slug: "website-seo-social", name: "Website + SEO + Social",
+    description: "Everything in Website Care plus SEO and four social posts a month.",
+    monthlyPricePence: 29900, setupPricePence: 79900,
+    includes: { website: true, seo: true, ads: false, socialPostsPerMonth: 4, blogPostsPerMonth: 1, gbpUpdatesPerMonth: 2 },
+  },
+] as const;
+
+// Zero to handover, in the order Shoji actually works it. All global: every
+// package starts the same way.
+const ONBOARDING_TEMPLATES = [
+  { title: "Discovery call", kind: "other", offsetDays: 1, sortOrder: 10, defaultAssigneeRole: "owner", checklist: ["Goals", "Competitors", "Deadline"] },
+  { title: "Content collection", kind: "content", offsetDays: 3, sortOrder: 20, defaultAssigneeRole: "any", checklist: ["Logo", "Photos", "Copy", "Opening hours"] },
+  { title: "Design approval", kind: "review", offsetDays: 7, sortOrder: 30, defaultAssigneeRole: "owner", checklist: [] },
+  { title: "Build website", kind: "build", offsetDays: 14, sortOrder: 40, defaultAssigneeRole: "any", checklist: ["Home", "Services", "Contact form", "Mobile check"] },
+  { title: "DNS and hosting setup", kind: "dns", offsetDays: 16, sortOrder: 50, defaultAssigneeRole: "owner", checklist: ["Nameservers", "SSL", "Coolify resource"] },
+  { title: "Deploy to production", kind: "deploy", offsetDays: 18, sortOrder: 60, defaultAssigneeRole: "any", checklist: ["Deploy", "Uptime monitor", "Backups"] },
+  { title: "SEO setup", kind: "seo", offsetDays: 20, sortOrder: 70, defaultAssigneeRole: "any", checklist: ["Titles and descriptions", "Sitemap", "Search Console"] },
+  { title: "Google Business Profile setup", kind: "gbp", offsetDays: 21, sortOrder: 80, defaultAssigneeRole: "any", checklist: ["Claim listing", "Categories", "Photos"] },
+  { title: "Review request", kind: "review", offsetDays: 25, sortOrder: 90, defaultAssigneeRole: "any", checklist: [] },
+  { title: "Handover", kind: "handover", offsetDays: 28, sortOrder: 100, defaultAssigneeRole: "owner", checklist: ["Walkthrough call", "Logins handed over", "Support address shared"] },
+] as const;
+
+// Quantities come from the package's `includes`, not from these rows.
+const RECURRING_TEMPLATES = [
+  { title: "Social post", kind: "social", recurrence: "monthly", sortOrder: 10, packageSlug: "website-seo-social", checklist: ["Draft", "Image", "Schedule"] },
+  { title: "Blog post", kind: "content", recurrence: "monthly", sortOrder: 20, packageSlug: null, checklist: ["Outline", "Draft", "Publish"] },
+  { title: "Google Business Profile update", kind: "gbp", recurrence: "monthly", sortOrder: 30, packageSlug: null, checklist: [] },
+  { title: "SEO audit", kind: "seo", recurrence: "quarterly", sortOrder: 40, packageSlug: "website-seo-social", checklist: ["Rankings", "Broken links", "Page speed"] },
+] as const;
+
+const CLIENT_PACKAGES: Record<string, string> = {
+  "Grays CabLine": "website-seo-social",
+  "Mobile PC Doctor": "website-care",
+};
+
 function loadRootEnv() {
   if (process.env.DATABASE_URL) return;
   for (const path of ["../../.env", "../.env", ".env"]) {
@@ -88,12 +131,16 @@ async function main() {
     const membership = await seedMembership(db, organisation.id, user.id);
     const enablement = await seedAgentEnablement(db, organisation.id);
     const staff = await seedStaffMember(db, organisation.id);
+    const packagesBySlug = await seedPackages(db, organisation.id);
+    const templateCount = await seedTaskTemplates(db, organisation.id, packagesBySlug);
 
     console.log("organisation  ", organisation.id, organisation.slug);
     console.log("owner user    ", user.id, user.email);
     console.log("membership    ", membership.id, membership.role);
     console.log("staff member  ", staff.id, `${STAFF.email} ${staff.role}/${staff.status}`);
     console.log("agent         ", enablement.id, `${enablement.agentKey} enabled=${enablement.enabled}`);
+    console.log("packages      ", [...packagesBySlug.keys()].join(", "));
+    console.log("templates     ", `${templateCount} created`);
 
     for (const spec of SEED_CLIENTS) {
       const client = await seedClient(db, organisation.id, spec);
@@ -103,12 +150,16 @@ async function main() {
       await seedContacts(db, organisation.id, client.id, spec.contacts);
       await seedDomains(db, organisation.id, client.id, site.id, spec.domains);
       await seedActivity(db, organisation.id, client.id, spec.name, site.id);
+      const withPackage = await assignPackage(db, organisation.id, client, packagesBySlug.get(CLIENT_PACKAGES[spec.name]!)!.id);
+      const taskCount = await seedOnboardingTasks(db, organisation.id, withPackage.id, withPackage.createdAt, user.id);
       console.log("client        ", client.id, client.name);
       console.log("  site        ", site.id, site.primaryUrl);
       console.log("  monitor     ", monitor.id, `${monitor.target} every ${monitor.intervalSeconds}s`);
       console.log("  billing     ", billing.id, `terms ${billing.paymentTermsDays} days`);
       console.log("  contacts    ", spec.contacts.length);
       console.log("  domains     ", spec.domains.length, spec.domains.join(", "));
+      console.log("  package     ", withPackage.packageId);
+      console.log("  tasks       ", `${taskCount} onboarding tasks created`);
     }
   } finally {
     await db.$client.end();
@@ -116,6 +167,88 @@ async function main() {
 }
 
 type Db = ReturnType<typeof createDb>;
+
+async function seedPackages(db: Db, organisationId: string) {
+  const bySlug = new Map<string, typeof schema.packages.$inferSelect>();
+  for (const spec of SEED_PACKAGES) {
+    const [existing] = await db.select().from(schema.packages)
+      .where(and(eq(schema.packages.organisationId, organisationId), eq(schema.packages.slug, spec.slug)));
+    if (existing) { bySlug.set(spec.slug, existing); continue; }
+    const [created] = await db.insert(schema.packages).values({ organisationId, ...spec }).returning();
+    bySlug.set(spec.slug, created!);
+  }
+  return bySlug;
+}
+
+async function seedTaskTemplates(db: Db, organisationId: string, packagesBySlug: Map<string, typeof schema.packages.$inferSelect>) {
+  const rows = [
+    ...ONBOARDING_TEMPLATES.map((t) => ({ ...t, phase: "onboarding" as const, recurrence: "none" as const, packageId: null })),
+    ...RECURRING_TEMPLATES.map((t) => ({
+      title: t.title, kind: t.kind, sortOrder: t.sortOrder, checklist: t.checklist,
+      phase: "recurring" as const, recurrence: t.recurrence, offsetDays: 0,
+      defaultAssigneeRole: "any" as const,
+      packageId: t.packageSlug ? packagesBySlug.get(t.packageSlug)!.id : null,
+    })),
+  ];
+
+  let created = 0;
+  for (const row of rows) {
+    const [existing] = await db.select().from(schema.taskTemplates).where(and(
+      eq(schema.taskTemplates.organisationId, organisationId),
+      eq(schema.taskTemplates.phase, row.phase),
+      eq(schema.taskTemplates.title, row.title),
+    ));
+    if (existing) continue;
+    await db.insert(schema.taskTemplates).values({
+      organisationId, packageId: row.packageId, phase: row.phase, kind: row.kind, title: row.title,
+      offsetDays: row.offsetDays ?? 0, recurrence: row.recurrence,
+      defaultAssigneeRole: row.defaultAssigneeRole, sortOrder: row.sortOrder, checklist: [...row.checklist],
+    });
+    created += 1;
+  }
+  return created;
+}
+
+async function assignPackage(db: Db, organisationId: string, client: typeof schema.clients.$inferSelect, packageId: string) {
+  if (client.packageId === packageId) return client;
+  const [updated] = await db.update(schema.clients)
+    .set({ packageId, updatedAt: new Date() })
+    .where(and(eq(schema.clients.id, client.id), eq(schema.clients.organisationId, organisationId)))
+    .returning();
+  return updated!;
+}
+
+/**
+ * Mirrors generateOnboardingTasks. `packages/db` cannot import `@launchos/core`
+ * (dependency direction is core → db), so the rules live twice: due date is
+ * client.created_at + offset_days, owner-role templates go to the owner, and
+ * (client_id, template_id) makes it idempotent.
+ */
+async function seedOnboardingTasks(db: Db, organisationId: string, clientId: string, createdAt: Date, ownerUserId: string) {
+  const templates = await db.select().from(schema.taskTemplates).where(and(
+    eq(schema.taskTemplates.organisationId, organisationId),
+    eq(schema.taskTemplates.phase, "onboarding"),
+  )).orderBy(asc(schema.taskTemplates.sortOrder));
+
+  let created = 0;
+  for (const template of templates) {
+    const [existing] = await db.select({ id: schema.tasks.id }).from(schema.tasks).where(and(
+      eq(schema.tasks.clientId, clientId),
+      eq(schema.tasks.templateId, template.id),
+    ));
+    if (existing) continue;
+    await db.insert(schema.tasks).values({
+      organisationId, clientId, templateId: template.id, phase: "onboarding", kind: template.kind,
+      title: template.title, descriptionMd: template.descriptionMd,
+      dueAt: new Date(createdAt.getTime() + template.offsetDays * 86_400_000),
+      assigneeUserId: template.defaultAssigneeRole === "owner" ? ownerUserId : null,
+      checklist: template.checklist.map((label) => ({ label, done: false })),
+      createdByKind: "system",
+    });
+    created += 1;
+  }
+  return created;
+}
 
 async function seedOrganisation(db: Db) {
   const [existing] = await db.select().from(schema.organisations).where(eq(schema.organisations.slug, ORGANISATION.slug));

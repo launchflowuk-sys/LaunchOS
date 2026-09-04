@@ -50,7 +50,7 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | `inbound.message` | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
 | `outbound.message` | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
 | `ads.ingest` | cron daily | worker | `{ organisationId }` |
-| `tasks.generate-onboarding` | `client.created` event (web or worker) | worker | `{ organisationId, clientId }` |
+| `tasks.generate-onboarding` | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
 | `tasks.generate-recurring` | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
 | `tasks.check-overdue` | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
 
