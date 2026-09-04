@@ -42,8 +42,28 @@ export async function getSession(): Promise<AdminSession | null> {
   return { userId: s.user.id, email: s.user.email, organisationId: m.organisationId, role: m.role };
 }
 
+/**
+ * True when the signed-in user holds a portal account in an active
+ * organisation. Queried here rather than through `getClientSession` so
+ * `session.ts` stays free of an import cycle with `portal-session.ts`, which
+ * needs `getSession` for the opposite redirect.
+ */
+async function hasPortalAccount(userId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ id: schema.clientUsers.id })
+    .from(schema.clientUsers)
+    .innerJoin(schema.organisations, eq(schema.clientUsers.organisationId, schema.organisations.id))
+    .where(and(eq(schema.clientUsers.userId, userId), eq(schema.organisations.status, "active")))
+    .limit(1);
+  return !!row;
+}
+
 export async function requireAdmin(): Promise<AdminSession> {
   const s = await getSession();
-  if (!s) redirect("/sign-in");
-  return s;
+  if (s) return s;
+  // A client user who follows a link into the admin shell belongs in the
+  // portal, not back at the sign-in form they have already passed.
+  const auth = await getAuth().api.getSession({ headers: await headers() });
+  if (auth && (await hasPortalAccount(auth.user.id))) redirect("/portal");
+  redirect("/sign-in");
 }

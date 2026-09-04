@@ -1,0 +1,211 @@
+import { createClientUser, createTicket, replyToConversation } from "@launchos/core";
+import { createDb, schema } from "@launchos/db";
+import { expect, test, type Page } from "@playwright/test";
+import { and, eq } from "drizzle-orm";
+
+/**
+ * Plan 4 Task 13 acceptance for the client portal.
+ *
+ * The seed does not yet ship a portal account (Task 14 adds one), and even
+ * once it does the test cannot know its one-time password, so this spec makes
+ * its own client user for the seeded "Grays CabLine" client with a unique
+ * email and removes it again in `afterAll`. Everything else it needs — the
+ * organisation, the two clients, their sites and domains — comes from
+ * `pnpm db:seed`.
+ */
+const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
+
+// The dev server compiles each portal route the first time it is requested,
+// which was measured at up to 35s on a cold cache, so the first assertion on a
+// new screen needs far longer than the 5s default.
+const COLD_COMPILE = 120_000;
+
+const db = createDb(DATABASE_URL);
+
+const STAMP = Date.now();
+const PORTAL_EMAIL = `portal.${STAMP}@grayscabline.example`;
+const PORTAL_NAME = "Portal Tester";
+const OWN_TICKET_SUBJECT = `Seeded ticket ${STAMP}`;
+const OTHER_TICKET_SUBJECT = `Other client ticket ${STAMP}`;
+const INTERNAL_NOTE = `Internal staff note ${STAMP} — must never reach the portal`;
+const NEW_TICKET_SUBJECT = `Portal raised ${STAMP}`;
+const NEW_TICKET_BODY = `The contact form stopped emailing us on ${STAMP}.`;
+const REPLY_BODY = `Thanks — it started on Tuesday (${STAMP}).`;
+
+let organisationId: string;
+let clientId: string;
+let otherClientId: string;
+let portalUserId: string;
+let portalPassword: string;
+let ownTicketId: string;
+let otherTicketId: string;
+/** Every conversation this spec created, torn down in `afterAll`. */
+const conversationIds: string[] = [];
+
+async function clientByName(name: string) {
+  const [row] = await db
+    .select()
+    .from(schema.clients)
+    .where(and(eq(schema.clients.organisationId, organisationId), eq(schema.clients.name, name)));
+  if (!row) throw new Error(`seed client "${name}" not found — run \`pnpm db:seed\` first`);
+  return row;
+}
+
+async function signInAsPortalUser(page: Page): Promise<void> {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(PORTAL_EMAIL);
+  await page.getByLabel("Password").fill(portalPassword);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  // /after-sign-in decides between the admin shell and the portal; a client
+  // user lands on /portal.
+  await page.waitForURL("/portal", { timeout: COLD_COMPILE });
+}
+
+test.beforeAll(async () => {
+  const [organisation] = await db
+    .select()
+    .from(schema.organisations)
+    .where(eq(schema.organisations.slug, "launchflow"));
+  if (!organisation) throw new Error("seed organisation not found — run `pnpm db:seed` first");
+  organisationId = organisation.id;
+
+  clientId = (await clientByName("Grays CabLine")).id;
+  otherClientId = (await clientByName("Mobile PC Doctor")).id;
+
+  const created = await createClientUser(db, organisationId, {
+    clientId,
+    email: PORTAL_EMAIL,
+    name: PORTAL_NAME,
+  });
+  portalUserId = created.user.id;
+  portalPassword = created.oneTimePassword;
+
+  const own = await createTicket(db, organisationId, {
+    clientId,
+    subject: OWN_TICKET_SUBJECT,
+    body: "Raised by staff before the portal user signed in.",
+    severity: "medium",
+    source: "manual",
+    actorKind: "user",
+  });
+  ownTicketId = own.ticket.id;
+  conversationIds.push(own.conversation.id);
+
+  // A staff-authored internal note on the client's own thread. The portal must
+  // render the thread without it.
+  await replyToConversation(db, organisationId, {
+    conversationId: own.conversation.id,
+    body: INTERNAL_NOTE,
+    actorKind: "user",
+    actorId: "staff-e2e",
+    internal: true,
+  });
+
+  const other = await createTicket(db, organisationId, {
+    clientId: otherClientId,
+    subject: OTHER_TICKET_SUBJECT,
+    body: "Belongs to a different client entirely.",
+    severity: "medium",
+    source: "manual",
+    actorKind: "user",
+  });
+  otherTicketId = other.ticket.id;
+  conversationIds.push(other.conversation.id);
+});
+
+test.afterAll(async () => {
+  // Tickets cascade their events; conversations cascade their messages. The
+  // ticket rows go first because `conversations.ticket_id` has no FK to lean on.
+  for (const ticketId of [ownTicketId, otherTicketId]) {
+    if (ticketId) await db.delete(schema.tickets).where(eq(schema.tickets.id, ticketId));
+  }
+  for (const conversationId of conversationIds) {
+    await db.delete(schema.conversations).where(eq(schema.conversations.id, conversationId));
+  }
+  if (portalUserId) {
+    // client_users and account cascade from user.
+    await db.delete(schema.user).where(eq(schema.user.id, portalUserId));
+  }
+});
+
+test.describe("client portal", () => {
+  test("a client user signs in, sees only their own support, raises a ticket and replies", async ({ page }) => {
+    test.setTimeout(300_000);
+
+    await signInAsPortalUser(page);
+    await expect(page.getByText("Grays CabLine").first()).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByText("Powered by LaunchFlow")).toBeVisible();
+
+    // The admin shell is not reachable from a portal session: it bounces back.
+    await page.goto("/tasks");
+    await page.waitForURL("/portal", { timeout: COLD_COMPILE });
+
+    await page.getByRole("navigation").getByRole("link", { name: "Support" }).click();
+    await expect(page.getByRole("heading", { name: "Support" })).toBeVisible({ timeout: COLD_COMPILE });
+
+    // Their own ticket is listed; the other client's is not.
+    await expect(page.getByRole("link", { name: OWN_TICKET_SUBJECT })).toBeVisible();
+    await expect(page.getByText(OTHER_TICKET_SUBJECT)).toHaveCount(0);
+
+    // The internal staff note never reaches the portal thread.
+    await page.getByRole("link", { name: OWN_TICKET_SUBJECT }).click();
+    await expect(page.getByRole("heading", { name: OWN_TICKET_SUBJECT })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByText(INTERNAL_NOTE)).toHaveCount(0);
+
+    // Raise a ticket from the portal.
+    await page.getByRole("navigation").getByRole("link", { name: "Support" }).click();
+    await page.getByRole("link", { name: "New request" }).click();
+    await expect(page.getByRole("heading", { name: "New request" })).toBeVisible({ timeout: COLD_COMPILE });
+    await page.getByLabel("Subject").fill(NEW_TICKET_SUBJECT);
+    await page.getByLabel("Severity").selectOption("high");
+    await page.getByLabel("What has happened?").fill(NEW_TICKET_BODY);
+    await page.getByRole("button", { name: "Raise request" }).click();
+
+    // The action redirects to the new thread, which shows the opening message.
+    await expect(page.getByRole("heading", { name: NEW_TICKET_SUBJECT })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByText(NEW_TICKET_BODY)).toBeVisible();
+
+    // Reply on the thread; the reply is visible straight away.
+    await page.getByLabel("Add a reply").fill(REPLY_BODY);
+    await page.getByRole("button", { name: "Send reply" }).click();
+    await expect(page.getByText(REPLY_BODY)).toBeVisible({ timeout: COLD_COMPILE });
+
+    // A client cannot self-declare a critical severity.
+    await page.goto("/portal/support/new");
+    await expect(page.getByLabel("Severity").getByRole("option", { name: "critical" })).toHaveCount(0);
+  });
+
+  test("another client's ticket id in the URL is a 404, not somebody else's thread", async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await signInAsPortalUser(page);
+
+    const response = await page.goto(`/portal/support/${otherTicketId}`);
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText(OTHER_TICKET_SUBJECT)).toHaveCount(0);
+  });
+
+  test("the portal screens are scoped to the signed-in client", async ({ page }) => {
+    test.setTimeout(300_000);
+
+    await signInAsPortalUser(page);
+
+    await page.getByRole("navigation").getByRole("link", { name: "Websites" }).click();
+    await expect(page.getByRole("heading", { name: "Websites" })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByRole("cell", { name: "Grays CabLine" })).toBeVisible();
+    await expect(page.getByText("Mobile PC Doctor")).toHaveCount(0);
+
+    await page.getByRole("navigation").getByRole("link", { name: "Domains" }).click();
+    await expect(page.getByRole("heading", { name: "Domains" })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByRole("cell", { name: "grayscabline.co.uk" })).toBeVisible();
+    await expect(page.getByText("mobilepcdoctor.co.uk")).toHaveCount(0);
+
+    await page.getByRole("navigation").getByRole("link", { name: "Progress" }).click();
+    await expect(page.getByRole("heading", { name: "Progress" })).toBeVisible({ timeout: COLD_COMPILE });
+
+    await page.getByRole("navigation").getByRole("link", { name: "Account" }).click();
+    await expect(page.getByRole("heading", { name: "Account" })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByText(PORTAL_EMAIL)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Change password" })).toBeVisible();
+  });
+});

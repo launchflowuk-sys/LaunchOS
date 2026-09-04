@@ -25,7 +25,7 @@ export default function SignInPage() {
       return;
     }
 
-    router.push("/");
+    router.push("/after-sign-in");
     router.refresh();
   }
 
@@ -34,7 +34,7 @@ export default function SignInPage() {
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <h1 className="text-xl font-semibold tracking-tight text-neutral-900">LaunchOS</h1>
-          <p className="mt-1 text-sm text-neutral-500">Sign in to the admin portal.</p>
+          <p className="mt-1 text-sm text-neutral-500">Sign in to LaunchOS.</p>
         </div>
 
         <form
