@@ -112,3 +112,7 @@ export type { AccountSignals, SignalWindow } from "./ads/signals.js";
 export {
   saveDraftAdReport, approveAdReport, sendAdReport, SaveDraftAdReportInput, AdReportActionInput,
 } from "./ads/reports.js";
+export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";
+export type { ReportPeriod } from "./reports/build-client-report.js";
+export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";
+export { listClientReports, getClientReport, ListClientReportsInput } from "./reports/list-client-reports.js";
