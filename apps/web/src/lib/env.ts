@@ -9,6 +9,13 @@ import { z } from "zod";
  * the web side, and CLAUDE.md rule 6 asks for it ("validate required env at
  * startup with Zod"). Only the variables read through this module are listed —
  * adding one here makes it fail loudly rather than silently defaulting.
+ *
+ * "Module load" is not the same as "server start": under `next start` a module
+ * loads on the first request that reaches a route importing it, and the routes
+ * importing this one are not the ones that send mail. `src/instrumentation.ts`
+ * therefore imports this module from Next's `register()` hook, which runs once
+ * before the server takes its first request — that is what makes the refusal
+ * below a container that does not come up rather than a 500 on route five.
  */
 
 /**
@@ -41,6 +48,14 @@ export type Env = z.infer<typeof Env>;
  * would refuse every production image at build time rather than at boot — which
  * is exactly the deployment this guard is meant to protect. The rule applies at
  * `next start`, where a real request could be served on a mock.
+ *
+ * It has to survive `instrumentation.ts`, even though Next never calls
+ * `register()` under this phase: the build reaches *this module* directly, via
+ * the five server-action modules that import it, not through the hook. Its cost
+ * is the hole named in review M1 — a process started with
+ * `NEXT_PHASE=phase-production-build` set by hand skips the refusal. The
+ * mitigation is that `next start` never sets it and `infra/Dockerfile.web` does
+ * not export it past the build layer.
  */
 function isBuild(source: NodeJS.ProcessEnv): boolean {
   return source.NEXT_PHASE === "phase-production-build";

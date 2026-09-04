@@ -43,7 +43,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Health check path: `/api/health`
    - Auto-deploy: enable "auto deploy on push" for `main`.
    - Env vars (set in Coolify's environment variables UI, never committed — same keys as `.env.example`):
-     - `NODE_ENV=production`
+     - `NODE_ENV=production` — the switch every production guard is keyed on (mock adapters, `LLM=fake`). `infra/Dockerfile.web` sets it on the image too, so a variable lost in a redeploy does not silently disarm them.
      - `DATABASE_URL` → internal Postgres connection string from step 2 (`postgres://<user>:<pass>@<internal-host>:5432/<db>`)
      - `APP_URL` → `https://os.launchflow.co.uk` (match the domain above)
      - `BETTER_AUTH_SECRET` → generate with `openssl rand -base64 32`
@@ -75,7 +75,8 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Health check: process-based (no HTTP endpoint); configure Coolify's restart policy to restart on exit.
    - Auto-deploy: enable "auto deploy on push" for `main`.
    - Deploy after the web resource so migrations have already run once; set it to start after the web resource's health check passes.
-   - Env vars: `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, `PAYMENTS_ADAPTER` and the `STRIPE_*` pair, plus `EMAIL_ADAPTER=smtp`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker used to mean replies were marked `sent` and never left — the worker now refuses to start instead. Its first log line names the LLM, the model, the policy and every resolved adapter.
+   - Env vars: `NODE_ENV=production`, `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, `PAYMENTS_ADAPTER` and the `STRIPE_*` pair, plus `EMAIL_ADAPTER=smtp`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker used to mean replies were marked `sent` and never left — the worker now refuses to start instead. Its first log line names the LLM, the model, the policy and every resolved adapter.
+   - **`NODE_ENV=production` is load-bearing, not decoration.** Every refusal in `apps/worker/src/env.ts` — `LLM=fake` and every adapter rule — is keyed on it, and Node does not default it: a worker started without it passes all of them by not being production. Set it in Coolify's environment variables UI on this resource; `infra/Dockerfile.worker` sets it on the image as well, so the guards survive a variable that did not make it through a redeploy. If both are somehow missing, the worker's first lines are `NODE_ENV unset: production guards are OFF` followed by the adapter set it accepted — that warning means the deployment is unguarded, not that it is healthy.
    - Keep the worker at a **single replica**, for two reasons:
      - The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
      - `sendQueuedMessage`'s claim is a **five-minute lease, not a lock** (`CLAIM_TTL_MINUTES`), so it only guarantees that a second delivery cannot claim a message whose claim is under five minutes old. What actually prevents a client receiving the same reply twice is that one worker's `boss.work` does not overlap handlers. `SmtpEmailAdapter` sets no `socketTimeout`, so nodemailer's ten-minute default outlives the lease comfortably. A second replica would make a hung send re-sendable at t+5m — do not add one without either a lock that outlives the send or an SMTP timeout below five minutes.
@@ -157,6 +158,17 @@ Four record sets on the domain, all before anything will route:
 
 Under `NODE_ENV=production` both the web app and the worker validate their environment before opening a connection, and **refuse to start when an adapter resolves to a mock**. The rule lives in one place, `packages/integrations/src/adapter-guard.ts`, so the two processes cannot disagree.
 
+Where each one runs it, because "refuses to start" is only true if something actually evaluates it:
+
+| Process | Entry point | When |
+|---|---|---|
+| worker | `loadEnv()` in `main()` (`apps/worker/src/env.ts`) | before pg-boss connects |
+| web | `register()` in `apps/web/src/instrumentation.ts` | once per server start, before the first request is handled |
+
+The web half is a hook rather than a module import on purpose: `src/lib/env.ts` validates when it is *first imported*, and under `next start` that is on demand, per route — only five server actions import it, and the modules that build an email adapter (`invoices/actions.ts`, `settings/email/actions.ts`) are not among them. A container that validated nothing until someone visited the right page would pass its health check, render the dashboard and send invoices through the mock. Next's `register()` is the one hook guaranteed to complete before the server takes a request, so a refusal there is a container that never comes up.
+
+And both processes only get that far if `NODE_ENV=production` is actually set — see step 4. Both images set it (`infra/Dockerfile.web`, `infra/Dockerfile.worker`) and both resources should set it too.
+
 The reasoning is `ALLOW_FAKE_LLM`'s, one step worse: a mock adapter does not fail, it *succeeds*. `MockEmailAdapter` returns a message id, so a worker whose `EMAIL_ADAPTER` was lost in a redeploy marks every client reply, ad report and invoice email `sent` — with a `delivered_at` and a `mock-…` external id — and delivers none of them. Nothing anywhere says otherwise. A doc listing the variable is not a guard.
 
 Refused:
@@ -173,9 +185,11 @@ Not refused, because they have no real implementation yet: `ADS_ADAPTER=mock`, a
 
 **The opt-out is `ALLOW_MOCK_ADAPTERS=1`**, spelled exactly — `true`, `yes` and `1 ` are all still refusals. Use it for a staging resource, or for the window between the first production deploy and the SPF/DKIM records verifying, and remove it as soon as the real adapters are configured. Every refusal names the variable and says what the mock would have done, and all of them are reported at once rather than one per restart.
 
-One exemption, deliberately: `next build` sets `NODE_ENV=production` itself and imports every module a page reaches, and `infra/Dockerfile.web` runs that build long before the runtime environment exists. The web app therefore skips the refusal while `NEXT_PHASE=phase-production-build` — a build sends nothing — and applies it at `next start`, where a real request could be served on a mock. The worker has no build-time import of its env at all.
+**It is all-or-nothing, so treat the DNS window as short and supervised.** `ALLOW_MOCK_ADAPTERS=1` disarms the rule for *every* adapter, not just email: while it is set, `UPTIME_PROBE=mock` (no incident is ever opened) and `PAYMENTS_ADAPTER=mock` (invoices raised against a fake ledger) pass unremarked as well. Nothing expires the variable and nothing reminds you it is set — the startup line names the adapters, but the premise of this whole section is that a log line is not a guard. So set `UPTIME_PROBE=http` and the real `PAYMENTS_ADAPTER` *before* you set the opt-out, keep it only for the email window, and delete it the moment SPF and DKIM verify. Making the opt-out per-adapter (`ALLOW_MOCK_ADAPTERS=email`) is the outstanding fix.
 
-Both processes log the resolved adapter names — names only, never hosts, keys or addresses — in their first line: the worker's `worker started` line carries `adapters: { email, payments, uptime, ads, hosting, dns, cms }`, and the web app logs the same set as `web adapters`. Check that line after every redeploy; it is the cheapest way to notice a variable that did not survive one.
+One exemption, deliberately: `next build` sets `NODE_ENV=production` itself and imports every module a page reaches, and `infra/Dockerfile.web` runs that build long before the runtime environment exists. The web app therefore skips the refusal while `NEXT_PHASE=phase-production-build` — a build sends nothing — and applies it at `next start`, where a real request could be served on a mock. Next never calls `register()` under that phase either, so the hook adds nothing to a build; the exemption inside `src/lib/env.ts` stays because the build reaches that module directly through the server actions that import it. Its cost is that a process started with `NEXT_PHASE=phase-production-build` set by hand would skip the refusal — `next start` never sets it, and neither Dockerfile exports it past the build layer, so do not add it to a Coolify variable set. The worker has no build-time import of its env at all.
+
+Both processes log the resolved adapter names — names only, never hosts, keys or addresses — at server start: the worker's `worker started` line carries `adapters: { email, payments, uptime, ads, hosting, dns, cms }` (preceded by its `NODE_ENV=…` line), and the web app logs the same set as `web adapters` when `register()` loads the env module. Check those lines after every redeploy; they are the cheapest way to notice a variable that did not survive one.
 
 ### Cloudflare Email Routing
 
@@ -189,7 +203,7 @@ Cloudflare Email Routing does not forward attachments in this shape. Attachments
 
 Set `EMAIL_ADAPTER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM` to a verified sender on the same domain the SPF and DKIM records were published for. Leaving `EMAIL_ADAPTER=mock` until those records verify is a deliberate choice, not a default — the mock marks the message `sent` in `messages` without delivering it, so nothing goes out misaligned but nothing goes out at all — and in production it needs `ALLOW_MOCK_ADAPTERS=1` beside it. Remove that variable and redeploy the moment the records verify.
 
-A reply the client never receives no longer passes silently either. When a send exhausts `MAX_SEND_ATTEMPTS` (5) the message flips to `failed`, and that now writes a `message.send_failed` entry on the client's timeline and one notification for the owner. A message still `queued` 24 hours later — the point at which `outbound.sweep` stops re-driving it — gets one owner notification too. Both are stamped in `messages.metadata` so they are said once, however often the sweep runs.
+A reply the client never receives no longer passes silently either. When a send exhausts `MAX_SEND_ATTEMPTS` (5) the message flips to `failed`, and that now writes a `message.send_failed` entry on the client's timeline and one notification for the owner. A message still `queued` 24 hours later — the point at which `outbound.sweep` stops re-driving it — gets one owner notification too. Both are stamped in `messages.metadata` so they are said once, however often the sweep runs. The announcement itself can never cost the give-up it is announcing: the recipient address and the relay's error are truncated to fit the notification limits, and a failure to write either row is logged rather than thrown — a message that has been given up on is not visible to `outbound.sweep`, so a throw there would have meant nobody ever heard about it.
 
 ### Storage
 

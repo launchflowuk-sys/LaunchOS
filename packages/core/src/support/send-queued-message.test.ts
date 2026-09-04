@@ -14,7 +14,7 @@ const refusing: EmailAdapter = {
 };
 
 /** An organisation with an owner (so `notifyOwner` has somewhere to go), a client and a thread. */
-async function thread(db: Db) {
+async function thread(db: Db, overrides: { toEmail?: string } = {}) {
   const [org] = await db.insert(schema.organisations)
     .values({ name: "T", slug: `send-${crypto.randomUUID()}` }).returning();
   const userId = crypto.randomUUID();
@@ -31,7 +31,7 @@ async function thread(db: Db) {
     authorKind: "user",
     body: "Thanks — looking into it now.",
     fromEmail: "support@launchflow.test",
-    toEmail: "jo@client.test",
+    toEmail: overrides.toEmail ?? "jo@client.test",
     subject: "Re: Hosting",
     status: "queued",
   }).returning();
@@ -110,6 +110,51 @@ describe("sendQueuedMessage give-up", () => {
       expect(message!.status).toBe("queued");
       expect(await db.select().from(schema.notifications)
         .where(eq(schema.notifications.kind, "message.send_failed"))).toHaveLength(0);
+    });
+  });
+
+  // `toEmail` is copied off an inbound message's From header and `lastError` is
+  // whatever the relay said, so both are client-controlled and neither is
+  // bounded by the column. `recordActivity` caps title at 200 and body at 4000:
+  // an over-long one used to throw out of the exhausted branch, pg-boss retried,
+  // `claim()` refused the now-`failed` row — and the give-up was announced
+  // nowhere at all, on a row `outbound.sweep` never looks at.
+  it("still announces a give-up when the address and the error are far too long", async () => {
+    await withTestDb(async (db) => {
+      const address = `${"a".repeat(300)}@client.test`;
+      const where = await thread(db, { toEmail: address });
+      const verbose: EmailAdapter = {
+        name: "smtp",
+        send: async () => {
+          throw new Error(`550 ${"relay refused ".repeat(600)}`);
+        },
+      };
+
+      let last;
+      for (let i = 0; i < MAX_SEND_ATTEMPTS; i += 1) {
+        last = await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, verbose, {})
+          .catch(() => undefined);
+      }
+
+      // The failed state is recorded, and the announcement is not lost with it.
+      expect(last?.status).toBe("failed");
+      const [activity] = await db.select().from(schema.activityEvents)
+        .where(and(
+          eq(schema.activityEvents.organisationId, where.organisationId),
+          eq(schema.activityEvents.kind, "message.send_failed"),
+        ));
+      expect(activity).toBeDefined();
+      expect(activity!.title.length).toBeLessThanOrEqual(200);
+      expect(activity!.title).toContain("aaa");
+      expect(activity!.body!.length).toBeLessThanOrEqual(4000);
+
+      const [notification] = await db.select().from(schema.notifications)
+        .where(and(
+          eq(schema.notifications.organisationId, where.organisationId),
+          eq(schema.notifications.kind, "message.send_failed"),
+        ));
+      expect(notification).toBeDefined();
+      expect(notification!.title.length).toBeLessThanOrEqual(200);
     });
   });
 });

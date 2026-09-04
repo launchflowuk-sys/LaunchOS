@@ -101,6 +101,37 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
 
 let cached: Env | undefined;
 
+/** A logger that only needs the two levels `loadEnv` uses. */
+type EnvLogger = Pick<Console, "info" | "warn">;
+
+/**
+ * The one line that says whether the guards above are armed.
+ *
+ * Every production rule in this file — `LLM=fake`, and every adapter rule in
+ * `productionAdapterIssues` — is keyed on `NODE_ENV === "production"`, and Node
+ * does not default `NODE_ENV`. A worker started without it therefore passes all
+ * of them by *not being production*, which looks identical in the log to
+ * passing them on merit. `infra/Dockerfile.worker` now sets it, and
+ * `docs/DEPLOYMENT.md` step 4 lists it, but neither can prove it survived a
+ * redeploy — so the process says out loud which of the two it is.
+ *
+ * Deliberately a warning and not a refusal: the guard semantics stay keyed on
+ * `NODE_ENV` alone (no host-sniffing of `DATABASE_URL` — see the bootstrap note
+ * in `docs/DEPLOYMENT.md`, "no string test can tell a local database from a
+ * live one"), and every local `pnpm dev:worker` runs with it unset.
+ */
+export function describeNodeEnv(nodeEnv: string | undefined): { level: keyof EnvLogger; message: string } {
+  if (!nodeEnv) {
+    return {
+      level: "warn",
+      message:
+        "NODE_ENV unset: production guards are OFF — mock adapters and LLM=fake would be accepted. " +
+        "Expected on a local worker; on a deployed one set NODE_ENV=production.",
+    };
+  }
+  return { level: "info", message: `NODE_ENV=${nodeEnv}` };
+}
+
 /**
  * The validated environment, read once at startup.
  *
@@ -110,7 +141,10 @@ let cached: Env | undefined;
  * cannot be tested, or imported by anything that does not intend to boot a
  * worker. `main()` is the one place that intends to.
  */
-export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  cached ??= parseEnv(source);
+export function loadEnv(source: NodeJS.ProcessEnv = process.env, logger: EnvLogger = console): Env {
+  if (cached) return cached;
+  cached = parseEnv(source);
+  const line = describeNodeEnv(cached.NODE_ENV);
+  logger[line.level](line.message);
   return cached;
 }

@@ -7,5 +7,11 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile --filter @launchos/web...
 COPY apps/web ./apps/web
 RUN pnpm --filter @launchos/web build
+# Set after the build: `next build` needs devDependencies, and `next start` sets
+# NODE_ENV=production for its own process anyway. Setting it on the image makes
+# the whole runtime — the migrate step in CMD included — production, so the
+# adapter guard in `apps/web/src/instrumentation.ts` is armed even if the
+# Coolify resource is missing the variable.
+ENV NODE_ENV=production
 EXPOSE 3000
 CMD ["sh", "-c", "pnpm --filter @launchos/db migrate && pnpm --filter @launchos/web start"]

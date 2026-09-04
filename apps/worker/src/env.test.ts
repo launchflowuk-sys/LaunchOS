@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { parseEnv } from "./env.js";
+import { describe, expect, it, vi } from "vitest";
+import { describeNodeEnv, loadEnv, parseEnv } from "./env.js";
 
 /** The minimum a worker needs before the cross-field rules are the question. */
 const base = { DATABASE_URL: "postgres://user:pw@localhost:5432/launchos" } as NodeJS.ProcessEnv;
@@ -85,5 +85,36 @@ describe("worker env", () => {
     const staging = { ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "production", ALLOW_MOCK_ADAPTERS: "1" };
     expect(parseEnv(staging).EMAIL_ADAPTER).toBe("mock");
     expect(() => parseEnv({ ...staging, ALLOW_MOCK_ADAPTERS: "true" })).toThrow(/refused in production/);
+  });
+
+  // Every rule above is keyed on NODE_ENV === "production", and Node does not
+  // default NODE_ENV — so a worker deployed without it passes all of them by
+  // not being production, which is indistinguishable in the log from passing
+  // them on merit. That is the state `infra/Dockerfile.worker` shipped in.
+  describe("NODE_ENV, said out loud", () => {
+    it("warns loudly when NODE_ENV is unset, because the guards are then off", () => {
+      const line = describeNodeEnv(undefined);
+      expect(line.level).toBe("warn");
+      expect(line.message).toMatch(/NODE_ENV unset: production guards are OFF/);
+      // An empty NODE_ENV= is stripped by withoutEmptyStrings, so it is unset too.
+      expect(describeNodeEnv(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "" }).NODE_ENV).level)
+        .toBe("warn");
+    });
+
+    it("names the environment when it is set", () => {
+      expect(describeNodeEnv("production")).toEqual({ level: "info", message: "NODE_ENV=production" });
+      expect(describeNodeEnv("development").level).toBe("info");
+    });
+
+    it("prints that line once, from loadEnv", () => {
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      const env = loadEnv({ ...production, ALLOW_FAKE_LLM: undefined } as NodeJS.ProcessEnv, logger);
+      expect(env.NODE_ENV).toBe("production");
+      expect(logger.info).toHaveBeenCalledWith("NODE_ENV=production");
+      expect(logger.warn).not.toHaveBeenCalled();
+      // Cached, so a second call neither re-parses nor re-logs.
+      loadEnv({} as NodeJS.ProcessEnv, logger);
+      expect(logger.info).toHaveBeenCalledTimes(1);
+    });
   });
 });

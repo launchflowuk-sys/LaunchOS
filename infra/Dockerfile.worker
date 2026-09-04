@@ -7,4 +7,14 @@ COPY packages ./packages
 RUN pnpm install --frozen-lockfile --filter @launchos/worker...
 COPY apps/worker ./apps/worker
 RUN pnpm --filter @launchos/worker... build
+# Set after the install and the build, so pnpm still resolves devDependencies
+# (typescript, tsc-alias) while building, and only the runtime is production.
+#
+# This is not a nicety. `apps/worker/src/env.ts` refuses a mock email adapter,
+# a mock uptime probe and `LLM=fake` under `NODE_ENV=production` — and Node does
+# not default NODE_ENV, so without this line every one of those guards is dead
+# in the image that actually sends the mail. Coolify sets NODE_ENV=production on
+# the resource as well (docs/DEPLOYMENT.md step 4); this makes the image correct
+# on its own, whatever the resource is missing.
+ENV NODE_ENV=production
 CMD ["node", "apps/worker/dist/index.js"]

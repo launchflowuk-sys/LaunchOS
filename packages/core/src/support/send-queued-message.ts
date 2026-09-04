@@ -71,6 +71,23 @@ async function claim(db: Db, organisationId: string, messageId: string): Promise
 const SEND_FAILURE_NOTIFIED = "sendFailureNotifiedAt";
 
 /**
+ * Caps for the two client-controlled strings that go into the announcement.
+ *
+ * `recordActivity` and `notify` both validate `title` at 200 characters and
+ * `body` at 4000, and both of the values below arrive from outside: `toEmail`
+ * is copied off an inbound message's `From` header into a `text` column, and
+ * `lastError` is whatever the relay said, which can be a whole SMTP transcript.
+ * An over-long one used to make the announcement throw — see the wrapper at the
+ * call site for what that cost.
+ */
+const MAX_ADDRESS_CHARS = 120;
+const MAX_ERROR_CHARS = 500;
+
+function truncate(value: string, max: number): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+}
+
+/**
  * A reply that has spent every attempt and will not be sent.
  *
  * Without this the give-up is silent: the message flips to `failed`, one
@@ -95,10 +112,10 @@ async function announceSendFailure(db: Db, organisationId: string, message: Mess
         eq(schema.conversations.organisationId, organisationId),
       ),
     );
-  const to = message.toEmail ?? "the client";
+  const to = truncate(message.toEmail ?? "the client", MAX_ADDRESS_CHARS);
   const link = `/inbox/${message.conversationId}`;
   const title = `A reply to ${to} was never sent`;
-  const body = `${MAX_SEND_ATTEMPTS} send attempts failed and the message has been given up on. Last error: ${lastError}`;
+  const body = `${MAX_SEND_ATTEMPTS} send attempts failed and the message has been given up on. Last error: ${truncate(lastError, MAX_ERROR_CHARS)}`;
   await recordActivity(db, organisationId, {
     ...(conversation ? { clientId: conversation.clientId } : {}),
     actorKind: "system",
@@ -180,7 +197,19 @@ export async function sendQueuedMessage(
     // pg-boss retry a message we have already given up on.
     if (exhausted) {
       if (typeof claimed.metadata[SEND_FAILURE_NOTIFIED] !== "string") {
-        await announceSendFailure(db, organisationId, after, lastError);
+        // The alert must never be able to fail the job that is recording the
+        // give-up. A throw here escaped, pg-boss retried, `claim()` refused the
+        // now-`failed` row and returned early — and the message, which
+        // `outbound.sweep` never sees because it only matches `queued`, ended
+        // up with no activity row, no notification and no marker. The two
+        // strings are truncated above so the common cause cannot happen at all;
+        // this catches the rest (a transient error on either insert).
+        await announceSendFailure(db, organisationId, after, lastError).catch((notifyErr: unknown) => {
+          console.error(
+            { organisationId, messageId: v.messageId, error: notifyErr instanceof Error ? notifyErr.message : String(notifyErr) },
+            "message.send_failed announcement failed; the message is still recorded as failed",
+          );
+        });
       }
       return after;
     }
