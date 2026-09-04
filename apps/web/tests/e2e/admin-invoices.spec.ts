@@ -94,7 +94,7 @@ test("raise an invoice, send it through approvals, mark it paid, then record a p
 
   const reference = `e2e-${stamp}`;
   await page.getByRole("button", { name: "Record payment" }).click();
-  await page.getByLabel("Client").selectOption({ label: "Grays CabLine" });
+  await page.getByLabel("Client", { exact: true }).selectOption({ label: "Grays CabLine" });
   await page.getByLabel("Amount (£)").fill("118.80");
   await page.getByLabel("Provider").selectOption("bank");
   await page.getByLabel("Reference").fill(reference);

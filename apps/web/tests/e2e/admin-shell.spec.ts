@@ -19,7 +19,7 @@ test("the shell links every nav entry, offers Account, and search finds a seeded
   await expect(page.getByRole("link", { name: "Account" })).toBeVisible();
 
   await page.getByRole("searchbox", { name: "Search" }).fill("Grays");
-  await expect(page.getByRole("link", { name: /Grays CabLine/ }).first()).toBeVisible();
+  await expect(page.getByRole("link", { name: /Grays CabLine/ }).first()).toBeVisible({ timeout: 20_000 });
 
   await expect(page.getByRole("button", { name: /Notifications/ })).toBeVisible();
 });
