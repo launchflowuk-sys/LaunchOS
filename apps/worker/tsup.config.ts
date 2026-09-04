@@ -20,4 +20,14 @@ export default defineConfig({
   // npm dependencies (pg-boss, drizzle-orm, zod, @anthropic-ai/sdk, ...)
   // external so they're resolved from node_modules at runtime as usual.
   noExternal: [/^@launchos\//],
+  // Workspace packages pull CommonJS dependencies (nodemailer via
+  // @launchos/channels) into this ESM bundle. esbuild rewrites their
+  // `require(...)` calls to a shim that throws "Dynamic require of ... is not
+  // supported" unless a real `require` exists in scope. This banner provides
+  // one from the entry module URL — the documented remedy. Without it the
+  // production image exits on boot, which is exactly what happened on the
+  // first Coolify deploy; `pnpm dev:worker` runs from source and never hit it.
+  banner: {
+    js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+  },
 });
