@@ -36,6 +36,13 @@ describe("MockAdsAdapter", () => {
     expect(after.spendPence).toBeGreaterThan(0);
   });
 
+  it("raises CPC from the configured date onwards", async () => {
+    const ads = new MockAdsAdapter({ dropFrom: "2026-09-10" });
+    const before = await ads.fetchDailyMetrics("acct-1", "2026-09-09");
+    const after = await ads.fetchDailyMetrics("acct-1", "2026-09-10");
+    expect(after.cpcPence).toBeGreaterThan(before.cpcPence);
+  });
+
   it("lists its configured accounts", async () => {
     const ads = new MockAdsAdapter({
       accounts: [{ externalId: "123-456-7890", platform: "google", name: "Search", currency: "GBP" }],

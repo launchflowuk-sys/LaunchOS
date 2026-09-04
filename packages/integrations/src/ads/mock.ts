@@ -42,9 +42,15 @@ export class MockAdsAdapter implements AdsAdapter {
   async fetchDailyMetrics(accountId: string, date: string): Promise<AdDailyMetrics> {
     const seed = (suffix: string) => unit(`${accountId}:${date}:${suffix}`);
     const impressions = 4000 + Math.round(seed("impressions") * 4000);
-    const clicks = Math.max(1, Math.round(impressions * (0.03 + seed("ctr") * 0.02)));
-    const spendPence = Math.round(clicks * (70 + seed("cpc") * 60));
-    const factor = this.dropFrom && date >= this.dropFrom ? this.dropFactor : 1;
+    const droppedIn = this.dropFrom !== undefined && date >= this.dropFrom;
+    const rawClicks = Math.max(1, Math.round(impressions * (0.03 + seed("ctr") * 0.02)));
+    // The daily budget is set from the undropped click count, so spend stays
+    // roughly flat across the drop date. Clicks are then reduced — the same
+    // budget now buys fewer of them, which is what actually pushes CPC
+    // (spend / clicks) up rather than leaving it untouched.
+    const spendPence = Math.round(rawClicks * (70 + seed("cpc") * 60));
+    const clicks = droppedIn ? Math.max(1, Math.round(rawClicks * 0.7)) : rawClicks;
+    const factor = droppedIn ? this.dropFactor : 1;
     const conversions = Math.round(clicks * (0.06 + seed("cvr") * 0.04) * factor);
     const conversionValuePence = Math.round(conversions * (4500 + seed("aov") * 2000));
     return {
