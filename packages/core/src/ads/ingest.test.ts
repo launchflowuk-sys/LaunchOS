@@ -4,9 +4,23 @@ import { eq } from "drizzle-orm";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { MockAdsAdapter } from "@launchos/integrations";
+import { MockAdsAdapter, type AdsAdapter, type AdDailyMetrics } from "@launchos/integrations";
 import { createAdAccount, listAdAccounts } from "./accounts.js";
-import { ingestDailyMetrics } from "./ingest.js";
+import { AdIngestError, ingestDailyMetrics } from "./ingest.js";
+
+/** Passes through to the deterministic mock for every account except one, which always throws. */
+class PartiallyFailingAdsAdapter implements AdsAdapter {
+  readonly name = "mock" as const;
+  private readonly good = new MockAdsAdapter();
+  constructor(private readonly failingExternalId: string) {}
+  async listAccounts() {
+    return this.good.listAccounts();
+  }
+  async fetchDailyMetrics(accountId: string, date: string): Promise<AdDailyMetrics> {
+    if (accountId === this.failingExternalId) throw new Error("provider timeout");
+    return this.good.fetchDailyMetrics(accountId, date);
+  }
+}
 
 async function orgWithClient(db: Db) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `ads-${randomUUID()}` }).returning();
@@ -58,6 +72,32 @@ describe("ingestDailyMetrics", () => {
       await createAdAccount(db, orgId, { clientId, platform: "meta", externalId: "act_1", name: "Meta", status: "paused" });
       const result = await ingestDailyMetrics(db, orgId, { date: "2026-09-01" }, new MockAdsAdapter());
       expect(result).toMatchObject({ accounts: 0, snapshots: 0 });
+    });
+  });
+
+  it("isolates one account's failure: the other account still gets its snapshot, and an aggregate error is thrown", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await orgWithClient(db);
+      const good = await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "good-1", name: "Good" });
+      const bad = await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "bad-1", name: "Bad" });
+      const adapter = new PartiallyFailingAdsAdapter("bad-1");
+
+      let caught: unknown;
+      try {
+        await ingestDailyMetrics(db, orgId, { date: "2026-09-01" }, adapter);
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(AdIngestError);
+      const result = (caught as AdIngestError).result;
+      expect(result).toMatchObject({ date: "2026-09-01", accounts: 2, snapshots: 1 });
+      expect(result.failed).toEqual([{ adAccountId: bad.id, error: "provider timeout" }]);
+
+      const goodRows = await db.select().from(schema.adMetricSnapshots).where(eq(schema.adMetricSnapshots.adAccountId, good.id));
+      expect(goodRows).toHaveLength(1);
+      const badRows = await db.select().from(schema.adMetricSnapshots).where(eq(schema.adMetricSnapshots.adAccountId, bad.id));
+      expect(badRows).toHaveLength(0);
     });
   });
 });

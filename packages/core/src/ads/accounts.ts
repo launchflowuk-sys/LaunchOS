@@ -21,25 +21,28 @@ export type CreateAdAccountInput = z.input<typeof CreateAdAccountInput>;
 export async function createAdAccount(db: Db, organisationId: string, input: CreateAdAccountInput) {
   const v = CreateAdAccountInput.parse(input);
   await assertOwned(db, organisationId, schema.clients, v.clientId);
-  const [account] = await db.insert(schema.adAccounts).values({
-    organisationId,
-    clientId: v.clientId,
-    platform: v.platform,
-    externalId: v.externalId,
-    name: v.name,
-    currency: v.currency,
-    status: v.status,
-  }).returning();
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "ad_account.created",
-    targetType: "ad_account", targetId: account!.id, after: account,
+  return db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
+    const [account] = await tx.insert(schema.adAccounts).values({
+      organisationId,
+      clientId: v.clientId,
+      platform: v.platform,
+      externalId: v.externalId,
+      name: v.name,
+      currency: v.currency,
+      status: v.status,
+    }).returning();
+    await recordAudit(inner, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "ad_account.created",
+      targetType: "ad_account", targetId: account!.id, after: account,
+    });
+    await recordActivity(inner, organisationId, {
+      clientId: v.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "ad_account.created",
+      title: `${v.platform === "google" ? "Google" : "Meta"} ads account connected: ${v.name}`,
+      link: `/ads/${account!.id}`,
+    });
+    return account!;
   });
-  await recordActivity(db, organisationId, {
-    clientId: v.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "ad_account.created",
-    title: `${v.platform === "google" ? "Google" : "Meta"} ads account connected: ${v.name}`,
-    link: `/ads/${account!.id}`,
-  });
-  return account!;
 }
 
 export interface AdAccountRow {

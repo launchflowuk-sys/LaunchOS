@@ -100,10 +100,12 @@ export async function computeAccountSignals(
   // A missing prior window is not a signal — a new account would otherwise be
   // flagged on its first week.
   if (previous.days > 0) {
-    if (roasDeltaPercent <= -ROAS_DROP_THRESHOLD_PERCENT) {
+    // Strictly "over" the threshold, per spec §4: a drop or rise of exactly
+    // the threshold percentage does not flag, only one that exceeds it.
+    if (roasDeltaPercent < -ROAS_DROP_THRESHOLD_PERCENT) {
       reasons.push(`ROAS fell ${Math.abs(roasDeltaPercent).toFixed(1)}% (${previous.roas.toFixed(2)} → ${current.roas.toFixed(2)})`);
     }
-    if (cpcDeltaPercent >= CPC_RISE_THRESHOLD_PERCENT) {
+    if (cpcDeltaPercent > CPC_RISE_THRESHOLD_PERCENT) {
       reasons.push(`CPC rose ${cpcDeltaPercent.toFixed(1)}% (${(previous.cpcPence / 100).toFixed(2)} → ${(current.cpcPence / 100).toFixed(2)} per click)`);
     }
   }
