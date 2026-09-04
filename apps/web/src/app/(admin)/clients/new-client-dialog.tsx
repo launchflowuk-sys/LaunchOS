@@ -11,7 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { createClientAction } from "./actions";
 import { NewClientSchema, type NewClientValues } from "./schemas";
 
-export function NewClientDialog() {
+/**
+ * The package options arrive as a prop rather than from `listPackages`:
+ * `@launchos/core` reaches `@launchos/db` and the postgres driver, which cannot
+ * be bundled for the browser, and this is a client component.
+ */
+export function NewClientDialog({ packages }: { packages: { value: string; label: string }[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const {
@@ -58,6 +63,21 @@ export function NewClientDialog() {
             <TextField name="websiteUrl" label="Website" placeholder="https://" register={register} error={errors.websiteUrl} />
             <TextField name="industry" label="Industry" register={register} error={errors.industry} />
           </div>
+          <label className="block text-xs font-medium text-neutral-500">
+            Package
+            <select
+              {...register("packageId")}
+              defaultValue=""
+              className="mt-1.5 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900"
+            >
+              <option value="">No package</option>
+              {packages.map((pkg) => (
+                <option key={pkg.value} value={pkg.value}>
+                  {pkg.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel

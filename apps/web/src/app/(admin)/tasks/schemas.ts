@@ -29,3 +29,28 @@ export const UpdateTaskStatusSchema = z.object({
   taskId: z.string().uuid(),
   status: z.enum(schema.taskStatusEnum.enumValues),
 });
+
+export const AssignTaskSchema = z.object({
+  taskId: z.string().uuid(),
+  /** An empty select means "unassigned", which the core service takes as null. */
+  assigneeUserId: z.string().trim().max(200),
+});
+
+export const CommentOnTaskSchema = z.object({
+  taskId: z.string().uuid(),
+  bodyMd: z.string().trim().min(1, "Write something first").max(10000),
+});
+
+/** A checkbox posts nothing when unticked, so the wanted state travels as text. */
+const booleanText = z.enum(["true", "false"]).transform((v) => v === "true");
+
+export const ToggleChecklistSchema = z.object({
+  taskId: z.string().uuid(),
+  index: z.coerce.number().int().min(0).max(49),
+  done: booleanText,
+});
+
+export const SetTaskVisibilitySchema = z.object({
+  taskId: z.string().uuid(),
+  clientVisible: booleanText,
+});

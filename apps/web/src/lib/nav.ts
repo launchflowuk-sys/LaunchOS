@@ -46,6 +46,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { label: "Team", href: "/team" },
       { label: "Settings", href: "/settings/organisation" },
+      { label: "Packages", href: "/settings/packages" },
+      { label: "Task templates", href: "/settings/task-templates" },
     ],
   },
 ];

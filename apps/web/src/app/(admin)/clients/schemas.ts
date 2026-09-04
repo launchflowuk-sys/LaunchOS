@@ -24,6 +24,9 @@ export const NewClientSchema = z.object({
   postcode: optionalText(20),
   websiteUrl: optionalUrl,
   industry: optionalText(100),
+  // "No package" posts an empty string, which has to become undefined before
+  // the uuid rule runs.
+  packageId: blankToUndefined.pipe(z.string().uuid("Choose a package or leave it blank").optional()),
 });
 export type NewClientValues = z.input<typeof NewClientSchema>;
 

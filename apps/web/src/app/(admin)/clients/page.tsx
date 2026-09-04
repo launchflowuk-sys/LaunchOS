@@ -1,4 +1,4 @@
-import { listClients } from "@launchos/core";
+import { listClients, listPackages } from "@launchos/core";
 import Link from "next/link";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -18,17 +18,20 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
   const statusParam = typeof params.status === "string" ? params.status : "active";
   const status = STATUSES.includes(statusParam as (typeof STATUSES)[number]) ? statusParam : "active";
 
-  const rows = await listClients(getDb(), session.organisationId, {
-    query,
-    status: status === "all" ? undefined : (status as "active" | "paused" | "archived"),
-  });
+  const [rows, packages] = await Promise.all([
+    listClients(getDb(), session.organisationId, {
+      query,
+      status: status === "all" ? undefined : (status as "active" | "paused" | "archived"),
+    }),
+    listPackages(getDb(), session.organisationId, { activeOnly: true }),
+  ]);
 
   return (
     <>
       <PageHeader
         title="Clients"
         description="Every client, their support address, websites and domains."
-        actions={<NewClientDialog />}
+        actions={<NewClientDialog packages={packages.map((pkg) => ({ value: pkg.id, label: pkg.name }))} />}
       />
 
       <form className="mb-4 flex flex-wrap items-end gap-2" action="/clients">

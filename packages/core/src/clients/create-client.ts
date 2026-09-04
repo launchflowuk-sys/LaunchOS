@@ -20,6 +20,9 @@ export const CreateClientInput = z.object({
   country: z.string().length(2).default("GB"),
   websiteUrl: z.string().url().optional(),
   industry: z.string().max(100).optional(),
+  // The retainer this client is on. Drives onboarding and recurring task
+  // generation; the column arrived with migration 0003.
+  packageId: z.string().uuid().optional(),
   notes: z.string().max(4000).optional(),
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
   actorId: z.string().optional(),

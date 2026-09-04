@@ -1,10 +1,15 @@
 "use server";
 
-import { assignTask, createTask, updateTaskStatus } from "@launchos/core";
+import {
+  assignTask, commentOnTask, createTask, setTaskVisibility, toggleChecklistItem, updateTaskStatus,
+} from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
-import { type ActionResult, CreateTaskSchema, DUE_TIME_SUFFIX, UpdateTaskStatusSchema } from "./schemas";
+import {
+  type ActionResult, AssignTaskSchema, CommentOnTaskSchema, CreateTaskSchema, DUE_TIME_SUFFIX,
+  SetTaskVisibilitySchema, ToggleChecklistSchema, UpdateTaskStatusSchema,
+} from "./schemas";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
@@ -83,7 +88,98 @@ export async function updateTaskStatusAction(formData: FormData): Promise<Action
     revalidatePath("/tasks");
     revalidatePath(`/tasks/${v.taskId}`);
     revalidatePath(`/clients/${task.clientId}`);
+    // The client Tasks tab shows the phase progress bars this move changes.
+    revalidatePath(`/clients/${task.clientId}/tasks`);
     revalidatePath("/");
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function assignTaskAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = AssignTaskSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    assigneeUserId: formData.get("assigneeUserId") ?? "",
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid assignee" };
+  const v = parsed.data;
+
+  try {
+    // assignTask checks org membership, audits and notifies the new owner.
+    const task = await assignTask(getDb(), session.organisationId, {
+      taskId: v.taskId,
+      assigneeUserId: v.assigneeUserId.length > 0 ? v.assigneeUserId : null,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    revalidatePath("/tasks");
+    revalidatePath(`/clients/${task.clientId}/tasks`);
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function commentOnTaskAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = CommentOnTaskSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    bodyMd: value(formData, "bodyMd"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid comment" };
+  const v = parsed.data;
+
+  try {
+    const comment = await commentOnTask(getDb(), session.organisationId, {
+      taskId: v.taskId, bodyMd: v.bodyMd, authorKind: "user", authorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    return { status: "ok", id: comment.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function toggleChecklistAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = ToggleChecklistSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    index: value(formData, "index"),
+    done: value(formData, "done"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid checklist item" };
+  const v = parsed.data;
+
+  try {
+    const task = await toggleChecklistItem(getDb(), session.organisationId, {
+      taskId: v.taskId, index: v.index, done: v.done,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function setTaskVisibilityAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = SetTaskVisibilitySchema.safeParse({
+    taskId: value(formData, "taskId"),
+    clientVisible: value(formData, "clientVisible"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid visibility" };
+  const v = parsed.data;
+
+  try {
+    const task = await setTaskVisibility(getDb(), session.organisationId, {
+      taskId: v.taskId, clientVisible: v.clientVisible, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    // The client Tasks tab renders the same flag, so both views stay in step.
+    revalidatePath(`/clients/${task.clientId}/tasks`);
     return { status: "ok", id: task.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };
