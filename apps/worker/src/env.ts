@@ -33,9 +33,21 @@ const EnvShape = z.object({
    * end of the approvals it raises.
    */
   ALLOW_FAKE_LLM: z.string().optional(),
-  /** Read only by the adapter guard below; `createPaymentsAdapter` reads them from `process.env` itself. */
+  /**
+   * Read only by the adapter guard below; the factories read them from
+   * `process.env` themselves.
+   *
+   * They have to be declared all the same. `superRefine` receives the *parsed*
+   * object and `z.object` strips every key it does not declare, so a variable
+   * the guard reads and this schema omits arrives as `undefined` — which reads
+   * as unset. Before `SMTP_HOST` was listed here, adding the SMTP rule to
+   * `productionAdapterIssues` would have refused every correctly configured
+   * production worker. Anything added to `AdapterEnv` belongs here too.
+   */
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
   /**
    * The same escape hatch as `ALLOW_FAKE_LLM`, for the adapters: a production
    * deployment that genuinely means to run on mocks (a staging resource, a dry

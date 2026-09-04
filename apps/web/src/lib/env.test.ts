@@ -6,6 +6,8 @@ const production = {
   NODE_ENV: "production",
   APP_URL: "https://os.launchflow.test",
   EMAIL_ADAPTER: "smtp",
+  // `createEmailAdapter` parses this; EMAIL_ADAPTER=smtp without it throws.
+  SMTP_HOST: "smtp.launchflow.test",
   UPTIME_PROBE: "http",
   PAYMENTS_ADAPTER: "stripe",
   STRIPE_SECRET_KEY: "sk_live_1",

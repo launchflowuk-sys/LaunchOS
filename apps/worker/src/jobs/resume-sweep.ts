@@ -56,6 +56,11 @@ export interface UndeliveredResume {
   readonly note: string | null;
 }
 
+/** The same row past the far edge, plus the timestamp its give-up alert states. */
+export interface GivenUpResume extends UndeliveredResume {
+  readonly decidedAt: Date | null;
+}
+
 /**
  * Decisions whose `agent.resume` never arrived: the approval is decided, the
  * run it belongs to is still parked in `awaiting_approval` with its
@@ -142,7 +147,7 @@ export async function findGivenUpResumes(
   db: Db,
   organisationId: string,
   now: Date,
-): Promise<UndeliveredResume[]> {
+): Promise<GivenUpResume[]> {
   const floor = new Date(now.getTime() - RESUME_GIVE_UP_AFTER_MS);
   const rows = await db
     .select({
@@ -150,6 +155,9 @@ export async function findGivenUpResumes(
       runId: schema.agentRuns.id,
       decision: schema.approvals.status,
       note: schema.approvals.decisionNote,
+      // Read for the alert: the one timestamp the notification can state as a
+      // fact rather than infer from how long the sweep has been running.
+      decidedAt: schema.approvals.decidedAt,
     })
     .from(schema.approvals)
     .innerJoin(
@@ -178,7 +186,33 @@ export async function findGivenUpResumes(
     runId: row.runId,
     decision: row.decision as "approved" | "rejected",
     note: row.note,
+    decidedAt: row.decidedAt,
   }));
+}
+
+/**
+ * What is actually known about a decision at the give-up bound, and nothing else.
+ *
+ * This body used to say "the resume sweep has re-enqueued it every minute for 24
+ * hours". After a worker outage longer than the bound that is false — the
+ * give-up query has no lower bound, so a whole backlog crosses it on the first
+ * tick after the worker returns, having been re-enqueued not once — and an alert
+ * that claims a retry history nobody can verify sends the reader looking for a
+ * kernel fault instead of the outage that actually happened.
+ *
+ * Three things are known and all three are in the sentence: when the decision
+ * was made, how long ago that is, and that the run is *still* parked on this
+ * approval's tool call — which the query proved one statement ago, by matching
+ * `awaitingToolUseId` against `payload.toolUseId`.
+ */
+function givenUpBody(decidedAt: Date | null, now: Date): string {
+  const decided = decidedAt
+    ? `Decided at ${decidedAt.toISOString()}, ${Math.floor((now.getTime() - decidedAt.getTime()) / 3_600_000)} hours ago`
+    : "Decided past the give-up bound";
+  return (
+    `${decided}, and the run is still parked on this tool call. ` +
+    "The sweep will not re-enqueue it again — the decision stands, but the action it authorised has not happened."
+  );
 }
 
 /**
@@ -210,9 +244,7 @@ export async function notifyGivenUpResumes(
       const alert = {
         kind: "approval.resume_undelivered",
         title: `An ${row.decision} decision never reached its agent run`,
-        body:
-          "The resume sweep has re-enqueued it every minute for 24 hours and the run is still parked on this tool " +
-          "call. It will not be retried again — the decision stands, but the action it authorised has not happened.",
+        body: givenUpBody(row.decidedAt, now),
         link: `/approvals`,
       };
       try {

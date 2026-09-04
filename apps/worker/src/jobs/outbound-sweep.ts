@@ -96,6 +96,16 @@ function unclaimed() {
  * written or said. One notification per message closes that, keyed on a metadata
  * marker so a sweep running every minute for the rest of the message's life
  * announces it exactly once.
+ *
+ * `unclaimed()` is here for the same reason it is on the re-enqueue query, and
+ * it is the difference between an alert and a false alarm: a message claimed
+ * seconds before it crossed the bound is *being sent right now*, and announcing
+ * "queued for a day and never sent" about a send still in flight would be a
+ * notification that contradicts the thread by the time anyone reads it. The
+ * marker is stamped alongside the alert, so without this predicate that false
+ * alarm would also be the row's one and only announcement. A claim outlives the
+ * lease by at most `CLAIM_TTL_MINUTES`, so a genuinely stuck message is
+ * announced a few minutes later instead of never.
  */
 export async function findGivenUpMessages(db: Db, organisationId: string, now: Date): Promise<UndeliveredMessage[]> {
   const floor = new Date(now.getTime() - OUTBOUND_GIVE_UP_AFTER_MS);
@@ -109,10 +119,43 @@ export async function findGivenUpMessages(db: Db, organisationId: string, now: D
         eq(schema.messages.status, "queued"),
         isNull(schema.messages.deletedAt),
         lte(schema.messages.createdAt, floor),
+        unclaimed(),
         sql`${schema.messages.metadata} ->> ${GIVE_UP_NOTIFIED} is null`,
       ),
     );
   return rows.map((row) => ({ id: row.id }));
+}
+
+/** `sendQueuedMessage` counts its tries in `metadata.attempts`; absent means it never ran. */
+function attemptsOf(metadata: Record<string, unknown> | undefined): number {
+  const raw = metadata?.["attempts"];
+  return typeof raw === "number" ? raw : 0;
+}
+
+/**
+ * What is actually known about a message at the give-up bound, and nothing else.
+ *
+ * This body used to say "the outbound sweep has re-enqueued it every minute for
+ * 24 hours without it leaving". After a worker outage longer than the bound that
+ * is simply false — the give-up query has no lower bound, so the whole backlog
+ * crosses it in the first tick after the worker comes back, having been
+ * re-enqueued not once — and an alert that misdescribes what was tried sends
+ * whoever reads it looking for an SMTP fault that never happened.
+ *
+ * So: when it was queued, how long ago that was, and how many send attempts the
+ * row itself records. `attempts: 0` is the useful signal the old sentence hid —
+ * it means no job ever ran, which points at the queue rather than at the relay.
+ */
+function givenUpBody(queuedAt: Date | undefined, attempts: number, now: Date): string {
+  const tried =
+    attempts === 0 ? "no recorded send attempts" : `${attempts} recorded send attempt${attempts === 1 ? "" : "s"}`;
+  const queued = queuedAt
+    ? `Queued at ${queuedAt.toISOString()}, ${Math.floor((now.getTime() - queuedAt.getTime()) / 3_600_000)} hours ago`
+    : "Queued past the give-up bound";
+  return (
+    `${queued}, with ${tried}, and still not sent. ` +
+    "The sweep will not re-enqueue it again — open the thread and send it by hand once the cause is fixed."
+  );
 }
 
 /**
@@ -146,16 +189,19 @@ export async function notifyGivenUpMessages(
     { label: GIVE_UP_LABEL, id: (row) => row.id, logger },
     async (row) => {
       const [message] = await deps.db
-        .select({ toEmail: schema.messages.toEmail, conversationId: schema.messages.conversationId })
+        .select({
+          toEmail: schema.messages.toEmail,
+          conversationId: schema.messages.conversationId,
+          createdAt: schema.messages.createdAt,
+          metadata: schema.messages.metadata,
+        })
         .from(schema.messages)
         .where(and(eq(schema.messages.id, row.id), eq(schema.messages.organisationId, organisationId)));
       const to = truncate(message?.toEmail ?? "the client", MAX_ADDRESS_CHARS);
       const alert = {
         kind: "message.undelivered",
         title: `A reply to ${to} has been queued for a day and never sent`,
-        body:
-          "The outbound sweep has re-enqueued it every minute for 24 hours without it leaving. " +
-          "It will not be retried again — open the thread and send it by hand once the cause is fixed.",
+        body: givenUpBody(message?.createdAt, attemptsOf(message?.metadata), now),
         ...(message ? { link: `/inbox/${message.conversationId}` } : {}),
       };
       try {

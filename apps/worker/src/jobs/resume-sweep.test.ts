@@ -178,6 +178,28 @@ describe("runResumeSweep", () => {
     });
   });
 
+  it("states only what is known — decided at, age, still parked — and claims no retry history", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, approvalId } = await parkedAndDecided(db);
+      await withOwner(db, organisationId);
+
+      await runResumeSweep({ db, boss: fakeBoss().boss, logger: silentLogger() }, organisationId, GAVE_UP);
+
+      const [approval] = await db
+        .select({ decidedAt: schema.approvals.decidedAt })
+        .from(schema.approvals)
+        .where(eq(schema.approvals.id, approvalId));
+      const [alert] = await giveUpNotifications(db, organisationId);
+      expect(alert!.body).toContain(approval!.decidedAt!.toISOString());
+      expect(alert!.body).toMatch(/24 hours ago/);
+      expect(alert!.body).toContain("still parked on this tool call");
+      // The old sentence — "re-enqueued it every minute for 24 hours" — is false
+      // after a worker outage longer than the bound: the give-up query has no
+      // lower bound, so the backlog crosses it having been re-enqueued not once.
+      expect(alert!.body).not.toMatch(/every minute/);
+    });
+  });
+
   it("stamps the give-up marker even when the notification fails, so no row is retried for ever", async () => {
     await withTestDb(async (db) => {
       const { organisationId, approvalId } = await parkedAndDecided(db);

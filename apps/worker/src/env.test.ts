@@ -50,6 +50,9 @@ describe("worker env", () => {
     ANTHROPIC_API_KEY: "sk-test",
     NODE_ENV: "production",
     EMAIL_ADAPTER: "smtp",
+    // `createEmailAdapter` parses this and throws without it, so a worker that
+    // has EMAIL_ADAPTER=smtp and nothing else is not a live worker.
+    SMTP_HOST: "smtp.launchflow.test",
     UPTIME_PROBE: "http",
     PAYMENTS_ADAPTER: "stripe",
     STRIPE_SECRET_KEY: "sk_live_1",
@@ -74,6 +77,20 @@ describe("worker env", () => {
 
   it("starts a production worker once every adapter resolves to a real one", () => {
     expect(parseEnv(production).EMAIL_ADAPTER).toBe("smtp");
+  });
+
+  it("refuses EMAIL_ADAPTER=smtp that createEmailAdapter cannot build", () => {
+    // Not a downgrade — `SmtpEnv.parse` throws — so the worker dies at boot
+    // *after* passing a guard that printed `email: "smtp"`. The guard reads
+    // SMTP_HOST off the parsed value, which is why `EnvShape` declares it.
+    expect(() => parseEnv({ ...production, SMTP_HOST: undefined }))
+      .toThrow(/SMTP_HOST is required when EMAIL_ADAPTER=smtp/);
+    // An empty SMTP_HOST= is stripped by withoutEmptyStrings, so it is unset too.
+    expect(() => parseEnv({ ...production, SMTP_HOST: "" }))
+      .toThrow(/SMTP_HOST is required when EMAIL_ADAPTER=smtp/);
+    expect(() => parseEnv({ ...production, SMTP_PORT: "nonsense" }))
+      .toThrow(/SMTP_PORT=nonsense is not a positive whole number/);
+    expect(parseEnv({ ...production, SMTP_PORT: "465" }).EMAIL_ADAPTER).toBe("smtp");
   });
 
   it("leaves local and test environments on the mocks, which is how everything here runs", () => {

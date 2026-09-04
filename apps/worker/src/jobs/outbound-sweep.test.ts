@@ -265,6 +265,72 @@ describe("runOutboundSweep", () => {
     });
   });
 
+  it("says nothing about a message whose send is still in flight at the give-up edge", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      const row = await message(db, where);
+      // Crossed the bound, but a worker claimed it seconds ago and is sending it
+      // now. "Queued for a day and never sent" would be contradicted by the
+      // thread itself — and the marker would make that the row's only alert.
+      await db.update(schema.messages)
+        .set({ createdAt: pastGiveUp(), metadata: { claimedAt: new Date().toISOString() } })
+        .where(eq(schema.messages.id, row.id));
+
+      await runOutboundSweep({ db, boss: fakeBoss().boss, logger: silentLogger() }, where.organisationId, LATER);
+
+      expect(await giveUpNotifications(db, where.organisationId)).toHaveLength(0);
+      expect(await giveUpMarker(db, row.id)).toBeUndefined();
+
+      // Once the lease has expired the worker holding it is presumed dead, and
+      // the give-up is announced a few minutes late rather than never.
+      await db.update(schema.messages)
+        .set({ metadata: { claimedAt: new Date(Date.now() - (CLAIM_TTL_MINUTES + 1) * 60_000).toISOString() } })
+        .where(eq(schema.messages.id, row.id));
+
+      await runOutboundSweep({ db, boss: fakeBoss().boss, logger: silentLogger() }, where.organisationId, LATER);
+
+      expect(await giveUpNotifications(db, where.organisationId)).toHaveLength(1);
+    });
+  });
+
+  it("states only what is known — queued at, age, attempts — and claims no retry history", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      const row = await message(db, where);
+      const queuedAt = pastGiveUp();
+      await db.update(schema.messages)
+        .set({ createdAt: queuedAt, metadata: { attempts: 3 } })
+        .where(eq(schema.messages.id, row.id));
+
+      await runOutboundSweep({ db, boss: fakeBoss().boss, logger: silentLogger() }, where.organisationId, LATER);
+
+      const [alert] = await giveUpNotifications(db, where.organisationId);
+      expect(alert!.body).toContain(queuedAt.toISOString());
+      expect(alert!.body).toMatch(/24 hours ago/);
+      expect(alert!.body).toContain("3 recorded send attempts");
+      // The old sentence — "re-enqueued it every minute for 24 hours" — is false
+      // after any worker outage longer than the bound: the give-up query has no
+      // lower bound, so the backlog crosses it having been re-enqueued not once.
+      expect(alert!.body).not.toMatch(/every minute/);
+    });
+  });
+
+  it("says `no recorded send attempts` when no job ever ran, which points at the queue", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      await withOwner(db, where.organisationId);
+      const row = await message(db, where);
+      await db.update(schema.messages).set({ createdAt: pastGiveUp() }).where(eq(schema.messages.id, row.id));
+
+      await runOutboundSweep({ db, boss: fakeBoss().boss, logger: silentLogger() }, where.organisationId, LATER);
+
+      const [alert] = await giveUpNotifications(db, where.organisationId);
+      expect(alert!.body).toContain("no recorded send attempts");
+    });
+  });
+
   it("says nothing about a message still inside the window", async () => {
     await withTestDb(async (db) => {
       const where = await thread(db);

@@ -13,6 +13,8 @@ const KEYS = [
   "NEXT_RUNTIME",
   "NEXT_PHASE",
   "EMAIL_ADAPTER",
+  "SMTP_HOST",
+  "SMTP_PORT",
   "UPTIME_PROBE",
   "PAYMENTS_ADAPTER",
   "STRIPE_SECRET_KEY",
@@ -49,6 +51,8 @@ const realAdapters = {
   NODE_ENV: "production",
   NEXT_RUNTIME: "nodejs",
   EMAIL_ADAPTER: "smtp",
+  // Part of "real": without it `createEmailAdapter` throws instead of building.
+  SMTP_HOST: "smtp.launchflow.test",
   UPTIME_PROBE: "http",
   PAYMENTS_ADAPTER: "stripe",
   STRIPE_SECRET_KEY: "sk_live_1",
