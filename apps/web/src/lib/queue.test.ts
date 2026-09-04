@@ -11,6 +11,11 @@ vi.mock("pg-boss", () => ({
   default: vi.fn().mockImplementation(() => ({ on: vi.fn(), start, createQueue, updateQueue, send })),
 }));
 
+// `notifyOwner` is mocked below, so the client it is handed is never used —
+// but `reportDroppedEvent` calls `getDb()` to get one, and the real getDb
+// throws without DATABASE_URL, which is exactly the state these tests set up.
+vi.mock("./db", () => ({ getDb: () => ({}) }));
+
 let captured: ((event: DomainEvent) => Promise<void>) | undefined;
 const notifyOwner = vi.fn(async () => null);
 vi.mock("@launchos/core", () => ({
@@ -133,6 +138,48 @@ describe("getBoss failure caching", () => {
       .toBeUndefined();
     expect(errors.mock.calls.flat().join(" ")).toMatch(/domain event could not be queued/);
     errors.mockRestore();
+  });
+
+  it("logs and does not throw for message.queued, because the reply row is already committed", async () => {
+    // Throwing here turned a saved reply into "Something went wrong" and
+    // invited a retry that writes a *second* reply onto the thread. The
+    // delivery is what was lost, and `outbound.sweep` re-drives it within a
+    // minute — so the owner is told to wait, not to act.
+    vi.resetModules();
+    (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
+    delete process.env.DATABASE_URL;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    notifyOwner.mockClear();
+    const { installWebEnqueue: install } = await import("./queue.js");
+    install();
+
+    await expect(captured!({ name: "message.queued", organisationId: "org-1", messageId: "msg-1" })).resolves
+      .toBeUndefined();
+    expect(errors.mock.calls.flat().join(" ")).toMatch(/domain event could not be queued/);
+    expect(JSON.stringify(notifyOwner.mock.calls)).toMatch(/outbound sweep re-drives it/);
+    errors.mockRestore();
+  });
+
+  it("still throws for email.received, so the inbound webhook 500s and the provider redelivers", async () => {
+    // Nothing has committed at that point: swallowing this would drop a
+    // client's email with no record of it anywhere.
+    vi.resetModules();
+    (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
+    delete process.env.DATABASE_URL;
+    const { installWebEnqueue: install } = await import("./queue.js");
+    install();
+
+    await expect(
+      captured!({
+        name: "email.received",
+        organisationId: "org-1",
+        inbound: {
+          provider: "generic" as const,
+          to: ["a@b.com"], from: "x@y.com", subject: "s", text: "t",
+          messageId: "<abc@x>", references: [], attachments: [], rawHeaders: {},
+        },
+      }),
+    ).rejects.toThrow(/DATABASE_URL is not set/);
   });
 
   it("still throws for a direct sendJob caller, which is how the Stripe route gets its 500", async () => {

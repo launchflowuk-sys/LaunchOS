@@ -3,7 +3,7 @@ import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry } from "@launchos/agents";
 import { createEmailAdapter } from "@launchos/channels";
 import { createIntegrations } from "@launchos/integrations";
-import { env } from "./env.js";
+import { loadEnv } from "./env.js";
 import { FakeAgentLlmClient } from "./llm/fake.js";
 import { QUEUE, createBoss } from "./boss.js";
 import { sweepOrganisations } from "./jobs/sweep-organisations.js";
@@ -20,8 +20,14 @@ import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
 import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
+import { runOutboundSweep } from "./jobs/outbound-sweep.js";
 
 async function main() {
+  // First thing, and before a single connection is opened: a worker with no
+  // Anthropic key on the default LLM, or the fake client in production, must
+  // fail here with a message naming the variable rather than a hundred failed
+  // agent runs later.
+  const env = loadEnv();
   const db = createDb(env.DATABASE_URL);
   const boss = await createBoss(env.DATABASE_URL);
   const integrations = createIntegrations(process.env);
@@ -116,6 +122,16 @@ async function main() {
     });
   });
 
+  // The same insurance for outbound mail. `replyToConversation` commits the
+  // `queued` row and the web request then enqueues `outbound.message`; if that
+  // send is lost, the reply sits on the thread for ever with nothing to send it.
+  await boss.work(QUEUE.outboundSweep, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "outbound message sweep", async (organisationId) => {
+      await runOutboundSweep({ db, boss }, organisationId, now);
+    });
+  });
+
   await boss.work(QUEUE.agentRunsStuckSweep, async () => {
     const now = new Date();
     await sweepOrganisations(db, "stranded agent run sweep", async (organisationId) => {
@@ -131,6 +147,9 @@ async function main() {
   // Every minute: a decided approval whose resume never arrived is an approved
   // outward action that is not happening, and nothing else revisits it.
   await boss.schedule(QUEUE.approvalsResumeSweep, "* * * * *", {}, { tz: "Europe/London" });
+  // Every minute, for the same reason: a `queued` message nothing is driving is
+  // a reply the client never receives, and only this notices.
+  await boss.schedule(QUEUE.outboundSweep, "* * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.agentRunsStuckSweep, "*/10 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
@@ -141,6 +160,12 @@ async function main() {
   // and after invoices.check-overdue (07:30), so the drafted report reports a
   // full month of ad spend and current invoice statuses.
   await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
-  console.info("worker started");
+  // Which brain is in the box, in the first line of the log. `LLM=fake` in a
+  // deployment that meant to use Anthropic is otherwise invisible until an
+  // agent answers from a scripted stub.
+  console.info(
+    { llm: env.LLM, model: env.LLM === "fake" ? "fake-agent-llm" : env.AGENT_MODEL, policy: env.AGENT_POLICY },
+    "worker started",
+  );
 }
 main().catch((e) => { console.error(e); process.exit(1); });

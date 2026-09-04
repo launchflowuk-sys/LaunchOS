@@ -89,7 +89,7 @@
  * | `agent.run` | `ad-sentinel:<org>:<yyyy-mm-dd>` + `singletonSeconds` | `apps/worker/src/jobs/ads-sentinel.ts` |
  * | `agent.resume` | `resume:<approvalId>` | `dispatch-event.ts`, `apps/web/src/app/(admin)/approvals/actions.ts`, `apps/worker/src/jobs/resume-sweep.ts` |
  * | `inbound.message` | `inbound:<providerMessageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
- * | `outbound.message` | `outbound:<messageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
+ * | `outbound.message` | `outbound:<messageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts`, `apps/worker/src/jobs/outbound-sweep.ts` |
  * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
  * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
@@ -115,6 +115,7 @@ export const QUEUE = {
   reportsMonthly: "reports.monthly",
   approvalsResumeSweep: "approvals.resume-sweep",
   agentRunsStuckSweep: "agent-runs.stuck-sweep",
+  outboundSweep: "outbound.sweep",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -145,6 +146,10 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // already-queued resume a no-op rather than a second delivery.
   "approvals.resume-sweep": "standard",
   "agent-runs.stuck-sweep": "standard",
+  // Same shape as the resume sweep: the cron job itself is keyless, and the
+  // `outbound.message` jobs it sends carry `outbound:<messageId>` onto the
+  // `short` queue above.
+  "outbound.sweep": "standard",
 };
 
 /**

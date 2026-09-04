@@ -40,11 +40,10 @@ export class RunRecorder {
    * and the trace in the admin portal reads as one story.
    *
    * The same statement stamps `metadata.resume` with the approval that claimed
-   * the run and when. That is what lets a later delivery tell "an earlier
-   * attempt claimed this and died" from "another delivery is executing it right
-   * now" — without it, `failStrandedRun` could only see `running`, which is true
-   * in both cases, and would fail a run that is still working. The merge is
-   * `||` rather than a replacement so `metadata.pending` survives the claim.
+   * the run and when, which is the diagnostic `agent-runs.stuck-sweep` reads
+   * when it has to explain why a run was declared stranded ("claimed for an
+   * approval at …"). The merge is `||` rather than a replacement so
+   * `metadata.pending` survives the claim.
    */
   static async reopen(
     db: Db,
@@ -139,8 +138,19 @@ export class RunRecorder {
    *
    * Returns whether the row was written, so the caller can log and stop rather
    * than report an outcome that was discarded.
+   *
+   * `metadata` is merged, not replaced: `pending` is set (a re-park) or removed
+   * (a finish), and everything else — `metadata.resume`, the approval that
+   * claimed this run and when — survives, because that is the whole diagnostic
+   * the stuck sweep and the run trace have for a resume that went wrong.
+   * Removing the key rather than emptying the object is what keeps
+   * `approvals.resume-sweep`'s `metadata -> 'pending' is not null` predicate
+   * honest.
    */
   async finish(status: AgentRunStatus, summary: string, error?: string, pending?: Record<string, unknown>): Promise<boolean> {
+    const metadata = pending
+      ? sql`coalesce(${schema.agentRuns.metadata}, '{}'::jsonb) || ${JSON.stringify({ pending })}::jsonb`
+      : sql`coalesce(${schema.agentRuns.metadata}, '{}'::jsonb) - 'pending'`;
     const [updated] = await this.db
       .update(schema.agentRuns)
       .set({
@@ -148,7 +158,7 @@ export class RunRecorder {
         summary,
         error: error ?? null,
         finishedAt: status === "awaiting_approval" ? null : new Date(),
-        metadata: pending ? { pending } : {},
+        metadata,
       })
       .where(and(
         eq(schema.agentRuns.id, this.runId),

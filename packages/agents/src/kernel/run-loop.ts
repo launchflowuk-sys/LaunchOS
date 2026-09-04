@@ -226,11 +226,16 @@ async function parkForApproval(
     stepId: step.id,
     kind: "tool_call",
     title: description?.title ?? `${def.name} wants to run ${tool.name}`,
+    // `toolUseId` is the binding, and the only one: `resume-agent.ts` compares
+    // it against the run's `metadata.pending.awaitingToolUseId`, and
+    // `approvals.resume-sweep` joins on exactly these two fields in SQL. The
+    // payload used to carry a duplicate `awaitingToolUseId` with the same
+    // value, which nothing read — a second name for the same fact is a way for
+    // the two to disagree later.
     payload: {
       toolName: tool.name,
       input,
       toolUseId,
-      awaitingToolUseId: toolUseId,
       ...(description && { description }),
     },
   });

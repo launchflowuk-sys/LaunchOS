@@ -36,16 +36,20 @@ export async function handleAgentResume(deps: AgentRunDeps, raw: AgentResumeJob)
   if (!run) throw new Error(`agent run ${job.runId} not found`);
 
   // Only a parked run can be resumed. pg-boss retries a job that died, and a
-  // finished run would fail identically on every one of those retries, so this
-  // is an idempotent no-op rather than a throw: a retry storm against a run
-  // that is already done buries the real failures.
+  // run that is finished — or that another delivery is already driving — would
+  // fail identically on every one of those retries, so this is an idempotent
+  // no-op rather than a throw: a retry storm against a run nothing can do
+  // anything about buries the real failures.
   //
-  // A `running` run is deliberately NOT skipped. That is the stranded case — an
-  // earlier delivery claimed it and was killed — and `resumeAgent` is what ends
-  // it: it fails the run with the lost-claim error and notifies the owner, so
-  // the next retry sees `failed` and stops here instead.
-  if (run.status === "completed" || run.status === "failed") {
-    deps.logger.info("agent.resume ignored: run already finished", {
+  // `running` is included on purpose. From here, "an earlier delivery claimed
+  // this run and died" and "another delivery is executing it right now" are the
+  // same row, and the kernel used to guess between them on the age of the claim
+  // — which failed working resumes that simply took longer than five minutes.
+  // The only evidence that separates them is whether the run is still recording
+  // steps, and that question is asked by `agent-runs.stuck-sweep`, which is now
+  // the single mechanism that closes a stranded run.
+  if (run.status === "completed" || run.status === "failed" || run.status === "running") {
+    deps.logger.info("agent.resume ignored: the run is not parked", {
       runId: job.runId,
       approvalId: job.approvalId,
       status: run.status,

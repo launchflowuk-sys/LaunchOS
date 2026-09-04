@@ -4,7 +4,7 @@ import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { FakeLlmClient, defineTool, runAgent, toolUse, type AgentDefinition } from "@launchos/agents";
+import { FakeLlmClient, defineTool, resumeAgent, runAgent, toolUse, type AgentDefinition } from "@launchos/agents";
 import type { BossSender } from "./dispatch-event.js";
 import { RUN_STUCK_AFTER_MS, runResumeSweep, runStuckRunSweep } from "./resume-sweep.js";
 
@@ -34,11 +34,14 @@ function fakeBoss() {
   return { boss, sent };
 }
 
-/** A run parked on an approval, with the decision recorded the way the portal records it. */
-async function parkedAndDecided(db: Db, opts: { decision?: "approved" | "rejected"; note?: string } = {}) {
-  const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `sweep-${crypto.randomUUID()}` }).returning();
+/** A run parked on an approval in an existing organisation, with the decision recorded. */
+async function parkedAndDecidedIn(
+  db: Db,
+  organisationId: string,
+  opts: { decision?: "approved" | "rejected"; note?: string } = {},
+) {
   const run = await runAgent(agent, {
-    db, organisationId: org!.id, trigger: "manual", payload: {},
+    db, organisationId, trigger: "manual", payload: {},
     llm: new FakeLlmClient([{
       content: [toolUse("tu_1", "send_mail", { to: "jo@c.test" })],
       stopReason: "tool_use",
@@ -47,13 +50,19 @@ async function parkedAndDecided(db: Db, opts: { decision?: "approved" | "rejecte
     policy: "safe", logger: console,
   });
   const [approval] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, run.runId));
-  await decideApproval(db, org!.id, {
+  await decideApproval(db, organisationId, {
     approvalId: approval!.id,
     decision: opts.decision ?? "approved",
     decidedByUserId: "u1",
     ...(opts.note ? { note: opts.note } : {}),
   });
-  return { organisationId: org!.id, runId: run.runId, approvalId: approval!.id };
+  return { organisationId, runId: run.runId, approvalId: approval!.id };
+}
+
+/** The same, in a fresh organisation. */
+async function parkedAndDecided(db: Db, opts: { decision?: "approved" | "rejected"; note?: string } = {}) {
+  const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `sweep-${crypto.randomUUID()}` }).returning();
+  return parkedAndDecidedIn(db, org!.id, opts);
 }
 
 describe("runResumeSweep", () => {
@@ -114,6 +123,72 @@ describe("runResumeSweep", () => {
       await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, new Date(Date.now() + 25 * 60 * 60_000));
 
       expect(sent).toEqual([]);
+    });
+  });
+
+  it("leaves a spent decision alone once the run has re-parked on a later tool call", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, runId, approvalId } = await parkedAndDecided(db);
+      // The ordinary two-approval shape: the Sentinel sends one report, the
+      // model asks to send a second, and the run parks again. The first
+      // approval is still `approved` and still inside the 24h window, and the
+      // run is `awaiting_approval` with `metadata.pending` present again — so
+      // every predicate but the tool_use binding still matches it.
+      const reparked = await resumeAgent(agent, {
+        db, organisationId, runId, approvalId, decision: "approved", policy: "safe", logger: console,
+        llm: new FakeLlmClient([{
+          content: [toolUse("tu_2", "send_mail", { to: "second@c.test" })],
+          stopReason: "tool_use",
+          usage: { inputTokens: 1, outputTokens: 1 },
+        }]),
+      });
+      expect(reparked.status).toBe("awaiting_approval");
+      const { boss, sent } = fakeBoss();
+
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, LATER);
+
+      // Without the tool_use join this re-enqueues once a minute for 24 hours,
+      // and the kernel refuses every one of them.
+      expect(sent).toEqual([]);
+    });
+  });
+
+  it("leaves another organisation's decided approval alone", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId } = await parkedAndDecided(db);
+      const [other] = await db.insert(schema.organisations)
+        .values({ name: "Other", slug: `sweep-${crypto.randomUUID()}` }).returning();
+      const { boss, sent } = fakeBoss();
+
+      await runResumeSweep({ db, boss, logger: silentLogger() }, other!.id, LATER);
+      expect(sent).toEqual([]);
+
+      // …and the row really was sweepable, just not from there.
+      await runResumeSweep({ db, boss, logger: silentLogger() }, organisationId, LATER);
+      expect(sent).toHaveLength(1);
+    });
+  });
+
+  it("costs only its own item when a send throws, and still fails the job", async () => {
+    await withTestDb(async (db) => {
+      const first = await parkedAndDecided(db);
+      // A second parked, decided approval in the same organisation.
+      const second = await parkedAndDecidedIn(db, first.organisationId);
+      const sent: string[] = [];
+      const boss: BossSender = {
+        send: (async (_name: string, job: { approvalId: string }) => {
+          if (job.approvalId === first.approvalId) throw new Error("pg-boss is down");
+          sent.push(job.approvalId);
+          return "job-id";
+        }) as BossSender["send"],
+      };
+
+      // The whole list is swept, then the failure is re-thrown once so pg-boss
+      // retries the cron job — one bad row must not cost the others their turn.
+      await expect(
+        runResumeSweep({ db, boss, logger: silentLogger() }, first.organisationId, LATER),
+      ).rejects.toThrow(/1 of 2 failed/);
+      expect(sent).toEqual([second.approvalId]);
     });
   });
 

@@ -63,8 +63,14 @@ export interface UndeliveredResume {
  * `boss.send` is a single INSERT whose promise can reject after the row landed,
  * so a rejection there means "unknown", not "not queued". Rather than undo a
  * decision that may already have been carried out, we leave it standing and
- * re-drive delivery from here — idempotently, because a run that has been
- * claimed, finished or re-parked no longer matches.
+ * re-drive delivery from here — idempotently, because the last predicate binds
+ * the approval to *the tool call the run is actually waiting on*. A run that has
+ * been claimed (`running`), finished (no `metadata.pending`) or **re-parked on a
+ * later tool call** (a different `awaitingToolUseId`) therefore no longer
+ * matches. That last case is the ordinary shape for both approval-gated agents —
+ * two flagged ad accounts in one Sentinel run, a reply plus a DNS change in one
+ * triage — and without the join a spent approval would be re-enqueued every
+ * minute for 24 hours and refused by the kernel every time.
  */
 export async function findUndeliveredResumes(
   db: Db,
@@ -101,6 +107,12 @@ export async function findUndeliveredResumes(
         // The parked loop state. Without it there is nothing to resume, and a
         // job would only throw `no resumable pending state` five times over.
         sql`${schema.agentRuns.metadata} -> 'pending' is not null`,
+        // …and the run must still be parked on *this* approval's tool call.
+        // `payload.toolUseId` is the authoritative binding (`resume-agent.ts`'s
+        // `ApprovalPayload` reads exactly this field, and `loadParked` compares
+        // it against the same `awaitingToolUseId`), so this predicate matches if
+        // and only if the resume the kernel would accept has not happened yet.
+        sql`${schema.agentRuns.metadata} -> 'pending' ->> 'awaitingToolUseId' = ${schema.approvals.payload} ->> 'toolUseId'`,
       ),
     );
 
@@ -193,7 +205,14 @@ export async function findStuckRuns(db: Db, organisationId: string, now: Date): 
   const steps = await db
     .select({ runId: schema.agentSteps.runId, lastStepAt: max(schema.agentSteps.createdAt) })
     .from(schema.agentSteps)
-    .where(inArray(schema.agentSteps.runId, runs.map((run) => run.id)))
+    .where(
+      and(
+        // The run ids are already org-scoped, so this changes no row — CLAUDE.md
+        // rule 1 says every query filters on organisation_id all the same.
+        eq(schema.agentSteps.organisationId, organisationId),
+        inArray(schema.agentSteps.runId, runs.map((run) => run.id)),
+      ),
+    )
     .groupBy(schema.agentSteps.runId);
   const lastStepByRun = new Map(steps.map((row) => [row.runId, row.lastStepAt]));
 
@@ -220,11 +239,25 @@ export async function findStuckRuns(db: Db, organisationId: string, now: Date): 
  * Fails every stranded run for one organisation, audits it as
  * `agent.run_stranded` and tells the owner.
  *
+ * This is the *only* mechanism that closes a stranded run. The kernel used to
+ * carry an in-band five-minute `failStrandedRun` as well; it compared a
+ * timestamp rather than activity, so a redelivery landing mid-flight could fail
+ * a resume that was still working. It is gone — a late delivery for a `running`
+ * run now logs and no-ops, and this sweep decides, on evidence, when the run is
+ * really dead.
+ *
  * The `status = 'running'` predicate on the UPDATE is the same one
  * `RunRecorder.finish` carries, and the pair is what makes this safe: a run
  * this sweep failed cannot later be written back to `completed` by a resume
  * that comes back to life, and a run that finished normally between the read
  * and the write is not touched here.
+ *
+ * The status flip and its `audit_log` row are **one transaction**, so a failed
+ * run is never durable without its audit trail (CLAUDE.md rule 3) — a retry
+ * after a mid-write failure finds the run still `running` and does the whole
+ * thing again. The notification is best effort *after* the commit: it must not
+ * cost the sweep its correctness, and a retry would find the run already
+ * `failed` and write neither the audit row nor the notification.
  */
 export async function runStuckRunSweep(
   deps: Omit<ResumeSweepDeps, "boss">,
@@ -240,35 +273,45 @@ export async function runStuckRunSweep(
       const error = `Stranded: the run has been running with no activity since ${run.lastActivityAt.toISOString()}${
         run.claimedAt ? ` (claimed for an approval at ${run.claimedAt})` : ""
       }.`;
-      const [failed] = await deps.db
-        .update(schema.agentRuns)
-        .set({ status: "failed", summary: "Run stranded", error, finishedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(schema.agentRuns.id, run.id),
-            eq(schema.agentRuns.organisationId, organisationId),
-            eq(schema.agentRuns.status, "running"),
-            isNull(schema.agentRuns.deletedAt),
-          ),
-        )
-        .returning({ id: schema.agentRuns.id });
-      if (!failed) return;
+      const claimed = await deps.db.transaction(async (tx) => {
+        const inner = tx as unknown as Db;
+        const [failed] = await tx
+          .update(schema.agentRuns)
+          .set({ status: "failed", summary: "Run stranded", error, finishedAt: now, updatedAt: now })
+          .where(
+            and(
+              eq(schema.agentRuns.id, run.id),
+              eq(schema.agentRuns.organisationId, organisationId),
+              eq(schema.agentRuns.status, "running"),
+              isNull(schema.agentRuns.deletedAt),
+            ),
+          )
+          .returning({ id: schema.agentRuns.id });
+        if (!failed) return false;
 
-      await recordAudit(deps.db, organisationId, {
-        actorKind: "system",
-        action: "agent.run_stranded",
-        targetType: "agent_run",
-        targetId: run.id,
-        before: { status: "running", lastActivityAt: run.lastActivityAt.toISOString(), claimedAt: run.claimedAt },
-        after: { status: "failed", error },
+        await recordAudit(inner, organisationId, {
+          actorKind: "system",
+          action: "agent.run_stranded",
+          targetType: "agent_run",
+          targetId: run.id,
+          before: { status: "running", lastActivityAt: run.lastActivityAt.toISOString(), claimedAt: run.claimedAt },
+          after: { status: "failed", error },
+        });
+        return true;
       });
+      if (!claimed) return;
+
       // An approved outward action may have vanished with the process that was
-      // running it. Nothing else surfaces that.
+      // running it. Nothing else surfaces that — but a notification that cannot
+      // be delivered must not fail the item either: the retry would find the run
+      // already `failed` and skip the audit row as well.
       await notifyOwner(deps.db, organisationId, {
         kind: "agent.run_stranded",
         title: `${run.agentKey} stopped without finishing`,
         body: error,
         link: `/agents/runs/${run.id}`,
+      }).catch((err: unknown) => {
+        logger.error({ runId: run.id, err: String(err) }, "stranded-run notification failed; the run is failed and audited");
       });
     },
   );

@@ -105,6 +105,11 @@ export function installWebEnqueue(): void {
     // `resumeAgent` refuses an approval that has already been decided).
     switch (event.name) {
       case "email.received":
+        // Deliberately still throws. Nothing has committed yet — the inbound
+        // webhook route writes no rows of its own — and the route turns the
+        // throw into a 500 so the provider redelivers the mail, which is the
+        // only thing that can recover it. Swallowing it here would drop a
+        // client's email silently.
         await sendJob(
           QUEUE.inboundMessage,
           { organisationId: event.organisationId, inbound: event.inbound },
@@ -112,11 +117,18 @@ export function installWebEnqueue(): void {
         );
         return;
       case "message.queued":
+        // Logged, not thrown, for the same reason as `default:` — `emit` runs
+        // after `replyToConversation` committed the `queued` row, and throwing
+        // would turn a saved reply into "Something went wrong" and invite a
+        // retry that writes a *second* reply onto the thread. What is lost here
+        // is only the delivery, and unlike a dropped fan-out it is re-driven
+        // automatically: `outbound.sweep` (cron, every minute) re-enqueues
+        // `outbound.message` for any message still `queued` after 60 seconds.
         await sendJob(
           QUEUE.outboundMessage,
           { organisationId: event.organisationId, messageId: event.messageId },
           { singletonKey: `outbound:${event.messageId}` },
-        );
+        ).catch((err: unknown) => reportDroppedEvent(event, err, OUTBOUND_RECOVERY));
         return;
       case "approval.decided":
         await sendJob(
@@ -149,13 +161,21 @@ export function installWebEnqueue(): void {
   });
 }
 
+/** What the owner is told to do about a dropped event, when nothing re-drives it. */
+const MANUAL_RECOVERY =
+  "Anything that event would have triggered (onboarding tasks, for example) has to be re-run by hand.";
+
+/** `outbound.sweep` re-drives this one, so the owner is told to wait, not to act. */
+const OUTBOUND_RECOVERY =
+  "The reply is saved and still queued; the outbound sweep re-drives it within a minute. Nothing to do unless it is still queued in an hour.";
+
 /**
  * A domain event that could not be queued. Logged, and — best effort — put in
  * front of the owner, because the only other trace is a server log nobody
  * reads. Never throws: the caller's write is already committed, and this is a
  * report about follow-on work, not a failure of the write.
  */
-async function reportDroppedEvent(event: DomainEvent, err: unknown): Promise<void> {
+async function reportDroppedEvent(event: DomainEvent, err: unknown, recovery = MANUAL_RECOVERY): Promise<void> {
   const message = err instanceof Error ? err.message : String(err);
   console.error("domain event could not be queued; the write stands but its follow-on work did not run", {
     event: event.name,
@@ -166,7 +186,7 @@ async function reportDroppedEvent(event: DomainEvent, err: unknown): Promise<voi
     await notifyOwner(getDb(), event.organisationId, {
       kind: "queue.event_dropped",
       title: `A "${event.name}" follow-up did not start`,
-      body: `The record was saved, but queueing its follow-on work failed: ${message}. Anything that event would have triggered (onboarding tasks, for example) has to be re-run by hand.`,
+      body: `The record was saved, but queueing its follow-on work failed: ${message}. ${recovery}`,
     });
   } catch (notifyErr) {
     console.error("could not tell the owner about the dropped domain event", {

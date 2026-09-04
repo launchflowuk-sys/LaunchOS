@@ -76,7 +76,7 @@ async function decide(
   await decideApproval(db, organisationId, { approvalId, decision, decidedByUserId, ...(note ? { note } : {}) });
 }
 
-/** A resume claim old enough for `failStrandedRun` to treat the run as abandoned. */
+/** A resume claim old enough that no live delivery could still be holding it. */
 const abandonedClaim = (approvalId: string) => ({
   approvalId,
   claimedAt: new Date(Date.now() - 10 * 60_000).toISOString(),
@@ -124,7 +124,11 @@ describe("resumeAgent", () => {
       const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
       expect(row!.status).toBe("completed");
       expect(row!.finishedAt).toBeInstanceOf(Date);
-      expect(row!.metadata).toEqual({});
+      // `finish` removes `pending` and keeps the rest: the claim that drove
+      // this resume stays on the row as the trace's only record of who
+      // released it and when.
+      expect(row!.metadata).not.toHaveProperty("pending");
+      expect(row!.metadata["resume"]).toMatchObject({ approvalId: approval.id });
 
       const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, run.runId)).orderBy(schema.agentSteps.seq);
       expect(steps.map((s) => s.seq)).toEqual([...steps.keys()].map((i) => i + 1)); // seq continues, never restarts
@@ -258,40 +262,32 @@ describe("resumeAgent", () => {
     });
   });
 
-  it("fails a run stranded in running by a killed resume, and tells the owner", async () => {
+  it("leaves a run stranded in running exactly as it was, for the stuck sweep to close", async () => {
     await withTestDb(async (db) => {
       const { organisationId, run, approval } = await park(db);
       await decide(db, organisationId, approval.id, "approved");
-      // An earlier delivery for *this* approval claimed the run, stamped the
-      // claim and was killed, long enough ago that nothing can still be driving it.
+      // An earlier delivery for *this* approval claimed the run and may be
+      // working or may be dead — the kernel cannot tell those apart, and the
+      // five-minute guess it used to make failed resumes that were still
+      // running. It throws instead: the run is untouched, pg-boss retries, and
+      // `agent-runs.stuck-sweep` decides on evidence (no step for 30 minutes).
       const [claimedRun] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
       await db.update(schema.agentRuns)
         .set({ status: "running", metadata: { ...claimedRun!.metadata, resume: abandonedClaim(approval.id) } })
         .where(eq(schema.agentRuns.id, run.runId));
-      const [user] = await db.insert(schema.user)
-        .values({ id: `u-${crypto.randomUUID()}`, name: "Shoji", email: `${crypto.randomUUID()}@t.test` })
-        .returning();
-      await db.insert(schema.organisationMembers)
-        .values({ organisationId, userId: user!.id, role: "owner", status: "active" });
 
-      const resumed = await resumeAgent(agent, {
-        db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
-        llm: new FakeLlmClient([]), policy: "safe", logger: console,
-      });
+      await expect(
+        resumeAgent(agent, {
+          db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+          llm: new FakeLlmClient([]), policy: "safe", logger: console,
+        }),
+      ).rejects.toThrow(/is running, expected awaiting_approval/);
 
-      // Terminal and visible, rather than retried for ever against a lost claim.
-      expect(resumed.status).toBe("failed");
       expect(sendMailCalls).toEqual([]);
       const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
-      expect(row!.status).toBe("failed");
-      expect(row!.error).toMatch(/is running, expected awaiting_approval/);
-      expect(row!.finishedAt).toBeInstanceOf(Date);
-
-      const notifications = await db.select().from(schema.notifications)
-        .where(eq(schema.notifications.userId, user!.id));
-      expect(notifications).toHaveLength(1);
-      expect(notifications[0]!.kind).toBe("agent.resume_failed");
-      expect(notifications[0]!.link).toBe(`/agents/runs/${run.runId}`);
+      expect(row!.status).toBe("running");
+      expect(row!.error).toBeNull();
+      expect(row!.finishedAt).toBeNull();
     });
   });
 

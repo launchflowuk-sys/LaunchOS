@@ -83,8 +83,8 @@ describe("handleAgentResume", () => {
   it("is a no-op for a run an earlier delivery already failed, so the retry loop stops", async () => {
     await withTestDb(async (db) => {
       const { organisationId, run, approval } = await parked(db);
-      // `failStrandedRun` produces exactly this state, and the retry after it
-      // must stop here rather than reach the kernel again.
+      // `agent-runs.stuck-sweep` produces exactly this state, and the retry
+      // after it must stop here rather than reach the kernel again.
       await db.update(schema.agentRuns).set({ status: "failed" }).where(eq(schema.agentRuns.id, run.runId));
 
       const result = await handleAgentResume(
@@ -96,13 +96,15 @@ describe("handleAgentResume", () => {
     });
   });
 
-  it("closes out a run an abandoned delivery left running", async () => {
+  it("is a no-op for a run something else is already driving, and leaves it for the stuck sweep", async () => {
     await withTestDb(async (db) => {
       const { organisationId, run, approval } = await parked(db);
       const [before] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
-      // A delivery for this approval claimed the run ten minutes ago and died.
-      // `running` is deliberately not skipped above: this is the one case the
-      // kernel still has to end, or the run sits there for ever.
+      // A delivery for this approval claimed the run and is either working or
+      // dead — from here those are the same row. Guessing between them on the
+      // age of the claim used to fail resumes that were simply taking longer
+      // than five minutes; `agent-runs.stuck-sweep` decides instead, on whether
+      // the run is still recording steps.
       await db.update(schema.agentRuns)
         .set({
           status: "running",
@@ -113,15 +115,16 @@ describe("handleAgentResume", () => {
         })
         .where(eq(schema.agentRuns.id, run.runId));
 
+      // No scripted LLM response: reaching the kernel at all would throw.
       const result = await handleAgentResume(
         { db, registry: { "test-agent": agent }, llm: new FakeLlmClient([]), policy: "safe", logger: console },
         { organisationId, runId: run.runId, approvalId: approval.id, decision: "approved" },
       );
 
-      expect(result!.status).toBe("failed");
+      expect(result).toBeUndefined();
       const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
-      expect(row!.status).toBe("failed");
-      expect(row!.finishedAt).toBeInstanceOf(Date);
+      expect(row!.status).toBe("running");
+      expect(row!.error).toBeNull();
     });
   });
 });
