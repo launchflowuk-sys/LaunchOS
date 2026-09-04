@@ -16,6 +16,16 @@
  * (`packages/db/src/seed.ts`) treated the same `""` as unset and created the
  * account under its own default. Every spec then failed as a navigation
  * timeout. `||` is the whole of the difference.
+ *
+ * **`INBOUND_EMAIL_SECRET` is the one key with no default at all.** It is a
+ * credential rather than a fixture, the web app refuses to start without a real
+ * one, and a default published here would be exactly the value that refusal
+ * exists to catch. It throws at import instead — see `requiredFromEnv`.
+ *
+ * `DATABASE_URL` lives here too so the specs share one connection string. Seven
+ * of them used to declare their own `?? "postgres://…"` copy, which meant a
+ * blank `DATABASE_URL=` in `.env` reached them as `""` — the same bug as the
+ * owner email, one key over.
  */
 
 /**
@@ -31,6 +41,28 @@
  */
 function fromEnv(value: string | undefined, fallback: string): string {
   return value?.trim() || fallback;
+}
+
+/**
+ * A value with no default, because publishing one would be the bug.
+ *
+ * `INBOUND_EMAIL_SECRET` is the only credential on
+ * `POST /api/webhooks/email/inbound`, and the web app now refuses to start on a
+ * blank one, on anything under 24 characters, and on every placeholder this
+ * repository has ever shipped (`apps/web/src/lib/env.ts`). A fallback here
+ * would put one of those placeholders back — in a file that is committed — and
+ * a spec that quietly signs with the wrong secret fails as a 401 buried inside
+ * a fetch rather than as a missing variable. So it throws, by name, at import.
+ */
+function requiredFromEnv(name: string, value: string | undefined): string {
+  const trimmed = value?.trim() ?? "";
+  if (trimmed.length === 0) {
+    throw new Error(
+      `${name} is not set. The e2e suite signs the inbound webhook with it and the web app refuses to start without it — ` +
+        `set it in the repo-root .env (\`openssl rand -base64 48\`) and restart the dev server so both sides carry the same value.`,
+    );
+  }
+  return trimmed;
 }
 
 export const DATABASE_URL = fromEnv(process.env.DATABASE_URL, "postgres://launchos:launchos@localhost:5432/launchos");
@@ -54,5 +86,5 @@ export const CLIENT = {
 const SUPPORT_EMAIL_DOMAIN = fromEnv(process.env.SUPPORT_EMAIL_DOMAIN, "support.launchflow.co.uk");
 /** The routable address `seedEmailIdentity` gives the first seeded client. */
 export const SUPPORT_ADDRESS = fromEnv(process.env.SEED_SUPPORT_ADDRESS, `grays-cabline@${SUPPORT_EMAIL_DOMAIN}`);
-/** Shared secret on the inbound webhook. */
-export const INBOUND_SECRET = fromEnv(process.env.INBOUND_EMAIL_SECRET, "change-me");
+/** Shared secret on the inbound webhook. No default — see `requiredFromEnv`. */
+export const INBOUND_SECRET = requiredFromEnv("INBOUND_EMAIL_SECRET", process.env.INBOUND_EMAIL_SECRET);

@@ -2,6 +2,7 @@ import { createClientUser } from "@launchos/core";
 import { createDb, schema } from "@launchos/db";
 import { expect, test, type Page } from "@playwright/test";
 import { and, desc, eq, ne } from "drizzle-orm";
+import { DATABASE_URL } from "./seed-credentials";
 
 /**
  * Plan 5 Task 13 acceptance for the portal's invoices and reports.
@@ -13,8 +14,6 @@ import { and, desc, eq, ne } from "drizzle-orm";
  * seed deliberately does not: a draft invoice for this client (never visible in
  * the portal) and a published report belonging to a different client (a 404).
  */
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
-
 // The dev server compiles each portal route the first time it is requested,
 // measured at up to 35s cold, so the first assertion on a new screen needs far
 // longer than the 5s default.

@@ -111,10 +111,22 @@ describe("EMAIL_ADAPTER=smtp that cannot be built", () => {
     expect(() => assertProductionAdapters(env)).not.toThrow(/falls back to the mock/);
   });
 
-  it("names the port too, since `SMTP_PORT=` is the shape .env.example ships", () => {
-    expect(() => assertProductionAdapters({ ...live, SMTP_HOST: "smtp.test", SMTP_PORT: "" }))
-      .toThrow(/SMTP_PORT= is not a positive whole number/);
+  it("names a port that is set and wrong", () => {
+    // `.env.example` ships `SMTP_PORT=587`; the shape that bites is a Coolify
+    // variable typed by hand, which is why the message quotes the value back.
+    expect(() => assertProductionAdapters({ ...live, SMTP_HOST: "smtp.test", SMTP_PORT: "smtp" }))
+      .toThrow(/SMTP_PORT=smtp is not a positive whole number/);
     expect(productionAdapterIssues({ ...live, SMTP_HOST: "smtp.test", SMTP_PORT: "587" })).toEqual([]);
+  });
+
+  it("treats `SMTP_PORT=` — created and left blank — as unset, exactly as the factory does", () => {
+    // The divergence this pair exists to stop: the worker strips blanks before
+    // parsing, so the guard saw `undefined` and passed, while the factory was
+    // handed the raw `process.env` and threw on `Number("") === 0` five lines
+    // later. Both now read a blank variable as "unset → 587".
+    const blankPort = { ...live, SMTP_HOST: "smtp.test", SMTP_PORT: "" };
+    expect(describeAdapters(blankPort).email).toBe("smtp");
+    expect(productionAdapterIssues(blankPort)).toEqual([]);
   });
 
   it("is not covered by ALLOW_MOCK_ADAPTERS, which only ever meant `I meant the mocks`", () => {
@@ -169,7 +181,11 @@ describe("every guard rule against the factory it mirrors", () => {
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "587" },
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "465" },
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: " 587 " },
+    // The three blank shapes a Coolify variable created and never filled in
+    // produces. Each must mean the same thing to the guard and to the factory.
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "" },
+    { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "", SMTP_USER: "", SMTP_PASS: "" },
+    { EMAIL_ADAPTER: "smtp", SMTP_HOST: "", SMTP_PORT: "" },
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "0" },
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "-25" },
     { EMAIL_ADAPTER: "smtp", SMTP_HOST: "smtp.test", SMTP_PORT: "587.5" },

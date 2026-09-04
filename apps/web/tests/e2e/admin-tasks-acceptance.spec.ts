@@ -2,6 +2,7 @@ import { createDb, schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { expect, test } from "@playwright/test";
 import { signIn } from "./sign-in";
+import { DATABASE_URL } from "./seed-credentials";
 
 /**
  * Plan 3 Task 12 acceptance: the seeded packages and onboarding templates
@@ -15,8 +16,6 @@ import { signIn } from "./sign-in";
  * file name is already in use — it deliberately exercises the seeded
  * "Website Care" package and its ten onboarding templates instead.
  */
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
-
 // The dev server compiles each route the first time it is requested in a
 // fresh browser context, which can take longer than the 5s default timeout.
 const COLD_COMPILE = 60_000;

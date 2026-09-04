@@ -3,6 +3,7 @@ import { createDb, schema } from "@launchos/db";
 import { expect, test, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { signIn } from "./sign-in";
+import { DATABASE_URL } from "./seed-credentials";
 
 /**
  * Plan 4 Task 13 acceptance for the client portal.
@@ -14,8 +15,6 @@ import { signIn } from "./sign-in";
  * organisation, the two clients, their sites and domains — comes from
  * `pnpm db:seed`.
  */
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
-
 // The dev server compiles each portal route the first time it is requested,
 // which was measured at up to 35s on a cold cache, so the first assertion on a
 // new screen needs far longer than the 5s default.

@@ -31,7 +31,7 @@ packages/core       Domain services (clients, sites, tickets, inbox, incidents, 
 packages/agents     Agent kernel + the three agents + tool adapters
 packages/channels   Comms adapters: in-app, email (SMTP), whatsapp (stub)
 packages/integrations  External provider clients (Coolify, Cloudflare DNS, Google Ads, Meta Ads) — mock-first
-packages/ui         Shared shadcn components (ported from the old LaunchFlow OS prototype as needed)
+packages/ui         Reserved, not built — a README and nothing else, so pnpm does not treat it as a workspace member. Shared components live in apps/web/src/components until there is a second consumer
 packages/config     Shared tsconfig / eslint / prettier
 docs/               Architecture, data model, agent framework, deployment, specs, plans
 infra/              Dockerfiles, compose for Coolify

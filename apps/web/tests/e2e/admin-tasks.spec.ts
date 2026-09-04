@@ -2,8 +2,8 @@ import { createDb, schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { expect, test } from "@playwright/test";
 import { signIn } from "./sign-in";
+import { DATABASE_URL } from "./seed-credentials";
 
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
 const SEEDED_CLIENT_NAME = "Grays CabLine";
 
 test("tasks: create from the dialog, filter, move on the board, and count on the dashboard", async ({ page }) => {

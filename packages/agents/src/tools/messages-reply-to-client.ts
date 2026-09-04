@@ -10,6 +10,14 @@ import { defineTool } from "../kernel/types.js";
  * unset variable produces the same link the rest of the system believes in,
  * rather than a courtesy email that says "sign in to the portal" and gives
  * nowhere to sign in.
+ *
+ * **Outside production only.** This is the one link a *client* clicks, so a
+ * loopback address here is not a harmless default — it points the reader at
+ * their own machine. Both env schemas now refuse `APP_URL` unset or left on
+ * this value under `NODE_ENV=production`, so in a correctly started process the
+ * branch below is unreachable; it is kept because this tool reads
+ * `process.env` directly rather than the parsed env, and a courtesy notice with
+ * no link is strictly better than one with a wrong link.
  */
 const APP_URL_DEFAULT = "http://localhost:3000";
 
@@ -20,9 +28,15 @@ const APP_URL_DEFAULT = "http://localhost:3000";
  * A malformed value is no link at all — the notice still goes out.
  */
 function portalUrl(): string | undefined {
-  const raw = process.env["APP_URL"] || APP_URL_DEFAULT;
+  const configured = process.env["APP_URL"]?.trim();
+  if (!configured && process.env["NODE_ENV"] === "production") {
+    console.warn(
+      "[messages_reply_to_client] APP_URL is not set: the courtesy notice goes out without a portal link rather than pointing the client at localhost.",
+    );
+    return undefined;
+  }
   try {
-    return new URL(raw).toString();
+    return new URL(configured || APP_URL_DEFAULT).toString();
   } catch {
     return undefined;
   }

@@ -9,6 +9,15 @@ import { z } from "zod";
 // A missing .env is not an error — production sets real env vars instead.
 config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)) });
 
+/**
+ * The base URL this worker assumes when `APP_URL` is unset.
+ *
+ * Same constant, same reasoning as `apps/web/src/lib/env.ts`: fine for every
+ * internal link and wrong for the one string a client clicks, so the rule below
+ * refuses it under `NODE_ENV=production`.
+ */
+export const LOCAL_APP_URL = "http://localhost:3000";
+
 const EnvShape = z.object({
   DATABASE_URL: z.string().url(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
@@ -21,7 +30,7 @@ const EnvShape = z.object({
   MAIL_FROM: z.string().optional(),
   OWNER_NOTIFY_EMAIL: z.string().email().optional(),
   STORAGE_DIR: z.string().default("./storage"),
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  APP_URL: z.string().url().default(LOCAL_APP_URL),
   PAYMENTS_ADAPTER: z.enum(["mock", "stripe"]).default("mock"),
   ADS_ADAPTER: z.enum(["mock", "google", "meta"]).default("mock"),
   VAT_RATE: z.coerce.number().min(0).max(100).default(20),
@@ -57,7 +66,7 @@ const EnvShape = z.object({
 });
 
 /**
- * Three rules no single field can express, all about the same failure: a worker
+ * Four rules no single field can express, all about the same failure: a worker
  * that boots happily and then cannot do the thing it was deployed to do.
  *
  * 1. `LLM=anthropic` (the default) needs `ANTHROPIC_API_KEY`. Without it every
@@ -90,6 +99,21 @@ export const Env = EnvShape.superRefine((value, ctx) => {
       path: ["LLM"],
       message:
         "LLM=fake is refused in production: the agents would answer from a scripted stub. Set ANTHROPIC_API_KEY and LLM=anthropic, or set ALLOW_FAKE_LLM=1 to say you meant it.",
+    });
+  }
+  // 4. `APP_URL` is a real address in production, not the local default. The
+  //    worker hands it to the agent registry as `portalBaseUrl`, and the Ad
+  //    Performance Sentinel and every approved portal reply put it in an email
+  //    a client is asked to click. The default is checked by value rather than
+  //    by absence because `APP_URL=http://localhost:3000` set on a live
+  //    resource does exactly the same damage as leaving it unset.
+  if (value.NODE_ENV === "production" && value.APP_URL.replace(/\/$/, "") === LOCAL_APP_URL) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["APP_URL"],
+      message:
+        `APP_URL is ${LOCAL_APP_URL} in production: a client emailed a portal link would be sent to their own machine. ` +
+        "Set it to the address the web app is served from, e.g. https://os.launchflow.co.uk",
     });
   }
   for (const issue of productionAdapterIssues(value)) {

@@ -23,6 +23,15 @@ const REVOKE_FAILED =
   "Your password was changed, but your other sessions could not be signed out — sign out on your other devices manually.";
 
 /**
+ * Shown when the change committed but `audit_log` did not record it.
+ *
+ * An unaudited password change is an integrity failure, so it must be said out
+ * loud — but not by reporting the change as failed. See the note on the action.
+ */
+const AUDIT_FAILED =
+  "Your password was changed, but the change could not be recorded in the audit log — tell the owner so it can be checked.";
+
+/**
  * Deliberately no `min` on `newPassword`. The floor is `minPasswordLength` in
  * `lib/auth.ts`, Better Auth enforces it inside `changePassword`, and it is the
  * only place that also covers the portal form and a raw POST to `/api/auth`.
@@ -51,10 +60,14 @@ const Input = z.object({
  *
  * Everything after `changePassword` returns is post-commit: the new credential
  * is already in the database and nothing here can put the old one back. So
- * nothing after that point may report the change as failed. The one exception
- * is the audit write itself, which is allowed to throw: a password change no
- * `audit_log` row records is an integrity failure, not a cosmetic one, and
- * swallowing it would be the quiet version of the bug this call exists to fix.
+ * nothing after that point may report the change as failed — **including the
+ * audit write.** A password change no `audit_log` row records is an integrity
+ * failure and must not be swallowed, but letting it throw out of the action was
+ * a *false negative*: a transient database error showed the member a generic
+ * failure, and their next attempt used a current password that no longer works.
+ * Both warnings say what happened instead, the failure is logged with the
+ * organisation and user on it, and the audit gap is still visible in
+ * `audit_log` by its absence — which is what an integrity review looks for.
  */
 export async function changeOwnPasswordAction(
   _previous: ChangePasswordState,
@@ -88,7 +101,24 @@ export async function changeOwnPasswordAction(
 
   // ---- Past this line the new credential is committed. ----
 
-  await recordOwnPasswordChange(getDb(), session.organisationId, { userId: session.userId });
+  // Every failure past this line is a warning on a successful change, never a
+  // failure; more than one can happen, so they are collected rather than
+  // overwritten.
+  const warnings: string[] = [];
+
+  try {
+    await recordOwnPasswordChange(getDb(), session.organisationId, { userId: session.userId });
+  } catch (error) {
+    // This also skips `initial_password_set_at`, so an owner may still re-issue
+    // over the top of a password the member has in fact replaced. Saying so is
+    // the point of the warning: the member can ask for it to be checked.
+    console.error("[account] password changed but the audit write failed", {
+      organisationId: session.organisationId,
+      userId: session.userId,
+      error,
+    });
+    warnings.push(AUDIT_FAILED);
+  }
 
   // The point of a password change: if the old one leaked, every session it
   // opened goes with it. Deliberately the separate `revokeOtherSessions`
@@ -103,7 +133,6 @@ export async function changeOwnPasswordAction(
   // A failure here is reported as a warning on a successful change, never as a
   // failure: the password has already been replaced, and telling the member
   // otherwise sends them back to a current password that no longer works.
-  let warning: string | undefined;
   try {
     await getAuth().api.revokeOtherSessions({ headers: requestHeaders });
   } catch (error) {
@@ -112,7 +141,7 @@ export async function changeOwnPasswordAction(
       userId: session.userId,
       error,
     });
-    warning = REVOKE_FAILED;
+    warnings.push(REVOKE_FAILED);
   }
 
   // /team renders the re-issue control off `initial_password_set_at`.
@@ -120,5 +149,6 @@ export async function changeOwnPasswordAction(
   revalidatePath("/account");
   // `exactOptionalPropertyTypes`: an absent warning is an absent key, not an
   // explicit `undefined`.
+  const warning = warnings.join(" ");
   return warning ? { status: "changed", warning } : { status: "changed" };
 }

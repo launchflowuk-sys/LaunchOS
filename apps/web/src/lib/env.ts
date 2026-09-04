@@ -44,8 +44,31 @@ const VatRatePercent = z
  */
 export const MIN_AUTH_SECRET_LENGTH = 32;
 
+/**
+ * The floor for `INBOUND_EMAIL_SECRET`, in characters.
+ *
+ * Lower than the session secret's because the two carry different weight: this
+ * one is compared with `timingSafeEqual` on a single header
+ * (`app/api/webhooks/email/inbound/route.ts`) and forging it manufactures
+ * conversations and tickets, where forging a session cookie *is* the owner. 24
+ * characters is `openssl rand -base64 18`, and every generator this repo
+ * recommends clears it comfortably.
+ */
+export const MIN_INBOUND_SECRET_LENGTH = 24;
+
 /** How to produce a real one, said the same way everywhere it is asked for. */
 const GENERATE_SECRET = "generate one with `openssl rand -base64 48`";
+
+/**
+ * The base URL both hosts default to when `APP_URL` is unset.
+ *
+ * Fine locally and wrong in exactly one place: it is the host in the link a
+ * client is asked to click in a courtesy email. `startupUrlIssues` refuses it
+ * under `NODE_ENV=production` for that reason — see the same constant and the
+ * same reasoning in `apps/worker/src/env.ts` and in `portalUrl()`
+ * (`packages/agents/src/tools/messages-reply-to-client.ts`).
+ */
+export const LOCAL_APP_URL = "http://localhost:3000";
 
 /**
  * Placeholder secrets this repository has published, checked by value.
@@ -84,21 +107,33 @@ const DatabaseUrl = z.string().url();
 
 export const Env = z.object({
   VAT_RATE: VatRatePercent.optional(),
-  APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Blank is unset — the same rule `withoutEmptyStrings` applies in
+   * `apps/worker/src/env.ts` and the email factory. Without it a Coolify
+   * variable created and left empty failed as a bare "Invalid URL" instead of
+   * reaching `startupUrlIssues`, which is the check that says what the variable
+   * is *for* and why production cannot do without it.
+   */
+  APP_URL: z.preprocess(
+    (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
+    z.string().url().default(LOCAL_APP_URL),
+  ),
   /**
    * Declared so this schema is the whole list of what the web process needs,
-   * which is what `docs/DEPLOYMENT.md`'s web env list is written from. Both are
-   * validated in `startupSecretIssues` rather than by a field, so the refusal
-   * can name the fix ("generate one with …") and so the `next build` exemption
-   * applies to them — a build has neither a database nor a session to sign.
+   * which is what `docs/DEPLOYMENT.md`'s web env list is written from. All
+   * three are validated in `startupSecretIssues` rather than by a field, so the
+   * refusal can name the fix ("generate one with …") and so the `next build`
+   * exemption applies to them — a build has neither a database, a session to
+   * sign, nor an inbound webhook to authenticate.
    */
   DATABASE_URL: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().optional(),
+  INBOUND_EMAIL_SECRET: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
 
 /**
- * The two secrets the process cannot run without, and the placeholder refusal.
+ * The three secrets the process cannot run without, and the placeholder refusal.
  *
  * `docs/superpowers/specs/2026-09-03-agency-os-design.md:105` asks for exactly
  * this — "the process refuses to start without `DATABASE_URL` and
@@ -108,6 +143,15 @@ export type Env = z.infer<typeof Env>;
  * failed with a 500 on the first sign-in. A container carrying the published
  * `change-me` did not even fail — it signed every session cookie, `owner`
  * included, with a value anyone can read out of this repository.
+ *
+ * `INBOUND_EMAIL_SECRET` is here for the same reason and shipped the same
+ * placeholder. The comparison itself is sound — `timingSafeEqual` in
+ * `app/api/webhooks/email/inbound/route.ts` — but a deployment left on
+ * `change-me` lets anyone `POST` that webhook and manufacture conversations and
+ * tickets against any client, and `settings/email` reports only "Set" / "Not
+ * set", so the placeholder reads as correctly configured. It is required rather
+ * than optional deliberately: an unset secret is not "inbound is switched off",
+ * it is a route whose only credential is a header nobody set.
  *
  * Exported so the rules can be tested without mutating `process.env`.
  */
@@ -132,7 +176,54 @@ export function startupSecretIssues(source: NodeJS.ProcessEnv): string[] {
     issues.push(`BETTER_AUTH_SECRET: ${secret.length} characters; the minimum is ${MIN_AUTH_SECRET_LENGTH} — ${GENERATE_SECRET}`);
   }
 
+  const inbound = source.INBOUND_EMAIL_SECRET?.trim() ?? "";
+  if (inbound.length === 0) {
+    issues.push(
+      `INBOUND_EMAIL_SECRET: not set — it is the only credential on POST /api/webhooks/email/inbound, so ${GENERATE_SECRET}`,
+    );
+  } else if (isPublishedDefaultSecret(inbound)) {
+    issues.push(
+      `INBOUND_EMAIL_SECRET: a placeholder published in this repository — anyone could post to the inbound webhook and raise tickets against any client, so ${GENERATE_SECRET}`,
+    );
+  } else if (inbound.length < MIN_INBOUND_SECRET_LENGTH) {
+    issues.push(`INBOUND_EMAIL_SECRET: ${inbound.length} characters; the minimum is ${MIN_INBOUND_SECRET_LENGTH} — ${GENERATE_SECRET}`);
+  }
+
   return issues;
+}
+
+/**
+ * `APP_URL` is a real address in production, not the local default.
+ *
+ * `Env` defaults it to `http://localhost:3000` so local work needs no
+ * configuration, and that default is harmless for every internal link. It is
+ * not harmless for the one string a client actually clicks: a portal reply
+ * queues a courtesy email that says "sign in to the portal" and points at the
+ * reader's own machine (review L1). Nothing downstream can tell a defaulted
+ * value from a configured one, so the refusal has to happen here, and it has to
+ * refuse the literal loopback default rather than only an absent variable —
+ * `APP_URL=http://localhost:3000` on a Coolify resource does exactly the same
+ * damage as leaving it out.
+ *
+ * Exported so the rule can be tested without mutating `process.env`.
+ */
+export function startupUrlIssues(source: NodeJS.ProcessEnv): string[] {
+  if (source.NODE_ENV !== "production") return [];
+  const appUrl = source.APP_URL?.trim() ?? "";
+  if (appUrl.length === 0) {
+    return [
+      "APP_URL: not set — every portal link a client is emailed would point at http://localhost:3000. Set it to the address this app is served from, e.g. https://os.launchflow.co.uk",
+    ];
+  }
+  if (!z.string().url().safeParse(appUrl).success) {
+    return [`APP_URL: not a URL (${appUrl}) — expected the address this app is served from, e.g. https://os.launchflow.co.uk`];
+  }
+  if (appUrl.replace(/\/$/, "") === LOCAL_APP_URL) {
+    return [
+      `APP_URL: ${LOCAL_APP_URL} in production — a client emailed a portal link would be sent to their own machine. Set it to the address this app is served from.`,
+    ];
+  }
+  return [];
 }
 
 /**
@@ -177,9 +268,9 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
   // The build exemption covers these too: `infra/Dockerfile.web` runs
   // `next build` long before a database or a session secret exists, and a build
   // signs nothing. `next start` is where a real cookie could be issued.
-  const secretIssues = isBuild(source) ? [] : startupSecretIssues(source);
-  if (secretIssues.length > 0) {
-    throw new Error(`Invalid environment:\n- ${secretIssues.join("\n- ")}`);
+  const startupIssues = isBuild(source) ? [] : [...startupSecretIssues(source), ...startupUrlIssues(source)];
+  if (startupIssues.length > 0) {
+    throw new Error(`Invalid environment:\n- ${startupIssues.join("\n- ")}`);
   }
   const adapterIssues = isBuild(source) ? [] : productionAdapterIssues(source);
   if (adapterIssues.length > 0) {

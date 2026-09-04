@@ -10,12 +10,18 @@
  * private network (Hetzner Cloud private networks are `10.0.0.0/16`; this
  * repository's own production compose file names its database `postgres`).
  *
- * What is left is the seed's `demo-fixtures-in-production` gate and its refusal
- * to write a published default, where the inference is worth having and the
- * cost of being wrong runs the other way: keying those on `NODE_ENV` alone
- * meant a demo seed against a live database from a shell where nobody exported
- * `NODE_ENV` was the one run that skipped them, while treating a laptop's
- * docker Postgres as production would refuse every local `pnpm db:seed`.
+ * What is left is what `packages/db/src/seed.ts` names: the `(production
+ * target)` / `(local)` annotation on the printed database line, the requirement
+ * that `SEED_OWNER_EMAIL` be *set* rather than defaulted, and the seed's two
+ * credential refusals (`published-default` and `shared-password`). The seed's
+ * old `demo-fixtures-in-production` gate — which this predicate used to key —
+ * no longer exists; `demo-opt-in` replaced it, and that one is unconditional.
+ *
+ * In each of the three that are left the inference is worth having, because the
+ * cost of being wrong runs the other way: keying them on `NODE_ENV` alone meant
+ * a seed against a live database from a shell where nobody exported `NODE_ENV`
+ * was the one run that skipped them, while treating a laptop's docker Postgres
+ * as production costs a local developer one environment variable.
  *
  * A run is a **production target** unless the database it is pointed at is
  * demonstrably local:

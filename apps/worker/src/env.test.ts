@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { describeNodeEnv, loadEnv, parseEnv } from "./env.js";
+import { describeNodeEnv, loadEnv, LOCAL_APP_URL, parseEnv } from "./env.js";
 
 /** The minimum a worker needs before the cross-field rules are the question. */
 const base = { DATABASE_URL: "postgres://user:pw@localhost:5432/launchos" } as NodeJS.ProcessEnv;
@@ -30,7 +30,9 @@ describe("worker env", () => {
 
   // The adapter rules below are a separate refusal that also fires under
   // NODE_ENV=production; opting out of them here keeps these two about the LLM.
-  const fakeInProduction = { ...base, LLM: "fake", NODE_ENV: "production", ALLOW_MOCK_ADAPTERS: "1" };
+  const fakeInProduction = {
+    ...base, LLM: "fake", NODE_ENV: "production", APP_URL: "https://os.launchflow.test", ALLOW_MOCK_ADAPTERS: "1",
+  };
 
   it("refuses LLM=fake in production, because the agents would answer from a stub", () => {
     expect(() => parseEnv(fakeInProduction)).toThrow(/LLM=fake is refused in production/);
@@ -49,6 +51,9 @@ describe("worker env", () => {
     ...base,
     ANTHROPIC_API_KEY: "sk-test",
     NODE_ENV: "production",
+    // A real address, because the worker hands this to the agent registry as
+    // `portalBaseUrl` and the local default is refused in production.
+    APP_URL: "https://os.launchflow.test",
     EMAIL_ADAPTER: "smtp",
     // `createEmailAdapter` parses this and throws without it, so a worker that
     // has EMAIL_ADAPTER=smtp and nothing else is not a live worker.
@@ -93,13 +98,43 @@ describe("worker env", () => {
     expect(parseEnv({ ...production, SMTP_PORT: "465" }).EMAIL_ADAPTER).toBe("smtp");
   });
 
+  it("boots on a blank SMTP_PORT=, the way the factory now reads it", () => {
+    // The divergence this closes: `withoutEmptyStrings` stripped the blank
+    // before the guard saw it, so the guard printed `email: "smtp"` and said
+    // nothing — and five lines later `createEmailAdapter(process.env)` was
+    // handed the raw `""`, coerced it to 0 and killed the worker on a bare
+    // `Invalid input` naming no variable. Both now mean "unset → 587".
+    expect(parseEnv({ ...production, SMTP_PORT: "" }).EMAIL_ADAPTER).toBe("smtp");
+  });
+
   it("leaves local and test environments on the mocks, which is how everything here runs", () => {
     expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test" }).EMAIL_ADAPTER).toBe("mock");
     expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "development" }).UPTIME_PROBE).toBe("mock");
   });
 
+  // Review L1: `portalUrl()` used to fall back to the local default, so a
+  // client could be emailed "sign in to the portal" pointing at their own
+  // machine. The worker passes APP_URL to the agent registry as `portalBaseUrl`.
+  describe("APP_URL in production", () => {
+    it("refuses an unset APP_URL, and the local default set by hand", () => {
+      const withoutAppUrl = { ...production } as Record<string, string | undefined>;
+      delete withoutAppUrl["APP_URL"];
+      expect(() => parseEnv(withoutAppUrl as NodeJS.ProcessEnv)).toThrow(/APP_URL is http:\/\/localhost:3000 in production/);
+      expect(() => parseEnv({ ...production, APP_URL: LOCAL_APP_URL })).toThrow(/in production/);
+      expect(() => parseEnv({ ...production, APP_URL: `${LOCAL_APP_URL}/` })).toThrow(/in production/);
+    });
+
+    it("accepts a real address, and leaves local workers on the default", () => {
+      expect(parseEnv({ ...production, APP_URL: "https://os.launchflow.co.uk" }).APP_URL).toBe("https://os.launchflow.co.uk");
+      expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test" }).APP_URL).toBe(LOCAL_APP_URL);
+    });
+  });
+
   it("allows the mocks in production only when ALLOW_MOCK_ADAPTERS says it was meant", () => {
-    const staging = { ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "production", ALLOW_MOCK_ADAPTERS: "1" };
+    const staging = {
+      ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "production",
+      APP_URL: "https://staging.launchflow.test", ALLOW_MOCK_ADAPTERS: "1",
+    };
     expect(parseEnv(staging).EMAIL_ADAPTER).toBe("mock");
     expect(() => parseEnv({ ...staging, ALLOW_MOCK_ADAPTERS: "true" })).toThrow(/refused in production/);
   });

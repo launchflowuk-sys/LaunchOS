@@ -126,8 +126,9 @@ function builds(resolved: string): FactoryOutcome {
  * `packages/channels/src/email/factory.ts`, line by line.
  *
  * ```ts
- * if (env.EMAIL_ADAPTER !== "smtp") return new MockEmailAdapter();
- * const cfg = SmtpEnv.parse(env);          // throws — it does not fall back
+ * const source = withoutEmptyStrings(env);  // `SMTP_PORT=` means unset
+ * if (source.EMAIL_ADAPTER !== "smtp") return new MockEmailAdapter();
+ * const cfg = SmtpEnv.parse(source);        // throws — it does not fall back
  * ```
  *
  * `SmtpEnv` is `SMTP_HOST: z.string().min(1)` and
@@ -139,21 +140,40 @@ function builds(resolved: string): FactoryOutcome {
  * change which adapter is built.
  */
 function resolveEmail(env: AdapterEnv): FactoryOutcome {
-  if (env.EMAIL_ADAPTER !== "smtp") return builds("mock");
+  if (blankAsUnset(env.EMAIL_ADAPTER) !== "smtp") return builds("mock");
   // `z.string().min(1)`: unset and empty both reject. A blank-but-not-empty
   // host (" ") passes there, so it passes here too — same adapter, same bug.
-  if (env.SMTP_HOST === undefined || env.SMTP_HOST.length === 0) {
+  const host = blankAsUnset(env.SMTP_HOST);
+  if (host === undefined) {
     return { resolved: UNBUILDABLE, problem: "SMTP_HOST is required when EMAIL_ADAPTER=smtp and is not set" };
   }
-  // `.default(587)` applies only to `undefined`, so `SMTP_PORT=` (the shape
-  // `.env.example` ships) is coerced — `Number("")` is 0 — and rejected.
-  if (env.SMTP_PORT !== undefined && !coercesToPort(env.SMTP_PORT)) {
+  // `.default(587)` applies only to `undefined`, and the factory normalises
+  // `SMTP_PORT=` to unset before Zod sees it, so a variable created and left
+  // blank on a Coolify resource means "the default, 587" in both places. A
+  // value that is present and not a port is still named.
+  const port = blankAsUnset(env.SMTP_PORT);
+  if (port !== undefined && !coercesToPort(port)) {
     return {
       resolved: UNBUILDABLE,
-      problem: `SMTP_PORT=${env.SMTP_PORT} is not a positive whole number (leave it unset for the default, 587)`,
+      problem: `SMTP_PORT=${port} is not a positive whole number (leave it unset for the default, 587)`,
     };
   }
   return builds("smtp");
+}
+
+/**
+ * A blank environment variable is an unset one — the factory's own rule.
+ *
+ * `withoutEmptyStrings` in `packages/channels/src/email/factory.ts` and in
+ * `apps/worker/src/env.ts` strip exactly `""` and nothing else; this mirrors
+ * them per field, because this module reads a structural `AdapterEnv` rather
+ * than a whole `process.env`. Until all three agreed, the worker parsed its env
+ * with the blanks stripped, resolved adapters on the stripped copy, and then
+ * handed the *raw* `process.env` to the factory — so the guard printed a
+ * healthy environment five lines before the factory threw on it.
+ */
+function blankAsUnset(value: string | undefined): string | undefined {
+  return value === "" ? undefined : value;
 }
 
 /** `z.coerce.number().int().positive()` — `Number(raw)`, then a positive safe integer. */

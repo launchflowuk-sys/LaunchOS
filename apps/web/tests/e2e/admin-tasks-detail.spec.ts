@@ -2,8 +2,7 @@ import { createDb, schema } from "@launchos/db";
 import { expect, test } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { signIn } from "./sign-in";
-
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
+import { DATABASE_URL } from "./seed-credentials";
 
 // The dev server compiles each route the first time it is requested. This spec
 // walks four routes that have never been compiled before, so the first

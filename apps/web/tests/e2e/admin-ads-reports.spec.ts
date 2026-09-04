@@ -2,6 +2,7 @@ import { createDb, schema } from "@launchos/db";
 import { expect, test } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
 import { signIn } from "./sign-in";
+import { DATABASE_URL } from "./seed-credentials";
 
 // The dev server compiles a route the first time it is requested, which takes
 // far longer than the 5s default expect timeout on a cold start. The first
@@ -17,7 +18,6 @@ const COLD_COMPILE = 90_000;
  * the list, so the client-tabs test below still sees an empty Reports tab, and
  * it is deleted again in `afterAll`.
  */
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
 const db = createDb(DATABASE_URL);
 
 const DRAFT_PERIOD = { start: "2098-07-01", end: "2098-07-31" } as const;

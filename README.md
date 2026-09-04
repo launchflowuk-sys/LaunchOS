@@ -34,6 +34,7 @@ The full scope for Plans 3 to 5 is `docs/superpowers/specs/2026-09-04-agency-os-
 ```bash
 cp .env.example .env
 openssl rand -base64 48   # paste into BETTER_AUTH_SECRET in .env — it ships blank
+openssl rand -base64 48   # and again, into INBOUND_EMAIL_SECRET — it ships blank too
 pnpm install
 pnpm db:up                # local Postgres 17 via docker compose
 pnpm db:migrate
@@ -42,7 +43,7 @@ pnpm dev                  # http://localhost:3000
 pnpm dev:worker           # second terminal
 ```
 
-`BETTER_AUTH_SECRET` is the one variable `.env.example` cannot supply: it signs every session cookie, and a value published in this repository is not a secret. The web app refuses to start on a blank one, on one under 32 characters, and on any placeholder shipped here — in every environment, not only production. On Windows, `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"` does the same job as `openssl rand -base64 48`.
+`BETTER_AUTH_SECRET` and `INBOUND_EMAIL_SECRET` are the two variables `.env.example` cannot supply, because a value published in this repository is not a secret. The first signs every session cookie; the second is the only credential on `POST /api/webhooks/email/inbound`, so a published one lets anyone manufacture conversations and raise tickets against any client. The web app refuses to start on a blank value, on one under 32 (auth) or 24 (inbound) characters, and on any placeholder shipped here — in every environment, not only production. Set both in your local `.env` before `pnpm dev`; the e2e suite reads `INBOUND_EMAIL_SECRET` from that same file and fails by name if it is unset. On Windows, `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"` does the same job as `openssl rand -base64 48`.
 
 Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED_OWNER_PASSWORD` (default `change-me-now`). There is no sign-up page. The same page signs in the seeded client user (`SEED_CLIENT_EMAIL`, default `portal@grayscabline.example`, password `SEED_CLIENT_PASSWORD`, default `change-me-client`) and routes it to `/portal`.
 

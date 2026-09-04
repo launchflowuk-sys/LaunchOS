@@ -8,6 +8,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
  * `lib/env` yet.
  */
 
+/**
+ * Every variable `lib/env.ts` reads, so a case's environment is the fixture and
+ * nothing else.
+ *
+ * The list used to stop at the adapter keys, which left `VAT_RATE`, `APP_URL`
+ * and the three startup secrets coming from the developer's own `.env` —
+ * `packages/config/vitest.shared.ts` dotenv-loads the repo root for every
+ * package. Nothing bit while `.env.example` shipped valid values for all of
+ * them; a blank `VAT_RATE=` failed this file at import with a VAT message.
+ */
 const KEYS = [
   "NODE_ENV",
   "NEXT_RUNTIME",
@@ -20,7 +30,22 @@ const KEYS = [
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
   "ALLOW_MOCK_ADAPTERS",
+  "VAT_RATE",
+  "APP_URL",
+  "DATABASE_URL",
+  "BETTER_AUTH_SECRET",
+  "INBOUND_EMAIL_SECRET",
 ] as const;
+
+/** What every production case needs before the adapter rules are the question. */
+const required = {
+  DATABASE_URL: "postgres://launchos:launchos@localhost:5432/launchos",
+  BETTER_AUTH_SECRET: "H0oXW4bkNq2Zt7RmJv9cAe1PyLs6DfUg3ThQnKxB5Vd8Mr",
+  INBOUND_EMAIL_SECRET: "Rr7Kd2Nq9Xb4Lm6Ph1Ts8Vw3Zc5Jy0Ge",
+  // Refused in production when unset or left on the local default: it is the
+  // host in the portal link a client is emailed.
+  APP_URL: "https://os.launchflow.test",
+};
 
 const saved = new Map<string, string | undefined>();
 
@@ -48,6 +73,7 @@ afterEach(() => {
 
 /** Every adapter resolving to a real one — the shape a real production web resource has. */
 const realAdapters = {
+  ...required,
   NODE_ENV: "production",
   NEXT_RUNTIME: "nodejs",
   EMAIL_ADAPTER: "smtp",
@@ -61,7 +87,7 @@ const realAdapters = {
 
 describe("web instrumentation", () => {
   it("refuses to finish booting a production server whose adapters resolve to mocks", async () => {
-    set({ NODE_ENV: "production", NEXT_RUNTIME: "nodejs" });
+    set({ ...required, NODE_ENV: "production", NEXT_RUNTIME: "nodejs" });
     const { register } = await import("./instrumentation");
     // A throw from register() aborts the server start, which is the point: the
     // refusal is a container that does not come up, not a 500 on route five.
@@ -81,7 +107,7 @@ describe("web instrumentation", () => {
   });
 
   it("does nothing on the edge runtime, which loads no adapters and sends no mail", async () => {
-    set({ NODE_ENV: "production", NEXT_RUNTIME: "edge" });
+    set({ ...required, NODE_ENV: "production", NEXT_RUNTIME: "edge" });
     const { register } = await import("./instrumentation");
     await expect(register()).resolves.toBeUndefined();
   });
