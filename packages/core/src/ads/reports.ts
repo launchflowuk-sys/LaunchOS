@@ -44,6 +44,10 @@ export async function saveDraftAdReport(db: Db, organisationId: string, input: S
 export const AdReportActionInput = z.object({
   adReportId: z.string().uuid(),
   actorId: z.string().min(1),
+  // Who acted. A staff member sending by hand is the default; the Sentinel's
+  // approval-gated tool passes "agent" so the audit trail names the agent that
+  // ran rather than attributing its send to a person.
+  actorKind: z.enum(["user", "agent"]).default("user"),
 });
 export type AdReportActionInput = z.input<typeof AdReportActionInput>;
 
@@ -62,7 +66,7 @@ export async function approveAdReport(db: Db, organisationId: string, input: AdR
       .where(eq(schema.adReports.id, v.adReportId))
       .returning();
     await recordAudit(inner, organisationId, {
-      actorKind: "user", actorId: v.actorId, action: "ad_report.approved",
+      actorKind: v.actorKind, actorId: v.actorId, action: "ad_report.approved",
       targetType: "ad_report", targetId: v.adReportId, before, after,
     });
     return after!;
@@ -70,9 +74,9 @@ export async function approveAdReport(db: Db, organisationId: string, input: AdR
 }
 
 /**
- * A staff member sending an approved report by hand. This is a human action,
- * audited rather than queued — spec §4 reserves the approval gate for the
- * agent's own outward-facing tools.
+ * Sends an already-approved report. Either a staff member sending by hand, or
+ * the Sentinel's `reports_send_to_client` once a human approved that tool call
+ * — `actorKind` says which, and the send is audited rather than queued.
  *
  * The status flip is the claim: `UPDATE ... WHERE status = 'approved'`
  * inside a transaction takes the report only if it is still approved at that
@@ -144,11 +148,11 @@ export async function sendAdReport(
     });
 
     await recordAudit(inner, organisationId, {
-      actorKind: "user", actorId: v.actorId, action: "ad_report.sent",
+      actorKind: v.actorKind, actorId: v.actorId, action: "ad_report.sent",
       targetType: "ad_report", targetId: v.adReportId, before, after: claimed,
     });
     await recordActivity(inner, organisationId, {
-      clientId: context.clientId, actorKind: "user", actorId: v.actorId, kind: "ad_report.sent",
+      clientId: context.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "ad_report.sent",
       title: `Ads report for ${context.accountName} sent`, link: `/ads/${claimed.adAccountId}`,
     });
     return claimed;

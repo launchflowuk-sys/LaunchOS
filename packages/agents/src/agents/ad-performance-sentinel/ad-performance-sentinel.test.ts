@@ -7,6 +7,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
+import type { AgentDefinition } from "../../kernel/types.js";
 import { resumeAgent } from "../../kernel/resume-agent.js";
 import { runAgent } from "../../kernel/run-agent.js";
 import { adPerformanceSentinel } from "./index.js";
@@ -36,6 +37,35 @@ async function droppingAccount(db: Db) {
   }
   await db.insert(schema.adMetricSnapshots).values(rows);
   return { orgId: org!.id, clientId: client!.id, accountId: account.id };
+}
+
+const draftReport = (db: Db, orgId: string, accountId: string) =>
+  saveDraftAdReport(db, orgId, {
+    adAccountId: accountId, periodStart: day(7), periodEnd: day(1),
+    summaryMd: "## Advertising\nROAS fell from 5.00 to 2.50.",
+  });
+
+/** Runs the send tool, approves the parked call, and returns the run result with the tool's own output. */
+async function sendOnApproval(db: Db, agent: AgentDefinition, orgId: string, adReportId: string) {
+  const llm = new FakeLlmClient([
+    { content: [toolUse("t1", "reports_send_to_client", { adReportId })], stopReason: "tool_use", usage },
+    { content: [text("Sent the advertising summary to the client.")], stopReason: "end_turn", usage },
+  ]);
+  const parked = await runAgent(agent, {
+    db, organisationId: orgId, trigger: "cron", payload: { now: NOW.toISOString(), adReportId },
+    llm, policy: "safe", logger: console, now: () => NOW,
+  });
+  expect(parked.status).toBe("awaiting_approval");
+
+  const [approval] = await db.select().from(schema.approvals)
+    .where(and(eq(schema.approvals.runId, parked.runId), eq(schema.approvals.status, "pending")));
+  const result = await resumeAgent(agent, {
+    db, organisationId: orgId, runId: parked.runId, approvalId: approval!.id,
+    decision: "approved", llm, policy: "safe", logger: console, now: () => NOW,
+  });
+  const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, parked.runId));
+  const output = steps.find((s) => s.kind === "tool_result" && s.toolName === "reports_send_to_client")?.output;
+  return { result, output };
 }
 
 describe("ad-performance-sentinel", () => {
@@ -99,15 +129,12 @@ describe("ad-performance-sentinel", () => {
 
   it("parks the run for approval when it tries to send the report to the client", async () => {
     await withTestDb(async (db) => {
-      const { orgId, accountId } = await droppingAccount(db);
+      const { orgId } = await droppingAccount(db);
       const email = new MockEmailAdapter();
       const agent = adPerformanceSentinel({ email, portalBaseUrl: PORTAL });
 
       const llm = new FakeLlmClient([
-        {
-          content: [toolUse("t1", "reports_send_to_client", { adReportId: randomUUID(), adAccountId: accountId })],
-          stopReason: "tool_use", usage,
-        },
+        { content: [toolUse("t1", "reports_send_to_client", { adReportId: randomUUID() })], stopReason: "tool_use", usage },
       ]);
 
       const result = await runAgent(agent, {
@@ -123,44 +150,49 @@ describe("ad-performance-sentinel", () => {
     });
   });
 
-  it("emails the client the portal link once a human approves the send", async () => {
+  it("approves the draft and emails the client the portal link once a human approves the send", async () => {
     await withTestDb(async (db) => {
       const { orgId, accountId } = await droppingAccount(db);
-      const report = await saveDraftAdReport(db, orgId, {
-        adAccountId: accountId, periodStart: day(7), periodEnd: day(1),
-        summaryMd: "## Advertising\nROAS fell from 5.00 to 2.50.",
-      });
       const email = new MockEmailAdapter();
+      const report = await draftReport(db, orgId, accountId);
       const agent = adPerformanceSentinel({ email, portalBaseUrl: PORTAL });
 
-      const llm = new FakeLlmClient([
-        {
-          content: [toolUse("t1", "reports_send_to_client", { adReportId: report.id, adAccountId: accountId })],
-          stopReason: "tool_use", usage,
-        },
-        { content: [text("Sent the advertising summary to the client.")], stopReason: "end_turn", usage },
-      ]);
+      const sent = await sendOnApproval(db, agent, orgId, report.id);
 
-      const parked = await runAgent(agent, {
-        db, organisationId: orgId, trigger: "cron", payload: { now: NOW.toISOString(), adReportId: report.id },
-        llm, policy: "safe", logger: console, now: () => NOW,
-      });
-      expect(parked.status).toBe("awaiting_approval");
-      expect(email.sent).toHaveLength(0);
-
-      const [approval] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, parked.runId));
-      const resumed = await resumeAgent(agent, {
-        db, organisationId: orgId, runId: parked.runId, approvalId: approval!.id,
-        decision: "approved", llm, policy: "safe", logger: console, now: () => NOW,
-      });
-
-      expect(resumed.status).toBe("completed");
+      expect(sent.result.status).toBe("completed");
+      expect(sent.output).toMatchObject({ adReportId: report.id, status: "sent" });
       const [after] = await db.select().from(schema.adReports).where(eq(schema.adReports.id, report.id));
       expect(after!.status).toBe("sent");
       expect(after!.sentAt).not.toBeNull();
       expect(email.sent).toHaveLength(1);
       expect(email.sent[0]!.to).toBe("info@grays.test");
       expect(email.sent[0]!.text).toContain(`${PORTAL}/portal/reports`);
+
+      // The agent's key owns both writes: a human approved the tool call, but the agent acted.
+      const audit = await db.select().from(schema.auditLog)
+        .where(and(eq(schema.auditLog.organisationId, orgId), eq(schema.auditLog.targetId, report.id)));
+      expect(audit.find((a) => a.action === "ad_report.sent")!.actorKind).toBe("agent");
+      expect(audit.some((a) => a.action === "ad_report.approved" && a.actorKind === "agent")).toBe(true);
+    });
+  });
+
+  it("does not email the client twice when a second approved send targets the same report", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, accountId } = await droppingAccount(db);
+      const email = new MockEmailAdapter();
+      const report = await draftReport(db, orgId, accountId);
+      const agent = adPerformanceSentinel({ email, portalBaseUrl: PORTAL });
+
+      await sendOnApproval(db, agent, orgId, report.id);
+      const [firstSend] = await db.select().from(schema.adReports).where(eq(schema.adReports.id, report.id));
+
+      const second = await sendOnApproval(db, agent, orgId, report.id);
+
+      expect(second.result.status).toBe("completed");
+      expect(second.output).toMatchObject({ adReportId: report.id, status: "already_sent" });
+      expect(email.sent).toHaveLength(1);
+      const [after] = await db.select().from(schema.adReports).where(eq(schema.adReports.id, report.id));
+      expect(after!.sentAt).toEqual(firstSend!.sentAt);
     });
   });
 });
