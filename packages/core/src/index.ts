@@ -69,3 +69,4 @@ export { findOwnerUserId, pickLeastLoadedStaff } from "./tasks/assignee.js";
 export { assignTask, AssignTaskInput } from "./tasks/assign-task.js";
 export { commentOnTask, CommentOnTaskInput } from "./tasks/comment-on-task.js";
 export { setTaskVisibility, toggleChecklistItem, SetTaskVisibilityInput, ToggleChecklistItemInput } from "./tasks/toggle-checklist-item.js";
+export { generateOnboardingTasks } from "./tasks/generate-onboarding-tasks.js";

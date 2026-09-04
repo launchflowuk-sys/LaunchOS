@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, asc, count, eq, notInArray, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, notInArray, sql } from "drizzle-orm";
 import { FINISHED_STATUSES } from "./update-task-status.js";
 
 /** The oldest active owner. Templates with `default_assignee_role: "owner"` land here. */
@@ -19,9 +19,12 @@ export async function findOwnerUserId(db: Db, organisationId: string): Promise<s
 
 /**
  * The active member with the fewest unfinished tasks. Owners are candidates
- * too — in a one-person agency Shoji is the only member. Ties go to the oldest
- * membership so the result is deterministic. P4's Support Triage
- * `tickets_assign` tool calls this.
+ * too — in a one-person agency Shoji is the only member — but a tie prefers
+ * `staff` over `owner` so routine work lands on staff first and the owner is
+ * only the fallback. Further ties go to the oldest membership, then the
+ * membership id: `created_at` is frozen for the whole transaction in Postgres,
+ * so two members seeded together compare equal and need a real tiebreaker to
+ * stay deterministic. P4's Support Triage `tickets_assign` tool calls this.
  */
 export async function pickLeastLoadedStaff(db: Db, organisationId: string): Promise<string | null> {
   const [row] = await db.select({
@@ -38,8 +41,13 @@ export async function pickLeastLoadedStaff(db: Db, organisationId: string): Prom
       eq(schema.organisationMembers.organisationId, organisationId),
       eq(schema.organisationMembers.status, "active"),
     ))
-    .groupBy(schema.organisationMembers.userId, schema.organisationMembers.createdAt)
-    .orderBy(sql`count(${schema.tasks.id}) asc`, asc(schema.organisationMembers.createdAt))
+    .groupBy(schema.organisationMembers.id, schema.organisationMembers.userId, schema.organisationMembers.role, schema.organisationMembers.createdAt)
+    .orderBy(
+      sql`count(${schema.tasks.id}) asc`,
+      desc(schema.organisationMembers.role),
+      asc(schema.organisationMembers.createdAt),
+      asc(schema.organisationMembers.id),
+    )
     .limit(1);
   return row?.userId ?? null;
 }
