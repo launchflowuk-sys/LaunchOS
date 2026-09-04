@@ -32,6 +32,9 @@ importers:
       '@launchos/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@launchos/integrations':
+        specifier: workspace:*
+        version: link:../../packages/integrations
       better-auth:
         specifier: ^1.7.2
         version: 1.7.2(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(kysely@0.29.5)(pg@8.23.0)(postgres@3.4.9))(next@16.3.4(@playwright/test@1.62.1)(@types/node@24.13.3)(react-dom@19.2.8(react@19.2.8))(react@19.2.8))(pg@8.23.0)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13))
@@ -181,6 +184,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 0.123.0
         version: 0.123.0(zod@4.5.4)
+      '@launchos/channels':
+        specifier: workspace:*
+        version: link:../channels
       '@launchos/core':
         specifier: workspace:*
         version: link:../core
@@ -197,9 +203,6 @@ importers:
         specifier: ^4.4.3
         version: 4.5.4
     devDependencies:
-      '@launchos/channels':
-        specifier: workspace:*
-        version: link:../channels
       '@launchos/config':
         specifier: workspace:*
         version: link:../config

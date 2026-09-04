@@ -49,6 +49,20 @@ const TONE_BY_VALUE: Record<string, Tone> = {
   active: "success",
   paused: "warn",
   archived: "neutral",
+  // invoices
+  draft: "neutral",
+  sent: "info",
+  paid: "success",
+  overdue: "danger",
+  void: "neutral",
+  // subscriptions
+  trialing: "info",
+  past_due: "danger",
+  // payments
+  succeeded: "success",
+  refunded: "warn",
+  // ad accounts and reports
+  disconnected: "danger",
 };
 
 export function StatusBadge({ value, tone }: { value: string; tone?: Tone }) {

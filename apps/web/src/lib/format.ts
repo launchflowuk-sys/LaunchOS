@@ -10,6 +10,19 @@ export function formatDateTime(value: Date | string | null | undefined): string 
   return Number.isNaN(date.getTime()) ? "—" : DATE_TIME.format(date);
 }
 
+/** Pence to a UK currency string. Money is stored as integer pence everywhere. */
+export function formatPence(pence: number, currency = "GBP"): string {
+  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(pence / 100);
+}
+
+const DATE_ONLY = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "Europe/London" });
+
+export function formatDate(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : DATE_ONLY.format(date);
+}
+
 export function formatJson(value: unknown): string {
   try {
     return JSON.stringify(value ?? null, null, 2);

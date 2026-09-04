@@ -17,6 +17,7 @@
     "@launchos/channels": "workspace:*",
     "@launchos/core": "workspace:*",
     "@launchos/db": "workspace:*",
+    "@launchos/integrations": "workspace:*",
     "better-auth": "^1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
