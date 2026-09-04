@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { TaskKind, TaskPhase, TaskPriority, TaskStatus } from "@launchos/db/schema";
-import { and, asc, eq, gte, inArray, isNull, lte, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lte, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 export const TaskFilters = z.object({
@@ -15,6 +15,17 @@ export const TaskFilters = z.object({
   dueFrom: z.coerce.date().optional(),
   dueTo: z.coerce.date().optional(),
   clientVisible: z.boolean().optional(),
+  /**
+   * "due" — soonest due first, undated last. Right for a per-client or per-
+   * phase view, where the order mirrors the plan of work.
+   *
+   * "recent" — newest first. Right for an unfiltered cross-client list, where
+   * the rows are capped by `limit`: under "due" a task with no due date sorts
+   * behind every dated one and then behind every older undated one, so a task
+   * that was just created falls off the end of the page and looks as though it
+   * was never written.
+   */
+  sort: z.enum(["due", "recent"]).default("due"),
   limit: z.number().int().min(1).max(500).default(200),
   offset: z.number().int().min(0).default(0),
 });
@@ -75,8 +86,15 @@ export async function listTasks(db: Db, organisationId: string, filters: TaskFil
       ),
     )
     .where(and(...where))
-    // Postgres sorts NULLs last on ASC, so undated tasks fall to the bottom.
-    .orderBy(asc(schema.tasks.dueAt), asc(schema.tasks.createdAt))
+    // "due": Postgres sorts NULLs last on ASC, so undated tasks fall to the
+    // bottom. "recent": `created_at` is not unique — tasks generated in one
+    // transaction share it — so `id` breaks the tie and the page boundary is
+    // reproducible rather than merely usually right.
+    .orderBy(
+      ...(f.sort === "recent"
+        ? [desc(schema.tasks.createdAt), desc(schema.tasks.id)]
+        : [asc(schema.tasks.dueAt), asc(schema.tasks.createdAt)]),
+    )
     .limit(f.limit)
     .offset(f.offset);
 }

@@ -43,7 +43,13 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
 
   // Built with spreads rather than `key: undefined`: the app compiles with
   // exactOptionalPropertyTypes, so an absent filter has to be an absent key.
+  // Newest first, not soonest-due first: this list is capped at `listTasks`'
+  // limit, and under due order an undated task sorts behind every dated one and
+  // then behind every older undated one — so a task the operator just created
+  // would land off the end of the page. The due date stays a column and a
+  // filter for anyone who wants to work the diary.
   const filters: TaskFilters = {
+    sort: "recent",
     ...(client ? { clientId: client } : {}),
     ...(assignee ? { assigneeUserId: assignee } : {}),
     ...(phase ? { phase: phase as NonNullable<TaskFilters["phase"]> } : {}),

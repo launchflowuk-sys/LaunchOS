@@ -94,7 +94,13 @@ test("raise an invoice, send it through approvals, mark it paid, then record a p
 
   const reference = `e2e-${stamp}`;
   await page.getByRole("button", { name: "Record payment" }).click();
-  await page.getByLabel("Client", { exact: true }).selectOption({ label: "Grays CabLine" });
+  // By accessible name, not by label text. The field is a wrapping
+  // `<label>Client<select>…</select></label>`, and Playwright's label text for a
+  // wrapping label is the whole element's text — every `<option>` included — so
+  // `getByLabel("Client", { exact: true })` matches nothing. Dropping `exact`
+  // is no good either: matching is a case-insensitive substring, and the
+  // Invoice field's "Choose a client first" option makes it two matches.
+  await page.getByRole("combobox", { name: "Client", exact: true }).selectOption({ label: "Grays CabLine" });
   await page.getByLabel("Amount (£)").fill("118.80");
   await page.getByLabel("Provider").selectOption("bank");
   await page.getByLabel("Reference").fill(reference);

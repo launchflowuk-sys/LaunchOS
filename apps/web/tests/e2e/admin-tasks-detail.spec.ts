@@ -1,6 +1,6 @@
 import { createDb, schema } from "@launchos/db";
 import { expect, test } from "@playwright/test";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { signIn } from "./sign-in";
 import { DATABASE_URL } from "./seed-credentials";
 
@@ -8,6 +8,20 @@ import { DATABASE_URL } from "./seed-credentials";
 // walks four routes that have never been compiled before, so the first
 // assertion after each gets a budget that covers the compile.
 const COLD_COMPILE = 60_000;
+
+/** Every onboarding task the generator produced for one client. */
+async function onboardingTaskIds(db: ReturnType<typeof createDb>, organisationId: string, clientId: string) {
+  return db
+    .select({ id: schema.tasks.id })
+    .from(schema.tasks)
+    .where(
+      and(
+        eq(schema.tasks.organisationId, organisationId),
+        eq(schema.tasks.clientId, clientId),
+        eq(schema.tasks.phase, "onboarding"),
+      ),
+    );
+}
 
 test("packages, templates, generated onboarding tasks and the task detail screen", async ({ page }) => {
   test.setTimeout(300_000);
@@ -78,7 +92,17 @@ test("packages, templates, generated onboarding tasks and the task detail screen
     await page.getByRole("button", { name: "Create client" }).click();
     await expect(page.getByRole("heading", { level: 1, name: clientName })).toBeVisible({ timeout: COLD_COMPILE });
 
-    // 4. The Tasks tab: empty until the generator runs, then one task.
+    const [client] = await db
+      .select()
+      .from(schema.clients)
+      .where(and(eq(schema.clients.organisationId, organisation.id), eq(schema.clients.name, clientName)));
+    if (!client) throw new Error(`client ${clientName} was not created`);
+
+    // 4. The Tasks tab: empty until the generator runs, then a task per
+    // template. A client on a package gets that package's onboarding templates
+    // *and* every global one (the dev seed ships ten), so the denominator is
+    // not 1 — it is read back rather than hard-coded, so the seed can grow
+    // without rewriting this spec.
     // Scoped to <main>: the sidebar has a "Tasks" link of its own.
     await page.getByRole("main").getByRole("link", { name: "Tasks", exact: true }).click();
     await expect(page.getByRole("progressbar", { name: "Onboarding" })).toBeVisible({ timeout: COLD_COMPILE });
@@ -87,12 +111,17 @@ test("packages, templates, generated onboarding tasks and the task detail screen
     await page.getByRole("button", { name: "Generate onboarding tasks" }).click();
     const taskLink = page.getByRole("link", { name: templateTitle });
     await expect(taskLink).toBeVisible();
-    await expect(page.getByText("0 of 1")).toBeVisible();
+    const onboardingTasks = await onboardingTaskIds(db, organisation.id, client.id);
+    const total = onboardingTasks.length;
+    expect(total).toBeGreaterThan(1);
+    // The trailing " ·" matters: the bar renders "0 of 11 · 0%", and a bare
+    // "0 of 1" is a substring of it.
+    await expect(page.getByText(`0 of ${total} ·`)).toBeVisible();
     await expect(page.getByRole("progressbar", { name: "Onboarding" })).toHaveAttribute("aria-valuenow", "0");
 
     // Generation is idempotent: a second run must not create a second task.
     await page.getByRole("button", { name: "Generate onboarding tasks" }).click();
-    await expect(page.getByText("0 of 1")).toBeVisible();
+    await expect(page.getByText(`0 of ${total} ·`)).toBeVisible();
     await expect(page.getByRole("link", { name: templateTitle })).toHaveCount(1);
 
     // 5. The task detail screen.
@@ -121,18 +150,38 @@ test("packages, templates, generated onboarding tasks and the task detail screen
     await page.getByRole("button", { name: "Hide from client" }).click();
     await expect(page.getByText("Hidden from the client.")).toBeVisible();
 
-    // 6. Closing the only onboarding task fills in the client's onboarded date.
+    // 6. Closing the *last* outstanding onboarding task fills in the client's
+    // onboarded date. The tasks generated from the global templates are closed
+    // straight in the database — this spec is about the detail screen, not
+    // about driving ten more status forms — so the one under test is the close
+    // that stamps `onboarded_at`.
+    await db
+      .update(schema.tasks)
+      .set({ status: "done", completedAt: new Date() })
+      .where(
+        and(
+          eq(schema.tasks.organisationId, organisation.id),
+          eq(schema.tasks.clientId, client.id),
+          eq(schema.tasks.phase, "onboarding"),
+          ne(schema.tasks.title, templateTitle),
+        ),
+      );
+
     const status = page.locator('select[name="status"]');
     await status.selectOption("done");
     await page.getByRole("button", { name: "Move" }).click();
     await expect(status).toHaveValue("done");
 
     await page.getByRole("link", { name: clientName }).click();
-    await expect(page.getByText("1 of 1")).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByText(`${total} of ${total} ·`)).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByRole("progressbar", { name: "Onboarding" })).toHaveAttribute("aria-valuenow", "100");
     await expect(page.getByRole("button", { name: "Hidden" })).toBeVisible();
     await expect(page.getByText(/Onboarded \d/)).toBeVisible();
-    await expect(page.getByRole("cell", { name: "Unassigned" })).toHaveCount(0);
+    // Scoped to this spec's row: the seed's global templates default to the
+    // "any" assignee role, so their rows are legitimately unassigned. The
+    // assertion is that an assigned task names a person rather than falling
+    // back to "Unassigned" because the member never set a display name.
+    await expect(page.getByRole("row").filter({ hasText: templateTitle })).not.toContainText("Unassigned");
   } finally {
     // Tasks, activity and the billing profile cascade from the client.
     await db
