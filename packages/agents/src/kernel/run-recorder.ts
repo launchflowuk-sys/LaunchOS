@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 export type AgentRunTrigger = "cron" | "event" | "manual" | "resume";
 export type AgentStepKind = "llm" | "tool_call" | "tool_result" | "approval_requested" | "note";
@@ -38,13 +38,30 @@ export class RunRecorder {
    * Continues an existing run after an approval decision. `seq` picks up from
    * the highest step already recorded so the (run_id, seq) unique index holds
    * and the trace in the admin portal reads as one story.
+   *
+   * The same statement stamps `metadata.resume` with the approval that claimed
+   * the run and when. That is what lets a later delivery tell "an earlier
+   * attempt claimed this and died" from "another delivery is executing it right
+   * now" — without it, `failStrandedRun` could only see `running`, which is true
+   * in both cases, and would fail a run that is still working. The merge is
+   * `||` rather than a replacement so `metadata.pending` survives the claim.
    */
-  static async reopen(db: Db, organisationId: string, runId: string): Promise<RunRecorder> {
+  static async reopen(
+    db: Db,
+    organisationId: string,
+    runId: string,
+    claim: { approvalId: string; claimedAt: Date },
+  ): Promise<RunRecorder> {
+    const resume = { resume: { approvalId: claim.approvalId, claimedAt: claim.claimedAt.toISOString() } };
     // Claim the run in one statement: a check-then-update would let two
     // approvals resume the same parked run and execute the tool twice.
     const [claimed] = await db
       .update(schema.agentRuns)
-      .set({ status: "running", updatedAt: new Date() })
+      .set({
+        status: "running",
+        metadata: sql`coalesce(${schema.agentRuns.metadata}, '{}'::jsonb) || ${JSON.stringify(resume)}::jsonb`,
+        updatedAt: new Date(),
+      })
       .where(
         and(
           eq(schema.agentRuns.id, runId),

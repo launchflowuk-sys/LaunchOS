@@ -58,7 +58,9 @@ function ApprovalCard({ row }: { row: ApprovalRow }) {
   const description = payload.success ? payload.data.description : undefined;
 
   return (
-    <li className="rounded-lg border border-neutral-200 bg-white">
+    // The id is on the card so a test can address exactly one approval: two
+    // parked calls on the same thread share a generated title.
+    <li data-approval-id={approval.id} className="rounded-lg border border-neutral-200 bg-white">
       <div className="flex flex-wrap items-center gap-2 border-b border-neutral-100 px-4 py-3">
         <h3 className="text-sm font-semibold text-neutral-900">{approval.title}</h3>
         <StatusBadge value={approval.kind} tone="neutral" />
@@ -119,8 +121,21 @@ function ApprovalCard({ row }: { row: ApprovalRow }) {
 
         {approval.status === "pending" ? (
           <div className="flex flex-wrap items-end gap-4">
-            <DecisionForm approvalId={approval.id} action={approveApproval} label="Approve" withNote />
-            <DecisionForm approvalId={approval.id} action={rejectApproval} label="Reject" destructive withNote />
+            <DecisionForm
+              approvalId={approval.id}
+              action={approveApproval}
+              label="Approve"
+              withNote
+              resumesAgent={Boolean(approval.runId)}
+            />
+            <DecisionForm
+              approvalId={approval.id}
+              action={rejectApproval}
+              label="Reject"
+              destructive
+              withNote
+              resumesAgent={Boolean(approval.runId)}
+            />
           </div>
         ) : (
           // Decided: the record of who released it, never a second chance to.

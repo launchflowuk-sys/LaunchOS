@@ -1,7 +1,7 @@
 "use server";
 
 import { createEmailAdapter } from "@launchos/channels";
-import { decideApproval, INVOICE_SEND_ACTION, recordAudit, sendApprovedInvoice } from "@launchos/core";
+import { decideApproval, INVOICE_SEND_ACTION, recordAudit, releaseApprovalClaim, sendApprovedInvoice } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -19,6 +19,28 @@ const DecisionInput = z.object({
 
 /** What a human-raised (run-less) approval carries instead of a tool call. */
 const NonAgentPayload = z.object({ action: z.string() });
+
+/**
+ * Hands the decision to the worker. Returns pg-boss's job id, or null when the
+ * send was deduped away — with a per-approval singleton key and a claim that
+ * only one decision can win, a dedupe means an earlier job for this approval is
+ * still in flight, so this decision has nothing driving it either way and the
+ * caller must put the approval back.
+ */
+async function queueResume(
+  organisationId: string,
+  runId: string,
+  approvalId: string,
+  decision: "approved" | "rejected",
+  note?: string,
+): Promise<string | null> {
+  return sendJob(
+    "agent.resume",
+    { organisationId, runId, approvalId, decision, ...(note ? { note } : {}) },
+    // One resume per approval, however many times the button is pressed.
+    { singletonKey: `resume:${approvalId}` },
+  );
+}
 
 async function decide(formData: FormData, status: "approved" | "rejected"): Promise<ActionResult> {
   // Server Actions accept direct POSTs, so authorise here and scope every
@@ -58,24 +80,30 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
     const { before, after } = decision;
 
     if (before.runId) {
-      // The row is deliberately left `pending` by `decideApproval`.
-      // `resumeAgent` refuses to resume an approval that is already decided, so
-      // stamping the status here would strand the run: the kernel stamps
-      // `status`, `decided_by` and `decision_note` itself as the first thing it
-      // does on resume. `decided_at` is the claim marker instead.
-      await sendJob(
-        "agent.resume",
-        {
-          organisationId: session.organisationId,
-          runId: before.runId,
-          approvalId,
-          decision: status,
-          ...(note ? { note } : {}),
-          decidedByUserId: session.userId,
+      // `decideApproval` has already stamped the whole decision — status,
+      // `decided_by`, `decided_at`, the note — and the kernel reads it from
+      // there rather than from this payload, so the approver on the card, in
+      // the audit log and in the database can never disagree. The job carries
+      // the decision only as a cross-check; what tells the kernel the decision
+      // has not been carried out yet is the run's own `metadata.pending`.
+      //
+      // The claim is released if the job cannot be queued. A decided approval
+      // whose run is still parked, with nothing anywhere that will resume it,
+      // is the one outcome worse than "press it again".
+      const queued = await queueResume(session.organisationId, before.runId, approvalId, status, note).catch(
+        (err: unknown) => {
+          console.error("agent.resume could not be queued", {
+            approvalId,
+            err: err instanceof Error ? err.message : String(err),
+          });
+          return null;
         },
-        // One resume per approval, however many times the button is pressed.
-        { singletonKey: `resume:${approvalId}` },
       );
+      if (queued === null) {
+        await releaseApprovalClaim(getDb(), session.organisationId, { approvalId, decidedAt: after.decidedAt! });
+        revalidatePath("/approvals");
+        return { status: "error", message: "Could not queue the agent resume. The decision was not recorded — try again." };
+      }
       await recordAudit(getDb(), session.organisationId, {
         actorKind: "user",
         actorId: session.userId,
@@ -86,8 +114,8 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         after,
       });
     } else {
-      // Nothing resumes an approval with no run behind it, so `decideApproval`
-      // has already stamped the status and the decision is final here.
+      // Nothing resumes an approval with no run behind it, so there is no job
+      // to queue and the decision `decideApproval` stamped is final here.
       await recordAudit(getDb(), session.organisationId, {
         actorKind: "user",
         actorId: session.userId,

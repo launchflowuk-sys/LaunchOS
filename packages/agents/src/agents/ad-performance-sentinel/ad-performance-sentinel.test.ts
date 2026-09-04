@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { MockEmailAdapter } from "@launchos/channels";
-import { createAdAccount, saveDraftAdReport } from "@launchos/core";
+import { createAdAccount, decideApproval, saveDraftAdReport } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -62,13 +62,26 @@ async function parkSend(db: Db, agent: AgentDefinition, orgId: string, adReportI
   return { llm, parked, approval: approval! };
 }
 
-/** Runs the send tool, approves the parked call, and returns the run result with the tool's own output. */
+/**
+ * Runs the send tool, approves the parked call, and returns the run result with
+ * the tool's own output. The decision is recorded exactly as the admin portal
+ * records it — `decideApproval` writes it, the kernel reads it back — so the
+ * approver the tool sees is the one in the database. Without a named approver
+ * the row is decided with none, which is how a policy that releases the tool
+ * without a human looks.
+ */
 async function sendOnApproval(db: Db, agent: AgentDefinition, orgId: string, adReportId: string, decidedByUserId?: string) {
   const { llm, parked, approval } = await parkSend(db, agent, orgId, adReportId);
+  if (decidedByUserId) {
+    await decideApproval(db, orgId, { approvalId: approval.id, decision: "approved", decidedByUserId });
+  } else {
+    await db.update(schema.approvals)
+      .set({ status: "approved", decidedAt: NOW })
+      .where(eq(schema.approvals.id, approval.id));
+  }
   const result = await resumeAgent(agent, {
     db, organisationId: orgId, runId: parked.runId, approvalId: approval.id,
     decision: "approved", llm, policy: "safe", logger: console, now: () => NOW,
-    ...(decidedByUserId ? { decidedByUserId } : {}),
   });
   const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, parked.runId));
   const output = steps.find((s) => s.kind === "tool_result" && s.toolName === "reports_send_to_client")?.output;

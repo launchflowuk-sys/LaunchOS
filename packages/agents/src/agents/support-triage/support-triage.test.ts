@@ -3,7 +3,7 @@ import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
 import { and, asc, eq } from "drizzle-orm";
 import { MockEmailAdapter } from "@launchos/channels";
-import { createKnowledgeArticle, ensureEmailIdentity, ingestInboundEmail, sendQueuedMessage } from "@launchos/core";
+import { createKnowledgeArticle, decideApproval, ensureEmailIdentity, ingestInboundEmail, sendQueuedMessage } from "@launchos/core";
 import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockUptimeProbe } from "@launchos/integrations";
 import type { AgentIntegrations } from "../integrations.js";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
@@ -147,14 +147,16 @@ describe("support-triage", () => {
       // Nothing leaves the building before a human decides.
       expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
 
-      // Shoji approves in the admin portal…
+      // Shoji approves in the admin portal. The decision lands on the approval
+      // row there; the kernel reads the approver back off it.
+      await decideApproval(db, f.organisationId, {
+        approvalId: approval!.id, decision: "approved", decidedByUserId: f.owner.id,
+      });
       const resumed = await resumeAgent(agent, {
         db,
         organisationId: f.organisationId,
         runId: parked.runId,
         approvalId: approval!.id,
-        decision: "approved",
-        decidedByUserId: f.owner.id,
         llm,
         policy: "safe",
         logger: console,
@@ -210,14 +212,17 @@ describe("support-triage", () => {
       expect(parked.status).toBe("awaiting_approval");
 
       const [approval] = await db.select().from(schema.approvals).where(eq(schema.approvals.runId, parked.runId));
+      await decideApproval(db, f.organisationId, {
+        approvalId: approval!.id,
+        decision: "rejected",
+        decidedByUserId: f.owner.id,
+        note: "Wrong answer — the zone is not delegated yet.",
+      });
       const resumed = await resumeAgent(agent, {
         db,
         organisationId: f.organisationId,
         runId: parked.runId,
         approvalId: approval!.id,
-        decision: "rejected",
-        note: "Wrong answer — the zone is not delegated yet.",
-        decidedByUserId: f.owner.id,
         llm,
         policy: "safe",
         logger: console,

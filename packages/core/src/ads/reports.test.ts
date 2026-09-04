@@ -12,7 +12,7 @@ import { approveAdReport, saveDraftAdReport, sendAdReport } from "./reports.js";
 const ENV = { MAIL_FROM: "LaunchFlow <reports@launchflow.test>" };
 const PORTAL = "https://portal.test";
 
-/** Always fails, to prove a failed send rolls the claim back to `approved`. */
+/** Always fails, to prove a failed send keeps the claim and records the gap. */
 class FailingEmailAdapter implements EmailAdapter {
   readonly name = "mock" as const;
   calls = 0;
@@ -20,6 +20,16 @@ class FailingEmailAdapter implements EmailAdapter {
     this.calls += 1;
     throw new Error("smtp connection refused");
   }
+}
+
+/** An owner to receive the failure notification. */
+async function owner(db: Db, orgId: string) {
+  const [user] = await db.insert(schema.user)
+    .values({ id: `u-${randomUUID()}`, name: "Shoji", email: `${randomUUID()}@test.example` })
+    .returning();
+  await db.insert(schema.organisationMembers)
+    .values({ organisationId: orgId, userId: user!.id, role: "owner", status: "active" });
+  return user!;
 }
 
 async function orgClientAccount(db: Db, clientEmail: string | null = "client@test.example") {
@@ -93,9 +103,10 @@ describe("sendAdReport", () => {
     });
   });
 
-  it("rolls the claim back to approved when the send itself fails", async () => {
+  it("keeps the claim when the send fails, and records the gap rather than re-arming a second email", async () => {
     await withTestDb(async (db) => {
-      const { orgId, accountId } = await orgClientAccount(db);
+      const { orgId, clientId, accountId } = await orgClientAccount(db);
+      const user = await owner(db, orgId);
       const report = await draftReport(db, orgId, accountId);
       await approveAdReport(db, orgId, { adReportId: report.id, actorId: "u1" });
       const failing = new FailingEmailAdapter();
@@ -104,15 +115,47 @@ describe("sendAdReport", () => {
         .rejects.toThrow(/smtp connection refused/);
       expect(failing.calls).toBe(1);
 
+      // The claim committed before the provider was called and stays taken: a
+      // rollback here would re-arm a second email for the same report, and a
+      // process killed between send and COMMIT would have emailed the client
+      // while leaving the row `approved`.
       const [row] = await db.select().from(schema.adReports).where(eq(schema.adReports.id, report.id));
-      expect(row!.status).toBe("approved");
+      expect(row!.status).toBe("sent");
+      expect(row!.metadata["emailedAt"]).toBeUndefined();
+      expect(row!.metadata["lastSendError"]).toMatchObject({
+        to: "client@test.example",
+        message: expect.stringContaining("smtp connection refused"),
+      });
 
-      // A retry with a working adapter now succeeds, proving the report was
-      // never left stuck in a half-sent state.
+      // The failure is visible to a human in all three places.
+      const activity = await db.select().from(schema.activityEvents)
+        .where(eq(schema.activityEvents.clientId, clientId));
+      expect(activity.map((a) => a.kind)).toContain("ad_report.send_failed");
+      const notifications = await db.select().from(schema.notifications)
+        .where(eq(schema.notifications.userId, user.id));
+      expect(notifications.map((n) => n.kind)).toEqual(["ad_report.send_failed"]);
+
+      // A retry is a no-op rather than a second email to the client.
       const adapter = new MockEmailAdapter();
       const retried = await sendAdReport(db, orgId, { adReportId: report.id, actorId: "u1" }, adapter, PORTAL, ENV);
-      expect(retried.status).toBe("sent");
-      expect(adapter.sent).toHaveLength(1);
+      expect(retried).toMatchObject({ status: "sent", alreadySent: true });
+      expect(adapter.sent).toHaveLength(0);
+    });
+  });
+
+  it("confirms delivery and appends to the send history once the provider accepts", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, accountId } = await orgClientAccount(db);
+      const report = await draftReport(db, orgId, accountId);
+      await approveAdReport(db, orgId, { adReportId: report.id, actorId: "u1" });
+
+      await sendAdReport(db, orgId, { adReportId: report.id, actorId: "u1" }, new MockEmailAdapter(), PORTAL, ENV);
+
+      const [row] = await db.select().from(schema.adReports).where(eq(schema.adReports.id, report.id));
+      // `emailedAt` only exists once the provider took the message, so a report
+      // sent with no `emailedAt` is the "claimed but never delivered" case.
+      expect(typeof row!.metadata["emailedAt"]).toBe("string");
+      expect(row!.metadata["sendHistory"]).toMatchObject([{ actorId: "u1", actorKind: "user" }]);
     });
   });
 });

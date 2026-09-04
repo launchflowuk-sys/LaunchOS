@@ -20,10 +20,11 @@ function SubmitButton({ label, pendingLabel, destructive }: { label: string; pen
 }
 
 /**
- * Approve / Reject. The decision does not change the approval row here — it
- * queues `agent.resume`, and the agent kernel stamps the row as it picks the
- * run back up. So the button says "Resuming…" rather than "Saving…": the work
- * carries on after the request returns.
+ * Approve / Reject. The decision itself is recorded on the approval row before
+ * the action returns; for an approval that belongs to an agent run, the resume
+ * it queues carries on afterwards in the worker, and the button says so. An
+ * approval with no run behind it (an invoice send) has nothing to resume, so it
+ * must not claim otherwise — the work is finished when the toast appears.
  */
 export function DecisionForm({
   approvalId,
@@ -31,12 +32,14 @@ export function DecisionForm({
   label,
   destructive,
   withNote,
+  resumesAgent,
 }: {
   approvalId: string;
   action: (formData: FormData) => Promise<ActionResult>;
   label: string;
   destructive?: boolean;
   withNote?: boolean;
+  resumesAgent?: boolean;
 }) {
   return (
     <form
@@ -45,7 +48,7 @@ export function DecisionForm({
       action={async (formData) => {
         const result = await action(formData);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success(`${label}d — resuming the agent`);
+        toast.success(resumesAgent ? "Decision recorded — resuming the agent" : "Decision recorded");
       }}
     >
       <input type="hidden" name="approvalId" value={approvalId} />
@@ -60,7 +63,11 @@ export function DecisionForm({
           />
         </label>
       ) : null}
-      <SubmitButton label={label} pendingLabel="Resuming…" {...(destructive ? { destructive: true } : {})} />
+      <SubmitButton
+        label={label}
+        pendingLabel={resumesAgent ? "Resuming…" : "Saving…"}
+        {...(destructive ? { destructive: true } : {})}
+      />
     </form>
   );
 }

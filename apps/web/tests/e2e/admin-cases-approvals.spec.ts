@@ -2,10 +2,8 @@ import { createTicket } from "@launchos/core";
 import { createDb, schema } from "@launchos/db";
 import { expect, test } from "@playwright/test";
 import { and, eq, sql } from "drizzle-orm";
+import { DATABASE_URL, OWNER } from "./seed-credentials";
 import { signIn } from "./sign-in";
-
-const DATABASE_URL = process.env.DATABASE_URL ?? "postgres://launchos:launchos@localhost:5432/launchos";
-const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? "shujaat@nexusedu.co.uk";
 
 // The dev server compiles each route the first time it is requested, and this
 // spec is the first thing to ask for /inbox, /cases and /cases/[id].
@@ -35,8 +33,8 @@ test.beforeAll(async () => {
   if (!organisation) throw new Error("seed organisation not found — run `pnpm db:seed` first");
   organisationId = organisation.id;
 
-  const [owner] = await db.select().from(schema.user).where(eq(schema.user.email, OWNER_EMAIL));
-  if (!owner) throw new Error(`seed owner ${OWNER_EMAIL} not found — run \`pnpm db:seed\` first`);
+  const [owner] = await db.select().from(schema.user).where(eq(schema.user.email, OWNER.email));
+  if (!owner) throw new Error(`seed owner ${OWNER.email} not found — run \`pnpm db:seed\` first`);
   ownerUserId = owner.id;
   ownerName = owner.name;
 
@@ -198,8 +196,9 @@ test("approving a parked tool call queues the agent resume", async ({ page }) =>
   await approveForm.locator('input[name="note"]').fill("Reads well, send it.");
   await approveForm.getByRole("button", { name: "Approve" }).click();
 
-  // The web app records nothing on the approval itself: it hands the decision
-  // to the worker, which is what actually runs the tool and resumes the run.
+  // The decision is queued for the worker, which is what actually runs the tool
+  // and resumes the run. The job carries no approver: the kernel reads that off
+  // the approvals row.
   await expect
     .poll(
       async () => {
@@ -216,12 +215,19 @@ test("approving a parked tool call queues the agent resume", async ({ page }) =>
       approvalId,
       decision: "approved",
       note: "Reads well, send it.",
-      decidedByUserId: ownerUserId,
     });
 
-  // The web app must never stamp the approval itself: `resumeAgent` refuses an
-  // approval that has already been decided, so pre-deciding would strand the
-  // run. It records `approval.approved_queued` and leaves the row alone.
+  // `decideApproval` is the single writer of the decision, and it runs here in
+  // the web request: the approver on the card, in the audit log and in the
+  // database can never disagree, and a resume that never happens cannot leave
+  // the row decided-but-pending. The kernel reads all of this back.
+  const [decided] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approvalId));
+  expect(decided!.status).toBe("approved");
+  expect(decided!.decidedBy).toBe(ownerUserId);
+  expect(decided!.decisionNote).toBe("Reads well, send it.");
+
+  // A run-backed decision is audited as queued, not as done: the tool has not
+  // run yet, the worker is what runs it.
   const audit = await db
     .select({ action: schema.auditLog.action })
     .from(schema.auditLog)

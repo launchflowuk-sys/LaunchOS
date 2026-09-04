@@ -27,17 +27,23 @@ export type DecideApprovalResult =
  * Claims a pending approval for exactly one decision.
  *
  * The claim is the single conditional UPDATE below: Postgres resolves
- * `decided_at IS NULL` under the row lock, so of any number of concurrent
- * decisions on the same approval exactly one gets a row back and every other
- * caller sees `alreadyDecided`. A SELECT-then-UPDATE would leave a window in
- * which both callers read `pending` and both went on to act.
+ * `status = 'pending' AND decided_at IS NULL` under the row lock, so of any
+ * number of concurrent decisions on the same approval exactly one gets a row
+ * back and every other caller sees `alreadyDecided`. A SELECT-then-UPDATE would
+ * leave a window in which both callers read `pending` and both went on to act.
  *
- * `decided_at`, not `status`, is the claim marker, because an approval that
- * belongs to an agent run must stay `pending` until the kernel resumes it:
- * `resumeAgent` refuses an approval that is already decided, so pre-stamping
- * `status` here would strand the run. For an approval with no run behind it (a
- * human-raised invoice send) there is nothing to resume, so the status is
- * stamped in the same statement and the decision is final immediately.
+ * **This function is the only writer of the decision fields.** `status`,
+ * `decided_by`, `decided_at` and `decision_note` are all stamped here, in one
+ * statement, for a run-backed approval exactly as for a human-raised one. The
+ * agent kernel never writes them: `resumeAgent` *reads* this row to learn who
+ * decided, what they decided and why, so the approver on the card, the approver
+ * in `audit_log` and the approver in the database can never disagree, and a
+ * resume that dies can never leave a row decided-but-`pending` with no way to
+ * re-drive it.
+ *
+ * What tells the kernel a decision has not been carried out yet is therefore
+ * *not* the approval status but `agent_runs.metadata.pending` — the parked loop
+ * state, which `runLoop` clears the moment the run finishes or re-parks.
  *
  * Audit is left to the caller: the admin portal distinguishes a decision that
  * was queued for an agent from one that took effect on the spot.
@@ -59,8 +65,7 @@ export async function decideApproval(
   const [after] = await db
     .update(schema.approvals)
     .set({
-      // An agent-backed approval keeps `pending` so the kernel can resume it.
-      ...(before.runId ? {} : { status: v.decision }),
+      status: v.decision,
       decidedBy: v.decidedByUserId,
       decidedAt: now,
       decisionNote: v.note ?? null,
@@ -76,4 +81,43 @@ export async function decideApproval(
 
   if (!after) return { alreadyDecided: true, approval: before };
   return { alreadyDecided: false, before, after };
+}
+
+export const ReleaseApprovalClaimInput = z.object({
+  approvalId: z.string().uuid(),
+  /** The `decided_at` the caller's own claim wrote. Nothing else may release it. */
+  decidedAt: z.date(),
+});
+export type ReleaseApprovalClaimInput = z.input<typeof ReleaseApprovalClaimInput>;
+
+/**
+ * Undoes a decision whose follow-on work could not be started — the admin
+ * portal claiming an approval and then failing to enqueue `agent.resume`.
+ *
+ * Without this, a failed enqueue leaves the worst possible state: an approval
+ * the screen shows as decided, a run still parked in `awaiting_approval`, and
+ * nothing anywhere that will ever resume it. Releasing puts the card back in
+ * "Waiting for you" so the human can simply press the button again.
+ *
+ * `decided_at` is the claim token: the release only matches the exact instant
+ * this caller stamped, so it can never reopen a decision someone else made in
+ * the meantime. Returns the released row, or undefined when the claim was not
+ * ours to release.
+ */
+export async function releaseApprovalClaim(
+  db: Db,
+  organisationId: string,
+  input: ReleaseApprovalClaimInput,
+): Promise<ApprovalRow | undefined> {
+  const v = ReleaseApprovalClaimInput.parse(input);
+  const [released] = await db
+    .update(schema.approvals)
+    .set({ status: "pending", decidedAt: null, decidedBy: null, decisionNote: null, updatedAt: new Date() })
+    .where(and(
+      eq(schema.approvals.id, v.approvalId),
+      eq(schema.approvals.organisationId, organisationId),
+      eq(schema.approvals.decidedAt, v.decidedAt),
+    ))
+    .returning();
+  return released;
 }

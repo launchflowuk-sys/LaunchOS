@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { decideApproval } from "./decide-approval.js";
+import { decideApproval, releaseApprovalClaim } from "./decide-approval.js";
 
 async function fixture(db: Db, opts: { withRun?: boolean } = {}) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `dec-${randomUUID()}` }).returning();
@@ -57,25 +57,31 @@ describe("decideApproval", () => {
     });
   });
 
-  it("leaves an agent-backed approval pending so the kernel can still resume it", async () => {
+  it("stamps an agent-backed approval here too, so the kernel never has to write the decision", async () => {
     await withTestDb(async (db) => {
       const { orgId, approval } = await fixture(db, { withRun: true });
 
       const first = await decideApproval(db, orgId, {
-        approvalId: approval.id, decision: "approved", decidedByUserId: "u1",
+        approvalId: approval.id, decision: "approved", decidedByUserId: "u1", note: "send it",
       });
       expect(first.alreadyDecided).toBe(false);
 
       const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
-      // `resumeAgent` refuses an approval that is no longer pending; `decidedAt`
-      // is the claim marker instead.
-      expect(row!.status).toBe("pending");
+      // The row is the authoritative record of the decision for a run-backed
+      // approval as much as for a run-less one: `resumeAgent` reads status,
+      // `decidedBy` and the note from here rather than from the job payload.
+      // What says "not carried out yet" is the run's `metadata.pending`.
+      expect(row!.status).toBe("approved");
+      expect(row!.decidedBy).toBe("u1");
+      expect(row!.decisionNote).toBe("send it");
       expect(row!.decidedAt).toBeInstanceOf(Date);
 
       const second = await decideApproval(db, orgId, {
         approvalId: approval.id, decision: "rejected", decidedByUserId: "u2",
       });
       expect(second.alreadyDecided).toBe(true);
+      const [unchanged] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
+      expect([unchanged!.status, unchanged!.decidedBy]).toEqual(["approved", "u1"]);
     });
   });
 
@@ -92,6 +98,48 @@ describe("decideApproval", () => {
       expect(result).toEqual({ alreadyDecided: true, approval: undefined });
       const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
       expect(row!.status).toBe("pending");
+    });
+  });
+});
+
+describe("releaseApprovalClaim", () => {
+  it("puts an approval back when the work it authorised could not be started", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, approval } = await fixture(db, { withRun: true });
+      const claimed = await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: "u1", note: "send it",
+      });
+      if (claimed.alreadyDecided) throw new Error("unreachable");
+
+      // The admin portal claimed the decision and then failed to queue the
+      // resume. A decided approval whose run nothing will ever resume is worse
+      // than no decision at all, so the claim is handed back.
+      const released = await releaseApprovalClaim(db, orgId, {
+        approvalId: approval.id, decidedAt: claimed.after.decidedAt!,
+      });
+      expect(released!.status).toBe("pending");
+      expect([released!.decidedBy, released!.decidedAt, released!.decisionNote]).toEqual([null, null, null]);
+
+      // And the card is actionable again, which is the whole point.
+      const retry = await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: "u1",
+      });
+      expect(retry.alreadyDecided).toBe(false);
+    });
+  });
+
+  it("cannot release a decision it did not claim", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, approval } = await fixture(db, { withRun: true });
+      await decideApproval(db, orgId, { approvalId: approval.id, decision: "approved", decidedByUserId: "u1" });
+
+      const released = await releaseApprovalClaim(db, orgId, {
+        approvalId: approval.id, decidedAt: new Date("2020-01-01T00:00:00.000Z"),
+      });
+
+      expect(released).toBeUndefined();
+      const [row] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
+      expect([row!.status, row!.decidedBy]).toEqual(["approved", "u1"]);
     });
   });
 });

@@ -1,16 +1,25 @@
 import { schema } from "@launchos/db";
 import { resumeAgent } from "@launchos/agents";
 import { and, eq } from "drizzle-orm";
+import { z } from "zod";
 import { resolvePolicy, type AgentRunDeps } from "./agent-run.js";
 
-export interface AgentResumeJob {
-  organisationId: string;
-  runId: string;
-  approvalId: string;
-  decision: "approved" | "rejected";
-  note?: string;
-  decidedByUserId?: string;
-}
+/**
+ * The job body, parsed rather than trusted: it crosses a process boundary, so
+ * CLAUDE.md's "Zod at every boundary" applies. It deliberately carries no
+ * approver and no decision of record — `resumeAgent` reads both from the
+ * `approvals` row `decideApproval` stamped, so a malformed or stale payload
+ * can never re-attribute an outward action. `decision` and `note` ride along
+ * only as a cross-check the kernel logs on a mismatch.
+ */
+export const AgentResumeJobSchema = z.object({
+  organisationId: z.string().uuid(),
+  runId: z.string().uuid(),
+  approvalId: z.string().uuid(),
+  decision: z.enum(["approved", "rejected"]),
+  note: z.string().optional(),
+});
+export type AgentResumeJob = z.infer<typeof AgentResumeJobSchema>;
 
 /**
  * Deliberately does not check `agent_enablement.enabled`: a human has already
@@ -18,7 +27,8 @@ export interface AgentResumeJob {
  * must be closed out even if the agent was switched off in the meantime. The
  * per-organisation *policy* still applies to every later turn.
  */
-export async function handleAgentResume(deps: AgentRunDeps, job: AgentResumeJob) {
+export async function handleAgentResume(deps: AgentRunDeps, raw: AgentResumeJob) {
+  const job = AgentResumeJobSchema.parse(raw);
   const [run] = await deps.db
     .select({ agentKey: schema.agentRuns.agentKey, status: schema.agentRuns.status })
     .from(schema.agentRuns)
@@ -56,11 +66,12 @@ export async function handleAgentResume(deps: AgentRunDeps, job: AgentResumeJob)
     organisationId: job.organisationId,
     runId: job.runId,
     approvalId: job.approvalId,
+    // Both are cross-checks only; the kernel takes the decision, the note and
+    // the approver from the approvals row.
     decision: job.decision,
     // `exactOptionalPropertyTypes` treats an explicit `undefined` value as
-    // different from an absent key, so only set these when the job carried them.
+    // different from an absent key, so only set this when the job carried it.
     ...(job.note !== undefined && { note: job.note }),
-    ...(job.decidedByUserId !== undefined && { decidedByUserId: job.decidedByUserId }),
     llm: deps.llm,
     policy: resolvePolicy(deps.policy, enablement?.config),
     logger: deps.logger,

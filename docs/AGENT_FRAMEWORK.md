@@ -86,19 +86,21 @@ agent_runs.metadata.pending = {
 }
 ```
 
-`resumeAgent(def, { runId, approvalId, decision, note, decidedByUserId, … })` then:
+**Who writes the decision.** `decideApproval` (`packages/core/src/approvals/decide-approval.ts`) is the *only* writer of `approvals.status`, `decided_by`, `decided_at` and `decision_note`, for a run-backed approval exactly as for a human-raised one. One conditional UPDATE (`WHERE status = 'pending' AND decided_at IS NULL`) claims the row, so of any number of concurrent decisions exactly one wins; the losers get `alreadyDecided` and enqueue nothing. The kernel never writes those columns — it reads them. What tells the kernel a decision has not been carried out yet is therefore **`agent_runs.metadata.pending`**, the parked loop state, which `runLoop` clears the moment the run finishes or re-parks.
 
-1. Loads the run and the approval, both scoped to the organisation. The approval must belong to this run, must still be `pending`, and its `payload.toolUseId` must equal `awaitingToolUseId` — that binding is what stops a stale "approved" row being replayed against a later parked call. Anything inconsistent throws rather than guessing.
-2. Reopens the recorder. `RunRecorder.reopen` continues the existing `seq` rather than restarting at 0, which the `agent_steps_run_seq` unique index would reject.
-3. Stamps the approval with the decision, `decided_at`, `decided_by` and the note.
-4. **Approved:** executes the tool directly — the policy gate is not consulted a second time, because the human *is* the gate. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent. A tool that throws becomes an `is_error` tool_result rather than losing the run.
+`resumeAgent(def, { runId, approvalId, … })` then:
+
+1. Loads the run and the approval, both scoped to the organisation. The approval must belong to this run, must already carry a decision (a still-`pending` row means nobody decided, so there is nothing to resume), and its `payload.toolUseId` must equal `awaitingToolUseId` — that binding is what stops a stale row being replayed against a later parked call. Anything inconsistent throws rather than guessing.
+2. Reopens the recorder. `RunRecorder.reopen` claims the run in one conditional UPDATE (`WHERE status = 'awaiting_approval'`), so two deliveries cannot both execute the tool, stamps `metadata.resume = { approvalId, claimedAt }`, and continues the existing `seq` rather than restarting at 0, which the `agent_steps_run_seq` unique index would reject.
+3. Takes the verdict, the note and the approver from the approvals row. `opts.decision` and `opts.note` on the job are a cross-check only: a payload that disagrees with the row is logged and ignored, and there is deliberately no `decidedByUserId` on the job at all, so a malformed or missing field can never silently re-attribute an outward action to the agent.
+4. **Approved:** executes the tool directly — the policy gate is not consulted a second time, because the human *is* the gate. `approvals.decided_by` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent. A tool that throws becomes an `is_error` tool_result rather than losing the run.
    **Rejected:** substitutes `rejected by human: <note>` as an `is_error` tool_result and records a `note` step.
 5. Marks every `remainingToolUseIds` entry `skipped pending approval`, in the trace as well as to the model.
 6. Re-enters the shared `runLoop` with `[...pending.messages, { role: "user", content: results }]`.
 
-If a resume dies partway, the run is left `running`; a later attempt finishes it `failed` and notifies the owner, because an approved outward action silently vanishing is the one failure nothing else surfaces. The status predicate matters: a run still sitting in `awaiting_approval` is legitimately parked for some *other* approval and is never touched.
+If a resume dies partway, the run is left `running`; a later attempt for the *same* approval finishes it `failed` and notifies the owner, because an approved outward action silently vanishing is the one failure nothing else surfaces. See "When a resume fails" for the three predicates that have to hold first.
 
-The `/approvals` screen does not decide the row itself. It records `approval.approved_queued` in `audit_log` and enqueues `agent.resume` with the signed-in user's id; `resumeAgent` refuses an already-decided approval, so stamping it in the web process would strand the run. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent.
+The `/approvals` screen decides the row (via `decideApproval`), records `approval.approved_queued` in `audit_log` and enqueues `agent.resume`. If that enqueue fails, it *releases* the claim (`releaseApprovalClaim`) and tells the approver to try again: a decided approval whose run is still parked, with nothing anywhere that will resume it, is worse than no decision. A run-less approval (an invoice send) is decided and executed in the same request and records `approval.approved` instead.
 
 ## Describing an approval
 
@@ -115,8 +117,8 @@ Two rules:
 
 `resumeAgent` flips the run to `running` before the approved tool executes, so from that point every failure has to land somewhere terminal. Everything from loading the parked run onwards sits in one try/catch:
 
-- If the run was claimed (it is `running`), it is finished `failed` with the error, and `notifyOwner` tells the owner an approved action did not complete, linking the run.
-- If it was not claimed — a spent approval, an approval bound to a different `tool_use`, another organisation's run — the error is thrown to the caller and the parked run is left exactly as it was. A stale approval must never be able to kill a run that is legitimately waiting for a different decision.
+- The run is finished `failed`, with `notifyOwner` telling the owner an approved action did not complete, only when all three hold: it is `running`; `metadata.resume.approvalId` is *this* approval; and that claim is more than five minutes old. A live resume stamped `claimedAt` when it reopened the run, so it is never eligible — without that check, a pg-boss redelivery arriving mid-flight would mark a working run `failed` and tell Shoji an approved send failed while it was still running.
+- Anything else — a spent approval, an approval bound to a different `tool_use`, another organisation's run, a run some other approval is driving, a claim that is still fresh — is logged, left exactly as it was, and the error is thrown to the caller so pg-boss retries. A stale approval must never be able to kill a run that is legitimately waiting or working.
 
 The worker's `agent.resume` handler treats a run that is already `completed` or `failed` as an idempotent no-op with a log line, so a pg-boss retry after a partial failure does not fail identically five times over. A run left `running` by a killed delivery is deliberately *not* skipped: it is the one case the kernel still has to close out.
 

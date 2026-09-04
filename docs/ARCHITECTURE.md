@@ -46,7 +46,7 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 |---|---|---|---|---|
 | `monitor.check` | standard | cron every minute | worker | `{}` — sweeps every organisation, per-monitor checks inside |
 | `agent.run` | short | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
-| `agent.resume` | short | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
+| `agent.resume` | short | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note? }` — no approver: the kernel reads `approvals.decided_by` |
 | `inbound.message` | short | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
 | `outbound.message` | short | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
 | `domain.event` | standard | any web server action that emits a domain event | worker | the `DomainEvent` itself — no `singletonKey`, hence `standard` |
