@@ -1,6 +1,6 @@
 "use server";
 
-import { markInitialPasswordSet } from "@launchos/core";
+import { recordOwnPasswordChange } from "@launchos/core";
 import { APIError } from "better-auth/api";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -9,7 +9,18 @@ import { getAuth } from "@/lib/auth";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 
-export type ChangePasswordState = { status: "idle" } | { status: "changed" } | { status: "error"; message: string };
+export type ChangePasswordState =
+  | { status: "idle" }
+  /**
+   * The password *has* been replaced. `warning` carries anything that failed
+   * afterwards and could not undo it — see `revokeOtherSessions` below.
+   */
+  | { status: "changed"; warning?: string }
+  | { status: "error"; message: string };
+
+/** Shown when the change committed but the other sessions outlived it. */
+const REVOKE_FAILED =
+  "Your password was changed, but your other sessions could not be signed out — sign out on your other devices manually.";
 
 /**
  * Deliberately no `min` on `newPassword`. The floor is `minPasswordLength` in
@@ -30,12 +41,20 @@ const Input = z.object({
  * somebody *else's* password uses `/team`, which is audited as a re-issue and
  * hands over a one-time password.
  *
- * On success it stamps `organisation_members.initial_password_set_at`. That is
- * what closes the re-issue window on `/team`: until a member replaces the
- * password an owner issued them, an owner may mint another one over the top of
- * it, and from this moment they may not. The stamp is deliberately after the
+ * On success it calls `recordOwnPasswordChange`, which audits the change and,
+ * the first time, stamps `organisation_members.initial_password_set_at`. That
+ * stamp is what closes the re-issue window on `/team`: until a member replaces
+ * the password an owner issued them, an owner may mint another one over the top
+ * of it, and from this moment they may not. Both are deliberately after the
  * change and never before — a stamp without a changed password would strand a
  * member on a credential nobody can replace.
+ *
+ * Everything after `changePassword` returns is post-commit: the new credential
+ * is already in the database and nothing here can put the old one back. So
+ * nothing after that point may report the change as failed. The one exception
+ * is the audit write itself, which is allowed to throw: a password change no
+ * `audit_log` row records is an integrity failure, not a cosmetic one, and
+ * swallowing it would be the quiet version of the bug this call exists to fix.
  */
 export async function changeOwnPasswordAction(
   _previous: ChangePasswordState,
@@ -56,29 +75,50 @@ export async function changeOwnPasswordAction(
       body: { currentPassword: parsed.data.currentPassword, newPassword: parsed.data.newPassword },
       headers: requestHeaders,
     });
-    // The point of a password change: if the old one leaked, every session it
-    // opened goes with it. Deliberately the separate `revokeOtherSessions`
-    // endpoint rather than the flag on `changePassword` — the flag deletes
-    // *every* session including this one and mints a replacement, which only
-    // reaches the browser if something copies the `set-cookie` Better Auth
-    // built onto Next's own cookie store. In a server action nothing does, so
-    // the member would be signed out by the act of changing their password and
-    // the re-render that follows the action would bounce them to /sign-in.
-    // This endpoint keeps the caller's session and deletes the rest.
-    await getAuth().api.revokeOtherSessions({ headers: requestHeaders });
   } catch (error) {
     // Better Auth reports a wrong current password and a too-short new one as
     // APIError; its message is safe to show, and says which of the two it was.
+    // Nothing has been written at this point, so this is the only place the
+    // action may say the change did not happen.
     if (error instanceof APIError) {
       return { status: "error", message: error.message || "That password could not be changed." };
     }
     throw error;
   }
 
-  await markInitialPasswordSet(getDb(), session.organisationId, { userId: session.userId });
+  // ---- Past this line the new credential is committed. ----
 
-  // /team renders the re-issue control off that column.
+  await recordOwnPasswordChange(getDb(), session.organisationId, { userId: session.userId });
+
+  // The point of a password change: if the old one leaked, every session it
+  // opened goes with it. Deliberately the separate `revokeOtherSessions`
+  // endpoint rather than the flag on `changePassword` — the flag deletes
+  // *every* session including this one and mints a replacement, which only
+  // reaches the browser if something copies the `set-cookie` Better Auth built
+  // onto Next's own cookie store. In a server action nothing does, so the
+  // member would be signed out by the act of changing their password and the
+  // re-render that follows the action would bounce them to /sign-in. This
+  // endpoint keeps the caller's session and deletes the rest.
+  //
+  // A failure here is reported as a warning on a successful change, never as a
+  // failure: the password has already been replaced, and telling the member
+  // otherwise sends them back to a current password that no longer works.
+  let warning: string | undefined;
+  try {
+    await getAuth().api.revokeOtherSessions({ headers: requestHeaders });
+  } catch (error) {
+    console.error("[account] password changed but revokeOtherSessions failed", {
+      organisationId: session.organisationId,
+      userId: session.userId,
+      error,
+    });
+    warning = REVOKE_FAILED;
+  }
+
+  // /team renders the re-issue control off `initial_password_set_at`.
   revalidatePath("/team");
   revalidatePath("/account");
-  return { status: "changed" };
+  // `exactOptionalPropertyTypes`: an absent warning is an absent key, not an
+  // explicit `undefined`.
+  return warning ? { status: "changed", warning } : { status: "changed" };
 }

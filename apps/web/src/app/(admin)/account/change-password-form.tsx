@@ -62,9 +62,23 @@ export function ChangePasswordForm() {
         </p>
       ) : null}
 
+      {/*
+        One element for both outcomes, because both mean the same thing about
+        the credential: it has been replaced. The warning only qualifies what
+        happened to the member's *other* sessions afterwards, so it must never
+        read as a failure — the new password is the live one either way.
+      */}
       {state.status === "changed" ? (
-        <p role="status" data-testid="password-changed" className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          Password changed. Any other devices have been signed out.
+        <p
+          role="status"
+          data-testid="password-changed"
+          className={
+            state.warning
+              ? "rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800"
+              : "rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+          }
+        >
+          {state.warning ?? "Password changed. Any other devices have been signed out."}
         </p>
       ) : null}
 

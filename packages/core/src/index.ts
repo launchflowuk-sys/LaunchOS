@@ -1,5 +1,6 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
 export { supportEmailDomain, supportEmailFor, DEFAULT_SUPPORT_EMAIL_DOMAIN } from "./config.js";
+export { truncate, MAX_ADDRESS_CHARS, MAX_ERROR_CHARS } from "./text.js";
 export { updateOrganisation, UpdateOrganisationInput } from "./organisations/update-organisation.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";
 export { updateClient, archiveClient, UpdateClientInput, ArchiveClientInput } from "./clients/update-client.js";
@@ -64,7 +65,8 @@ export { listMembers, countActiveOwners } from "./team/list-members.js";
 export type { MemberRow } from "./team/list-members.js";
 export { deactivateMember, DeactivateMemberInput } from "./team/deactivate-member.js";
 export { reissueOneTimePassword, ReissueOneTimePasswordInput } from "./team/reissue-password.js";
-export { markInitialPasswordSet, MarkInitialPasswordSetInput } from "./team/mark-initial-password-set.js";
+export { recordOwnPasswordChange, RecordOwnPasswordChangeInput } from "./team/record-own-password-change.js";
+export type { RecordOwnPasswordChangeResult } from "./team/record-own-password-change.js";
 export { search, SearchInput } from "./search/search.js";
 export type { SearchResults } from "./search/search.js";
 export { createPackage, CreatePackageInput, PackageIncludesInput } from "./packages/create-package.js";
