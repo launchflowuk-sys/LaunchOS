@@ -45,3 +45,8 @@ export {
   createDnsRecord, updateDnsRecord, deleteDnsRecord, listDnsRecords,
   CreateDnsRecordInput, UpdateDnsRecordInput, DeleteDnsRecordInput,
 } from "./domains/dns-records.js";
+export { generateOneTimePassword } from "./team/password.js";
+export { createMember, CreateMemberInput } from "./team/create-member.js";
+export { listMembers, countActiveOwners } from "./team/list-members.js";
+export type { MemberRow } from "./team/list-members.js";
+export { deactivateMember, DeactivateMemberInput } from "./team/deactivate-member.js";

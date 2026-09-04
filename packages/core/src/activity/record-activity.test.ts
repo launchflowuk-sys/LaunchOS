@@ -18,7 +18,12 @@ async function makeClient(db: Db, organisationId: string) {
 }
 
 describe("recordActivity", () => {
-  it("records newest-first events for a client and refuses another organisation's client", async () => {
+  // Both calls land in the same withTestDb transaction, and Postgres `now()`
+  // (hence `defaultNow()`) is fixed for a transaction's lifetime, so the two
+  // events can share an identical `createdAt` — asserting strict order between
+  // them would depend on the `id` tie-break in listActivity, which is a random
+  // UUID unrelated to insertion order. Assert set membership instead.
+  it("records events for a client and refuses another organisation's client", async () => {
     await withTestDb(async (db) => {
       const orgA = await makeOrg(db);
       const orgB = await makeOrg(db);
@@ -30,8 +35,10 @@ describe("recordActivity", () => {
       });
 
       const events = await listActivity(db, orgA.id, { clientId: client.id });
-      expect(events.map((e) => e.kind)).toEqual(["contact.added", "client.created"]);
-      expect(events[0]!.actorKind).toBe("user");
+      expect(events).toHaveLength(2);
+      expect(new Set(events.map((e) => e.kind))).toEqual(new Set(["contact.added", "client.created"]));
+      expect(events.find((e) => e.kind === "contact.added")?.actorKind).toBe("user");
+      expect(events.find((e) => e.kind === "client.created")?.actorKind).toBe("system");
 
       await expect(
         recordActivity(db, orgB.id, { clientId: client.id, kind: "x", title: "y" }),

@@ -22,6 +22,11 @@ export async function listActivity(db: Db, organisationId: string, input: ListAc
         v.siteId ? eq(schema.activityEvents.siteId, v.siteId) : undefined,
       ),
     )
-    .orderBy(desc(schema.activityEvents.createdAt))
+    // Postgres `now()` (hence `defaultNow()`) is fixed for the life of a
+    // transaction, so two events recorded in the same transaction (a common
+    // case: create-client and create-site both log activity inside their own
+    // write transaction) can share an identical `createdAt`. `id` breaks the
+    // tie so the order is reproducible, not merely "usually right".
+    .orderBy(desc(schema.activityEvents.createdAt), desc(schema.activityEvents.id))
     .limit(v.limit);
 }
