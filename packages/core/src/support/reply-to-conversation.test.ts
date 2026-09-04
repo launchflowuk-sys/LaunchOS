@@ -12,6 +12,7 @@ import { ingestInboundEmail } from "./ingest-inbound-email.js";
 import { replyAsClient } from "./reply-as-client.js";
 import { replyToConversation } from "./reply-to-conversation.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
+import { updateTicket } from "./update-ticket.js";
 
 const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "LaunchFlow <support@launchflow.test>" };
 
@@ -212,6 +213,56 @@ describe("replyToConversation on a portal thread", () => {
         expect(after.every((n) => n.metadata["kind"] === PORTAL_REPLY_NOTICE_KIND)).toBe(true);
         expect(events.filter((e) => e.name === "message.queued")).toHaveLength(1);
       });
+    });
+  });
+
+  it("still nudges after a client reply on a case a staff status change moved off waiting_client", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, client, ticket, conversation } = await seedPortalCase(db);
+      await ensureEmailIdentity(db, organisationId, { clientId: client.id }, ENV);
+      await db.update(schema.clients).set({ email: "jo@client.test" }).where(eq(schema.clients.id, client.id));
+
+      const notices = () =>
+        db
+          .select()
+          .from(schema.messages)
+          .where(and(
+            eq(schema.messages.conversationId, conversation.id),
+            eq(schema.messages.authorKind, "system"),
+          ));
+
+      const send = (body: string) =>
+        replyToConversation(db, organisationId, {
+          conversationId: conversation.id, body, actorKind: "user", actorId: "u1",
+        });
+
+      await send("Looking at it now.");
+      expect(await notices()).toHaveLength(1);
+
+      // Staff pick the work up. `updateTicket` writes `status_changed` with
+      // `to: "in_progress"`, never `to: "open"`.
+      const pickUp = () =>
+        updateTicket(db, organisationId, {
+          ticketId: ticket.id, status: "in_progress", actorKind: "user", actorId: "u1",
+        });
+
+      await pickUp();
+      await send("Still digging.");
+      // Same question, same round: one nudge is enough.
+      expect(await notices()).toHaveLength(1);
+
+      // Staff are on it again, so the case is not sitting in `waiting_client`
+      // when the client chases — and `in_progress` is not in REOPENED_FROM, so
+      // their reply writes no reopen event at all. A round read off the status
+      // history stays put here, and the answer below is silently never sent.
+      await pickUp();
+      await replyAsClient(db, organisationId, {
+        conversationId: conversation.id, body: "Still not receiving them.", actorId: "portal-user-1",
+      });
+      await send("Fixed — try now.");
+
+      // The answer that resolves it has to reach them.
+      expect(await notices()).toHaveLength(2);
     });
   });
 

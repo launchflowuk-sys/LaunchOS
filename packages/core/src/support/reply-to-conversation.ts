@@ -62,22 +62,31 @@ async function noticeAddress(db: Db, organisationId: string, clientId: string): 
 }
 
 /**
- * How many times this case has been pulled back to `open` — every client reply
- * on a resolved, closed or waiting_client case writes one of these
- * (`replyAsClient`, `ingestInboundEmail`). It is the round number of the case:
- * a count rather than a timestamp because every row in one transaction shares
- * the same `now()`, so "written after the reopen" is not a question the clock
- * can answer.
+ * How many times the client has written on this thread. It is the round number
+ * of the conversation: while it stands still we are still answering the same
+ * question, and the moment it moves the client is waiting on us again.
+ *
+ * Counted from the client's own messages rather than inferred from the status
+ * history. A reopen event (`status_changed` to `open`) is only written when the
+ * case happened to be sitting in `resolved`, `closed` or `waiting_client`; a
+ * client who chases a case that staff have moved to `in_progress`, or that the
+ * triage agent has moved to `triaged`, writes no such event, and a round
+ * counted that way would never advance — silencing the answer they are waiting
+ * for. Their message is the thing that defines the round, so count that.
+ *
+ * A count rather than a timestamp because every row written in one transaction
+ * shares the same `now()`, so "written after the client's last message" is not
+ * a question the clock can answer. It is a property of the conversation, so it
+ * needs no ticket: a thread without one rounds normally too.
  */
-async function reopenCount(db: Db, organisationId: string, ticketId: string): Promise<number> {
+async function clientReplyCount(db: Db, organisationId: string, conversationId: string): Promise<number> {
   const [row] = await db
     .select({ n: count() })
-    .from(schema.ticketEvents)
+    .from(schema.messages)
     .where(and(
-      eq(schema.ticketEvents.organisationId, organisationId),
-      eq(schema.ticketEvents.ticketId, ticketId),
-      eq(schema.ticketEvents.kind, "status_changed"),
-      sql`${schema.ticketEvents.data}->>'to' = 'open'`,
+      eq(schema.messages.organisationId, organisationId),
+      eq(schema.messages.conversationId, conversationId),
+      eq(schema.messages.direction, "inbound"),
     ));
   return Number(row?.n ?? 0);
 }
@@ -87,9 +96,9 @@ async function reopenCount(db: Db, organisationId: string, ticketId: string): Pr
  *
  * The nudge says "there is something waiting for you", and that is true once:
  * answering in three messages is one trip to the portal, not three identical
- * emails. The round advances when the client replies, because their reply
- * reopens the case and they are back to waiting on us — so a notice from the
- * previous round does not silence the next one.
+ * emails. The round advances when the client writes back, whatever the case's
+ * status was at the time — so a notice from the previous round never silences
+ * the answer to a new question.
  *
  * `failed` is deliberately not counted: a notice that never left is not a
  * notice the client has had.
@@ -128,8 +137,8 @@ async function courtesyAlreadySent(
  * - **A portal thread** has no address, and needs none: writing the row *is*
  *   the delivery, because the portal is the channel. The message is `outbound`
  *   and `sent` immediately, the case moves to `waiting_client`, and — if the
- *   client has a contact address, and has not already been nudged since the
- *   case was last reopened — a separate courtesy notice is queued telling them
+ *   client has a contact address, and has not already been nudged since they
+ *   last wrote — a separate courtesy notice is queued telling them
  *   to sign in. The notice carries no part of the reply body, and its absence
  *   never fails the reply.
  */
@@ -273,7 +282,7 @@ export async function replyToConversation(db: Db, organisationId: string, input:
         link: ticket ? `/cases/${ticket.id}` : `/inbox/${conversation.id}`,
       });
 
-      const round = ticket ? await reopenCount(tx, organisationId, ticket.id) : 0;
+      const round = await clientReplyCount(tx, organisationId, conversation.id);
       if (noticeTo && !(await courtesyAlreadySent(tx, organisationId, conversation.id, round))) {
         // `new URL` rather than concatenation: a configured `APP_URL` with a
         // trailing slash would otherwise put a doubled slash in the one link a

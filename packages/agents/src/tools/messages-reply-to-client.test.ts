@@ -1,6 +1,7 @@
 import { createClient, createTicket, ensureEmailIdentity, ingestInboundEmail } from "@launchos/core";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { buildContext } from "../kernel/run-loop.js";
 import { messagesReplyToClient } from "./messages-reply-to-client.js";
@@ -68,6 +69,56 @@ describe("messages_reply_to_client approval card", () => {
       expect(card.details!["delivery"]).toBe("delivered in the portal");
       // The drafted text is still the thing the approver has to read.
       expect(card.details!["draftedReply"]).toBe("Fixed.");
+    });
+  });
+
+  it("says a reply on a case the client cannot see will not be delivered at all", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, ctx } = await organisation(db);
+      const client = await createClient(db, organisationId, { name: "C" });
+      // A case the agency raised: `internal` channel, `client_visible` false —
+      // the shape "Run triage now" produces on a monitor-raised case.
+      const { conversation } = await createTicket(db, organisationId, {
+        clientId: client.id, subject: "Disk filling up", body: "92% on the web volume.",
+        severity: "medium", source: "monitor", actorKind: "system",
+      });
+
+      const card = await messagesReplyToClient.describeApproval!(
+        { conversationId: conversation.id, body: "We are on it." },
+        ctx,
+      );
+
+      expect(card.summary).toContain("cannot be delivered");
+      expect(card.summary).toContain("not client-visible");
+      // No promise of a delivery that `execute` will refuse to make.
+      expect(card.summary).not.toContain("delivered in the portal immediately");
+      expect(card.details!["delivery"]).toBe("nowhere — this case is not client-visible");
+      expect(card.details!["clientVisible"]).toBe(false);
+
+      // And approving really would have failed.
+      await expect(
+        messagesReplyToClient.execute({ conversationId: conversation.id, body: "We are on it." }, ctx),
+      ).rejects.toThrow(/visible to the client/);
+    });
+  });
+
+  it("does not claim the case moves to waiting on the client when it will not", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, ctx } = await organisation(db);
+      const client = await createClient(db, organisationId, { name: "C" });
+      const { ticket, conversation } = await createTicket(db, organisationId, {
+        clientId: client.id, subject: "Contact form is down", body: "Nothing arrives.",
+        severity: "medium", source: "portal", actorKind: "client", actorId: "portal-user-1",
+      });
+      await db.update(schema.tickets).set({ status: "resolved" }).where(eq(schema.tickets.id, ticket.id));
+
+      const card = await messagesReplyToClient.describeApproval!(
+        { conversationId: conversation.id, body: "One more thing." },
+        ctx,
+      );
+
+      expect(card.summary).toContain("delivered in the portal immediately");
+      expect(card.summary).not.toContain("waiting on the client");
     });
   });
 });

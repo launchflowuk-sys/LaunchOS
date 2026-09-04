@@ -5,15 +5,22 @@ import { z } from "zod";
 import { defineTool } from "../kernel/types.js";
 
 /**
+ * The default both hosts' env schemas apply when `APP_URL` is unset
+ * (`apps/worker/src/env.ts`, `apps/web/src/lib/env.ts`). Repeated here so an
+ * unset variable produces the same link the rest of the system believes in,
+ * rather than a courtesy email that says "sign in to the portal" and gives
+ * nowhere to sign in.
+ */
+const APP_URL_DEFAULT = "http://localhost:3000";
+
+/**
  * The app's own base URL, so a portal reply's courtesy email can say where to
- * sign in. Read from the environment — the worker validates `APP_URL` at
- * startup (`apps/worker/src/env.ts`) — rather than from the tool input, because
- * where a client is told to log in is not a decision a model gets to make. An
- * unset or malformed value is simply no link: `portalUrl` is optional.
+ * sign in. Read from the environment rather than from the tool input, because
+ * where a client is told to log in is not a decision a model gets to make.
+ * A malformed value is no link at all — the notice still goes out.
  */
 function portalUrl(): string | undefined {
-  const raw = process.env["APP_URL"];
-  if (!raw) return undefined;
+  const raw = process.env["APP_URL"] || APP_URL_DEFAULT;
   try {
     return new URL(raw).toString();
   } catch {
@@ -38,9 +45,14 @@ export const messagesReplyToClient = defineTool({
         channel: schema.conversations.channel,
         clientName: schema.clients.name,
         participantEmail: schema.conversations.participantEmail,
+        // Left-joined: a thread without a ticket is unusual but legal, and
+        // core refuses only on a ticket that exists and is hidden.
+        clientVisible: schema.tickets.clientVisible,
+        ticketStatus: schema.tickets.status,
       })
       .from(schema.conversations)
       .innerJoin(schema.clients, eq(schema.conversations.clientId, schema.clients.id))
+      .leftJoin(schema.tickets, eq(schema.conversations.ticketId, schema.tickets.id))
       .where(
         and(
           eq(schema.conversations.id, input.conversationId),
@@ -55,32 +67,46 @@ export const messagesReplyToClient = defineTool({
       };
     }
     // What approving actually does differs by thread, and the card is the last
-    // gate before this leaves the building, so it has to say which. An email
-    // thread is queued and a worker sends it; a portal thread has no outbox at
-    // all — writing the row is the delivery, and the client can read it the
-    // moment the approval is released.
+    // gate before this leaves the building, so it has to say which — including
+    // when the answer is "nothing leaves". An email thread is queued and a
+    // worker sends it; a portal thread has no outbox at all — writing the row
+    // is the delivery. Neither happens on a case the client cannot open:
+    // `replyToConversation` refuses a non-email reply on a hidden ticket, so
+    // the card must say that rather than promise a portal delivery that throws.
     const byEmail = thread.channel === "email";
     const broken = byEmail && !thread.participantEmail;
+    const hidden = !byEmail && thread.clientVisible === false;
+    // The statuses a reply actually moves; anywhere else the case stays put, so
+    // the card only claims the move when it is true.
+    const willWait = thread.ticketStatus !== null
+      && ["open", "triaged", "in_progress"].includes(thread.ticketStatus);
     return {
       title: `Reply to ${thread.clientName} on "${thread.subject}"`,
       summary: broken
         ? `The email thread "${thread.subject}" has no address to reply to, so approving this will fail.` +
           ` Answer ${thread.clientName} on the case instead.`
-        : byEmail
-          ? `Approving queues this reply to ${thread.clientName} on the email thread "${thread.subject}"` +
-            ` (${thread.participantEmail}). The worker sends it from the outbox.`
-          : `Approving posts this reply to ${thread.clientName} on the ${thread.channel} thread "${thread.subject}".` +
-            ` It is delivered in the portal immediately — there is no outbox to catch it — and the case moves to` +
-            ` waiting on the client.`,
+        : hidden
+          ? `This reply cannot be delivered: the case "${thread.subject}" is not client-visible, so` +
+            ` ${thread.clientName} cannot open it in the portal and there is no address to email.` +
+            ` Approving will fail — share the case with the client on the case screen first.`
+          : byEmail
+            ? `Approving queues this reply to ${thread.clientName} on the email thread "${thread.subject}"` +
+              ` (${thread.participantEmail}). The worker sends it from the outbox.`
+            : `Approving posts this reply to ${thread.clientName} on the ${thread.channel} thread "${thread.subject}".` +
+              ` It is delivered in the portal immediately — there is no outbox to catch it.` +
+              (willWait ? ` The case then moves to waiting on the client.` : ``),
       details: {
         client: thread.clientName,
         subject: thread.subject,
         channel: thread.channel,
+        clientVisible: thread.clientVisible ?? null,
         delivery: broken
           ? "nowhere — this thread has no address"
-          : byEmail
-            ? `emailed to ${thread.participantEmail}`
-            : "delivered in the portal",
+          : hidden
+            ? "nowhere — this case is not client-visible"
+            : byEmail
+              ? `emailed to ${thread.participantEmail}`
+              : "delivered in the portal",
         draftedReply: input.body,
       },
     };
