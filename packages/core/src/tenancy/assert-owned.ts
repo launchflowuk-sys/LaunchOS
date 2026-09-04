@@ -48,6 +48,21 @@ export async function assertSiteBelongsToClient(db: Db, organisationId: string, 
   if (site && site.clientId !== clientId) throw new Error(`site ${siteId} belongs to another client`);
 }
 
+/**
+ * `ticketId` is only asserted against the organisation by `assertOwned`, which
+ * would let a task (or anything else) pair a ticket from client A with client
+ * B's id as long as both are in the same organisation. Mirrors
+ * `assertSiteBelongsToClient`: call after the ticket is already known to be in
+ * this organisation.
+ */
+export async function assertTicketBelongsToClient(db: Db, organisationId: string, ticketId: string, clientId: string): Promise<void> {
+  const [ticket] = await db
+    .select({ clientId: schema.tickets.clientId })
+    .from(schema.tickets)
+    .where(and(eq(schema.tickets.id, ticketId), eq(schema.tickets.organisationId, organisationId)));
+  if (ticket && ticket.clientId !== clientId) throw new Error(`ticket ${ticketId} belongs to another client`);
+}
+
 /** Guards a notification/mention target: the userId must be an active member of the organisation. */
 export async function assertOrgMember(db: Db, organisationId: string, userId: string): Promise<void> {
   const [row] = await db

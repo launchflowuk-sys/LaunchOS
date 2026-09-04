@@ -7,6 +7,7 @@ import { createSite } from "../sites/create-site.js";
 import { createTicket } from "../support/create-ticket.js";
 import {
   assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteBelongsToClient, assertSiteInOrganisation,
+  assertTicketBelongsToClient,
 } from "./assert-owned.js";
 
 async function makeOrg(db: Db, name: string) {
@@ -144,6 +145,37 @@ describe("assertSiteBelongsToClient", () => {
       const siteA = await createSite(db, orgA.id, { clientId: clientA.id, name: "S", primaryUrl: "https://a.test" });
 
       await expect(assertSiteBelongsToClient(db, orgB.id, siteA.id, "any-client-id")).resolves.toBeUndefined();
+    });
+  });
+});
+
+describe("assertTicketBelongsToClient", () => {
+  it("accepts a ticket owned by the given client and rejects one owned by another client in the same org", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db, "A");
+      const clientA = await createClient(db, org.id, { name: "Client A" });
+      const clientB = await createClient(db, org.id, { name: "Client B" });
+      const { ticket } = await createTicket(db, org.id, {
+        clientId: clientA.id, subject: "A's issue", body: "Body", source: "agent",
+      });
+
+      await expect(assertTicketBelongsToClient(db, org.id, ticket.id, clientA.id)).resolves.toBeUndefined();
+      await expect(assertTicketBelongsToClient(db, org.id, ticket.id, clientB.id)).rejects.toThrow(
+        `ticket ${ticket.id} belongs to another client`,
+      );
+    });
+  });
+
+  it("is a no-op when the ticket is not in this organisation, leaving assertOwned to reject it first", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db, "A");
+      const orgB = await makeOrg(db, "B");
+      const clientA = await createClient(db, orgA.id, { name: "Client A" });
+      const { ticket } = await createTicket(db, orgA.id, {
+        clientId: clientA.id, subject: "A's issue", body: "Body", source: "agent",
+      });
+
+      await expect(assertTicketBelongsToClient(db, orgB.id, ticket.id, "any-client-id")).resolves.toBeUndefined();
     });
   });
 });
