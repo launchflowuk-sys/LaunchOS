@@ -33,3 +33,19 @@ export async function assertClientInOrganisation(db: Db, organisationId: string,
 export async function assertSiteInOrganisation(db: Db, organisationId: string, siteId: string): Promise<void> {
   await assertOwned(db, organisationId, schema.sites, siteId);
 }
+
+/** Guards a notification/mention target: the userId must be an active member of the organisation. */
+export async function assertOrgMember(db: Db, organisationId: string, userId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: schema.organisationMembers.id })
+    .from(schema.organisationMembers)
+    .where(
+      and(
+        eq(schema.organisationMembers.organisationId, organisationId),
+        eq(schema.organisationMembers.userId, userId),
+        eq(schema.organisationMembers.status, "active"),
+      ),
+    )
+    .limit(1);
+  if (!row) throw new Error(`member ${userId} not found in organisation`);
+}

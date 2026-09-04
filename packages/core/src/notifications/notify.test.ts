@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { countUnreadNotifications, listNotifications, markNotificationRead } from "./list-notifications.js";
+import { countUnreadNotifications, listNotifications, markAllNotificationsRead, markNotificationRead } from "./list-notifications.js";
 import { notify, notifyOwner } from "./notify.js";
 
 async function makeOrgWithOwner(db: Db) {
@@ -38,6 +38,40 @@ describe("notifications", () => {
     await withTestDb(async (db) => {
       const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
       expect(await notifyOwner(db, org!.id, { kind: "x", title: "y" })).toBeNull();
+    });
+  });
+
+  it("refuses to notify a user who is not a member of the organisation", async () => {
+    await withTestDb(async (db) => {
+      const { org } = await makeOrgWithOwner(db);
+      await expect(notify(db, org.id, { userId: "stranger", kind: "x", title: "y" })).rejects.toThrow(
+        "member stranger not found in organisation",
+      );
+    });
+  });
+
+  it("markAllNotificationsRead marks only the given user's unread notifications", async () => {
+    await withTestDb(async (db) => {
+      const { org, owner } = await makeOrgWithOwner(db);
+      const otherId = crypto.randomUUID();
+      const [other] = await db
+        .insert(schema.user)
+        .values({ id: otherId, name: "Other", email: `other-${otherId}@example.test`, emailVerified: true })
+        .returning();
+      await db.insert(schema.organisationMembers).values({ organisationId: org.id, userId: other!.id, role: "staff" });
+
+      await notify(db, org.id, { userId: owner.id, kind: "a", title: "A" });
+      await notify(db, org.id, { userId: owner.id, kind: "b", title: "B" });
+      await notify(db, org.id, { userId: other!.id, kind: "c", title: "C" });
+
+      const marked = await markAllNotificationsRead(db, org.id, owner.id);
+      expect(marked).toBe(2);
+
+      const ownerNotifications = await listNotifications(db, org.id, { userId: owner.id });
+      expect(ownerNotifications.every((n) => n.readAt !== null)).toBe(true);
+
+      const otherNotifications = await listNotifications(db, org.id, { userId: other!.id });
+      expect(otherNotifications.every((n) => n.readAt === null)).toBe(true);
     });
   });
 });

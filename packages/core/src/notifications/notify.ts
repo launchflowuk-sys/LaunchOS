@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { assertOrgMember } from "../tenancy/assert-owned.js";
 
 export const NotifyInput = z.object({
   userId: z.string().min(1),
@@ -14,6 +15,7 @@ export type NotifyInput = z.input<typeof NotifyInput>;
 
 export async function notify(db: Db, organisationId: string, input: NotifyInput) {
   const v = NotifyInput.parse(input);
+  await assertOrgMember(db, organisationId, v.userId);
   const [row] = await db
     .insert(schema.notifications)
     .values({ organisationId, userId: v.userId, kind: v.kind, title: v.title, body: v.body ?? null, link: v.link ?? null })

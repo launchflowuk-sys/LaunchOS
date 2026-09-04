@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 import { createClient } from "../clients/create-client.js";
 import { createSite } from "../sites/create-site.js";
 import { createTicket } from "../support/create-ticket.js";
-import { assertClientInOrganisation, assertOwned, assertSiteInOrganisation } from "./assert-owned.js";
+import { assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteInOrganisation } from "./assert-owned.js";
 
 async function makeOrg(db: Db, name: string) {
   const [org] = await db.insert(schema.organisations).values({ name, slug: `test-${crypto.randomUUID()}` }).returning();
@@ -114,6 +114,36 @@ describe("assertOwned", () => {
       );
       await expect(assertSiteInOrganisation(db, orgB.id, site.id)).rejects.toThrow(
         `site ${site.id} not found in organisation`,
+      );
+    });
+  });
+});
+
+describe("assertOrgMember", () => {
+  it("accepts an active member and rejects a stranger or a suspended member", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db, "A");
+      const activeId = crypto.randomUUID();
+      const suspendedId = crypto.randomUUID();
+      const [active] = await db
+        .insert(schema.user)
+        .values({ id: activeId, name: "Active", email: `active-${activeId}@example.test`, emailVerified: true })
+        .returning();
+      const [suspended] = await db
+        .insert(schema.user)
+        .values({ id: suspendedId, name: "Suspended", email: `suspended-${suspendedId}@example.test`, emailVerified: true })
+        .returning();
+      await db.insert(schema.organisationMembers).values({ organisationId: org.id, userId: active!.id, role: "staff" });
+      await db
+        .insert(schema.organisationMembers)
+        .values({ organisationId: org.id, userId: suspended!.id, role: "staff", status: "suspended" });
+
+      await expect(assertOrgMember(db, org.id, active!.id)).resolves.toBeUndefined();
+      await expect(assertOrgMember(db, org.id, suspended!.id)).rejects.toThrow(
+        `member ${suspended!.id} not found in organisation`,
+      );
+      await expect(assertOrgMember(db, org.id, "no-such-user")).rejects.toThrow(
+        `member no-such-user not found in organisation`,
       );
     });
   });
