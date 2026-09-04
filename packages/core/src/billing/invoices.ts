@@ -7,8 +7,9 @@ import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 import { nextInvoiceNumber } from "./invoice-number.js";
+import { vatRateForOrganisation } from "./vat-rate.js";
 
-export const VAT_RATE_DEFAULT_PERCENT = 20;
+export { VAT_RATE_DEFAULT_PERCENT } from "./vat-rate.js";
 export const PAYMENT_TERMS_DEFAULT_DAYS = 14;
 
 const ActorKind = z.enum(["user", "client", "agent", "system"]);
@@ -17,7 +18,13 @@ type ActorKind = z.infer<typeof ActorKind>;
 export const CreateInvoiceFromSubscriptionInput = z.object({
   subscriptionId: z.string().uuid(),
   issuedAt: z.date().optional(),
-  vatRatePercent: z.number().min(0).max(100).default(VAT_RATE_DEFAULT_PERCENT),
+  /**
+   * The rate to charge *if the organisation is registered for VAT*. Omit it
+   * and the organisation's configured rate is used. It is a preference, never
+   * an authority: an unregistered supplier is zero-rated whatever is passed
+   * here — see `vatRateForOrganisation`.
+   */
+  vatRatePercent: z.number().min(0).max(100).optional(),
   termsDays: z.number().int().min(0).optional(),
   actorKind: ActorKind.default("system"),
   actorId: z.string().optional(),
@@ -41,7 +48,13 @@ export async function createInvoiceFromSubscription(db: Db, organisationId: stri
   const termsDays = v.termsDays ?? profile?.paymentTermsDays ?? PAYMENT_TERMS_DEFAULT_DAYS;
   const dueAt = new Date(issuedAt.getTime() + termsDays * 86_400_000);
   const subtotalPence = subscription!.amountPence;
-  const vatPence = Math.round((subtotalPence * v.vatRatePercent) / 100);
+  // The organisation's VAT registration, not the caller, decides whether this
+  // invoice may carry VAT at all. A caller may pin a rate for a registered
+  // supplier (a reduced rate, a historic re-raise); it cannot conjure one for
+  // an unregistered supplier, whose invoices are zero-rated by law.
+  const registeredRatePercent = await vatRateForOrganisation(db, organisationId);
+  const vatRatePercent = registeredRatePercent > 0 ? v.vatRatePercent ?? registeredRatePercent : 0;
+  const vatPence = Math.round((subtotalPence * vatRatePercent) / 100);
   const lineItems: InvoiceLineItem[] = [{
     description: `${pkg?.name ?? "Monthly retainer"} — ${issuedAt.toISOString().slice(0, 7)}`,
     quantity: 1,

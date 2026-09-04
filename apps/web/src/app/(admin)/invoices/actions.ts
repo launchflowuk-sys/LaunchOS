@@ -7,7 +7,6 @@ import {
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { vatRateFromEnv } from "@/lib/env";
 import { requireAdmin } from "@/lib/session";
 import { type ActionResult, ApprovalRef, ClientRef, InvoiceRef } from "./schemas";
 
@@ -26,9 +25,11 @@ export async function createInvoiceForClient(formData: FormData): Promise<Action
     const subscription = await activeSubscriptionForClient(db, session.organisationId, parsed.data.clientId);
     if (!subscription) return { status: "error", message: "This client has no active subscription to invoice." };
 
+    // No rate is passed: core derives it from the organisation's VAT
+    // registration, so an unregistered supplier cannot raise a VAT-charging
+    // invoice from this screen no matter what `VAT_RATE` says.
     const invoice = await createInvoiceFromSubscription(db, session.organisationId, {
       subscriptionId: subscription.id,
-      vatRatePercent: vatRateFromEnv(),
       actorKind: "user",
       actorId: session.userId,
     });

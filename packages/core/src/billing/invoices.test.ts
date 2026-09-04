@@ -9,8 +9,14 @@ import { createSubscription } from "./subscriptions.js";
 import { nextInvoiceNumber } from "./invoice-number.js";
 import { createInvoiceFromSubscription, markInvoicePaid, markInvoiceSent, voidInvoice } from "./invoices.js";
 
-async function subscribed(db: Db) {
-  const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `inv-${randomUUID()}` }).returning();
+/**
+ * A subscribed client under a VAT-registered organisation, since that is the
+ * ordinary case. Pass `vatNumber: null` for a supplier below the threshold —
+ * its invoices must come out zero-rated.
+ */
+async function subscribed(db: Db, { vatNumber = "GB123456789" }: { vatNumber?: string | null } = {}) {
+  const [org] = await db.insert(schema.organisations)
+    .values({ name: "T", slug: `inv-${randomUUID()}`, vatNumber }).returning();
   const [client] = await db.insert(schema.clients)
     .values({ organisationId: org!.id, name: "Grays CabLine", slug: `grays-${randomUUID()}` }).returning();
   await db.insert(schema.billingProfiles)
@@ -56,6 +62,40 @@ describe("createInvoiceFromSubscription", () => {
       expect(invoice.lineItems).toHaveLength(1);
       expect(invoice.lineItems[0]!.unitPence).toBe(29900);
     });
+  });
+
+  it("zero-rates an organisation with no VAT number, even when a rate is asked for", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, subscription } = await subscribed(db, { vatNumber: null });
+
+      const invoice = await createInvoiceFromSubscription(db, orgId, {
+        subscriptionId: subscription.id, issuedAt: new Date("2026-09-01T00:00:00Z"), vatRatePercent: 20,
+      });
+
+      // Charging VAT while unregistered is money the client cannot reclaim.
+      expect(invoice.vatPence).toBe(0);
+      expect(invoice.totalPence).toBe(invoice.subtotalPence);
+    });
+  });
+
+  it("charges the organisation's rate when it is registered and none is passed", async () => {
+    // The caller no longer supplies a rate, so the environment's is used —
+    // pinned here rather than inherited from whatever the dev shell exports.
+    const before = process.env.VAT_RATE;
+    process.env.VAT_RATE = "20";
+    try {
+      await withTestDb(async (db) => {
+        const { orgId, subscription } = await subscribed(db);
+
+        const invoice = await createInvoiceFromSubscription(db, orgId, { subscriptionId: subscription.id });
+
+        expect(invoice.vatPence).toBe(5980);
+        expect(invoice.totalPence).toBe(35880);
+      });
+    } finally {
+      if (before === undefined) delete process.env.VAT_RATE;
+      else process.env.VAT_RATE = before;
+    }
   });
 
   it("moves a draft through sent to paid and records the audit trail", async () => {

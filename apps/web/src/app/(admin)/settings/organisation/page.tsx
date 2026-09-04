@@ -115,12 +115,17 @@ export default async function OrganisationSettingsPage() {
               <Field name="addressLine2" label="Address line 2" defaultValue={organisation.addressLine2} />
               <Field name="city" label="City" defaultValue={organisation.city} />
               <Field name="postcode" label="Postcode" defaultValue={organisation.postcode} />
-              <Field name="country" label="Country" defaultValue={organisation.country} />
+              <Field
+                name="country"
+                label="Country"
+                defaultValue={organisation.country}
+                hint='Two-letter ISO code, e.g. "GB".'
+              />
               <Field
                 name="vatNumber"
                 label="VAT number"
                 defaultValue={organisation.vatNumber}
-                hint="Empty means not VAT registered."
+                hint="Empty means not VAT registered — invoices raised are then zero-rated."
               />
               <Field
                 name="companyNumber"

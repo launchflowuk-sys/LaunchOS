@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { CountryField, PostcodeField, VatNumberField } from "./supplier-fields.js";
 
 /**
  * The supplier identity printed on every invoice this organisation raises.
@@ -14,15 +15,21 @@ import { recordAudit } from "../audit/record-audit.js";
  * Every field is `nullish` so an emptied input clears the column rather than
  * being ignored — a business that de-registers for VAT has to be able to take
  * its VAT number off its invoices.
+ *
+ * The three fields with legal weight — the VAT registration, the country it is
+ * registered in and the postcode HMRC expects on the invoice — are checked for
+ * shape, not just length: see `supplier-fields.ts`. `vatNumber` in particular
+ * is what decides whether an invoice may charge VAT at all
+ * (`billing/vat-rate.ts`), so junk in it silently switches the VAT line on.
  */
 export const UpdateOrganisationInput = z.object({
   legalName: z.string().trim().max(200).nullish(),
   addressLine1: z.string().trim().max(200).nullish(),
   addressLine2: z.string().trim().max(200).nullish(),
   city: z.string().trim().max(100).nullish(),
-  postcode: z.string().trim().max(20).nullish(),
-  country: z.string().trim().max(60).nullish(),
-  vatNumber: z.string().trim().max(40).nullish(),
+  postcode: PostcodeField,
+  country: CountryField,
+  vatNumber: VatNumberField,
   companyNumber: z.string().trim().max(40).nullish(),
   invoiceFooter: z.string().trim().max(1000).nullish(),
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),

@@ -47,6 +47,53 @@ export function vatRatePercent(subtotalPence: number, vatPence: number): number 
   return Math.round((vatPence / subtotalPence) * 1000) / 10;
 }
 
+/** What the document says about VAT, decided once so no two blocks disagree. */
+export interface VatPresentation {
+  /** Whether the VAT total and the per-line rate column are printed at all. */
+  showVat: boolean;
+  /** The totals-block label: "VAT @ 20%", or plain "VAT" if no rate is derivable. */
+  vatLabel: string;
+  /** The per-line rate column value. */
+  rateLabel: string;
+  /** The registration line under the supplier's address. */
+  registrationLine: string;
+}
+
+/**
+ * The single decision behind every VAT string on the document.
+ *
+ * The two claims a printed invoice makes about VAT — the supplier's
+ * registration line and the VAT charged — used to be decided separately, so an
+ * unregistered supplier could print "VAT not registered" above a "VAT @ 20%"
+ * total. Charging VAT while unregistered is not a formatting problem; it is
+ * money the client cannot reclaim. `createInvoiceFromSubscription` now
+ * zero-rates an unregistered supplier at source, so that state cannot be
+ * created — but an invoice raised before that fix, or before a
+ * de-registration, still has to render, and it must not assert two
+ * incompatible things. The VAT line follows the invoice (rate > 0), the
+ * registration line follows the organisation, and the fourth case is named
+ * rather than contradicted.
+ */
+export function vatPresentation(
+  vatNumber: string | null,
+  subtotalPence: number,
+  vatPence: number,
+): VatPresentation {
+  const registered = Boolean(vatNumber && vatNumber.trim().length > 0);
+  const rate = vatRatePercent(subtotalPence, vatPence);
+  const showVat = vatPence > 0;
+  return {
+    showVat,
+    vatLabel: rate === null ? "VAT" : `VAT @ ${rate}%`,
+    rateLabel: rate === null ? "0%" : `${rate}%`,
+    registrationLine: registered
+      ? `VAT no. ${vatNumber}`
+      : showVat
+        ? "VAT charged — supplier registration not on file"
+        : "VAT not registered",
+  };
+}
+
 function supplierLines(supplier: InvoiceSupplier): string[] {
   return [
     supplier.addressLine1,
@@ -75,13 +122,11 @@ export function InvoiceDocument({
   billedTo: string[];
   paymentTermsDays: number;
 }) {
-  const rate = vatRatePercent(invoice.subtotalPence, invoice.vatPence);
-  const registered = Boolean(supplier.vatNumber);
-  // An unregistered supplier must not print a VAT line it cannot charge — but
-  // if the invoice does carry VAT (raised before de-registration, say) the
-  // amount is still shown, because the totals must add up.
-  const showVat = registered || invoice.vatPence > 0;
-  const vatLabel = rate === null ? "VAT" : `VAT @ ${rate}%`;
+  const { showVat, vatLabel, rateLabel, registrationLine } = vatPresentation(
+    supplier.vatNumber,
+    invoice.subtotalPence,
+    invoice.vatPence,
+  );
 
   return (
     <article className="mx-auto max-w-3xl rounded-lg border border-neutral-200 bg-white p-8 print:max-w-none print:border-0 print:p-0">
@@ -97,9 +142,7 @@ export function InvoiceDocument({
               </span>
             ))}
           </address>
-          <p className="mt-2 text-xs text-neutral-600">
-            {registered ? `VAT no. ${supplier.vatNumber}` : "VAT not registered"}
-          </p>
+          <p className="mt-2 text-xs text-neutral-600">{registrationLine}</p>
           {supplier.companyNumber ? (
             <p className="text-xs text-neutral-600">Company no. {supplier.companyNumber}</p>
           ) : null}
@@ -147,9 +190,7 @@ export function InvoiceDocument({
                 {showVat ? (
                   // The schema holds one VAT total for the invoice, not a rate
                   // per line, so every line carries the same derived rate.
-                  <TableCell className="text-right tabular-nums text-neutral-600">
-                    {rate === null ? "0%" : `${rate}%`}
-                  </TableCell>
+                  <TableCell className="text-right tabular-nums text-neutral-600">{rateLabel}</TableCell>
                 ) : null}
                 <TableCell className="text-right tabular-nums text-neutral-900">
                   {formatPence(line.unitPence * line.quantity, invoice.currency)}
