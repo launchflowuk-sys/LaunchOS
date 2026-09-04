@@ -38,3 +38,20 @@ export async function incidentPayload(db: Db, organisationId: string, incidentId
   if (!row) throw new Error(`incident ${incidentId} not found`);
   return { ...row, hostingRef: row.hostingRef ?? "unknown" };
 }
+
+/** Builds the Support Triage payload from a ticket id. */
+export async function ticketPayload(db: Db, organisationId: string, ticketId: string) {
+  const [row] = await db
+    .select({
+      ticketId: schema.tickets.id,
+      clientId: schema.tickets.clientId,
+      siteId: schema.tickets.siteId,
+      conversationId: schema.tickets.conversationId,
+      subject: schema.tickets.subject,
+      source: schema.tickets.source,
+    })
+    .from(schema.tickets)
+    .where(and(eq(schema.tickets.id, ticketId), eq(schema.tickets.organisationId, organisationId)));
+  if (!row) throw new Error(`ticket ${ticketId} not found`);
+  return row;
+}

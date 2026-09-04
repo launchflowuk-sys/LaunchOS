@@ -15,6 +15,11 @@ export const Env = z.object({
   AGENT_POLICY: z.enum(["safe", "approval_all"]).default("safe"),
   UPTIME_PROBE: z.enum(["mock", "http"]).default("mock"),
   LLM: z.enum(["anthropic", "fake"]).default("anthropic"),
+  EMAIL_ADAPTER: z.enum(["mock", "smtp"]).default("mock"),
+  SUPPORT_EMAIL_DOMAIN: z.string().min(3).optional(),
+  MAIL_FROM: z.string().optional(),
+  OWNER_NOTIFY_EMAIL: z.string().email().optional(),
+  STORAGE_DIR: z.string().default("./storage"),
 });
 export type Env = z.infer<typeof Env>;
 

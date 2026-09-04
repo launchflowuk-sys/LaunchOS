@@ -3,6 +3,9 @@ import PgBoss from "pg-boss";
 export const QUEUE = {
   monitorCheck: "monitor.check",
   agentRun: "agent.run",
+  agentResume: "agent.resume",
+  inboundMessage: "inbound.message",
+  outboundMessage: "outbound.message",
   domainEvent: "domain.event",
   tasksGenerateOnboarding: "tasks.generate-onboarding",
   tasksGenerateRecurring: "tasks.generate-recurring",

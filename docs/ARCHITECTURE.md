@@ -46,9 +46,9 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 |---|---|---|---|
 | `monitor.check` | cron every minute | worker | `{ organisationId }` fan-out to per-monitor checks |
 | `agent.run` | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
-| `agent.resume` | approval decision | worker | `{ runId, approvalId }` |
-| `inbound.message` | webhook route handler | worker | `{ channel, raw }` |
-| `outbound.message` | core / approval | worker | `{ messageId }` |
+| `agent.resume` | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
+| `inbound.message` | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
+| `outbound.message` | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
 | `ads.ingest` | cron daily | worker | `{ organisationId }` |
 | `tasks.generate-onboarding` | `client.created` event (web or worker) | worker | `{ organisationId, clientId }` |
 | `tasks.generate-recurring` | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
@@ -58,7 +58,7 @@ Every job carries a `singletonKey` derived from its natural key so duplicates co
 
 ## Events
 
-Domain events are plain function calls into `packages/core/src/events/emit.ts`, which maps an event name to zero or more pg-boss jobs. Example: `ticket.created` → `agent.run { agentKey: "support-triage" }` when that agent is enabled for the organisation. This keeps `core` unaware of agents while still triggering them.
+Domain events are plain function calls into `packages/core/src/events/emit.ts` (`emit`/`setEnqueue`), which only carries the event to whichever `EnqueueFn` the running process registered — `core` stays unaware of pg-boss or agents. The actual event-name-to-job routing table lives in one place, `apps/worker/src/jobs/dispatch-event.ts`, so it can be unit tested with a fake `boss.send`. Example: `ticket.created` → `agent.run { agentKey: "support-triage" }` (the enablement check itself happens inside `handleAgentRun`, not the routing table). Other mappings: `client.created` → `tasks.generate-onboarding` + `ensureEmailIdentity`; `email.received` → `inbound.message`; `message.queued` → `outbound.message`; `approval.decided` → `agent.resume`.
 
 ## Auth and tenancy
 
