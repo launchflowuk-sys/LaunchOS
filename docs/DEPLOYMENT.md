@@ -77,13 +77,17 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Env vars: `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, plus `EMAIL_ADAPTER`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker means replies queue and never leave.
    - Keep the worker at a **single replica**. The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
 
-5. **First owner account** — sign-up is disabled in the app (`emailAndPassword.disableSignUp`), so seeding is the only way to create the first account. Run the seed once, inside the running web container:
+5. **First owner account** — sign-up is disabled in the app (`emailAndPassword.disableSignUp`), so the first account has to be written directly. Run the **bootstrap**, once, inside the running web container:
 
    ```bash
-   docker exec <web-container> pnpm --filter @launchos/db seed
+   docker exec <web-container> pnpm db:bootstrap
    ```
 
-   Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. The seed refuses to run when `NODE_ENV=production` and `SEED_OWNER_PASSWORD` is unset, so it can never install the default development password in production. The seed is idempotent; re-running it will not change an existing password.
+   It creates exactly two things: the organisation, from `SEED_ORG_NAME` and `SEED_ORG_SLUG` (defaults `LaunchFlow` / `launchflow`), and the owner user and its credential, from `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD`, with an owner membership joining them. Nothing else. Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. Under `NODE_ENV=production` it refuses a password that is still one of the defaults published in this repository. It is idempotent, and re-running it never changes an existing password — to rotate one, sign in and change it.
+
+   Agents are left disabled; turn on the ones you want in **Settings → Agents**.
+
+   **Do not run `pnpm db:seed` here.** That is the development fixture: two demo clients with contacts, sites, domains and monitors, five knowledge articles the Support Triage agent will quote to real clients, a fabricated support case, a portal login, and subscriptions, **invoices with numbers allocated from a live sequence**, payments, ad accounts, thirty days of mock ad snapshots and published reports. Invoice numbers in particular are not cleanly reversible. The seed refuses to run when `NODE_ENV=production` unless `SEED_DEMO=1` is also set, which exists only for a deliberate demo tenant.
 
 6. **Client support addresses** — run this once after the first deploy, and again any time `SUPPORT_EMAIL_DOMAIN` changes or a database carrying more than one organisation is restored or merged:
 

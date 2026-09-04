@@ -1,4 +1,16 @@
+import { resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
+import { config as loadEnv } from "dotenv";
+
+// The specs sign in as accounts `pnpm db:seed` created, so they need the same
+// SEED_* / DATABASE_URL / INBOUND_EMAIL_SECRET values the seed was run with.
+// `pnpm --filter @launchos/web e2e` runs from apps/web, so the repo-root .env
+// is two levels up; the local one is a fallback for a differently-rooted run.
+// dotenv never overwrites a variable that is already set, so a value exported
+// on the command line still wins.
+for (const candidate of ["../../.env", ".env"]) {
+  loadEnv({ path: resolve(process.cwd(), candidate), quiet: true });
+}
 
 const PORT = Number(process.env.PORT ?? 3000);
 const baseURL = `http://localhost:${PORT}`;

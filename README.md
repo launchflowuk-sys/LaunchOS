@@ -4,11 +4,13 @@ Agency operating system for LaunchFlow: hosting, web design and ad management, w
 
 ## Status
 
-**Plans 1 to 5 are implemented** on branch `build/agency-os`: the foundation and the first vertical slice, the client system, the task engine, support intake with the client portal, then money, ads and reporting.
+**Plans 1 to 5 are built** on branch `build/agency-os`: the foundation and the first vertical slice, the client system, the task engine, support intake with the client portal, then money, ads and reporting.
+
+*Built* is not the same as *verified*. Unit and integration tests cover the `packages/core` services and the agent kernel; the Playwright acceptance for Plan 4 (`apps/web/tests/e2e/support-intake.spec.ts`) needs a seeded database and a worker started with `LLM=fake`, and has not yet been recorded green end to end on a quiet machine.
 
 Modules working today:
 
-- **Admin portal** (`(admin)` route group) — Dashboard, Clients, Websites, Domains, Tasks, Inbox, Open Cases, Incidents, Knowledge Base, Approvals, Agent Runs, Invoices, Payments, Ads, Reports, Team and Settings (Agents, Organisation, Email, Packages, Task templates, Billing). Public self-registration is disabled; accounts come from the seed or from `/team`.
+- **Admin portal** (`(admin)` route group) — Dashboard, Clients, Websites, Domains, Tasks, Inbox, Open Cases, Incidents, Knowledge Base, Approvals, Agent Runs, Invoices, Payments, Ads, Ad reports, Reports, Team and Settings (Agents, Organisation, Email, Packages, Task templates, Billing). Public self-registration is disabled; accounts come from the seed or from `/team`.
 - **Client portal** (`(portal)` route group) — a client user signs in at the same `/sign-in` and is routed to `/portal`: home, sites, domains, progress, support (raise a request, read and answer their own threads), invoices, reports and account. Every query is scoped by the `client_id` on the session; an admin route is bounced back.
 - **Clients** — create a client with address and contacts; each gets a slug, a `slug@SUPPORT_EMAIL_DOMAIN` support address with a routable email identity, an empty billing profile, generated onboarding tasks and a timeline. Tabs for Overview, Contacts & Billing, Sites & Domains, Tasks, Support, Portal users, Invoices and Reports.
 - **Websites and domains** — sites belong to clients; domains belong to clients and may exist before their site; DNS records recorded per domain (pushing them to a provider stays an approval-gated agent action).
@@ -39,7 +41,9 @@ pnpm dev                  # http://localhost:3000
 pnpm dev:worker           # second terminal
 ```
 
-Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED_OWNER_PASSWORD` (default `change-me-now`). There is no sign-up page — the seed is the only way to create the first account. The same page signs in the seeded client user (`SEED_CLIENT_EMAIL`, default `portal@grayscabline.co.uk`) and routes it to `/portal`.
+Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED_OWNER_PASSWORD` (default `change-me-now`). There is no sign-up page. The same page signs in the seeded client user (`SEED_CLIENT_EMAIL`, default `portal@grayscabline.example`, password `SEED_CLIENT_PASSWORD`, default `change-me-client`) and routes it to `/portal`.
+
+`pnpm db:seed` is development only — it writes demo clients, invoices with numbers from a live sequence, ad data and a portal login. A production install runs `pnpm db:bootstrap` instead: the organisation (`SEED_ORG_NAME` / `SEED_ORG_SLUG`) and the owner account (`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`) and nothing else, refusing a password that is still a default. See `docs/DEPLOYMENT.md`.
 
 Checks:
 
@@ -48,8 +52,17 @@ pnpm typecheck
 pnpm lint
 pnpm test                                  # vitest across the workspace (needs pnpm db:up)
 pnpm --filter @launchos/web build
-pnpm --filter @launchos/web e2e            # Playwright; needs pnpm dev, pnpm dev:worker and a seeded database
+pnpm --filter @launchos/web e2e            # Playwright; needs pnpm dev, a seeded database and the worker below
 ```
+
+The end-to-end specs drive real jobs, so the worker has to be up. Start it with the fake model so agent runs are deterministic, need no API key and cost nothing:
+
+```bash
+LLM=fake pnpm dev:worker                     # bash
+$env:LLM = "fake"; pnpm dev:worker           # PowerShell
+```
+
+With `LLM=fake` the worker answers every Support Triage run with a scripted `messages_reply_to_client` call (`apps/worker/src/llm/fake.ts`), which is what parks the approval the Plan 4 acceptance approves and then watches reach `sent`. The specs read the seeded logins from `apps/web/tests/e2e/seed-credentials.ts`, and `playwright.config.ts` loads the repo-root `.env`, so whatever `SEED_*` values you seeded with reach them.
 
 ## Docs
 

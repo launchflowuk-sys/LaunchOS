@@ -1,9 +1,15 @@
 /**
  * Development seed: one organisation, the owner account, two real clients with
- * a site, an uptime monitor and a routable support address each, the
- * `unmatched` holding client, a small knowledge base, one support case that
- * arrived by email, all three agents enabled, a portal login, and enough
- * billing, ads and reporting data for every screen to have something on it.
+ * a site, an uptime monitor and a routable support address each, a small
+ * knowledge base, one support case that arrived by email, all three agents
+ * enabled, a portal login, and enough billing, ads and reporting data for
+ * every screen to have something on it.
+ *
+ * It does **not** create the `unmatched` holding client. That bucket is not a
+ * real client — it renders in /clients, in the case filter and in search like
+ * one — and `ingestInboundEmail` creates it on demand the first time mail
+ * arrives for an address we do not route, so pre-creating it only ever added a
+ * phantom third client to installs that never needed it.
  *
  * Idempotent: every step looks the row up (by slug / email / name / target /
  * calendar month) before inserting, so `pnpm db:seed` can be run repeatedly.
@@ -16,26 +22,37 @@
  * still its published default, or while the two are equal, so neither default
  * can ever reach a live database.
  *
+ * **It also refuses to run at all under NODE_ENV=production unless SEED_DEMO=1.**
+ * The demo fixtures below — invoices with numbers from a live sequence
+ * especially — are not something a live tenant can cleanly be rid of. The
+ * production entry point is `pnpm db:bootstrap` (`./bootstrap.ts`), which
+ * creates the organisation and the owner account and nothing else. The two
+ * share their organisation, user and membership helpers, so a bootstrapped
+ * database and a seeded one are the same shape underneath.
+ *
  * This file imports `@launchos/core` and `@launchos/integrations`, which are
  * dev dependencies of `packages/db`. The seed is a dev script, so this does not
  * invert the shipped `core → db` dependency direction.
  */
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
 import {
   buildClientReport, createAdAccount, createInvoiceFromSubscription, createKnowledgeArticle,
-  createSubscription, ensureEmailIdentity, HOLDING_CLIENT_SLUG, ingestDailyMetrics,
+  createSubscription, ensureEmailIdentity, ingestDailyMetrics,
   ingestInboundEmail, markInvoiceSent, monthPeriod, publishClientReport, recordPayment,
 } from "@launchos/core";
 import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
+import {
+  CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL,
+  DEFAULT_OWNER_PASSWORD, ensureOrganisation, ensureOwnerMembership, ensureOwnerUser, loadRootEnv,
+} from "./bootstrap.js";
 import { createDb } from "./client.js";
 import * as schema from "./schema/index.js";
 
 loadRootEnv();
 
-const OWNER_EMAIL = "shujaat@nexusedu.co.uk";
+const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL;
 const OWNER_NAME = "Shoji";
 const ORGANISATION = { slug: "launchflow", name: "LaunchFlow" } as const;
 // Enabled up front so the events that dispatch them have somewhere to land:
@@ -44,11 +61,6 @@ const ORGANISATION = { slug: "launchflow", name: "LaunchFlow" } as const;
 const AGENT_KEYS = ["hosting-guard-dog", "support-triage"] as const;
 const SENTINEL_AGENT_KEY = "ad-performance-sentinel";
 
-/** Mail to an address we do not route is filed here, not dropped. */
-const HOLDING_CLIENT = { name: "Unmatched inbound", slug: HOLDING_CLIENT_SLUG } as const;
-
-const DEFAULT_OWNER_PASSWORD = "change-me-now";
-const DEFAULT_CLIENT_PASSWORD = "change-me-client";
 const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
 /**
  * The portal login gets its **own** password, never the owner's.
@@ -72,10 +84,6 @@ const ROAS_DROP_DAYS = 7;
 const VAT_RATE_PERCENT = 20;
 
 const isoDay = (value: Date) => value.toISOString().slice(0, 10);
-// Better Auth namespaces credential accounts as "local:<providerId>"
-// (createLocalAccountIssuer in @better-auth/core/db, not publicly exported).
-const CREDENTIAL_PROVIDER = "credential";
-const CREDENTIAL_ISSUER = `local:${CREDENTIAL_PROVIDER}`;
 
 const SUPPORT_EMAIL_DOMAIN = process.env.SUPPORT_EMAIL_DOMAIN ?? "support.launchflow.co.uk";
 
@@ -235,18 +243,6 @@ const CLIENT_PACKAGES: Record<string, string> = {
   "Mobile PC Doctor": "website-care",
 };
 
-function loadRootEnv() {
-  if (process.env.DATABASE_URL) return;
-  for (const path of ["../../.env", "../.env", ".env"]) {
-    try {
-      process.loadEnvFile(resolve(process.cwd(), path));
-      if (process.env.DATABASE_URL) return;
-    } catch {
-      // file absent — try the next candidate
-    }
-  }
-}
-
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required to seed");
@@ -254,6 +250,14 @@ async function main() {
   // is published in this repository — the owner's or the portal user's. The
   // two are also required to differ: satisfying the guard by setting them to
   // the same value would put the owner's password into a client's hands.
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "1") {
+    throw new Error(
+      "pnpm db:seed writes demo clients, invoices with numbers from a live sequence, ad data and a " +
+        "portal login. It must not run against a production database. Use `pnpm db:bootstrap`, which " +
+        "creates only the organisation and the owner account. If you really do want the fixtures here, " +
+        "set SEED_DEMO=1.",
+    );
+  }
   if (process.env.NODE_ENV === "production") {
     const defaulted = [
       OWNER_PASSWORD === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
@@ -323,9 +327,6 @@ async function main() {
       console.log("  package     ", withPackage.packageId);
       console.log("  tasks       ", `${taskCount} onboarding tasks created`);
     }
-
-    const holding = await seedHoldingClient(db, organisation.id);
-    console.log("holding client", holding.id, holding.slug);
 
     const articles = await seedKnowledgeArticles(db, organisation.id);
     console.log("knowledge     ", `${articles} of ${KNOWLEDGE_ARTICLES.length} articles created`);
@@ -451,70 +452,55 @@ const ORGANISATION_SUPPLIER = {
   addressLine2: null,
   city: "Grays",
   postcode: "RM17 0AA",
-  country: "United Kingdom",
+  // ISO 3166-1 alpha-2, which is what `updateOrganisation` validates: a
+  // country *name* here would make the first save on Settings → Organisation
+  // fail on a field the operator never typed.
+  country: "GB",
   vatNumber: "GB000000000",
   companyNumber: "00000000",
   invoiceFooter: "Placeholder invoice footer — set your bank details on Settings → Organisation.",
 } as const;
 
+/** What earlier seeds wrote into `country`, before it had to be alpha-2. */
+const LEGACY_COUNTRY_NAME = "United Kingdom";
+
+/**
+ * The organisation, plus the placeholder supplier details every invoice screen
+ * needs something in. `ensureOrganisation` is the same helper `pnpm
+ * db:bootstrap` uses, so the two entry points can never create the row two
+ * different ways; the supplier backfill is the part that is demo-only.
+ */
 async function seedOrganisation(db: Db) {
-  const [existing] = await db.select().from(schema.organisations).where(eq(schema.organisations.slug, ORGANISATION.slug));
-  if (existing) {
-    // Backfill only, and only when nobody has filled these in: a re-seed must
-    // never overwrite the real registration details an operator has typed.
-    if (existing.legalName !== null) return existing;
-    const [filled] = await db
+  const { row } = await ensureOrganisation(db, ORGANISATION);
+  // Backfill only, and only when nobody has filled these in: a re-seed must
+  // never overwrite the real registration details an operator has typed.
+  if (row.legalName !== null) {
+    // The one exception: earlier seeds wrote the country as a name, which
+    // `updateOrganisation` now rejects, so the first save on Settings →
+    // Organisation fails on a field nobody typed. Repair exactly that value.
+    if (row.country !== LEGACY_COUNTRY_NAME) return row;
+    const [repaired] = await db
       .update(schema.organisations)
-      .set({ ...ORGANISATION_SUPPLIER, updatedAt: new Date() })
-      .where(eq(schema.organisations.id, existing.id))
+      .set({ country: ORGANISATION_SUPPLIER.country, updatedAt: new Date() })
+      .where(eq(schema.organisations.id, row.id))
       .returning();
-    return filled!;
+    return repaired!;
   }
-  const [created] = await db
-    .insert(schema.organisations)
-    .values({ ...ORGANISATION, ...ORGANISATION_SUPPLIER })
+  const [filled] = await db
+    .update(schema.organisations)
+    .set({ ...ORGANISATION_SUPPLIER, updatedAt: new Date() })
+    .where(eq(schema.organisations.id, row.id))
     .returning();
-  return created!;
+  return filled!;
 }
 
 async function seedOwner(db: Db) {
-  const [existing] = await db.select().from(schema.user).where(eq(schema.user.email, OWNER_EMAIL));
-  const user =
-    existing ??
-    (await db
-      .insert(schema.user)
-      .values({ id: randomUUID(), name: OWNER_NAME, email: OWNER_EMAIL, emailVerified: true })
-      .returning())[0]!;
-
-  const [credential] = await db
-    .select()
-    .from(schema.account)
-    .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
-  if (!credential) {
-    const password = await hashPassword(OWNER_PASSWORD);
-    await db.insert(schema.account).values({
-      id: randomUUID(),
-      accountId: user.id,
-      providerId: CREDENTIAL_PROVIDER,
-      issuer: CREDENTIAL_ISSUER,
-      userId: user.id,
-      password,
-    });
-  }
-  return user;
+  const { row } = await ensureOwnerUser(db, { email: OWNER_EMAIL, name: OWNER_NAME, password: OWNER_PASSWORD });
+  return row;
 }
 
 async function seedMembership(db: Db, organisationId: string, userId: string) {
-  const [existing] = await db
-    .select()
-    .from(schema.organisationMembers)
-    .where(and(eq(schema.organisationMembers.organisationId, organisationId), eq(schema.organisationMembers.userId, userId)));
-  if (existing) return existing;
-  const [created] = await db
-    .insert(schema.organisationMembers)
-    .values({ organisationId, userId, role: "owner", status: "active" })
-    .returning();
-  return created!;
+  return ensureOwnerMembership(db, organisationId, userId);
 }
 
 async function seedAgentEnablement(db: Db, organisationId: string, agentKey: string) {
@@ -562,20 +548,6 @@ async function seedClient(db: Db, organisationId: string, spec: (typeof SEED_CLI
  * creates it on demand too, so the seed only guarantees the admin screens have
  * it before the first delivery rather than owning it.
  */
-async function seedHoldingClient(db: Db, organisationId: string) {
-  const [existing] = await db
-    .select()
-    .from(schema.clients)
-    .where(and(eq(schema.clients.organisationId, organisationId), eq(schema.clients.slug, HOLDING_CLIENT.slug)));
-  if (existing) return existing;
-  // No support_email: a holding client is a bucket, not a routable client.
-  const [created] = await db
-    .insert(schema.clients)
-    .values({ organisationId, name: HOLDING_CLIENT.name, slug: HOLDING_CLIENT.slug })
-    .returning();
-  return created!;
-}
-
 /**
  * The routable inbox behind `clients.support_email`. `ensureEmailIdentity` is
  * itself idempotent, so this only adds the guard: an invalid

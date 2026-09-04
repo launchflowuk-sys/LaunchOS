@@ -20,7 +20,12 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 | `/cases`, `/cases/[id]` | Open Cases | 1 (list), 4 (full) | tickets, conversation messages, ticket_events, linked tasks, members | status, assign, escalate, internal note, run Support Triage |
 | `/tickets` | Open Cases (legacy) | 1 | — | redirects to `/cases` |
 | `/incidents`, `/incidents/[id]` | Incidents | 1 | incidents, checks, agent run | acknowledge, resolve |
-| `/payments`, `/invoices`, `/ads` | Money | 5 | — | — |
+| `/invoices`, `/invoices/[id]`, `/invoices/[id]/print` | Invoices | 5 | invoices, their lines, the client and the supplier organisation | raise an invoice from a subscription, mark paid, void, request an approval to send, send an approved one |
+| `/payments` | Payments | 5 | payments joined to their invoice, unpaid invoices | record a manual payment against an invoice |
+| `/ads`, `/ads/[accountId]` | Ads | 5 | ad accounts, daily snapshots and the computed ROAS/CPC signals | add an ad account |
+| `/ads/reports` | Ad reports | 5 | agent-drafted ad reports | approve a draft, send an approved one to the client |
+| `/reports`, `/reports/[id]` | Client reports | 5 | monthly client reports | publish a report to the client portal |
+| `/settings/billing` | Billing settings | 5 | which payment and ads credentials are configured, and the VAT rate — each rendered as "Set" / "Not set", never its value | — |
 | `/approvals` | Approvals | 1 (decision), 4 (resume) | approvals with their agent run | approve/reject, queueing `agent.resume` so the kernel runs the tool and stamps the row |
 | `/settings/agents` | Agents | 1 | agent_enablement | toggle |
 | `/knowledge`, `/knowledge/new`, `/knowledge/[id]` | Knowledge Base | 4 | knowledge_articles, full-text search over them | create, edit, publish/unpublish, delete |
@@ -46,7 +51,7 @@ The Plan 2 folders and what each exports. Every function has the shape `(db, org
 | `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword` |
 | `search` | `search` — one query across clients, sites, domains and tickets |
 | `email` | `ensureEmailIdentity`, `supportAddress` — the routable inbox behind `clients.support_email` |
-| `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `replyAsClient`, `sendQueuedMessage`, `slaDueAt` |
+| `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `sendQueuedMessage`, `slaDueAt`. `replyAsClient` — the portal reply path — is in flight and not yet exported from `packages/core/src/index.ts`; check `git ls-files packages/core/src/support` before importing it |
 | `knowledge` | `createKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `listKnowledgeArticles`, `searchKnowledge` |
 | `client-users` | `createClientUser`, `listClientUsers`, `setClientUserStatus` |
 | `approvals` | `decideApproval` |
@@ -74,7 +79,7 @@ Supporting folders from Plan 1 and Plan 3: `tenancy` (`assertOwned` and friends)
 | `/portal/tasks` | Progress | 4 | their tasks marked `client_visible` |
 | `/portal/support` | Support | 4 | their own `client_visible` cases only |
 | `/portal/support/new` | New request | 4 | raises a case on their client; severity cannot be set to `critical` |
-| `/portal/support/[id]` | Case thread | 4 | one case of theirs; internal notes are filtered out; a reply is written `internal: true` so we never email them their own words |
+| `/portal/support/[id]` | Case thread | 4 | one case of theirs; internal notes are filtered out of the thread. A reply is written the way `ingestInboundEmail` writes a client email — `direction: "inbound"`, `author_kind: "client"` — so the Inbox's "needs reply" badge (`lastDirection === "inbound"`) lights up for staff. It never leaves LaunchOS as email: a client does not need their own words posted back to them |
 | `/portal/invoices`, `/portal/invoices/[id]` | Invoices | 5 | their invoices, excluding drafts |
 | `/portal/reports`, `/portal/reports/[id]` | Reports | 5 | published reports only |
 | `/portal/account` | Account | 4 | their profile and a password change |

@@ -19,6 +19,7 @@
     "migrate": "drizzle-kit migrate",
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts",
+    "bootstrap": "tsx src/bootstrap.ts",
     "reconcile-support-emails": "tsx src/scripts/reconcile-support-emails.ts"
   },
   "dependencies": {
