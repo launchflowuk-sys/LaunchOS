@@ -3,18 +3,10 @@ import Link from "next/link";
 import { markAllRead, markOneRead } from "@/app/(admin)/notifications/actions";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { isInAppPath } from "@/lib/in-app-path";
 import type { AdminSession } from "@/lib/session";
 
 const LIST_LIMIT = 10;
-
-/**
- * `notifications.link` is free text written by services (and, later, agents).
- * Only an in-app path is ever rendered as a link, so a stored `javascript:` or
- * off-site `https:` value can never become a clickable target in the shell.
- */
-function isInAppPath(link: string | null): link is string {
-  return link !== null && link.startsWith("/");
-}
 
 /**
  * A `<details>` dropdown rather than a popover: the list is server-rendered on

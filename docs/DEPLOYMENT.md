@@ -50,7 +50,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
      - `BETTER_AUTH_URL` → same as `APP_URL`
      - `ANTHROPIC_API_KEY`
      - `AGENT_MODEL` → `claude-opus-5`
-     - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk`; changing it later does **not** rewrite addresses already stored on existing clients.
+     - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk`. Changing it later does **not** rewrite addresses already stored on existing clients, and migration `0007_backfill_support_email.sql` fills older rows in with the fallback domain because a migration cannot read env — so **after setting or changing this, run `pnpm db:reconcile-support-emails`** (see step 6). Inbound routing matches on the address alone, so a client left on the wrong domain silently never receives mail.
      - `OWNER_NOTIFY_EMAIL` → optional. In-app notifications always reach the owner's bell; set this to also email them. Leave unset to keep notifications in-app only.
      - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`
      - `INBOUND_EMAIL_SECRET`
@@ -82,7 +82,16 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
 
    Set `SEED_OWNER_PASSWORD` in the web resource's environment variables before running it, then **remove that variable and redeploy** once you have signed in. The seed refuses to run when `NODE_ENV=production` and `SEED_OWNER_PASSWORD` is unset, so it can never install the default development password in production. The seed is idempotent; re-running it will not change an existing password.
 
-6. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
+6. **Client support addresses** — run this once after the first deploy, and again any time `SUPPORT_EMAIL_DOMAIN` changes or a database carrying more than one organisation is restored or merged:
+
+   ```bash
+   docker exec <web-container> pnpm --filter @launchos/db reconcile-support-emails -- --dry-run   # print the plan
+   docker exec <web-container> pnpm --filter @launchos/db reconcile-support-emails                # apply it
+   ```
+
+   It rewrites every `clients.support_email` to `<client-slug>@$SUPPORT_EMAIL_DOMAIN`, which fixes the two things a migration cannot: rows that migration 0007 backfilled on the hardcoded fallback domain, and the collision that `<slug>` being unique only *per organisation* while `support_email` is unique *globally* creates once a second organisation exists (the oldest organisation keeps `<slug>@<domain>`, later ones get `<slug>-<org-slug>@<domain>`). Each change is written to `audit_log`. It is idempotent and a no-op when everything already matches. Locally the same commands are `pnpm db:reconcile-support-emails -- --dry-run` and `pnpm db:reconcile-support-emails`.
+
+7. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
 
 ## Branch flow
 

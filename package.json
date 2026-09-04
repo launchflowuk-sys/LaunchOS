@@ -14,6 +14,7 @@
     "db:generate": "pnpm --filter @launchos/db generate",
     "db:migrate": "pnpm --filter @launchos/db migrate",
     "db:seed": "pnpm --filter @launchos/db seed",
+    "db:reconcile-support-emails": "pnpm --filter @launchos/db reconcile-support-emails",
     "db:studio": "pnpm --filter @launchos/db studio",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"

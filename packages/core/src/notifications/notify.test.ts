@@ -74,4 +74,30 @@ describe("notifications", () => {
       expect(otherNotifications.every((n) => n.readAt === null)).toBe(true);
     });
   });
+
+  it("orders notifications that share a created_at deterministically", async () => {
+    await withTestDb(async (db) => {
+      const { org, owner } = await makeOrgWithOwner(db);
+      // Several notifications written in one transaction share a timestamp;
+      // `created_at` alone is then not a total order and the bell shuffles them
+      // between requests. The `id desc` tie-break is what makes this stable.
+      const createdAt = new Date("2026-09-04T10:00:00.000Z");
+      await db.insert(schema.notifications).values(
+        ["A", "B", "C"].map((title) => ({
+          organisationId: org.id,
+          userId: owner.id,
+          kind: "same-instant",
+          title,
+          createdAt,
+        })),
+      );
+
+      const first = await listNotifications(db, org.id, { userId: owner.id });
+      const second = await listNotifications(db, org.id, { userId: owner.id });
+      const ids = first.map((n) => n.id);
+      expect(ids).toHaveLength(3);
+      expect(second.map((n) => n.id)).toEqual(ids);
+      expect([...ids].sort().reverse()).toEqual(ids);
+    });
+  });
 });

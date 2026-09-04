@@ -6,7 +6,10 @@ import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { escapeLike } from "../clients/list-clients.js";
 import { emit } from "../events/emit.js";
-import { assertOwned } from "../tenancy/assert-owned.js";
+// `assertSiteBelongsToClient` is the shared tenancy helper, not a local copy:
+// two implementations of the same cross-client assertion drift, and a drifted
+// tenancy check is a hole.
+import { assertOwned, assertSiteBelongsToClient } from "../tenancy/assert-owned.js";
 
 const ACTOR = {
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
@@ -15,20 +18,6 @@ const ACTOR = {
 
 // Hostnames only: no scheme, no path, no trailing dot.
 const HOSTNAME = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
-
-/**
- * `siteId` is only asserted against the organisation by `assertOwned`, which
- * would let client A's domain point at client B's site as long as both sites
- * live in the same org. Call after `assertOwned(..., schema.sites, siteId)`
- * has already confirmed the site is in this organisation.
- */
-async function assertSiteBelongsToClient(db: Db, organisationId: string, siteId: string, clientId: string): Promise<void> {
-  const [site] = await db
-    .select({ clientId: schema.sites.clientId })
-    .from(schema.sites)
-    .where(and(eq(schema.sites.id, siteId), eq(schema.sites.organisationId, organisationId)));
-  if (site && site.clientId !== clientId) throw new Error(`site ${siteId} belongs to another client`);
-}
 
 export const CreateDomainInput = z.object({
   clientId: z.string().uuid(),

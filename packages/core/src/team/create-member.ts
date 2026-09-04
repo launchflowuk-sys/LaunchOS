@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { hashPassword } from "better-auth/crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
@@ -53,12 +53,25 @@ function credentialFor(userId: string, passwordHash: string) {
  * take over their existing login — a cross-tenant account-takeover path, not
  * a legitimate re-invite. So that case throws instead.
  *
- * The one membership row that is *not* a rejection is a pending invitation:
- * a `status = "invited"` row for this organisation whose user has no credential
- * yet (what `db:seed` writes for the demo staff member, and what a future
- * invite-by-email flow will write). That person cannot sign in and no login
- * exists to hijack, so this completes the invitation — issues the credential
- * and flips the row to `active` — rather than refusing with "already a member".
+ * A credential-less user is not automatically fair game either. Two more rows
+ * make the same user someone else's to issue a login for, and both are refused:
+ *
+ *  - a `status = "invited"` membership in *another* organisation. That org
+ *    created the user and is waiting to complete its own invitation; minting a
+ *    credential here would hand this organisation a working password for their
+ *    person and permanently break their invite (the credential check above
+ *    then refuses them forever, with no reset path).
+ *  - a `client_users` row anywhere. `createClientUser` refuses to give portal
+ *    access to a staff member for exactly the same reason in reverse; without
+ *    the mirror image a credential-less portal user could be handed the admin
+ *    shell while still being a client of the agency.
+ *
+ * The one membership row that is *not* a rejection is a pending invitation for
+ * *this* organisation whose user has no credential yet (what `db:seed` writes
+ * for the demo staff member, and what a future invite-by-email flow will
+ * write). That person cannot sign in and no login exists to hijack, so this
+ * completes the invitation — issues the credential and flips the row to
+ * `active` — rather than refusing with "already a member".
  */
 async function planJoin(
   tx: Db,
@@ -91,6 +104,27 @@ async function planJoin(
     }
     if (credential) throw new Error("email already registered");
 
+    const [pendingElsewhere] = await tx
+      .select({ id: schema.organisationMembers.id })
+      .from(schema.organisationMembers)
+      .where(
+        and(
+          eq(schema.organisationMembers.userId, existingUser.id),
+          eq(schema.organisationMembers.status, "invited"),
+          ne(schema.organisationMembers.organisationId, organisationId),
+        ),
+      );
+    if (pendingElsewhere) throw new Error("email already registered");
+
+    // Deliberately not scoped to this organisation: a portal user in any
+    // organisation still shares this one Better Auth credential, so minting one
+    // here would be the same trust-boundary blur across tenants.
+    const [portalRow] = await tx
+      .select({ id: schema.clientUsers.id })
+      .from(schema.clientUsers)
+      .where(eq(schema.clientUsers.userId, existingUser.id));
+    if (portalRow) throw new Error("client portal accounts cannot be staff members");
+
     await tx.insert(schema.account).values(credentialFor(existingUser.id, passwordHash));
     return existingMember
       ? { kind: "complete_invite", userId: existingUser.id, memberId: existingMember.id }
@@ -119,7 +153,6 @@ async function insertMembershipAndAudit(
       title: v.title ?? null,
       phone: v.phone ?? null,
       invitedBy: v.invitedBy ?? null,
-      initialPasswordSetAt: new Date(),
       role: v.role,
       status: "active",
     })
@@ -150,7 +183,9 @@ async function completeInviteAndAudit(
       displayName: v.displayName,
       title: v.title ?? null,
       phone: v.phone ?? null,
-      initialPasswordSetAt: new Date(),
+      // Whoever completes the invitation is the inviter of record; the original
+      // `invitedBy` may be a deactivated owner or null from the seed.
+      ...(v.invitedBy ? { invitedBy: v.invitedBy } : {}),
       role: v.role,
       status: "active",
       updatedAt: new Date(),
@@ -163,24 +198,33 @@ async function completeInviteAndAudit(
     )
     .returning();
 
+  // Under READ COMMITTED the membership `planJoin` saw can be deleted by a
+  // concurrent transaction before this UPDATE runs, matching zero rows. Without
+  // this the caller gets a TypeError instead of a sentence.
+  if (!row) throw new Error("invitation no longer exists");
+
   await recordAudit(tx, organisationId, {
     actorKind: "user",
     actorId: v.invitedBy,
     action: "member.invite_completed",
     targetType: "organisation_member",
-    targetId: row!.id,
+    targetId: row.id,
     before: { id: memberId, status: "invited" },
-    after: { id: row!.id, userId: row!.userId, email: v.email, role: row!.role, displayName: row!.displayName },
+    after: { id: row.id, userId: row.userId, email: v.email, role: row.role, displayName: row.displayName },
   });
-  return row!;
+  return row;
 }
 
 /**
  * Sign-up is disabled, so an account is only ever created here: the admin adds
  * the person, the returned one-time password is shown once and never stored in
- * plain text. An existing Better Auth user (a client-portal user, say) is
- * reused rather than duplicated; only their membership is new. A pending
- * `invited` membership with no credential is completed in place.
+ * plain text. An existing Better Auth user is reused rather than duplicated
+ * (only their membership is new), and a pending `invited` membership with no
+ * credential is completed in place.
+ *
+ * `initial_password_set_at` stays NULL: it records the moment the member
+ * replaces this admin-issued password with one of their own, and NULL is what
+ * makes `reissueOneTimePassword` available to them.
  */
 export async function createMember(db: Db, organisationId: string, input: CreateMemberInput) {
   const v = CreateMemberInput.parse(input);
@@ -195,12 +239,21 @@ export async function createMember(db: Db, organisationId: string, input: Create
       : insertMembershipAndAudit(inner, organisationId, plan.userId, v);
   });
 
-  await notifyOwner(db, organisationId, {
-    kind: "member.created",
-    title: `Team member added: ${v.displayName}`,
-    body: v.email,
-    link: "/team",
-  });
-  await emit({ name: "member.created", organisationId, memberId: member.id });
+  // Past the commit the membership and the credential exist, but the plaintext
+  // password lives only in this call frame. Letting a notification insert or a
+  // pg-boss enqueue reject here would throw it away and leave an account nobody
+  // can sign into: the caller sees an error, the member is listed as active, and
+  // `createMember` refuses to run again for that email. Both are best-effort.
+  try {
+    await notifyOwner(db, organisationId, {
+      kind: "member.created",
+      title: `Team member added: ${v.displayName}`,
+      body: v.email,
+      link: "/team",
+    });
+    await emit({ name: "member.created", organisationId, memberId: member.id });
+  } catch (error) {
+    console.error("member.created side effects failed", { organisationId, memberId: member.id }, error);
+  }
   return { member, oneTimePassword };
 }

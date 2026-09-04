@@ -6,6 +6,7 @@ import { and, eq } from "drizzle-orm";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
 import { createMember } from "./create-member.js";
 import { deactivateMember } from "./deactivate-member.js";
+import { reissueOneTimePassword } from "./reissue-password.js";
 import { listMembers } from "./list-members.js";
 
 async function makeOrgWithOwner(db: Db) {
@@ -33,7 +34,9 @@ describe("createMember", () => {
       });
       expect(oneTimePassword).toHaveLength(16);
       expect(member.status).toBe("active");
-      expect(member.initialPasswordSetAt).toBeInstanceOf(Date);
+      // NULL until the member replaces the issued password with one of their
+      // own — it is what keeps `reissueOneTimePassword` available to them.
+      expect(member.initialPasswordSetAt).toBeNull();
       expect(events).toEqual([{ name: "member.created", organisationId: org.id, memberId: member.id }]);
 
       const [credential] = await db
@@ -115,7 +118,7 @@ describe("createMember", () => {
       expect(member.userId).toBe(userId);
       expect(member.status).toBe("active");
       expect(member.title).toBe("Support");
-      expect(member.initialPasswordSetAt).toBeInstanceOf(Date);
+      expect(member.initialPasswordSetAt).toBeNull();
 
       const [credential] = await db
         .select()
@@ -151,6 +154,144 @@ describe("createMember", () => {
         .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, "credential")));
       expect(credential).toBeDefined();
       expect(await verifyPassword({ password: oneTimePassword, hash: credential!.password! })).toBe(true);
+    });
+  });
+
+  it("refuses to consume another organisation's pending invitation", async () => {
+    await withTestDb(async (db) => {
+      const { org: orgA } = await makeOrgWithOwner(db);
+      const { org: orgB } = await makeOrgWithOwner(db);
+      const email = `invited-${crypto.randomUUID()}@example.test`;
+      const userId = crypto.randomUUID();
+      await db.insert(schema.user).values({ id: userId, name: "Sam Staff", email, emailVerified: true });
+      await db
+        .insert(schema.organisationMembers)
+        .values({ organisationId: orgA.id, userId, role: "staff", status: "invited", displayName: "Sam Staff" });
+
+      await expect(createMember(db, orgB.id, { email, displayName: "Sam from B", role: "staff" })).rejects.toThrow(
+        "email already registered",
+      );
+
+      // No credential was minted for org A's user, so org A can still complete
+      // the invitation it is waiting on.
+      const credentials = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, "credential")));
+      expect(credentials).toHaveLength(0);
+
+      const { member } = await createMember(db, orgA.id, { email, displayName: "Sam Staff", role: "staff" });
+      expect(member.status).toBe("active");
+    });
+  });
+
+  it("refuses to make a client-portal user a staff member", async () => {
+    await withTestDb(async (db) => {
+      const { org } = await makeOrgWithOwner(db);
+      const [client] = await db
+        .insert(schema.clients)
+        .values({ organisationId: org.id, name: "Acme", slug: `acme-${crypto.randomUUID().slice(0, 8)}` })
+        .returning();
+      const email = `portal-${crypto.randomUUID()}@example.test`;
+      const userId = crypto.randomUUID();
+      // A portal user with no credential of their own: the asymmetric gap, since
+      // `createClientUser` already refuses the mirror image.
+      await db.insert(schema.user).values({ id: userId, name: "Portal User", email, emailVerified: true });
+      await db.insert(schema.clientUsers).values({ organisationId: org.id, clientId: client!.id, userId });
+
+      await expect(createMember(db, org.id, { email, displayName: "Portal User", role: "staff" })).rejects.toThrow(
+        "client portal accounts cannot be staff members",
+      );
+      const members = await listMembers(db, org.id);
+      expect(members.map((m) => m.email)).not.toContain(email);
+    });
+  });
+});
+
+describe("reissueOneTimePassword", () => {
+  beforeEach(() => { setEnqueue(async () => {}); });
+
+  it("issues a working replacement for a member still on the password they were given", async () => {
+    await withTestDb(async (db) => {
+      const { org, ownerUserId } = await makeOrgWithOwner(db);
+      const email = `staff-${crypto.randomUUID()}@example.test`;
+      const { member, oneTimePassword: first } = await createMember(db, org.id, {
+        email, displayName: "Sam Staff", role: "staff", invitedBy: ownerUserId,
+      });
+
+      const { oneTimePassword: second } = await reissueOneTimePassword(db, org.id, {
+        memberId: member.id, actor: ownerUserId,
+      });
+      expect(second).toHaveLength(16);
+      expect(second).not.toBe(first);
+
+      const [credential] = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, member.userId), eq(schema.account.providerId, "credential")));
+      expect(await verifyPassword({ password: second, hash: credential!.password! })).toBe(true);
+      expect(await verifyPassword({ password: first, hash: credential!.password! })).toBe(false);
+
+      const [audit] = await db
+        .select()
+        .from(schema.auditLog)
+        .where(and(eq(schema.auditLog.organisationId, org.id), eq(schema.auditLog.action, "member.password_reissued")));
+      expect(audit!.targetId).toBe(member.id);
+      expect(JSON.stringify(audit!.after)).not.toContain(second);
+    });
+  });
+
+  it("refuses a member of another organisation, and one who has set their own password", async () => {
+    await withTestDb(async (db) => {
+      const { org: orgA } = await makeOrgWithOwner(db);
+      const { org: orgB } = await makeOrgWithOwner(db);
+      const { member } = await createMember(db, orgA.id, {
+        email: `staff-${crypto.randomUUID()}@example.test`, displayName: "Sam", role: "staff",
+      });
+
+      await expect(reissueOneTimePassword(db, orgB.id, { memberId: member.id })).rejects.toThrow(
+        "no re-issuable member with that id in this organisation",
+      );
+
+      await db
+        .update(schema.organisationMembers)
+        .set({ initialPasswordSetAt: new Date() })
+        .where(eq(schema.organisationMembers.id, member.id));
+      await expect(reissueOneTimePassword(db, orgA.id, { memberId: member.id })).rejects.toThrow(
+        "no re-issuable member with that id in this organisation",
+      );
+    });
+  });
+
+  it("refuses when the underlying account is used outside this organisation", async () => {
+    await withTestDb(async (db) => {
+      const { org: orgA } = await makeOrgWithOwner(db);
+      const { org: orgB } = await makeOrgWithOwner(db);
+      const { member } = await createMember(db, orgA.id, {
+        email: `staff-${crypto.randomUUID()}@example.test`, displayName: "Sam", role: "staff",
+      });
+      // One credential row backs both memberships, so org A must not be able to
+      // rewrite it out from under org B.
+      await db
+        .insert(schema.organisationMembers)
+        .values({ organisationId: orgB.id, userId: member.userId, role: "staff", displayName: "Sam" });
+
+      await expect(reissueOneTimePassword(db, orgA.id, { memberId: member.id })).rejects.toThrow(
+        "this account is used outside this organisation",
+      );
+    });
+  });
+
+  it("refuses a suspended member", async () => {
+    await withTestDb(async (db) => {
+      const { org, ownerUserId } = await makeOrgWithOwner(db);
+      const { member } = await createMember(db, org.id, {
+        email: `staff-${crypto.randomUUID()}@example.test`, displayName: "Sam", role: "staff",
+      });
+      await deactivateMember(db, org.id, { memberId: member.id, actorId: ownerUserId });
+      await expect(reissueOneTimePassword(db, org.id, { memberId: member.id })).rejects.toThrow(
+        "cannot re-issue a password for a suspended member",
+      );
     });
   });
 });

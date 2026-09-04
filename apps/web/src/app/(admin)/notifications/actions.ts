@@ -20,7 +20,13 @@ export type NotificationActionResult = { status: "ok" } | { status: "error"; mes
 export async function markNotificationReadAction(values: unknown): Promise<NotificationActionResult> {
   const session = await requireAdmin();
   const parsed = MarkOne.safeParse(values);
-  if (!parsed.success) return { status: "error", message: "That notification could not be identified" };
+  // Revalidated on both branches: the bell's `<form action>` binding drops the
+  // result, so without this a rejected id leaves the page rendered exactly as it
+  // was and the button looks broken rather than refused.
+  if (!parsed.success) {
+    revalidatePath("/", "layout");
+    return { status: "error", message: "That notification could not be identified" };
+  }
 
   await markNotificationRead(getDb(), session.organisationId, {
     userId: session.userId,

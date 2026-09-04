@@ -1,6 +1,6 @@
 "use server";
 
-import { createMember, deactivateMember } from "@launchos/core";
+import { createMember, deactivateMember, reissueOneTimePassword } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -53,6 +53,49 @@ export async function addMemberAction(_prev: AddMemberState, formData: FormData)
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not add the member" };
+  }
+}
+
+export type ReissuePasswordState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "issued"; email: string; displayName: string; oneTimePassword: string };
+
+const ReissueInput = z.object({ memberId: z.string().uuid() });
+
+/**
+ * The recovery path for a one-time password that never reached the person it
+ * was for. Like `addMemberAction` the password exists only in this result: it is
+ * never persisted in plain text, never revalidated into a page and never logged.
+ *
+ * The service refuses anything that is not a member of this organisation who is
+ * still on the password they were issued, so this only has to check that the
+ * caller is an owner.
+ */
+export async function reissuePasswordAction(
+  _prev: ReissuePasswordState,
+  formData: FormData,
+): Promise<ReissuePasswordState> {
+  const session = await requireAdmin();
+  if (session.role !== "owner") return { status: "error", message: "Only an owner can re-issue a password" };
+
+  const parsed = ReissueInput.safeParse({ memberId: formData.get("memberId") });
+  if (!parsed.success) return { status: "error", message: "That member could not be identified" };
+
+  try {
+    const { member, oneTimePassword } = await reissueOneTimePassword(getDb(), session.organisationId, {
+      memberId: parsed.data.memberId,
+      actor: session.userId,
+    });
+    revalidatePath("/team");
+    return {
+      status: "issued",
+      email: member.email,
+      displayName: member.displayName ?? member.email,
+      oneTimePassword,
+    };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Could not re-issue the password" };
   }
 }
 
