@@ -3,7 +3,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { LlmClient } from "./llm.js";
 import { decide } from "./policy-gate.js";
-import type { RunRecorder } from "./run-recorder.js";
+import type { AgentRunStatus, RunRecorder } from "./run-recorder.js";
 import { findTool, toClaudeTools } from "./tool-registry.js";
 import type {
   AgentContext,
@@ -72,31 +72,59 @@ export async function runLoop(
       messages = [...messages, { role: "assistant", content: res.content as Anthropic.Beta.BetaContentBlockParam[] }];
 
       if (res.stopReason === "refusal") {
-        await recorder.finish("failed", "Model refused the request", "refusal");
-        return { runId: recorder.runId, status: "failed", summary: "Model refused the request" };
+        return settle(ctx, recorder, "failed", "Model refused the request", "refusal");
       }
       if (res.stopReason !== "tool_use") {
-        const summary = extractText(res.content);
-        await recorder.finish("completed", summary);
-        return { runId: recorder.runId, status: "completed", summary };
+        return settle(ctx, recorder, "completed", extractText(res.content));
       }
 
       const uses = res.content.filter((b) => b.type === "tool_use") as Anthropic.Beta.BetaToolUseBlock[];
       const outcome = await handleToolUses(def, uses, ctx, recorder, policy);
       if (outcome.parked) {
-        await recorder.finish("awaiting_approval", outcome.summary, undefined, buildPendingMetadata(messages, outcome));
-        return { runId: recorder.runId, status: "awaiting_approval", summary: outcome.summary };
+        return settle(ctx, recorder, "awaiting_approval", outcome.summary, undefined, buildPendingMetadata(messages, outcome));
       }
       messages = [...messages, { role: "user", content: outcome.results }];
     }
-    await recorder.finish("failed", `Stopped after maxTurns=${def.maxTurns}`, "max_turns");
-    return { runId: recorder.runId, status: "failed", summary: `Stopped after maxTurns=${def.maxTurns}` };
+    return settle(ctx, recorder, "failed", `Stopped after maxTurns=${def.maxTurns}`, "max_turns");
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     ctx.logger.error("agent run failed", { runId: recorder.runId, err: message });
-    await recorder.finish("failed", "Run failed", message);
-    return { runId: recorder.runId, status: "failed", summary: message };
+    return settle(ctx, recorder, "failed", message, message);
   }
+}
+
+/**
+ * Writes the run's outcome and reports it — unless something else already
+ * declared this run terminal, in which case the outcome is dropped with a log
+ * line rather than written over the top.
+ *
+ * The only thing that can get there first is the stranded-run sweeper, which
+ * fails a run that has gone half an hour with no step and tells the owner the
+ * approved action did not finish. A late delivery that then wrote `completed`
+ * would contradict the notification the owner already read, so this path stops
+ * instead: the row and the notification agree, and the trace shows both.
+ */
+async function settle(
+  ctx: AgentContext,
+  recorder: RunRecorder,
+  status: AgentRunStatus,
+  summary: string,
+  error?: string,
+  pending?: Record<string, unknown>,
+): Promise<AgentRunResult> {
+  if (await recorder.finish(status, summary, error, pending)) {
+    return { runId: recorder.runId, status, summary };
+  }
+  ctx.logger.warn("run was already finished by something else; discarding this outcome", {
+    runId: recorder.runId,
+    discarded: status,
+    summary,
+  });
+  return {
+    runId: recorder.runId,
+    status: "failed",
+    summary: `run ${recorder.runId} was already finished elsewhere; ${status} discarded`,
+  };
 }
 
 function extractText(content: Anthropic.Beta.BetaContentBlock[]): string {

@@ -125,8 +125,23 @@ export class RunRecorder {
       .where(eq(schema.agentRuns.id, this.runId));
   }
 
-  async finish(status: AgentRunStatus, summary: string, error?: string, pending?: Record<string, unknown>): Promise<void> {
-    await this.db
+  /**
+   * Writes the run's terminal state — but only while it is still `running`.
+   *
+   * That predicate is what stops a resurrection. `approvals.resume-sweep`'s
+   * sibling (`agent-runs.stuck-sweep`) fails a run whose delivery died and
+   * tells the owner an approved action did not finish; without the predicate a
+   * delivery that came back to life half an hour later would write `completed`
+   * over that `failed` row, leaving `agent_runs` and the notification the owner
+   * actually read saying opposite things. Every caller enters from `running`
+   * (`open` inserts it, `reopen` claims it), so a false here always means
+   * something else already declared this run terminal.
+   *
+   * Returns whether the row was written, so the caller can log and stop rather
+   * than report an outcome that was discarded.
+   */
+  async finish(status: AgentRunStatus, summary: string, error?: string, pending?: Record<string, unknown>): Promise<boolean> {
+    const [updated] = await this.db
       .update(schema.agentRuns)
       .set({
         status,
@@ -135,6 +150,12 @@ export class RunRecorder {
         finishedAt: status === "awaiting_approval" ? null : new Date(),
         metadata: pending ? { pending } : {},
       })
-      .where(eq(schema.agentRuns.id, this.runId));
+      .where(and(
+        eq(schema.agentRuns.id, this.runId),
+        eq(schema.agentRuns.organisationId, this.organisationId),
+        eq(schema.agentRuns.status, "running"),
+      ))
+      .returning({ id: schema.agentRuns.id });
+    return Boolean(updated);
   }
 }

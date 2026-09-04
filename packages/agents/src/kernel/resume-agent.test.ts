@@ -490,4 +490,39 @@ describe("resumeAgent", () => {
       expect(sendMailCalls).toEqual([{ to: "jo@c.test" }]);
     });
   });
+
+  it("cannot resurrect a run the stranded-run sweeper already failed", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      await decide(db, organisationId, approval.id, "approved");
+
+      // The resume claims the run and works. While it works — this is the
+      // window the sweeper exists for — the run is declared stranded and the
+      // owner is told an approved action did not finish. The late `finish`
+      // must not write `completed` over that, or the row and the notification
+      // Shoji actually read would say opposite things.
+      const sweeper = {
+        complete: async () => {
+          await db.update(schema.agentRuns)
+            .set({ status: "failed", summary: "Run stranded", error: "Stranded", finishedAt: new Date() })
+            .where(eq(schema.agentRuns.id, run.runId));
+          return { content: [text("Reply sent.")], stopReason: "end_turn" as const, usage: { inputTokens: 1, outputTokens: 1 } };
+        },
+      };
+
+      const resumed = await resumeAgent(agent, {
+        db, organisationId, runId: run.runId, approvalId: approval.id,
+        llm: sweeper, policy: "safe", logger: console,
+      });
+
+      // The tool did run — that is exactly why the outcome has to be visible
+      // rather than silently discarded — but the run stays failed.
+      expect(sendMailCalls).toEqual([{ to: "jo@c.test" }]);
+      expect(resumed.status).toBe("failed");
+      expect(resumed.summary).toMatch(/already finished elsewhere/);
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("failed");
+      expect(row!.error).toBe("Stranded");
+    });
+  });
 });

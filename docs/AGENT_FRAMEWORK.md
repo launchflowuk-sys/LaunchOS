@@ -100,7 +100,15 @@ agent_runs.metadata.pending = {
 
 If a resume dies partway, the run is left `running`; a later attempt for the *same* approval finishes it `failed` and notifies the owner, because an approved outward action silently vanishing is the one failure nothing else surfaces. See "When a resume fails" for the three predicates that have to hold first.
 
-The `/approvals` screen decides the row (via `decideApproval`), records `approval.approved_queued` in `audit_log` and enqueues `agent.resume`. If that enqueue fails, it *releases* the claim (`releaseApprovalClaim`) and tells the approver to try again: a decided approval whose run is still parked, with nothing anywhere that will resume it, is worse than no decision. A run-less approval (an invoice send) is decided and executed in the same request and records `approval.approved` instead.
+### The resume contract: decide → fast-path enqueue → sweeper
+
+**A decision is final the moment `decideApproval` commits.** Nothing releases it and there is no inverse function, because the two halves are not the same fact: the decision is a row, the `agent.resume` job is *delivery*.
+
+1. **Decide.** `/approvals` calls `decideApproval`, which claims the row and stamps status, `decided_by`, `decided_at` and the note, then records `approval.approved_queued` / `approval.rejected_queued` in `audit_log`.
+2. **Fast path.** The same request enqueues `agent.resume` under `resume:<approvalId>`. If that send throws, or returns `null` (pg-boss deduped it), the failure is logged and the approver is still told "Decision recorded". `boss.send` is a single INSERT whose promise can reject *after* the row committed, so a rejection means "unknown", never "did not happen" — and undoing the decision on it would revert an outward action that may already have been sent, silently, with no audit row. A dedupe is not a failure either: the job is a bare pointer that reads this very row, so the queued one carries out exactly this decision.
+3. **Sweeper.** `approvals.resume-sweep` (cron, every minute, `apps/worker/src/jobs/resume-sweep.ts`) re-enqueues, per organisation, every approval that is `approved`/`rejected`, has a `run_id`, was decided more than 30 seconds ago, and whose run is still `awaiting_approval` with `metadata.pending` present — under the same `resume:<approvalId>` key. It is idempotent by construction: a run that has been claimed, finished or re-parked no longer matches, and the kernel's three replay guards stand behind it. It gives up after 24 hours — a decision still parked a day later fails for a reason re-sending cannot fix, and retrying it every minute for ever would bury every real failure. Delivery is therefore at-least-once and execution is once-only; the worst case is a resume that starts a minute late.
+
+A run-less approval (an invoice send) is decided and executed in the same request and records `approval.approved` instead.
 
 ## Describing an approval
 
@@ -121,6 +129,10 @@ Two rules:
 - Anything else — a spent approval, an approval bound to a different `tool_use`, another organisation's run, a run some other approval is driving, a claim that is still fresh — is logged, left exactly as it was, and the error is thrown to the caller so pg-boss retries. A stale approval must never be able to kill a run that is legitimately waiting or working.
 
 The worker's `agent.resume` handler treats a run that is already `completed` or `failed` as an idempotent no-op with a log line, so a pg-boss retry after a partial failure does not fail identically five times over. A run left `running` by a killed delivery is deliberately *not* skipped: it is the one case the kernel still has to close out.
+
+**The five-minute floor is not a lease, so a second sweeper closes the rest.** `agent-runs.stuck-sweep` (cron, every ten minutes) fails any run still `running` that has recorded no step for thirty minutes and whose `metadata.resume.claimedAt`, if it has one, is at least that old — writing `agent.run_stranded` to `audit_log` and notifying the owner. A run that is visibly working is never eligible however long it takes, which is what stops it killing a legitimately long Opus run.
+
+The other half of that is `RunRecorder.finish`, whose UPDATE carries `status = 'running'`. Every caller enters from `running` (`open` inserts it, `reopen` claims it), so a `false` return always means something else declared the run terminal first; the late delivery then logs `run was already finished by something else` and stops. Without the predicate a resume that came back to life after the sweeper had failed it would write `completed` over the top, and `agent_runs` would contradict the notification the owner actually read.
 
 ## LLM client (`llm.ts`)
 

@@ -12,10 +12,12 @@ vi.mock("pg-boss", () => ({
 }));
 
 let captured: ((event: DomainEvent) => Promise<void>) | undefined;
+const notifyOwner = vi.fn(async () => null);
 vi.mock("@launchos/core", () => ({
   setEnqueue: (fn: (event: DomainEvent) => Promise<void>) => {
     captured = fn;
   },
+  notifyOwner: (...args: unknown[]) => notifyOwner(...(args as [])),
 }));
 
 import { installWebEnqueue } from "./queue.js";
@@ -115,15 +117,30 @@ describe("getBoss failure caching", () => {
     expect(start).toHaveBeenCalledTimes(2);
   });
 
-  it("throws instead of dropping a domain event when the bus cannot be reached", async () => {
+  it("logs and does not throw for bus events the queue cannot take, because the write is already committed", async () => {
+    // `emit` runs after the core service committed. Throwing here would turn a
+    // successful write into an error toast and invite a retry that hits a
+    // unique violation or creates a second row; the follow-on work is what was
+    // lost, and it has a manual path back.
     vi.resetModules();
     (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
     delete process.env.DATABASE_URL;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { installWebEnqueue: install } = await import("./queue.js");
     install();
 
-    await expect(captured!({ name: "client.created", organisationId: "org-1", clientId: "client-1" })).rejects.toThrow(
-      /DATABASE_URL is not set/,
-    );
+    await expect(captured!({ name: "client.created", organisationId: "org-1", clientId: "client-1" })).resolves
+      .toBeUndefined();
+    expect(errors.mock.calls.flat().join(" ")).toMatch(/domain event could not be queued/);
+    errors.mockRestore();
+  });
+
+  it("still throws for a direct sendJob caller, which is how the Stripe route gets its 500", async () => {
+    vi.resetModules();
+    (globalThis as { __launchosBoss?: unknown }).__launchosBoss = undefined;
+    delete process.env.DATABASE_URL;
+    const { sendJob } = await import("./queue.js");
+
+    await expect(sendJob("payments.webhook", { a: 1 })).rejects.toThrow(/DATABASE_URL is not set/);
   });
 });

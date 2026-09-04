@@ -17,6 +17,7 @@ export { ingestInboundEmail, HOLDING_CLIENT_SLUG } from "./support/ingest-inboun
 export { slaDueAt, SLA_HOURS_BY_SEVERITY } from "./support/sla.js";
 export type { Severity } from "./support/sla.js";
 export { updateTicket, UpdateTicketInput, TicketTriageSchema } from "./support/update-ticket.js";
+export { setTicketClientVisibility, SetTicketClientVisibilityInput } from "./support/set-ticket-client-visibility.js";
 export { assignTicket, AssignTicketInput } from "./support/assign-ticket.js";
 export { escalateTicket, EscalateTicketInput } from "./support/escalate-ticket.js";
 export { replyToConversation, ReplyToConversationInput } from "./support/reply-to-conversation.js";
@@ -128,7 +129,7 @@ export {
 export {
   findPendingInvoiceSendApproval, requestInvoiceSendOnce,
 } from "./billing/invoice-send-requests.js";
-export { decideApproval, DecideApprovalInput, releaseApprovalClaim, ReleaseApprovalClaimInput } from "./approvals/decide-approval.js";
+export { decideApproval, DecideApprovalInput } from "./approvals/decide-approval.js";
 export type { ApprovalRow, DecideApprovalResult } from "./approvals/decide-approval.js";
 export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";

@@ -1,9 +1,10 @@
 import { createDb } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
-import { AnthropicLlmClient, FakeLlmClient, agentRegistry } from "@launchos/agents";
+import { AnthropicLlmClient, agentRegistry } from "@launchos/agents";
 import { createEmailAdapter } from "@launchos/channels";
 import { createIntegrations } from "@launchos/integrations";
 import { env } from "./env.js";
+import { FakeAgentLlmClient } from "./llm/fake.js";
 import { QUEUE, createBoss } from "./boss.js";
 import { sweepOrganisations } from "./jobs/sweep-organisations.js";
 import { runMonitorSweep } from "./jobs/monitor-check.js";
@@ -18,12 +19,13 @@ import { runAdsIngest } from "./jobs/ads-ingest.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
+import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 
 async function main() {
   const db = createDb(env.DATABASE_URL);
   const boss = await createBoss(env.DATABASE_URL);
   const integrations = createIntegrations(process.env);
-  const llm = env.LLM === "fake" ? new FakeLlmClient([]) : new AnthropicLlmClient();
+  const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : new AnthropicLlmClient();
   const emailAdapter = createEmailAdapter(process.env);
   // The Ad Performance Sentinel emails clients a portal link once a human
   // approves the send, so the registry needs the same adapter and base URL the
@@ -103,11 +105,33 @@ async function main() {
     });
   });
 
+  // Delivery insurance for a decision the web request could not enqueue, and
+  // the closer for a run whose delivery died. Neither undoes anything: a
+  // decision is final once `decideApproval` commits, so what is repaired here
+  // is the *delivery*, not the decision.
+  await boss.work(QUEUE.approvalsResumeSweep, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "approval resume sweep", async (organisationId) => {
+      await runResumeSweep({ db, boss }, organisationId, now);
+    });
+  });
+
+  await boss.work(QUEUE.agentRunsStuckSweep, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "stranded agent run sweep", async (organisationId) => {
+      await runStuckRunSweep({ db }, organisationId, now);
+    });
+  });
+
   await boss.work(QUEUE.adsSentinel, async () => {
     await dispatchSentinelRuns({ db, boss }, new Date());
   });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
+  // Every minute: a decided approval whose resume never arrived is an approved
+  // outward action that is not happening, and nothing else revisits it.
+  await boss.schedule(QUEUE.approvalsResumeSweep, "* * * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.agentRunsStuckSweep, "*/10 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });

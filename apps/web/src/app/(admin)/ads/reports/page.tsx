@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
+import { readSendFailure, type SendFailure } from "@/lib/send-status";
 import { requireAdmin } from "@/lib/session";
 import { approveAdReportAction, sendAdReportAction } from "../actions";
 
@@ -27,6 +28,7 @@ export default async function AdReportsPage() {
       agentRunId: schema.adReports.agentRunId,
       createdAt: schema.adReports.createdAt,
       sentAt: schema.adReports.sentAt,
+      metadata: schema.adReports.metadata,
       accountId: schema.adAccounts.id,
       accountName: schema.adAccounts.name,
       clientId: schema.adAccounts.clientId,
@@ -88,6 +90,7 @@ export default async function AdReportsPage() {
                   </TableCell>
                   <TableCell>
                     <StatusBadge value={report.status} />
+                    <SendFailureNote failure={readSendFailure(report.metadata)} />
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-neutral-600">
                     {formatDateTime(report.createdAt)}
@@ -135,5 +138,22 @@ export default async function AdReportsPage() {
         </div>
       )}
     </>
+  );
+}
+
+/**
+ * A report whose email was rejected keeps its claim — a rollback would arm a
+ * second send — so the badge still reads "sent". Without this note the only
+ * signals are an owner notification and a client activity row, both of which
+ * scroll away, and the screen quietly tells Shoji the client has the report.
+ */
+function SendFailureNote({ failure }: { failure: SendFailure | null }) {
+  if (!failure) return null;
+  return (
+    <p className="mt-1 max-w-xs text-xs text-red-700">
+      <span className="font-semibold">Send failed:</span> {failure.message}
+      {failure.to ? <span className="block text-red-600">to {failure.to}</span> : null}
+      <span className="block text-neutral-500">Draft a fresh report if the client still needs it.</span>
+    </p>
   );
 }

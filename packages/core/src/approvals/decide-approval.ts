@@ -45,6 +45,16 @@ export type DecideApprovalResult =
  * *not* the approval status but `agent_runs.metadata.pending` — the parked loop
  * state, which `runLoop` clears the moment the run finishes or re-parks.
  *
+ * **A decision is final once this function commits.** Nothing releases it, and
+ * there is deliberately no inverse: the follow-on work (enqueueing
+ * `agent.resume`) is *delivery*, and delivery failing is not evidence the
+ * decision did not happen. `boss.send` is a single INSERT whose promise can
+ * reject after the row committed, so an "undo" driven by that rejection would
+ * revert decisions that had already been carried out — with the outward action
+ * already sent. Durability of the delivery belongs to the `approvals.resume-sweep`
+ * cron instead (`apps/worker/src/jobs/resume-sweep.ts`), which re-enqueues any
+ * decided approval whose run is still parked.
+ *
  * Audit is left to the caller: the admin portal distinguishes a decision that
  * was queued for an agent from one that took effect on the spot.
  */
@@ -81,43 +91,4 @@ export async function decideApproval(
 
   if (!after) return { alreadyDecided: true, approval: before };
   return { alreadyDecided: false, before, after };
-}
-
-export const ReleaseApprovalClaimInput = z.object({
-  approvalId: z.string().uuid(),
-  /** The `decided_at` the caller's own claim wrote. Nothing else may release it. */
-  decidedAt: z.date(),
-});
-export type ReleaseApprovalClaimInput = z.input<typeof ReleaseApprovalClaimInput>;
-
-/**
- * Undoes a decision whose follow-on work could not be started — the admin
- * portal claiming an approval and then failing to enqueue `agent.resume`.
- *
- * Without this, a failed enqueue leaves the worst possible state: an approval
- * the screen shows as decided, a run still parked in `awaiting_approval`, and
- * nothing anywhere that will ever resume it. Releasing puts the card back in
- * "Waiting for you" so the human can simply press the button again.
- *
- * `decided_at` is the claim token: the release only matches the exact instant
- * this caller stamped, so it can never reopen a decision someone else made in
- * the meantime. Returns the released row, or undefined when the claim was not
- * ours to release.
- */
-export async function releaseApprovalClaim(
-  db: Db,
-  organisationId: string,
-  input: ReleaseApprovalClaimInput,
-): Promise<ApprovalRow | undefined> {
-  const v = ReleaseApprovalClaimInput.parse(input);
-  const [released] = await db
-    .update(schema.approvals)
-    .set({ status: "pending", decidedAt: null, decidedBy: null, decisionNote: null, updatedAt: new Date() })
-    .where(and(
-      eq(schema.approvals.id, v.approvalId),
-      eq(schema.approvals.organisationId, organisationId),
-      eq(schema.approvals.decidedAt, v.decidedAt),
-    ))
-    .returning();
-  return released;
 }

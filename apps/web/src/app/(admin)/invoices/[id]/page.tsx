@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime, formatPence } from "@/lib/format";
+import { readSendFailure } from "@/lib/send-status";
 import { requireAdmin } from "@/lib/session";
 import { markInvoiceAsPaid, requestSendInvoice, voidInvoiceAction } from "../actions";
 
@@ -60,6 +61,11 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
   // payment, and a void invoice is already written off.
   const settled = invoice.status === "paid" || invoice.status === "void";
   const sendable = !settled && !pendingSend;
+  // The send claim is kept when the provider rejects the message, so the status
+  // still reads "sent" and nothing else on this screen would say the client
+  // never got it. The approval that authorised that send is spent; getting the
+  // invoice out needs a fresh one.
+  const sendFailure = readSendFailure(invoice.metadata);
 
   return (
     <>
@@ -98,6 +104,31 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           </>
         }
       />
+
+      {sendFailure ? (
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          <p>
+            <span className="font-semibold">Send failed:</span> {sendFailure.message}
+            {sendFailure.to ? ` (to ${sendFailure.to})` : ""}
+          </p>
+          <p className="mt-1 text-xs text-red-700">
+            The invoice is marked sent so it cannot go out twice, and the approval that authorised it is spent.
+          </p>
+          {sendable ? (
+            <ActionForm
+              className="mt-2"
+              action={requestSendInvoice}
+              ariaLabel="Request another send of this invoice"
+              success="Send queued for approval"
+            >
+              <input type="hidden" name="invoiceId" value={invoice.id} />
+              <Button type="submit" variant="outline">
+                Request send again
+              </Button>
+            </ActionForm>
+          ) : null}
+        </div>
+      ) : null}
 
       {pendingSend ? (
         <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

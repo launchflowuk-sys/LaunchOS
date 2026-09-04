@@ -87,7 +87,7 @@
  * | `agent.run` | `support-triage:<ticketId>` | `apps/worker/src/jobs/dispatch-event.ts` |
  * | `agent.run` | `support-triage:<ticketId>:manual:<epochMs>` — timestamped **on purpose**, so an operator's "run now" is never deduped away | `apps/web/src/app/(admin)/cases/[id]/actions.ts` |
  * | `agent.run` | `ad-sentinel:<org>:<yyyy-mm-dd>` + `singletonSeconds` | `apps/worker/src/jobs/ads-sentinel.ts` |
- * | `agent.resume` | `resume:<approvalId>` | `dispatch-event.ts`, `apps/web/src/app/(admin)/approvals/actions.ts` |
+ * | `agent.resume` | `resume:<approvalId>` | `dispatch-event.ts`, `apps/web/src/app/(admin)/approvals/actions.ts`, `apps/worker/src/jobs/resume-sweep.ts` |
  * | `inbound.message` | `inbound:<providerMessageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
  * | `outbound.message` | `outbound:<messageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts` |
  * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
@@ -113,6 +113,8 @@ export const QUEUE = {
   adsSentinel: "ads.sentinel",
   invoicesOverdue: "invoices.check-overdue",
   reportsMonthly: "reports.monthly",
+  approvalsResumeSweep: "approvals.resume-sweep",
+  agentRunsStuckSweep: "agent-runs.stuck-sweep",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -137,6 +139,12 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "ads.sentinel": "standard",
   "invoices.check-overdue": "standard",
   "reports.monthly": "standard",
+  // Cron queues: payload `{}`, no key, one job per tick is the point. The
+  // `agent.resume` jobs the resume sweep *sends* are keyed `resume:<approvalId>`
+  // onto the `short` queue above, which is what makes re-enqueueing an
+  // already-queued resume a no-op rather than a second delivery.
+  "approvals.resume-sweep": "standard",
+  "agent-runs.stuck-sweep": "standard",
 };
 
 /**

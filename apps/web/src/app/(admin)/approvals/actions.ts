@@ -1,7 +1,7 @@
 "use server";
 
 import { createEmailAdapter } from "@launchos/channels";
-import { decideApproval, INVOICE_SEND_ACTION, recordAudit, releaseApprovalClaim, sendApprovedInvoice } from "@launchos/core";
+import { decideApproval, INVOICE_SEND_ACTION, recordAudit, sendApprovedInvoice } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -22,10 +22,14 @@ const NonAgentPayload = z.object({ action: z.string() });
 
 /**
  * Hands the decision to the worker. Returns pg-boss's job id, or null when the
- * send was deduped away — with a per-approval singleton key and a claim that
- * only one decision can win, a dedupe means an earlier job for this approval is
- * still in flight, so this decision has nothing driving it either way and the
- * caller must put the approval back.
+ * send was deduped away.
+ *
+ * A `null` is **not** a failure. The job is a bare pointer — the kernel reads
+ * the verdict, the note and the approver off the `approvals` row — so a job
+ * already queued under `resume:<approvalId>` will carry out exactly this
+ * decision when the worker picks it up. `short` dedupes only while the first
+ * job is still `created`, which is precisely the case where the pointer is
+ * still good.
  */
 async function queueResume(
   organisationId: string,
@@ -87,22 +91,32 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
       // the decision only as a cross-check; what tells the kernel the decision
       // has not been carried out yet is the run's own `metadata.pending`.
       //
-      // The claim is released if the job cannot be queued. A decided approval
-      // whose run is still parked, with nothing anywhere that will resume it,
-      // is the one outcome worse than "press it again".
+      // The enqueue is a *fast path*, nothing more. The decision is already
+      // committed and is final; `boss.send` is a single INSERT whose promise
+      // can reject after the row landed, so a rejection is "unknown", never
+      // "did not happen" — undoing the decision on it would revert an outward
+      // action that may already have been sent, with no audit row to say so.
+      // A `null` is a dedupe, which means a job that reads this very row is
+      // already queued.
+      //
+      // Either way the decision stands and the `approvals.resume-sweep` cron
+      // re-enqueues any decided approval whose run is still parked, so the
+      // worst case is a resume that starts a minute late.
       const queued = await queueResume(session.organisationId, before.runId, approvalId, status, note).catch(
         (err: unknown) => {
-          console.error("agent.resume could not be queued", {
+          console.error("agent.resume could not be queued; the resume sweep will pick it up", {
             approvalId,
+            runId: before.runId,
             err: err instanceof Error ? err.message : String(err),
           });
           return null;
         },
       );
       if (queued === null) {
-        await releaseApprovalClaim(getDb(), session.organisationId, { approvalId, decidedAt: after.decidedAt! });
-        revalidatePath("/approvals");
-        return { status: "error", message: "Could not queue the agent resume. The decision was not recorded — try again." };
+        console.info("agent.resume was not queued by this request (deduped or unreachable); leaving it to the sweep", {
+          approvalId,
+          runId: before.runId,
+        });
       }
       await recordAudit(getDb(), session.organisationId, {
         actorKind: "user",

@@ -46,7 +46,7 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 |---|---|---|---|---|
 | `monitor.check` | standard | cron every minute | worker | `{}` — sweeps every organisation, per-monitor checks inside |
 | `agent.run` | short | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
-| `agent.resume` | short | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note? }` — no approver: the kernel reads `approvals.decided_by` |
+| `agent.resume` | short | the approvals screen (fast path), `approval.decided` event, and `approvals.resume-sweep` | worker | `{ organisationId, runId, approvalId, decision, note? }` — no approver: the kernel reads `approvals.decided_by` |
 | `inbound.message` | short | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
 | `outbound.message` | short | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
 | `domain.event` | standard | any web server action that emits a domain event | worker | the `DomainEvent` itself — no `singletonKey`, hence `standard` |
@@ -57,6 +57,8 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | `payments.webhook` | short | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
 | `ads.sentinel` | standard | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
 | `invoices.check-overdue` | standard | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
+| `approvals.resume-sweep` | standard | cron every minute | worker | `{}` — per organisation, re-enqueues `agent.resume` for every approval decided more than 30s ago whose run is still `awaiting_approval` with `metadata.pending`. The decision is final; only its *delivery* is repaired here, keyed `resume:<approvalId>` so an already-queued job is deduped |
+| `agent-runs.stuck-sweep` | standard | cron every ten minutes | worker | `{}` — per organisation, fails runs still `running` with no step for 30 minutes (and a `metadata.resume.claimedAt` at least that old), writing `agent.run_stranded` and notifying the owner |
 | `reports.monthly` | standard | cron 07:45 Europe/London on the 1st — deliberately after `ads.ingest` (06:30) so the final day of the month's ad spend is in, and after `invoices.check-overdue` (07:30) | worker | `{}` — drafts last month's report for every active client in every organisation |
 
 Queue names, policies and retry settings are defined once, in `packages/core/src/queue/queues.ts`, and applied by both processes through `ensureQueues` — pg-boss's `create_queue` ignores conflicts, so whichever process booted first would otherwise fix a queue's settings for good. `apps/worker/src/queues.integration.test.ts` asserts that convergence, and the dedupe behaviour below, against a real pg-boss in a throwaway schema.
@@ -89,7 +91,7 @@ The event-name-to-job routing table lives in one place, `apps/worker/src/jobs/di
 | `client.created` | `tasks.generate-onboarding`, plus `ensureEmailIdentity` |
 | `payments.webhook` | `payments.webhook` |
 
-The enablement check happens inside `handleAgentRun`, not in the routing table. `payments.webhook` is kept here for symmetry — in practice the Stripe route enqueues that job directly, as the approvals screen enqueues `agent.resume` directly so it can attach the deciding user's id, which the `approval.decided` event does not carry.
+The enablement check happens inside `handleAgentRun`, not in the routing table. `payments.webhook` is kept here for symmetry — in practice the Stripe route enqueues that job directly, as the approvals screen enqueues `agent.resume` directly: the decision is already committed by then, so that send is a fast path whose failure is logged rather than surfaced, and `approvals.resume-sweep` re-drives anything it missed.
 
 `apps/web/src/lib/queue.ts` implements the web half. It short-circuits the three events whose target queue it already knows — `email.received` → `inbound.message`, `message.queued` → `outbound.message`, `approval.decided` → `agent.resume`, each with the same singleton key the worker uses — and puts everything else onto the generic `domain.event` queue for `dispatchEvent` to route. The duplication is deliberate: nothing may import from `apps/*` into `apps/*`. It also means **the two files have to be kept in step**; a singleton key that differs between them would let the same work be queued twice.
 

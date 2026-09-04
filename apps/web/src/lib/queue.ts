@@ -1,6 +1,7 @@
-import { setEnqueue, type DomainEvent } from "@launchos/core";
+import { notifyOwner, setEnqueue, type DomainEvent } from "@launchos/core";
 import { JOB_RETRY, QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
+import { getDb } from "./db";
 
 /**
  * `next dev` re-evaluates this module whenever something it imports is
@@ -57,11 +58,13 @@ function getBoss(url: string): Promise<PgBoss> {
  * swallowed: it is the difference between "already queued" and "silently lost"
  * and the caller — the Stripe route especially — has no other way to tell.
  *
- * A send that cannot happen at all **throws**. It used to log and return
- * `null`, which is indistinguishable from a dedupe: a caller that had already
- * committed a database change (an approval claimed for a decision, say) would
- * carry on believing the work was queued when nothing was. Callers must be
- * able to undo their own write when the enqueue fails, and that needs an error.
+ * A send that cannot happen at all **throws**, and keeps throwing for direct
+ * callers: it used to log and return `null`, which is indistinguishable from a
+ * dedupe, so a caller had no way to tell "already queued" from "silently lost".
+ * What each caller then does with the throw is its own decision — the Stripe
+ * route lets it become a 500 so Stripe redelivers, the approvals action logs it
+ * and leaves the decision standing for the resume sweep, and the `domain.event`
+ * branch below logs it rather than failing a write that already committed.
  */
 export async function sendJob(name: QueueName, data: object, opts?: PgBoss.SendOptions): Promise<string | null> {
   const url = process.env.DATABASE_URL;
@@ -130,12 +133,45 @@ export function installWebEnqueue(): void {
         return;
       default:
         // No singletonKey: domain.event carries every event kind, and its queue
-        // is deliberately left on the `standard` policy for that reason. Goes
-        // through sendJob so a bus that cannot be reached throws like every
-        // other send here — a dropped client.created would mean a client with
-        // no onboarding tasks and a success toast.
-        await sendJob(QUEUE.domainEvent, event);
+        // is deliberately left on the `standard` policy for that reason.
+        //
+        // A failure here is logged, not thrown. `emit` runs *after* the core
+        // service committed, so throwing would turn a write that succeeded into
+        // "Something went wrong" and invite a retry that hits a unique
+        // violation or creates a second row. The follow-on work is what is
+        // lost, and every consumer on this queue has a manual path back
+        // (onboarding tasks can be regenerated from the client screen), so the
+        // honest outcome is: the write stands, the fan-out is recorded as
+        // missing, and a human can re-run it.
+        await sendJob(QUEUE.domainEvent, event).catch((err: unknown) => reportDroppedEvent(event, err));
         return;
     }
   });
+}
+
+/**
+ * A domain event that could not be queued. Logged, and — best effort — put in
+ * front of the owner, because the only other trace is a server log nobody
+ * reads. Never throws: the caller's write is already committed, and this is a
+ * report about follow-on work, not a failure of the write.
+ */
+async function reportDroppedEvent(event: DomainEvent, err: unknown): Promise<void> {
+  const message = err instanceof Error ? err.message : String(err);
+  console.error("domain event could not be queued; the write stands but its follow-on work did not run", {
+    event: event.name,
+    organisationId: event.organisationId,
+    err: message,
+  });
+  try {
+    await notifyOwner(getDb(), event.organisationId, {
+      kind: "queue.event_dropped",
+      title: `A "${event.name}" follow-up did not start`,
+      body: `The record was saved, but queueing its follow-on work failed: ${message}. Anything that event would have triggered (onboarding tasks, for example) has to be re-run by hand.`,
+    });
+  } catch (notifyErr) {
+    console.error("could not tell the owner about the dropped domain event", {
+      event: event.name,
+      err: notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+    });
+  }
 }
