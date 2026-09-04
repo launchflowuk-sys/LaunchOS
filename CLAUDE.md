@@ -43,7 +43,7 @@ Dependency direction is one way: `apps/*` → `packages/agents` → `packages/co
 
 1. **Tenancy.** Every business table has `organisation_id`. Every service function takes `organisationId` as its first argument and every query filters on it. One organisation runs today; the schema must allow selling this as SaaS without a migration.
 2. **Agents never act outward without approval.** Any tool that sends a client message, changes DNS, edits site content, moves money or publishes anything is `risk: "requires_approval"`. The policy gate queues it in `approvals`; a human decides in the admin portal. Internal and mock tools are `risk: "safe"`.
-3. **Every agent step is recorded.** Tool calls, inputs, outputs, decisions and LLM summaries go to `agent_runs` and `agent_steps`. Every write to a business record by any actor goes to `audit_log`.
+3. **Every agent step is recorded.** Tool calls, inputs, outputs, decisions and LLM summaries go to `agent_runs` and `agent_steps`. Every write to a business record by any actor goes to `audit_log`. Telemetry tables (`uptime_checks`, `monitors.consecutive_failures`) and the dev seed are exempt from `audit_log`; the business actions they lead to (incident open/update, ticket create) are audited.
 4. **Mock-first integrations.** Every integration exposes an interface plus a mock implementation. Real adapters are selected by env vars. Tests use mocks only.
 5. **Local first, then live.** Test locally against docker Postgres. Push to GitHub only when told. Coolify auto-deploys `main`.
 6. **Secrets in env only.** Never in code, seeds, docs or commits. Validate required env at startup with Zod.

@@ -1,0 +1,72 @@
+# Reference compose file for the LaunchOS production topology on Coolify.
+#
+# Coolify itself is set up as three separate resources (one managed Postgres
+# resource plus two Docker-build resources — see docs/DEPLOYMENT.md, "Coolify
+# setup"), not as a single docker-compose deployment. This file documents the
+# same topology in compose form for local smoke-testing of the built images
+# together, or as a reference if a docker-compose-based Coolify resource is
+# used instead.
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: launchos
+      POSTGRES_PASSWORD: launchos
+      POSTGRES_DB: launchos
+    volumes:
+      - launchos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U launchos -d launchos"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
+      APP_URL: ${APP_URL}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_MODEL: ${AGENT_MODEL}
+      LLM: ${LLM}
+      AGENT_POLICY: ${AGENT_POLICY}
+      UPTIME_PROBE: ${UPTIME_PROBE}
+    ports:
+      - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      AGENT_MODEL: ${AGENT_MODEL}
+      LLM: ${LLM}
+      AGENT_POLICY: ${AGENT_POLICY}
+      UPTIME_PROBE: ${UPTIME_PROBE}
+
+volumes:
+  launchos_pgdata:

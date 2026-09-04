@@ -1,0 +1,22 @@
+{
+  "name": "@launchos/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "files": ["tsconfig.node.json", "vitest.shared.ts"],
+  "exports": {
+    "./vitest.shared": "./vitest.shared.ts",
+    "./tsconfig.node.json": "./tsconfig.node.json"
+  },
+  "scripts": {
+    "build": "echo skip",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint vitest.shared.ts",
+    "test": "echo skip"
+  },
+  "devDependencies": {
+    "@types/node": "^24",
+    "dotenv": "^17.4.2",
+    "vitest": "^3"
+  }
+}

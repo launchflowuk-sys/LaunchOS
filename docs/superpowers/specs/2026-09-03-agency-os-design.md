@@ -105,7 +105,7 @@ Later modules from the prototype: leads, onboarding, tasks, website builds, soci
 - Zod at every boundary. Env validated at boot; the process refuses to start without `DATABASE_URL` and `BETTER_AUTH_SECRET`.
 - Every pg-boss job is idempotent by `(job name, natural key)`; retries with backoff, dead-letter after 5.
 - Agent runs fail closed: any thrown error marks the run `failed` with the error recorded; nothing outward-facing is sent.
-- Claude `stop_reason: "refusal"` is recorded as a failed step and the run escalates to a human ticket.
+- Claude `stop_reason: "refusal"` is recorded as a failed run with `error = "refusal"`, visible in Agent Runs for a human to pick up. Automatic escalation to a ticket arrives in Plan 2.
 - Webhooks verify a shared secret or provider signature before enqueueing.
 - Client portal queries always include `client_id` from the session, never from the URL alone.
 
