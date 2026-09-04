@@ -51,6 +51,9 @@ export default function SignInPage() {
               type="email"
               autoComplete="email"
               required
+              // Mobile browsers and password managers add attributes to these fields
+              // before React hydrates; that is expected, not a bug.
+              suppressHydrationWarning
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
@@ -67,6 +70,9 @@ export default function SignInPage() {
               type="password"
               autoComplete="current-password"
               required
+              // Mobile browsers and password managers add attributes to these fields
+              // before React hydrates; that is expected, not a bug.
+              suppressHydrationWarning
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
