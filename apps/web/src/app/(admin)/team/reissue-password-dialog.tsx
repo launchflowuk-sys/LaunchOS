@@ -9,8 +9,9 @@ import { reissuePasswordAction, type ReissuePasswordState } from "./actions";
 const INITIAL: ReissuePasswordState = { status: "idle" };
 
 /**
- * Only rendered for a member who is still on the password they were issued, so
- * there is nothing personal to overwrite. The new password is shown once, in
+ * Only rendered for an *active* member who is still on the password they were
+ * issued, so there is nothing personal to overwrite. A pending invitation is
+ * completed with "Add member", not here. The new password is shown once, in
  * this dialog, exactly like the add-member flow.
  */
 export function ReissuePasswordDialog({ memberId, name }: { memberId: string; name: string }) {
@@ -39,8 +40,8 @@ export function ReissuePasswordDialog({ memberId, name }: { memberId: string; na
           <div className="space-y-4">
             <p className="text-sm text-neutral-600">
               {state.displayName} can now sign in with <span className="font-medium text-neutral-900">{state.email}</span> and
-              this password. Their previous one no longer works. It is shown once and cannot be retrieved again — send it to
-              them now and ask them to change it.
+              this password. Their previous password no longer works and anyone signed in as them has been signed out. It is
+              shown once and cannot be retrieved again — send it to them now and ask them to change it.
             </p>
             <p
               data-testid="one-time-password"
@@ -58,8 +59,8 @@ export function ReissuePasswordDialog({ memberId, name }: { memberId: string; na
           <form action={formAction} className="space-y-3">
             <input type="hidden" name="memberId" value={memberId} />
             <p className="text-sm text-neutral-600">
-              This replaces {name}&apos;s password with a new one-time password and immediately invalidates the old one. Use it
-              when the password they were given never reached them.
+              This replaces {name}&apos;s password with a new one-time password, immediately invalidates the old one and signs
+              out every session it opened. Use it when the password they were given never reached them.
             </p>
 
             {state.status === "error" ? (

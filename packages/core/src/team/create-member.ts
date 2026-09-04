@@ -56,11 +56,15 @@ function credentialFor(userId: string, passwordHash: string) {
  * A credential-less user is not automatically fair game either. Two more rows
  * make the same user someone else's to issue a login for, and both are refused:
  *
- *  - a `status = "invited"` membership in *another* organisation. That org
- *    created the user and is waiting to complete its own invitation; minting a
- *    credential here would hand this organisation a working password for their
- *    person and permanently break their invite (the credential check above
- *    then refuses them forever, with no reset path).
+ *  - a membership of *any* status in *another* organisation. An `invited` row
+ *    means that org created the user and is waiting to complete its own
+ *    invitation; minting a credential here would hand this organisation a
+ *    working password for their person and permanently break their invite (the
+ *    credential check above then refuses them forever, with no reset path). An
+ *    `active` credential-less row — the state `reissueOneTimePassword` exists to
+ *    repair — is worse still: `getSession` accepts active memberships, so the
+ *    password shown here would sign this organisation straight into that one's
+ *    admin shell as that person. Status is deliberately not part of the test.
  *  - a `client_users` row anywhere. `createClientUser` refuses to give portal
  *    access to a staff member for exactly the same reason in reverse; without
  *    the mirror image a credential-less portal user could be handed the admin
@@ -104,17 +108,21 @@ async function planJoin(
     }
     if (credential) throw new Error("email already registered");
 
-    const [pendingElsewhere] = await tx
+    // Any status, not just `invited`: an *active* credential-less membership in
+    // another organisation is the worse case of the two, because minting a
+    // credential here hands this organisation a working password for a person
+    // who can already sign in to that one (`getSession` accepts active
+    // memberships). `reissueOneTimePassword` applies exactly this rule.
+    const [memberElsewhere] = await tx
       .select({ id: schema.organisationMembers.id })
       .from(schema.organisationMembers)
       .where(
         and(
           eq(schema.organisationMembers.userId, existingUser.id),
-          eq(schema.organisationMembers.status, "invited"),
           ne(schema.organisationMembers.organisationId, organisationId),
         ),
       );
-    if (pendingElsewhere) throw new Error("email already registered");
+    if (memberElsewhere) throw new Error("email already registered");
 
     // Deliberately not scoped to this organisation: a portal user in any
     // organisation still shares this one Better Auth credential, so minting one
@@ -243,7 +251,9 @@ export async function createMember(db: Db, organisationId: string, input: Create
   // password lives only in this call frame. Letting a notification insert or a
   // pg-boss enqueue reject here would throw it away and leave an account nobody
   // can sign into: the caller sees an error, the member is listed as active, and
-  // `createMember` refuses to run again for that email. Both are best-effort.
+  // `createMember` refuses to run again for that email. Both are best-effort,
+  // and each has its own catch: sharing one would let a failed notification
+  // insert swallow the event too, losing it for a reason unrelated to the queue.
   try {
     await notifyOwner(db, organisationId, {
       kind: "member.created",
@@ -251,6 +261,10 @@ export async function createMember(db: Db, organisationId: string, input: Create
       body: v.email,
       link: "/team",
     });
+  } catch (error) {
+    console.error("member.created side effects failed", { organisationId, memberId: member.id }, error);
+  }
+  try {
     await emit({ name: "member.created", organisationId, memberId: member.id });
   } catch (error) {
     console.error("member.created side effects failed", { organisationId, memberId: member.id }, error);

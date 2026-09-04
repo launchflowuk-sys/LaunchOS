@@ -54,10 +54,14 @@ export default async function TeamPage() {
                   <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(member.createdAt)}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-3">
-                      {/* `initialPasswordSetAt === null` means the member is still on
+                      {/* `active` only: an `invited` row is a membership nobody has
+                          completed, and it is completed by adding the member again —
+                          never here, which would mint a credential the invite path
+                          then refuses to step over, stranding the account for good.
+                          `initialPasswordSetAt === null` means the member is still on
                           the password an owner issued them, so there is nothing of
                           their own to overwrite. Once they set their own, this goes. */}
-                      {isOwner && member.status !== "suspended" && member.initialPasswordSetAt === null ? (
+                      {isOwner && member.status === "active" && member.initialPasswordSetAt === null ? (
                         <ReissuePasswordDialog memberId={member.id} name={member.displayName ?? member.name} />
                       ) : null}
                       {isOwner && member.status === "active" && member.userId !== session.userId ? (
