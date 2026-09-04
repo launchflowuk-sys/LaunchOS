@@ -221,7 +221,8 @@ test.describe.serial("P4 support intake", () => {
   });
 
   test("a client user sees only their own case and can reply", async ({ page }) => {
-    test.setTimeout(300_000);
+    // Four portal routes, each compiled on its first request.
+    test.setTimeout(600_000);
 
     await signIn(page, CLIENT.email, CLIENT.password);
     await page.waitForURL("/portal", { timeout: COLD_COMPILE });
@@ -229,16 +230,27 @@ test.describe.serial("P4 support intake", () => {
 
     await page.goto("/portal/support");
     await expect(page.getByRole("heading", { level: 1, name: "Support" })).toBeVisible({ timeout: COLD_COMPILE });
-    await page.getByRole("link", { name: subject }).click();
+
+    // The case the email opened belongs to this client, so it is on their list.
+    await expect(page.getByRole("link", { name: subject })).toBeVisible();
+    // Navigated explicitly rather than clicked: the thread route compiles cold
+    // on its first request, which outlasts Playwright's 30s default navigation
+    // timeout on a loaded machine and fails as "navigation never finished".
+    await page.goto(`/portal/support/${ticketId}`, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
     await expect(page.getByRole("heading", { level: 1, name: subject })).toBeVisible({ timeout: COLD_COMPILE });
 
     await page.getByLabel("Add a reply").fill(clientReply);
     await page.getByRole("button", { name: "Send reply" }).click();
     await expect(page.getByText(clientReply)).toBeVisible({ timeout: COLD_COMPILE });
 
-    // The admin surfaces are not reachable from a portal session.
-    await page.goto("/cases");
+    // The admin surfaces are not reachable from a portal session: /cases
+    // bounces back to the portal, and the admin shell is never rendered.
+    // (The portal home does show this case's subject on its "latest
+    // conversation" card — it is their own case — so the proof that this is
+    // the portal and not Open Cases is the URL and the missing admin nav.)
+    await page.goto("/cases", { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
     await page.waitForURL("/portal", { timeout: COLD_COMPILE });
-    await expect(page.getByText(subject)).toHaveCount(0);
+    await expect(page.getByRole("navigation").getByRole("link", { name: "Open Cases" })).toHaveCount(0);
+    await expect(page.getByRole("navigation").getByRole("link", { name: "Approvals" })).toHaveCount(0);
   });
 });
