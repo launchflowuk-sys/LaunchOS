@@ -13,7 +13,10 @@ export const CreateKnowledgeArticleInput = z.object({
 });
 export type CreateKnowledgeArticleInput = z.input<typeof CreateKnowledgeArticleInput>;
 
-export function slugify(value: string): string {
+// Named for the barrel: `clients/slug.js` already exports a `slugify` of its
+// own (different length cap and diacritics handling), so this one needs a
+// distinct name to be re-exported from `index.ts` without a collision.
+export function slugifyArticleTitle(value: string): string {
   return value
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
@@ -36,13 +39,20 @@ async function uniqueSlug(db: Db, organisationId: string, base: string): Promise
 
 export async function createKnowledgeArticle(db: Db, organisationId: string, input: CreateKnowledgeArticleInput) {
   const v = CreateKnowledgeArticleInput.parse(input);
-  const slug = await uniqueSlug(db, organisationId, slugify(v.slug ?? v.title));
-  const [created] = await db
-    .insert(schema.knowledgeArticles)
-    .values({ organisationId, title: v.title, slug, bodyMd: v.bodyMd, tags: v.tags, published: v.published })
-    .returning();
-  await recordAudit(db, organisationId, {
-    actorKind: "user", action: "knowledge_article.created", targetType: "knowledge_article", targetId: created!.id, after: created,
+  // Uniqueness is only checked, not reserved, so this stays outside the
+  // transaction — same shape as `uniqueClientSlug` ahead of `createClient`'s
+  // transaction.
+  const slug = await uniqueSlug(db, organisationId, slugifyArticleTitle(v.slug ?? v.title));
+
+  return db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
+    const [created] = await tx
+      .insert(schema.knowledgeArticles)
+      .values({ organisationId, title: v.title, slug, bodyMd: v.bodyMd, tags: v.tags, published: v.published })
+      .returning();
+    await recordAudit(inner, organisationId, {
+      actorKind: "user", action: "knowledge_article.created", targetType: "knowledge_article", targetId: created!.id, after: created,
+    });
+    return created!;
   });
-  return created!;
 }
