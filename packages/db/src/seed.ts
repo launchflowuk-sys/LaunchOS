@@ -9,10 +9,12 @@
  * calendar month) before inserting, so `pnpm db:seed` can be run repeatedly.
  *
  * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now")
- * and the portal login's from SEED_CLIENT_PASSWORD (default the owner's).
- * Never commit a real password here. Under NODE_ENV=production the seed refuses
- * to run unless SEED_OWNER_PASSWORD is set, so the default can never reach a
- * live database.
+ * and the portal login's from its own SEED_CLIENT_PASSWORD (default
+ * "change-me-client") — never the owner's, because those two accounts are on
+ * opposite sides of a privilege boundary. Never commit a real password here.
+ * Under NODE_ENV=production the seed refuses to run while either password is
+ * still its published default, or while the two are equal, so neither default
+ * can ever reach a live database.
  *
  * This file imports `@launchos/core` and `@launchos/integrations`, which are
  * dev dependencies of `packages/db`. The seed is a dev script, so this does not
@@ -45,11 +47,23 @@ const SENTINEL_AGENT_KEY = "ad-performance-sentinel";
 /** Mail to an address we do not route is filed here, not dropped. */
 const HOLDING_CLIENT = { name: "Unmatched inbound", slug: HOLDING_CLIENT_SLUG } as const;
 
-const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? "change-me-now";
+const DEFAULT_OWNER_PASSWORD = "change-me-now";
+const DEFAULT_CLIENT_PASSWORD = "change-me-client";
+const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
+/**
+ * The portal login gets its **own** password, never the owner's.
+ *
+ * The two accounts sit on opposite sides of a privilege boundary: the owner
+ * sees every client, every invoice and every approval, while this one sees one
+ * client's portal. Deriving the client password from the owner's — as this
+ * previously did — meant handing a client credentials that also opened the
+ * admin shell as the owner. The default address is `.example` so the seed
+ * cannot create a login on a real, deliverable client domain.
+ */
 const CLIENT_USER = {
-  email: process.env.SEED_CLIENT_EMAIL ?? "portal@grayscabline.co.uk",
+  email: process.env.SEED_CLIENT_EMAIL ?? "portal@grayscabline.example",
   name: "Grays CabLine portal",
-  password: process.env.SEED_CLIENT_PASSWORD ?? OWNER_PASSWORD,
+  password: process.env.SEED_CLIENT_PASSWORD ?? DEFAULT_CLIENT_PASSWORD,
 } as const;
 
 const AD_ACCOUNT = { platform: "google" as const, externalId: "123-456-7890", name: "Grays CabLine — Search" };
@@ -236,12 +250,29 @@ function loadRootEnv() {
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required to seed");
-  if (process.env.NODE_ENV === "production" && !process.env.SEED_OWNER_PASSWORD) {
-    throw new Error(
-      "SEED_OWNER_PASSWORD is required when NODE_ENV=production. " +
-        "Refusing to seed the owner account with the default development password. " +
-        "Set SEED_OWNER_PASSWORD in the resource environment, run the seed once, then remove it.",
-    );
+  // No account this seed creates may reach a live database on a password that
+  // is published in this repository — the owner's or the portal user's. The
+  // two are also required to differ: satisfying the guard by setting them to
+  // the same value would put the owner's password into a client's hands.
+  if (process.env.NODE_ENV === "production") {
+    const defaulted = [
+      OWNER_PASSWORD === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
+      CLIENT_USER.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
+    ].filter((name): name is string => name !== null);
+    if (defaulted.length > 0) {
+      throw new Error(
+        `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} required when NODE_ENV=production. ` +
+          "Refusing to seed an account with a default password published in this repository. " +
+          "Set them in the resource environment, run the seed once, then remove them.",
+      );
+    }
+    if (CLIENT_USER.password === OWNER_PASSWORD) {
+      throw new Error(
+        "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
+          "The portal login is a client's credential and the owner's opens the whole admin shell; " +
+          "they must never be the same secret.",
+      );
+    }
   }
   const db = createDb(url);
 
@@ -310,10 +341,14 @@ async function main() {
     console.log("client user   ", clientUser.id, `${CLIENT_USER.email} client_admin`);
 
     const billing = await seedBillingAndAds(db, organisation.id, seededClients);
+    // What this run created, not a constant: a second seed prints zeros, which
+    // is what makes the line evidence of idempotency rather than decoration.
+    // Snapshots are upserted every run, so they are reported as written.
     console.log(
       "billing/ads   ",
-      `${billing.subscriptions} subscriptions, ${billing.invoices} invoices, ` +
-        `${billing.snapshots} ad snapshots, ${billing.reports} published reports`,
+      `created ${billing.subscriptions} subscriptions, ${billing.invoices} invoices, ` +
+        `${billing.reports} published reports; wrote ${billing.snapshots} ad snapshots ` +
+        `(${billing.snapshotsInPeriod} inside the report period)`,
     );
   } finally {
     await db.$client.end();
@@ -404,10 +439,41 @@ async function seedOnboardingTasks(db: Db, organisationId: string, clientId: str
   return created;
 }
 
+/**
+ * Placeholder supplier details, so a seeded invoice is a complete document
+ * rather than one missing the header HMRC requires. Obviously placeholder —
+ * the VAT and company numbers are not real registrations — and editable on
+ * Settings → Organisation, which is where the live values belong.
+ */
+const ORGANISATION_SUPPLIER = {
+  legalName: "LaunchFlow Ltd",
+  addressLine1: "Placeholder — set on Settings → Organisation",
+  addressLine2: null,
+  city: "Grays",
+  postcode: "RM17 0AA",
+  country: "United Kingdom",
+  vatNumber: "GB000000000",
+  companyNumber: "00000000",
+  invoiceFooter: "Placeholder invoice footer — set your bank details on Settings → Organisation.",
+} as const;
+
 async function seedOrganisation(db: Db) {
   const [existing] = await db.select().from(schema.organisations).where(eq(schema.organisations.slug, ORGANISATION.slug));
-  if (existing) return existing;
-  const [created] = await db.insert(schema.organisations).values({ ...ORGANISATION }).returning();
+  if (existing) {
+    // Backfill only, and only when nobody has filled these in: a re-seed must
+    // never overwrite the real registration details an operator has typed.
+    if (existing.legalName !== null) return existing;
+    const [filled] = await db
+      .update(schema.organisations)
+      .set({ ...ORGANISATION_SUPPLIER, updatedAt: new Date() })
+      .where(eq(schema.organisations.id, existing.id))
+      .returning();
+    return filled!;
+  }
+  const [created] = await db
+    .insert(schema.organisations)
+    .values({ ...ORGANISATION, ...ORGANISATION_SUPPLIER })
+    .returning();
   return created!;
 }
 
@@ -667,8 +733,11 @@ async function seedStaffMember(db: Db, organisationId: string) {
 /**
  * A portal login for Grays CabLine. The password is a known env value rather
  * than the one-time password `createClientUser` generates, because a developer
- * has to be able to sign in to the portal after a fresh seed. Under
- * NODE_ENV=production it inherits the SEED_OWNER_PASSWORD guard in `main`.
+ * has to be able to sign in to the portal after a fresh seed. It is its own
+ * secret, `SEED_CLIENT_PASSWORD`, and under NODE_ENV=production `main` refuses
+ * to run while it is the default or equal to the owner's. A production portal
+ * user should come from the admin Portal Users screen and `createClientUser`'s
+ * one-time password instead, which is what that path exists for.
  */
 async function seedClientUser(db: Db, organisationId: string, clientId: string) {
   const [existingUser] = await db.select().from(schema.user).where(eq(schema.user.email, CLIENT_USER.email));
@@ -709,6 +778,9 @@ async function seedClientUser(db: Db, organisationId: string, clientId: string) 
  * month, otherwise raises one. The calendar month is the natural key: the
  * seed raises at most one invoice per subscription per month, so a re-run
  * finds the existing row instead of allocating a second invoice number.
+ *
+ * Returns `created` so the closing log line can count what this run actually
+ * raised rather than printing a constant.
  */
 async function ensureInvoice(db: Db, organisationId: string, subscriptionId: string, issuedAt: Date) {
   const monthStart = new Date(Date.UTC(issuedAt.getUTCFullYear(), issuedAt.getUTCMonth(), 1));
@@ -719,10 +791,11 @@ async function ensureInvoice(db: Db, organisationId: string, subscriptionId: str
     gte(schema.invoices.issuedAt, monthStart),
     lt(schema.invoices.issuedAt, monthEnd),
   ));
-  if (existing) return existing;
-  return createInvoiceFromSubscription(db, organisationId, {
+  if (existing) return { invoice: existing, created: false };
+  const invoice = await createInvoiceFromSubscription(db, organisationId, {
     subscriptionId, issuedAt, vatRatePercent: VAT_RATE_PERCENT, actorKind: "system",
   });
+  return { invoice, created: true };
 }
 
 /**
@@ -761,23 +834,43 @@ async function seedBillingAndAds(
       { clientId: client.id, packageId: pkg.id, periodStart, actorKind: "system" },
       payments,
     )).subscription;
-    subscriptionCount += 1;
+    if (!existing) subscriptionCount += 1;
 
     // Two invoices: last month settled, this month still due.
     const paid = await ensureInvoice(db, organisationId, subscription.id, lastMonth);
-    if (paid.status !== "paid") {
-      if (paid.status === "draft") {
-        await markInvoiceSent(db, organisationId, { invoiceId: paid.id, actorKind: "system" });
+    if (paid.created) invoiceCount += 1;
+    // Only an invoice that is actually awaiting settlement gets a payment. A
+    // `void` invoice was written off deliberately and `reconcileInvoice` leaves
+    // it alone, so paying it would insert a payment row that does nothing —
+    // and `payments_org_provider_ref` is unique, so the *next* run would abort
+    // on a duplicate key and take the ad snapshots and the report down with it.
+    if (paid.invoice.status === "draft" || paid.invoice.status === "sent" || paid.invoice.status === "overdue") {
+      if (paid.invoice.status === "draft") {
+        await markInvoiceSent(db, organisationId, { invoiceId: paid.invoice.id, actorKind: "system" });
       }
-      await recordPayment(db, organisationId, {
-        clientId: client.id, invoiceId: paid.id, amountPence: paid.totalPence,
-        provider: "bank", providerRef: `seed-${paid.number}`, status: "succeeded", actorKind: "system",
-      });
+      // Look the payment up by the reference this seed writes, in the same
+      // look-up-then-insert style as every other step here: a part-settled
+      // invoice must not be paid twice, and `recordPayment` does not dedup on
+      // `providerRef`.
+      const providerRef = `seed-${paid.invoice.number}`;
+      const [existingPayment] = await db.select().from(schema.payments).where(and(
+        eq(schema.payments.organisationId, organisationId),
+        eq(schema.payments.provider, "bank"),
+        eq(schema.payments.providerRef, providerRef),
+      ));
+      if (!existingPayment) {
+        await recordPayment(db, organisationId, {
+          clientId: client.id, invoiceId: paid.invoice.id, amountPence: paid.invoice.totalPence,
+          provider: "bank", providerRef, status: "succeeded", actorKind: "system",
+        });
+      }
     }
 
     const due = await ensureInvoice(db, organisationId, subscription.id, periodStart);
-    if (due.status === "draft") await markInvoiceSent(db, organisationId, { invoiceId: due.id, actorKind: "system" });
-    invoiceCount += 2;
+    if (due.created) invoiceCount += 1;
+    if (due.invoice.status === "draft") {
+      await markInvoiceSent(db, organisationId, { invoiceId: due.invoice.id, actorKind: "system" });
+    }
   }
 
   // One ad account for Grays CabLine with 30 days of deterministic metrics,
@@ -792,24 +885,50 @@ async function seedBillingAndAds(
 
   const dropFrom = isoDay(new Date(now.getTime() - ROAS_DROP_DAYS * 86_400_000));
   const ads = new MockAdsAdapter({ dropFrom });
+
+  // The window is anchored to the *report period*, not only to `now`. Seeded
+  // late in the month, a plain `now - 30 days` window starts after the report
+  // period has ended: `collectAdStats` finds no snapshot inside the period,
+  // `stats.ads` comes back null, and the Advertising section — the whole point
+  // of Plan 5 — silently vanishes from the demo. So it runs from the earlier of
+  // the period start and `now - SNAPSHOT_DAYS` up to yesterday, which keeps the
+  // last ROAS_DROP_DAYS fresh for the Sentinel and always covers the period.
+  const period = monthPeriod(now);
+  const yesterday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  const windowStart = new Date(Math.min(period.start.getTime(), now.getTime() - SNAPSHOT_DAYS * 86_400_000));
+
   let snapshots = 0;
-  for (let offset = SNAPSHOT_DAYS; offset >= 1; offset--) {
-    const date = isoDay(new Date(now.getTime() - offset * 86_400_000));
-    // Upserts on (ad_account_id, date), so a re-run rewrites the same 30 rows.
-    const result = await ingestDailyMetrics(db, organisationId, { date }, ads);
+  let snapshotsInPeriod = 0;
+  for (let day = new Date(windowStart); day <= yesterday; day = new Date(day.getTime() + 86_400_000)) {
+    // Upserts on (ad_account_id, date), so a re-run rewrites the same rows.
+    const result = await ingestDailyMetrics(db, organisationId, { date: isoDay(day) }, ads);
     snapshots += result.snapshots;
+    if (day >= period.start && day < period.end) snapshotsInPeriod += result.snapshots;
+  }
+  if (snapshotsInPeriod === 0) {
+    throw new Error(
+      "seed: no ad snapshots fall inside the report period, so the report would have no Advertising section",
+    );
   }
 
   // One published report for last month so the portal has something to show.
-  const report = await buildClientReport(db, organisationId, grays.id, monthPeriod(now));
+  const report = await buildClientReport(db, organisationId, grays.id, period);
+  let reportsPublished = 0;
   if (report.status === "draft") {
     await publishClientReport(db, organisationId, { reportId: report.id, actorId: "seed" });
+    reportsPublished = 1;
   }
 
   // The Sentinel is enabled so the 07:00 cron has something to dispatch.
   await seedAgentEnablement(db, organisationId, SENTINEL_AGENT_KEY);
 
-  return { subscriptions: subscriptionCount, invoices: invoiceCount, snapshots, reports: 1 };
+  return {
+    subscriptions: subscriptionCount,
+    invoices: invoiceCount,
+    snapshots,
+    snapshotsInPeriod,
+    reports: reportsPublished,
+  };
 }
 
 async function seedMonitor(db: Db, organisationId: string, siteId: string, target: string) {

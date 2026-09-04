@@ -10,6 +10,9 @@ import { periodLabel } from "./period";
 
 export const dynamic = "force-dynamic";
 
+/** Newest first, so what falls off the end is the oldest — say so rather than hide it. */
+const LIST_LIMIT = 200;
+
 export default async function PortalReportsPage() {
   const session = await requireClient();
 
@@ -31,7 +34,7 @@ export default async function PortalReportsPage() {
       ),
     )
     .orderBy(desc(schema.clientReports.periodStart))
-    .limit(200);
+    .limit(LIST_LIMIT);
 
   return (
     <>
@@ -65,6 +68,12 @@ export default async function PortalReportsPage() {
           </Table>
         </div>
       )}
+
+      {reports.length === LIST_LIMIT ? (
+        <p className="mt-3 text-xs text-neutral-500">
+          Showing the {LIST_LIMIT} most recent reports. Ask us if you need an older one.
+        </p>
+      ) : null}
     </>
   );
 }

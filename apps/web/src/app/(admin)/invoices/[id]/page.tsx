@@ -9,6 +9,7 @@ import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -21,10 +22,15 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
   const session = await requireAdmin();
   const db = getDb();
 
+  // A non-uuid reaches Postgres as a cast error rather than a miss, so it is
+  // parsed here: /invoices/foo is a 404, not an unhandled 500.
+  const parsedId = z.string().uuid().safeParse(id);
+  if (!parsedId.success) notFound();
+
   // Scoped by organisation as well as id: an id from another tenant is a 404,
   // not someone else's invoice.
   const [invoice] = await db.select().from(schema.invoices).where(and(
-    eq(schema.invoices.id, id),
+    eq(schema.invoices.id, parsedId.data),
     eq(schema.invoices.organisationId, session.organisationId),
   ));
   if (!invoice) notFound();
@@ -62,6 +68,11 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
         description={client?.name ?? "Unknown client"}
         actions={
           <>
+            {/* The same document the client reads in their portal, so an
+                invoice can be saved as a PDF for a client who never signs in. */}
+            <Button asChild variant="outline">
+              <Link href={`/invoices/${invoice.id}/print`}>Print</Link>
+            </Button>
             {sendable ? (
               <ActionForm action={requestSendInvoice} ariaLabel="Send this invoice" success="Send queued for approval">
                 <input type="hidden" name="invoiceId" value={invoice.id} />

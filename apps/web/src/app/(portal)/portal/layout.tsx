@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SignOutButton } from "@/components/portal/sign-out-button";
 import { requireClient } from "@/lib/portal-session";
 
 const NAV = [
@@ -30,8 +31,14 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
   const session = await requireClient();
 
   return (
-    <div className="flex min-h-screen flex-1 flex-col bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+    // Print rules exist for one screen in particular: `/portal/invoices/[id]`
+    // is a document a client saves as a PDF and forwards to a bookkeeper. The
+    // shell's own chrome — the client name bar, the eight-item nav, the signed
+    // -in email address and the footer — must not travel with it, and the grey
+    // page ground must not print as a grey field in browsers with background
+    // graphics turned on. Every other portal screen prints the better for it.
+    <div className="flex min-h-screen flex-1 flex-col bg-neutral-50 print:bg-white">
+      <header className="border-b border-neutral-200 bg-white print:hidden">
         <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-4 px-6 py-4">
           <div>
             <p className="text-sm font-semibold tracking-tight text-neutral-900">{session.clientName}</p>
@@ -48,13 +55,18 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
               </Link>
             ))}
           </nav>
-          <p className="ml-auto truncate text-xs text-neutral-500">{session.email}</p>
+          <div className="ml-auto flex items-center gap-3">
+            <p className="truncate text-xs text-neutral-500">{session.email}</p>
+            <SignOutButton />
+          </div>
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8 print:max-w-none print:px-0 print:py-0">
+        {children}
+      </main>
 
-      <footer className="border-t border-neutral-200 bg-white px-6 py-4 text-center text-xs text-neutral-500">
+      <footer className="border-t border-neutral-200 bg-white px-6 py-4 text-center text-xs text-neutral-500 print:hidden">
         Powered by LaunchFlow
       </footer>
     </div>

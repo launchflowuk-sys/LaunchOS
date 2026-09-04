@@ -1,27 +1,31 @@
 import { schema } from "@launchos/db";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { InvoiceDocument } from "@/components/invoice-document";
 import { getDb } from "@/lib/db";
-import { requireClient } from "@/lib/portal-session";
+import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 /**
- * The printable invoice. The page renders a plain white document with no
- * navigation chrome inside the print area: a client saves it as a PDF through
- * the browser's own print dialog, because a sandboxed page cannot start a
- * download itself. The portal shell around it is `print:hidden`, so the saved
- * PDF carries no menu bar and no portal user's email address.
+ * The same printable invoice the client sees in their portal, for staff.
+ *
+ * It exists because most clients never sign in: an invoice still has to be
+ * saved as a PDF and emailed, and it must be the identical document — same
+ * supplier block, same VAT rate label, same footer — rather than a second
+ * rendering that can drift from the one the client reads. The admin shell's
+ * sidebar, search bar and footer are `print:hidden`, so what prints is the
+ * document alone. Drafts are included here (unlike the portal): raising an
+ * invoice and reading it back before it is sent is the point of the screen.
  */
-export default async function PortalInvoicePage({ params }: PageProps<"/portal/invoices/[id]">) {
-  const session = await requireClient();
+export default async function AdminInvoicePrintPage({ params }: PageProps<"/invoices/[id]/print">) {
+  const session = await requireAdmin();
   const { id } = await params;
 
-  // A non-uuid would reach Postgres as a cast error rather than a miss, so it
-  // becomes the same 404 as any id that is not this client's.
+  // A non-uuid reaches Postgres as a cast error rather than a miss, so it is
+  // parsed here and becomes an ordinary 404.
   const parsedId = z.string().uuid().safeParse(id);
   if (!parsedId.success) notFound();
 
@@ -33,11 +37,6 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
       and(
         eq(schema.invoices.id, parsedId.data),
         eq(schema.invoices.organisationId, session.organisationId),
-        // The scope that matters: another client's invoice id is a 404 here,
-        // never a document the wrong person gets to read. Drafts are invisible
-        // for the same reason they are absent from the list.
-        eq(schema.invoices.clientId, session.clientId),
-        ne(schema.invoices.status, "draft"),
       ),
     );
   if (!invoice) notFound();
@@ -49,9 +48,6 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
       .where(
         and(
           eq(schema.clients.id, invoice.clientId),
-          // Redundant given the invoice was already matched on both scopes,
-          // but this query must not be the one that still returns a row if
-          // the scoping above it is ever loosened.
           eq(schema.clients.organisationId, session.organisationId),
         ),
       ),
@@ -69,7 +65,7 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
   if (!organisation) notFound();
 
   const billedTo = [
-    profile?.billingName ?? client?.name ?? session.clientName,
+    profile?.billingName ?? client?.name ?? "Unknown client",
     profile?.addressLine1,
     profile?.addressLine2,
     profile?.city,
@@ -81,11 +77,15 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
   return (
     <>
       <div className="mb-6 print:hidden">
-        <Link href="/portal/invoices" className="text-sm text-neutral-600 hover:underline">
-          Back to invoices
+        <Link href={`/invoices/${invoice.id}`} className="text-sm text-neutral-600 hover:underline">
+          Back to {invoice.number}
         </Link>
         <p className="mt-2 text-xs text-neutral-500">
-          Use your browser&rsquo;s print dialog to save this invoice as a PDF.
+          Use your browser&rsquo;s print dialog to save this invoice as a PDF. Supplier details come from{" "}
+          <Link href="/settings/organisation" className="underline">
+            Settings &rarr; Organisation
+          </Link>
+          .
         </p>
       </div>
 

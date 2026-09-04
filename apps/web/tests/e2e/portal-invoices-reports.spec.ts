@@ -27,16 +27,29 @@ const PORTAL_EMAIL = `portal.billing.${STAMP}@grayscabline.example`;
 const DRAFT_NUMBER = `E2E-DRAFT-${STAMP}`;
 
 let organisationId: string;
+let supplier: typeof schema.organisations.$inferSelect;
 let clientId: string;
 let otherClientId: string;
 let portalUserId: string;
 let portalPassword: string;
 
 let visibleInvoiceNumber: string;
+let otherInvoiceNumber: string;
 let draftInvoiceId: string;
 let otherInvoiceId: string;
 let ownReportId: string;
 let otherReportId: string;
+let ownDraftReportId: string;
+
+// The foreign report is seeded in 2019 so it sorts last under `periodStart
+// desc` — which is exactly why "the first row is not it" proves nothing, and
+// the absence assertion has to name its period.
+const OTHER_REPORT_PERIOD = { start: "2019-01-01", end: "2019-01-31" } as const;
+const OTHER_REPORT_LABEL = /Jan 2019/;
+// The own-client draft sits in the future so it would sort *first* if drafts
+// ever leaked into the list.
+const OWN_DRAFT_REPORT_PERIOD = { start: "2099-01-01", end: "2099-01-31" } as const;
+const OWN_DRAFT_REPORT_LABEL = /Jan 2099/;
 
 async function clientByName(name: string) {
   const [row] = await db
@@ -62,6 +75,10 @@ test.beforeAll(async () => {
     .where(eq(schema.organisations.slug, "launchflow"));
   if (!organisation) throw new Error("seed organisation not found — run `pnpm db:seed` first");
   organisationId = organisation.id;
+  supplier = organisation;
+  if (!supplier.legalName || !supplier.vatNumber) {
+    throw new Error("seed organisation has no supplier details — run `pnpm db:seed` first");
+  }
 
   clientId = (await clientByName("Grays CabLine")).id;
   otherClientId = (await clientByName("Mobile PC Doctor")).id;
@@ -90,6 +107,7 @@ test.beforeAll(async () => {
     .limit(1);
   if (!other) throw new Error("no seeded invoice for Mobile PC Doctor — run `pnpm db:seed` first");
   otherInvoiceId = other.id;
+  otherInvoiceNumber = other.number;
 
   const [report] = await db
     .select()
@@ -122,19 +140,36 @@ test.beforeAll(async () => {
     .values({
       organisationId,
       clientId: otherClientId,
-      periodStart: "2019-01-01",
-      periodEnd: "2019-01-31",
+      periodStart: OTHER_REPORT_PERIOD.start,
+      periodEnd: OTHER_REPORT_PERIOD.end,
       summaryMd: `# Not yours ${STAMP}`,
       status: "published",
       publishedAt: new Date(),
     })
     .returning();
   otherReportId = foreign!.id;
+
+  // A draft report for *this* client. The invoice list is tested against a
+  // draft; the report list was not, and "published only" is the rule that says
+  // staff work in progress is not a statement the client gets to read.
+  const [ownDraft] = await db
+    .insert(schema.clientReports)
+    .values({
+      organisationId,
+      clientId,
+      periodStart: OWN_DRAFT_REPORT_PERIOD.start,
+      periodEnd: OWN_DRAFT_REPORT_PERIOD.end,
+      summaryMd: `# Draft not for you ${STAMP}`,
+      status: "draft",
+    })
+    .returning();
+  ownDraftReportId = ownDraft!.id;
 });
 
 test.afterAll(async () => {
   if (draftInvoiceId) await db.delete(schema.invoices).where(eq(schema.invoices.id, draftInvoiceId));
   if (otherReportId) await db.delete(schema.clientReports).where(eq(schema.clientReports.id, otherReportId));
+  if (ownDraftReportId) await db.delete(schema.clientReports).where(eq(schema.clientReports.id, ownDraftReportId));
   // client_users and account cascade from user.
   if (portalUserId) await db.delete(schema.user).where(eq(schema.user.id, portalUserId));
 });
@@ -150,10 +185,19 @@ test.describe("portal invoices and reports", () => {
     await expect(page.getByRole("link", { name: visibleInvoiceNumber })).toBeVisible();
     // Drafts have not been agreed with the client and must never leak here.
     await expect(page.getByText(DRAFT_NUMBER)).toHaveCount(0);
+    // The rule most likely to regress: drop the clientId filter and this list
+    // still passes every other assertion while showing another client's
+    // invoices. Nothing but an absence assertion catches that.
+    await expect(page.getByText(otherInvoiceNumber)).toHaveCount(0);
 
     await page.getByRole("link", { name: visibleInvoiceNumber }).click();
     await expect(page.getByText(`Invoice ${visibleInvoiceNumber}`)).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByText("Billed to")).toBeVisible();
+    // Without these the document is not a valid UK VAT invoice: HMRC requires
+    // the supplier's name, address and registration number, plus the rate.
+    await expect(page.getByText(supplier.legalName!)).toBeVisible();
+    await expect(page.getByText(`VAT no. ${supplier.vatNumber}`)).toBeVisible();
+    await expect(page.getByText("VAT @ 20%")).toBeVisible();
     await expect(page.getByText("Grays CabLine")).toHaveCount(2); // portal header + bill-to block
     await expect(page.getByText("Subtotal")).toBeVisible();
     await expect(page.getByText("Total", { exact: true })).toBeVisible();
@@ -167,6 +211,14 @@ test.describe("portal invoices and reports", () => {
     await signInAsPortalUser(page);
     await page.getByRole("navigation").getByRole("link", { name: "Reports" }).click();
     await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible({ timeout: COLD_COMPILE });
+
+    // Same absence check as the invoice list, and for the same reason: the
+    // foreign report sorts last, so clicking the first row proves nothing
+    // about whether it is on the page.
+    await expect(page.getByText(OTHER_REPORT_LABEL)).toHaveCount(0);
+    // A draft belonging to this very client is staff work in progress. It is
+    // dated 2099 so it would sort first if the status filter were dropped.
+    await expect(page.getByText(OWN_DRAFT_REPORT_LABEL)).toHaveCount(0);
 
     await page.getByRole("cell").first().getByRole("link").click();
     // The stat cards sit above the Markdown summary, whose own H1 names the client.
@@ -185,6 +237,7 @@ test.describe("portal invoices and reports", () => {
       `/portal/invoices/${otherInvoiceId}`,
       `/portal/invoices/${draftInvoiceId}`,
       `/portal/reports/${otherReportId}`,
+      `/portal/reports/${ownDraftReportId}`,
     ]) {
       const response = await page.goto(path);
       expect(response?.status(), `${path} must 404`).toBe(404);

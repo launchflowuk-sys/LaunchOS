@@ -10,6 +10,13 @@ import { requireClient } from "@/lib/portal-session";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * Newest first, so what falls off the end is the oldest. At one retainer
+ * invoice a month that is sixteen years of history, but a client who cannot
+ * find an old invoice is told why rather than left to guess.
+ */
+const LIST_LIMIT = 200;
+
 export default async function PortalInvoicesPage() {
   const session = await requireClient();
 
@@ -35,7 +42,7 @@ export default async function PortalInvoicesPage() {
       ),
     )
     .orderBy(desc(schema.invoices.issuedAt))
-    .limit(200);
+    .limit(LIST_LIMIT);
 
   return (
     <>
@@ -77,6 +84,12 @@ export default async function PortalInvoicesPage() {
           </Table>
         </div>
       )}
+
+      {invoices.length === LIST_LIMIT ? (
+        <p className="mt-3 text-xs text-neutral-500">
+          Showing the {LIST_LIMIT} most recent invoices. Ask us if you need an older one.
+        </p>
+      ) : null}
     </>
   );
 }

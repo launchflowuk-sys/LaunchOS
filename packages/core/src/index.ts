@@ -1,5 +1,6 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
 export { supportEmailDomain, supportEmailFor, DEFAULT_SUPPORT_EMAIL_DOMAIN } from "./config.js";
+export { updateOrganisation, UpdateOrganisationInput } from "./organisations/update-organisation.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";
 export { updateClient, archiveClient, UpdateClientInput, ArchiveClientInput } from "./clients/update-client.js";
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
