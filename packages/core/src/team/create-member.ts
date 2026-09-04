@@ -23,6 +23,98 @@ export const CreateMemberInput = z.object({
   invitedBy: z.string().optional(),
 });
 export type CreateMemberInput = z.input<typeof CreateMemberInput>;
+type ParsedCreateMemberInput = z.infer<typeof CreateMemberInput>;
+
+/**
+ * Resolves the Better Auth user for this email, or creates one.
+ *
+ * An existing user who already has a credential account is never touched:
+ * reusing their id and resetting `account.password` would let anyone who
+ * knows a person's email add them as "staff" in an unrelated organisation and
+ * take over their existing login — a cross-tenant account-takeover path, not
+ * a legitimate re-invite. So that case throws instead. A user who exists but
+ * has no credential yet (e.g. a client-portal account, or any future
+ * passwordless user) gets one created; a brand-new email gets both a user and
+ * a credential.
+ */
+async function resolveOrCreateUserWithCredential(
+  tx: Db,
+  organisationId: string,
+  v: Pick<ParsedCreateMemberInput, "email" | "displayName">,
+  passwordHash: string,
+): Promise<string> {
+  const [existingUser] = await tx.select().from(schema.user).where(eq(schema.user.email, v.email));
+
+  if (existingUser) {
+    const [existingMember] = await tx
+      .select({ id: schema.organisationMembers.id })
+      .from(schema.organisationMembers)
+      .where(
+        and(
+          eq(schema.organisationMembers.organisationId, organisationId),
+          eq(schema.organisationMembers.userId, existingUser.id),
+        ),
+      );
+    if (existingMember) throw new Error(`${v.email} is already a member of this organisation`);
+
+    const [credential] = await tx
+      .select({ id: schema.account.id })
+      .from(schema.account)
+      .where(and(eq(schema.account.userId, existingUser.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
+    if (credential) throw new Error("email already registered");
+
+    await tx.insert(schema.account).values({
+      id: randomUUID(),
+      accountId: existingUser.id,
+      providerId: CREDENTIAL_PROVIDER,
+      issuer: CREDENTIAL_ISSUER,
+      userId: existingUser.id,
+      password: passwordHash,
+    });
+    return existingUser.id;
+  }
+
+  const userId = randomUUID();
+  await tx.insert(schema.user).values({ id: userId, name: v.displayName, email: v.email, emailVerified: true });
+  await tx.insert(schema.account).values({
+    id: randomUUID(),
+    accountId: userId,
+    providerId: CREDENTIAL_PROVIDER,
+    issuer: CREDENTIAL_ISSUER,
+    userId,
+    password: passwordHash,
+  });
+  return userId;
+}
+
+/** Inserts the membership row and its creation audit entry. */
+async function insertMembershipAndAudit(tx: Db, organisationId: string, userId: string, v: ParsedCreateMemberInput) {
+  const [row] = await tx
+    .insert(schema.organisationMembers)
+    .values({
+      organisationId,
+      userId,
+      displayName: v.displayName,
+      title: v.title ?? null,
+      phone: v.phone ?? null,
+      invitedBy: v.invitedBy ?? null,
+      initialPasswordSetAt: new Date(),
+      role: v.role,
+      status: "active",
+    })
+    .returning();
+
+  await recordAudit(tx, organisationId, {
+    actorKind: "user",
+    actorId: v.invitedBy,
+    action: "member.created",
+    targetType: "organisation_member",
+    targetId: row!.id,
+    // The password hash is never audited, and the plain password never leaves this call.
+    after: { id: row!.id, userId, email: v.email, role: row!.role, displayName: row!.displayName },
+  });
+  return row!;
+}
 
 /**
  * Sign-up is disabled, so an account is only ever created here: the admin adds
@@ -37,68 +129,8 @@ export async function createMember(db: Db, organisationId: string, input: Create
 
   const member = await db.transaction(async (tx) => {
     const inner = tx as unknown as Db;
-    const [existingUser] = await tx.select().from(schema.user).where(eq(schema.user.email, v.email));
-
-    if (existingUser) {
-      const [existingMember] = await tx
-        .select({ id: schema.organisationMembers.id })
-        .from(schema.organisationMembers)
-        .where(
-          and(
-            eq(schema.organisationMembers.organisationId, organisationId),
-            eq(schema.organisationMembers.userId, existingUser.id),
-          ),
-        );
-      if (existingMember) throw new Error(`${v.email} is already a member of this organisation`);
-    }
-
-    const userId = existingUser?.id ?? randomUUID();
-    if (!existingUser) {
-      await tx.insert(schema.user).values({ id: userId, name: v.displayName, email: v.email, emailVerified: true });
-    }
-
-    const [credential] = await tx
-      .select({ id: schema.account.id })
-      .from(schema.account)
-      .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
-    if (credential) {
-      await tx.update(schema.account).set({ password: passwordHash, updatedAt: new Date() }).where(eq(schema.account.id, credential.id));
-    } else {
-      await tx.insert(schema.account).values({
-        id: randomUUID(),
-        accountId: userId,
-        providerId: CREDENTIAL_PROVIDER,
-        issuer: CREDENTIAL_ISSUER,
-        userId,
-        password: passwordHash,
-      });
-    }
-
-    const [row] = await tx
-      .insert(schema.organisationMembers)
-      .values({
-        organisationId,
-        userId,
-        displayName: v.displayName,
-        title: v.title ?? null,
-        phone: v.phone ?? null,
-        invitedBy: v.invitedBy ?? null,
-        initialPasswordSetAt: new Date(),
-        role: v.role,
-        status: "active",
-      })
-      .returning();
-
-    await recordAudit(inner, organisationId, {
-      actorKind: "user",
-      actorId: v.invitedBy,
-      action: "member.created",
-      targetType: "organisation_member",
-      targetId: row!.id,
-      // The password hash is never audited, and the plain password never leaves this call.
-      after: { id: row!.id, userId, email: v.email, role: row!.role, displayName: row!.displayName },
-    });
-    return row!;
+    const userId = await resolveOrCreateUserWithCredential(inner, organisationId, v, passwordHash);
+    return insertMembershipAndAudit(inner, organisationId, userId, v);
   });
 
   await notifyOwner(db, organisationId, {

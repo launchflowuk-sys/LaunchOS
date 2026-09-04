@@ -65,4 +65,52 @@ describe("createMember", () => {
       );
     });
   });
+
+  it("refuses to touch an existing credential across organisations instead of resetting it", async () => {
+    await withTestDb(async (db) => {
+      const { org: orgA } = await makeOrgWithOwner(db);
+      const { org: orgB } = await makeOrgWithOwner(db);
+      const email = `staff-${crypto.randomUUID()}@example.test`;
+
+      const { member } = await createMember(db, orgA.id, { email, displayName: "Sam", role: "staff" });
+      const [before] = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, member.userId), eq(schema.account.providerId, "credential")));
+
+      await expect(
+        createMember(db, orgB.id, { email, displayName: "Sam from B", role: "staff" }),
+      ).rejects.toThrow("email already registered");
+
+      const [after] = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, member.userId), eq(schema.account.providerId, "credential")));
+      expect(after!.password).toBe(before!.password);
+
+      const rowsInB = await listMembers(db, orgB.id);
+      expect(rowsInB.map((r) => r.email)).not.toContain(email);
+    });
+  });
+
+  it("creates a credential for an existing user who doesn't have one yet", async () => {
+    await withTestDb(async (db) => {
+      const { org } = await makeOrgWithOwner(db);
+      const email = `portal-${crypto.randomUUID()}@example.test`;
+      const userId = crypto.randomUUID();
+      // Simulates a Better Auth user with no credential account yet, e.g. a
+      // future passwordless client-portal user.
+      await db.insert(schema.user).values({ id: userId, name: "Portal User", email, emailVerified: true });
+
+      const { member, oneTimePassword } = await createMember(db, org.id, { email, displayName: "Portal User", role: "staff" });
+      expect(member.userId).toBe(userId);
+
+      const [credential] = await db
+        .select()
+        .from(schema.account)
+        .where(and(eq(schema.account.userId, userId), eq(schema.account.providerId, "credential")));
+      expect(credential).toBeDefined();
+      expect(await verifyPassword({ password: oneTimePassword, hash: credential!.password! })).toBe(true);
+    });
+  });
 });
