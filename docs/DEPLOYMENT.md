@@ -3,15 +3,20 @@
 ## Local
 
 ```bash
-cp .env.example .env      # then fill BETTER_AUTH_SECRET (it ships blank) and ANTHROPIC_API_KEY
-openssl rand -base64 48   # the value for BETTER_AUTH_SECRET; the web app refuses to start without one
+cp .env.example .env
+openssl rand -base64 48   # paste into BETTER_AUTH_SECRET in .env — it ships blank (minimum 32 characters)
+openssl rand -base64 48   # and again, into INBOUND_EMAIL_SECRET — it ships blank too (minimum 24)
 pnpm install
 pnpm db:up                # postgres:17 on localhost:5432
 pnpm db:migrate
 pnpm db:seed              # demo fixtures; runs only on SEED_DEMO=1, which .env.example ships set
 pnpm dev                  # web
-pnpm dev:worker           # worker
+pnpm dev:worker           # worker; `.env.example` ships LLM=fake, so this needs no ANTHROPIC_API_KEY
 ```
+
+`BETTER_AUTH_SECRET` and `INBOUND_EMAIL_SECRET` are the two variables `.env.example` cannot supply, because a value published in this repository is not a secret. `apps/web/src/lib/env.ts` refuses a blank one, one under 32 (auth) or 24 (inbound) characters, and any placeholder shipped here — **in every environment, not only production**. Generate both before `pnpm dev`, or the web app refuses to start and `pnpm test` fails at import (vitest dotenv-loads the repo-root `.env` for every package). On Windows, `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"` does the same job as `openssl rand -base64 48`.
+
+The worker runs on the fake LLM out of the box: `.env.example` ships `LLM=fake`, which needs no `ANTHROPIC_API_KEY` and answers every agent run from a scripted stub (`apps/worker/src/llm/fake.ts`). For real agent runs set `ANTHROPIC_API_KEY` and `LLM=anthropic`. Production must carry `LLM=anthropic` — the worker refuses `LLM=fake` under `NODE_ENV=production` unless `ALLOW_FAKE_LLM=1` says it was meant.
 
 Tests: `pnpm test` needs the docker Postgres running. Integration tests run against `DATABASE_URL_TEST` if set, otherwise `DATABASE_URL` — no separate test database is created. Each test runs inside a transaction that is always rolled back, and test data uses unique slugs (for example `test-${crypto.randomUUID()}` for `organisations.slug`), so it never collides with the seeded data.
 
@@ -83,11 +88,17 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
 
    | Variable | Value | Read by |
    |---|---|---|
-   | `NODE_ENV` | `production` | every production guard is keyed on it (mock adapters, `LLM=fake`). `infra/Dockerfile.web` sets it on the image too, so a variable lost in a redeploy does not silently disarm them |
    | `DATABASE_URL` | internal Postgres string from step 2 (`postgres://<user>:<pass>@<internal-host>:5432/<db>`) | `lib/db.ts`, `lib/queue.ts`, Better Auth. Validated at boot — a missing or non-URL value is a container that does not come up |
    | `BETTER_AUTH_SECRET` | **generate with `openssl rand -base64 48`** | `lib/auth.ts`. Validated at boot: blank, under 32 characters, or any placeholder published in this repository (`change-me`, `change-me-now`, …) is a refusal. It signs every session cookie, so a published value is session forgery for any account, `owner` included |
    | `APP_URL` | `https://os.launchflow.co.uk` (match the domain above) | portal links in client emails, the Stripe webhook endpoint shown on Settings → Billing. Defaults to `http://localhost:3000`, which in production is a link clients cannot follow |
-   | `BETTER_AUTH_URL` | same as `APP_URL` | Better Auth's own base URL; falls back to `APP_URL` when unset |
+   | `INBOUND_EMAIL_SECRET` | **generate with `openssl rand -base64 48`** | the only credential on `POST /api/webhooks/email/inbound`. Validated at boot in **every** environment: blank, under 24 characters, or any placeholder published in this repository is a refusal, so a resource that has it unset is a container that never becomes healthy. It is required **before** an inbound provider exists — an unset secret is not "inbound is off", it is an unauthenticated route that raises tickets and conversations against any client |
+
+   **Web — set these too, but nothing validates them: a wrong value fails silently**
+
+   | Variable | Value | Read by |
+   |---|---|---|
+   | `NODE_ENV` | `production` | every production guard is keyed on it (mock adapters, `LLM=fake`). Not on the `Env` schema and not checked anywhere — a resource that loses it passes every guard by not being production. `infra/Dockerfile.web` sets it on the image too, which is what stops a variable lost in a redeploy from silently disarming them |
+   | `BETTER_AUTH_URL` | same as `APP_URL` | Better Auth's own base URL; falls back to `APP_URL` when unset. Unvalidated — a value that disagrees with `APP_URL` breaks sign-in callbacks with no startup complaint, so set it from `APP_URL` or leave it off entirely |
 
    **Web — adapters (a mock here is refused in production; see *Production refuses mock adapters* below)**
 
@@ -107,7 +118,6 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    |---|---|---|
    | `SUPPORT_EMAIL_DOMAIN` | e.g. `support.launchflow.co.uk` | `packages/core/src/config.ts`, Settings → Email. See the note under this table |
    | `INBOUND_EMAIL_PROVIDER` | `postmark`, `cloudflare` or `generic` | the payload shape `POST /api/webhooks/email/inbound` expects when the URL carries no `?provider=` |
-   | `INBOUND_EMAIL_SECRET` | the shared secret the provider sends back in `x-launchos-inbound-secret` | without a match every delivery is a 401. **Do not leave it on `.env.example`'s `change-me`** — the value is compared, not validated, and a placeholder lets anyone POST the webhook and manufacture conversations and tickets against any client. Settings → Email reports only "Set" / "Not set", so a placeholder reads as configured |
    | `STORAGE_DIR` | e.g. `/data/attachments` | where inbound attachments are written; **must be a persistent volume**, mounted at the same path on the worker (see **Storage**) |
    | `OWNER_NOTIFY_EMAIL` | optional | in-app notifications always reach the owner's bell; set this to also email them |
    | `VAT_RATE` | `20` | whole-number percentage. Unset falls back to 20; **set-but-empty is a refusal**, and a Coolify variable created and left blank is exactly how that happens — the alternative was every invoice going out at 0% with nothing to show for it |
@@ -139,7 +149,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    |---|---|---|
    | `NODE_ENV` | `production` | **load-bearing, not decoration** — see the note below |
    | `DATABASE_URL` | same as web | required; pg-boss and every service read it |
-   | `APP_URL` | same as web | the portal link the Ad Sentinel puts in client emails |
+   | `APP_URL` | same as web | the portal link the Ad Sentinel puts in client emails. **A boot refusal under `NODE_ENV=production`** when unset or left on `http://localhost:3000` — the same rule as web, by value, so a live resource carrying the loopback default does not start |
    | `ANTHROPIC_API_KEY` | from Anthropic | required whenever `LLM=anthropic`; without it every agent run fails one at a time after its run row is already open |
    | `AGENT_MODEL` | `claude-opus-5` | |
    | `LLM` | `anthropic` | `fake` is a scripted stub; it is refused under `NODE_ENV=production` unless `ALLOW_FAKE_LLM=1` |
@@ -199,9 +209,11 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
 
    **Do not run `pnpm db:seed` here, and never set `SEED_DEMO` on a production resource.** The seed is the development fixture: two demo clients with contacts, sites, domains and monitors, five knowledge articles the Support Triage agent will quote to real clients, a fabricated support case, a portal login, and subscriptions, **invoices with numbers allocated from a live sequence**, payments, ad accounts, thirty days of mock ad snapshots and published reports. Invoice numbers in particular are not cleanly reversible, and the owner credential it writes is the same one the bootstrap writes.
 
-   **`pnpm db:seed` refuses to run at all unless `SEED_DEMO=1`** — guard `demo-opt-in`, in every environment, against every host, before a connection is opened. That flag is the whole of the protection, and that is deliberate. It replaces three guards (`demo-fixtures-in-production`, and the seed's own copies of `published-default` and `shared-password`) that were keyed on the host-derived "production target" predicate, and were therefore skipped by exactly the runs that needed them: a tunnelled database (`localhost:5433`), a private-network address (`10.x`), and this repository's own production compose hostname (`postgres`) all read as local. `.env.example` ships `SEED_DEMO=1`, so local development is unaffected — `cp .env.example .env` supplies it. The production environment must simply not carry the variable, and the production path is `pnpm db:bootstrap` above.
+   **`pnpm db:seed` refuses to run at all unless `SEED_DEMO=1`** — guard `demo-opt-in`, in every environment, against every host, before a connection is opened. That flag is the *gate*, and it is the only guard that can be trusted on its own, because **no host string can tell a local database from a live one**: a tunnelled database (`localhost:5433`), a private-network address (`10.x`), and this repository's own production compose hostname (`postgres`) all read as local. It replaces the old `demo-fixtures-in-production` gate, which was keyed on that host guess and was therefore skipped by exactly the runs that needed it. `.env.example` ships `SEED_DEMO=1`, so local development is unaffected — `cp .env.example .env` supplies it. The production environment must simply not carry the variable, and the production path is `pnpm db:bootstrap` above.
 
-   **"Production target" survives in the seed for two things only, neither of which writes anything:** the `(local)` / `(production target)` note on its printed database line, and the rule that `SEED_OWNER_EMAIL` must be *set* rather than defaulted when the target is not demonstrably local. The predicate is `NODE_ENV=production`, **or** a `DATABASE_URL` whose host is not local — local meaning `localhost`, a `127.x` loopback, IPv6 loopback in any spelling (`::1`, `0:0:0:0:0:0:0:1`, `::ffff:127.0.0.1`), the compose service names `postgres` / `db`, a private `10.` / `172.16–31.` / `192.168.` address, or an IPv6 unique-local `fc00::/7` address. Everything else counts as production, including a missing or unparseable `DATABASE_URL`, a **hostless** one (the unix-socket form `postgres:///launchos`) and a comma-separated **multi-host** one — postgres.js accepts both and neither resolves to a single host that can be judged. Being wrong there costs one environment variable, which is the only kind of decision a hostname is good enough to make.
+   **Two credential refusals run beside the flag, not instead of it** — `assertSeedPasswords` in `packages/db/src/seed.ts`. `published-default` refuses either account whose password is still one printed in this repository (`change-me-now`, `change-me-client`), checked **by value** rather than by variable, so swapping the two around is caught as well; `shared-password` refuses two equal passwords, because satisfying the first by setting both to the same real value hands a client the owner's sign-in. Both fire when `NODE_ENV=production` **or** the database is not demonstrably local — the production shapes a host string *can* recognise. They are belt and braces for the one case that matters: a `SEED_DEMO=1` carried across from `.env.example` onto a live resource. Being wrong the local way is free, so `cp .env.example .env && pnpm db:seed` still runs on the shipped defaults.
+
+   **"Production target" survives in the seed for three things, and guards nothing else:** the `(local)` / `(production target)` note on its printed database line, the rule that `SEED_OWNER_EMAIL` must be *set* rather than defaulted when the target is not demonstrably local, and the two credential refusals above. The predicate is `NODE_ENV=production`, **or** a `DATABASE_URL` whose host is not local — local meaning `localhost`, a `127.x` loopback, IPv6 loopback in any spelling (`::1`, `0:0:0:0:0:0:0:1`, `::ffff:127.0.0.1`), the compose service names `postgres` / `db`, a private `10.` / `172.16–31.` / `192.168.` address, or an IPv6 unique-local `fc00::/7` address. Everything else counts as production, including a missing or unparseable `DATABASE_URL`, a **hostless** one (the unix-socket form `postgres:///launchos`) and a comma-separated **multi-host** one — postgres.js accepts both and neither resolves to a single host that can be judged. Being wrong there costs one environment variable or a password you were going to change anyway, which is the only kind of decision a hostname is good enough to make.
 
 6. **Client support addresses** — run this once after the first deploy, and again any time `SUPPORT_EMAIL_DOMAIN` changes or a database carrying more than one organisation is restored or merged:
 

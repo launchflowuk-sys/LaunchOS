@@ -41,8 +41,30 @@ describe("GET /api/attachments/[org]/[file]", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
-    expect(res.headers.get("content-disposition")).toContain('filename="report.pdf"');
+    expect(res.headers.get("content-disposition"))
+      .toBe(`attachment; filename="report.pdf"; filename*=UTF-8''report.pdf`);
     expect(await res.text()).toBe("pdf-bytes");
+  });
+
+  it("encodes the name into content-disposition rather than interpolating it", async () => {
+    // The stored name descends from an attacker-supplied attachment name, so a
+    // character that ends the quoted string would otherwise forge a second
+    // `filename*` — which RFC 6266 prefers over the real one, letting the sender
+    // choose the name the browser saves under. `"` and `*` are not legal in a
+    // Windows filename, so the hostile shape itself is asserted against
+    // `attachmentContentDisposition` in packages/channels; this is the route
+    // wiring, on a name a filesystem will accept.
+    const dir = join(storageDir, "attachments", orgId);
+    await mkdir(dir, { recursive: true });
+    const odd = "re;port é.pdf";
+    await writeFile(join(dir, odd), "pdf-bytes");
+
+    const res = await GET(new Request("http://localhost/api/attachments/x/x"), ctx(orgId, odd));
+
+    expect(res.status).toBe(200);
+    const disposition = res.headers.get("content-disposition")!;
+    expect(disposition).toBe(`attachment; filename="re_port__.pdf"; filename*=UTF-8''re%3Bport%20%C3%A9.pdf`);
+    expect(disposition.match(/filename\*/g)).toHaveLength(1);
   });
 
   it("returns 404 when the org segment does not match the caller's organisation", async () => {

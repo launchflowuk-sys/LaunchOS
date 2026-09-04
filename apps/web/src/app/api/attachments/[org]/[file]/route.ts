@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import { storageRoot } from "@launchos/channels";
+import { attachmentContentDisposition, storageRoot } from "@launchos/channels";
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/session";
 
@@ -16,7 +16,10 @@ export async function GET(_request: Request, { params }: RouteContext<"/api/atta
   try {
     const bytes = await readFile(join(storageRoot(), "attachments", org, safe));
     return new NextResponse(bytes, {
-      headers: { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="${safe}"` },
+      // Never interpolate the name raw: it descends from an attacker-supplied
+      // attachment name, and a quote in it forges a second `filename*`
+      // parameter that RFC 6266 prefers over the real one.
+      headers: { "content-type": "application/octet-stream", "content-disposition": attachmentContentDisposition(safe) },
     });
   } catch {
     return NextResponse.json({ error: "not found" }, { status: 404 });

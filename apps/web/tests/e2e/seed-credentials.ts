@@ -20,7 +20,8 @@
  * **`INBOUND_EMAIL_SECRET` is the one key with no default at all.** It is a
  * credential rather than a fixture, the web app refuses to start without a real
  * one, and a default published here would be exactly the value that refusal
- * exists to catch. It throws at import instead — see `requiredFromEnv`.
+ * exists to catch. So it throws — but from a function, not at import: see
+ * `inboundEmailSecret()`.
  *
  * `DATABASE_URL` lives here too so the specs share one connection string. Seven
  * of them used to declare their own `?? "postgres://…"` copy, which meant a
@@ -52,7 +53,14 @@ function fromEnv(value: string | undefined, fallback: string): string {
  * repository has ever shipped (`apps/web/src/lib/env.ts`). A fallback here
  * would put one of those placeholders back — in a file that is committed — and
  * a spec that quietly signs with the wrong secret fails as a 401 buried inside
- * a fetch rather than as a missing variable. So it throws, by name, at import.
+ * a fetch rather than as a missing variable. So it throws, by name.
+ *
+ * **From a function, not at module scope.** Every spec imports this module for
+ * `OWNER`, `CLIENT` or `DATABASE_URL`, and Playwright imports every spec file
+ * at collection, so a throw here reported all seventeen specs as file-load
+ * errors when only `support-intake.spec.ts` signs the webhook. Called from that
+ * one spec, an unset variable fails that one spec, by name, and leaves the rest
+ * of the suite to run.
  */
 function requiredFromEnv(name: string, value: string | undefined): string {
   const trimmed = value?.trim() ?? "";
@@ -86,5 +94,10 @@ export const CLIENT = {
 const SUPPORT_EMAIL_DOMAIN = fromEnv(process.env.SUPPORT_EMAIL_DOMAIN, "support.launchflow.co.uk");
 /** The routable address `seedEmailIdentity` gives the first seeded client. */
 export const SUPPORT_ADDRESS = fromEnv(process.env.SEED_SUPPORT_ADDRESS, `grays-cabline@${SUPPORT_EMAIL_DOMAIN}`);
-/** Shared secret on the inbound webhook. No default — see `requiredFromEnv`. */
-export const INBOUND_SECRET = requiredFromEnv("INBOUND_EMAIL_SECRET", process.env.INBOUND_EMAIL_SECRET);
+/**
+ * The shared secret on the inbound webhook. No default, and read on call rather
+ * than at import — see `requiredFromEnv`.
+ */
+export function inboundEmailSecret(): string {
+  return requiredFromEnv("INBOUND_EMAIL_SECRET", process.env.INBOUND_EMAIL_SECRET);
+}

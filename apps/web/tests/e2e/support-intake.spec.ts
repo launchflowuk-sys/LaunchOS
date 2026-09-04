@@ -1,7 +1,7 @@
 import { createDb, schema } from "@launchos/db";
 import { expect, test, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
-import { CLIENT, DATABASE_URL, INBOUND_SECRET, OWNER, SUPPORT_ADDRESS } from "./seed-credentials";
+import { CLIENT, DATABASE_URL, inboundEmailSecret, OWNER, SUPPORT_ADDRESS } from "./seed-credentials";
 
 /**
  * Plan 4 §7 acceptance: an email arrives at a client's support address, becomes
@@ -164,7 +164,7 @@ test.describe.serial("P4 support intake", () => {
     test.setTimeout(300_000);
 
     const response = await request.post("/api/webhooks/email/inbound?provider=generic", {
-      headers: { "x-launchos-inbound-secret": INBOUND_SECRET },
+      headers: { "x-launchos-inbound-secret": inboundEmailSecret() },
       data: {
         to: [SUPPORT_ADDRESS],
         from: "jo@grayscabline.co.uk",

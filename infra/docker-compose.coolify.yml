@@ -11,8 +11,8 @@
 # THIS FILE IS A SMOKE TEST, NOT A PRODUCTION DEPLOYMENT.
 #
 # It runs `NODE_ENV=production` images, and both processes refuse to start in
-# production on a mock adapter. To make `docker compose up` actually come up
-# without SMTP, Stripe and an Anthropic key, it defaults `ALLOW_MOCK_ADAPTERS=1`
+# production on a mock adapter. So that `docker compose up` can come up without
+# SMTP, Stripe and an Anthropic key, it defaults `ALLOW_MOCK_ADAPTERS=1`
 # and `LLM=fake` + `ALLOW_FAKE_LLM=1` — the two opt-outs that say "the mocks
 # were meant". They are what makes this file honest about being a smoke test:
 # with them set, no mail leaves, no incident is ever opened, invoices are raised
@@ -24,10 +24,32 @@
 #
 #   EMAIL_ADAPTER=smtp SMTP_HOST=… ALLOW_MOCK_ADAPTERS= docker compose -f infra/docker-compose.coolify.yml up
 #
-# BETTER_AUTH_SECRET has no default on purpose: `${VAR:?…}` makes compose stop
-# with the message below rather than start a web container that signs every
-# session cookie with an empty string. Generate one with
-# `openssl rand -base64 48`.
+# Three variables have no default on purpose. `${VAR:?…}` makes compose stop
+# with the message below rather than start a container that the process itself
+# refuses a moment later — a default here would only move the failure from a
+# readable compose error to a restart loop:
+#
+#   BETTER_AUTH_SECRET    signs every session cookie; a blank or published one
+#                         is session forgery for any account, the owner's
+#                         included.
+#   INBOUND_EMAIL_SECRET  the only credential on POST /api/webhooks/email/inbound.
+#                         `apps/web/src/lib/env.ts` refuses a blank, short or
+#                         published value in *every* environment, so a default
+#                         of "" is a web container that never becomes healthy.
+#   APP_URL               refused under NODE_ENV=production, by web *and* worker,
+#                         when unset or left on http://localhost:3000 — a client
+#                         emailed a portal link would be sent to their own machine.
+#
+# Generate the two secrets with `openssl rand -base64 48`. For a local smoke
+# test APP_URL can be any address the guards accept; the loopback IP passes,
+# because the refusal is on the literal http://localhost:3000:
+#
+#   export APP_URL=http://127.0.0.1:3000
+#   export BETTER_AUTH_SECRET="$(openssl rand -base64 48)"
+#   export INBOUND_EMAIL_SECRET="$(openssl rand -base64 48)"
+#   docker compose -f infra/docker-compose.coolify.yml up
+#
+# Neither ALLOW_MOCK_ADAPTERS nor ALLOW_FAKE_LLM suppresses any of the three.
 # ---------------------------------------------------------------------------
 
 # Everything both application services need, so the two lists cannot drift.
@@ -36,9 +58,12 @@
 x-app-env: &app-env
   NODE_ENV: production
   DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
-  APP_URL: ${APP_URL:-http://localhost:3000}
+  APP_URL: ${APP_URL:?set APP_URL — the address this deployment is served from, e.g. https://os.launchflow.co.uk; http://127.0.0.1:3000 for a local smoke test}
   BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET — generate one with `openssl rand -base64 48`}
-  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  # Unvalidated, and it is the base URL every sign-in callback is built from, so
+  # it follows APP_URL rather than carrying a default of its own — the two
+  # disagreeing is a sign-in loop with no startup complaint.
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-${APP_URL}}
   # Adapters. Each default is a mock, which is why ALLOW_MOCK_ADAPTERS is set
   # below; override the pair to test a real one.
   EMAIL_ADAPTER: ${EMAIL_ADAPTER:-mock}
@@ -57,7 +82,7 @@ x-app-env: &app-env
   # inbound attachments, worker reads them, and both must see the same files.
   SUPPORT_EMAIL_DOMAIN: ${SUPPORT_EMAIL_DOMAIN:-support.launchflow.example}
   INBOUND_EMAIL_PROVIDER: ${INBOUND_EMAIL_PROVIDER:-generic}
-  INBOUND_EMAIL_SECRET: ${INBOUND_EMAIL_SECRET:-}
+  INBOUND_EMAIL_SECRET: ${INBOUND_EMAIL_SECRET:?set INBOUND_EMAIL_SECRET — generate one with `openssl rand -base64 48`}
   OWNER_NOTIFY_EMAIL: ${OWNER_NOTIFY_EMAIL:-}
   STORAGE_DIR: /data/attachments
   # Money. Identical in both processes, or an invoice is raised and rendered on
