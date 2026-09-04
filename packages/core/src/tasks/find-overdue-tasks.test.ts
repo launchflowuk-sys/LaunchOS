@@ -54,4 +54,41 @@ describe("overdue tasks", () => {
       setEnqueue(async () => {});
     });
   });
+
+  it("isolates a deactivated assignee so the owner is still notified and the sweep continues", async () => {
+    await withTestDb(async (db) => {
+      const events: DomainEvent[] = [];
+      setEnqueue(async (e) => { events.push(e); });
+      const { organisationId, clientId, ownerUserId } = await seedOrgWithClient(db);
+      const staffId = await addStaffMember(db, organisationId, "Shayan");
+      const assigned = await createTask(db, organisationId, {
+        clientId, title: "DNS cutover", kind: "dns", phase: "onboarding",
+        dueAt: past("2026-10-10T09:00:00.000Z"), assigneeUserId: staffId,
+      });
+      const unassigned = await createTask(db, organisationId, {
+        clientId, title: "SEO audit", kind: "seo", phase: "support",
+        dueAt: past("2026-10-11T09:00:00.000Z"),
+      });
+
+      // The assignee is removed from the organisation after the task was
+      // assigned. `notify` refuses a non-active member — that must not lose
+      // the owner's notification, this task's daily stamp, or the sweep for
+      // the other task.
+      await db.update(schema.organisationMembers).set({ status: "suspended" }).where(eq(schema.organisationMembers.userId, staffId));
+
+      expect(await notifyOverdueTasks(db, organisationId, { now: NOW })).toEqual({ overdue: 2, notified: 2 });
+
+      const notifications = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "task.overdue"));
+      expect(notifications).toHaveLength(2);
+      expect(notifications.every((n) => n.userId === ownerUserId)).toBe(true);
+      expect(events.filter((e) => e.name === "task.overdue").map((e) => (e as { taskId: string }).taskId).sort())
+        .toEqual([assigned.id, unassigned.id].sort());
+
+      for (const task of [assigned, unassigned]) {
+        const [row] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id));
+        expect((row!.metadata as { lastOverdueNotifiedOn?: string }).lastOverdueNotifiedOn).toBe("2026-10-14");
+      }
+      setEnqueue(async () => {});
+    });
+  });
 });

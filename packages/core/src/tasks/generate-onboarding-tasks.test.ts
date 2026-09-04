@@ -68,4 +68,28 @@ describe("generateOnboardingTasks", () => {
       await expect(generateOnboardingTasks(db, b.organisationId, a.clientId)).rejects.toThrow(/not found in organisation/);
     });
   });
+
+  it("absorbs a duplicate-key race and reports the skip instead of throwing", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId } = await seedOrgWithClient(db);
+      const template = await createTaskTemplate(db, organisationId, { phase: "onboarding", kind: "other", title: "Discovery call", sortOrder: 10 });
+      await createTaskTemplate(db, organisationId, { phase: "onboarding", kind: "handover", title: "Handover", sortOrder: 20 });
+
+      // Simulate a concurrent worker that already created this template's
+      // task by inserting it directly — bypassing both `createTask` and this
+      // call's own pre-check. `generateOnboardingTasks` must still complete
+      // for the remaining template and report the collision as a skip, not a
+      // thrown error, exactly as it would if its own `createTask` call had
+      // lost the race to a second worker.
+      await db.insert(schema.tasks).values({
+        organisationId, clientId, templateId: template.id, phase: "onboarding",
+        kind: template.kind, title: template.title,
+      });
+
+      const result = await generateOnboardingTasks(db, organisationId, clientId);
+      expect(result.created.map((t) => t.title)).toEqual(["Handover"]);
+      expect(result.skipped).toBe(1);
+      expect(await listTasks(db, organisationId, { clientId, phase: "onboarding" })).toHaveLength(2);
+    });
+  });
 });

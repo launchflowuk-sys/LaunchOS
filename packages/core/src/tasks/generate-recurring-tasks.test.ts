@@ -72,4 +72,72 @@ describe("generateRecurringTasks", () => {
       expect(await generateRecurringTasks(db, organisationId, { now: NOW })).toEqual({ created: 1, skipped: 0 });
     });
   });
+
+  it("absorbs a duplicate-key race and reports the skip instead of throwing", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId, packageId } = await seedOrgWithClient(db);
+      await createTaskTemplate(db, organisationId, { packageId, phase: "recurring", kind: "content", title: "Blog post", recurrence: "monthly" });
+
+      // Simulate a concurrent worker that already claimed this period's slot
+      // by inserting it directly — bypassing both `createTask` and this
+      // call's own pre-check — the same way a second worker racing this run
+      // would land its insert first.
+      await db.insert(schema.tasks).values({
+        organisationId, clientId, phase: "recurring", kind: "content", title: "Blog post",
+        recurrenceKey: "content:2026-10:1",
+      });
+
+      const result = await generateRecurringTasks(db, organisationId, { now: NOW });
+      expect(result).toEqual({ created: 0, skipped: 1 });
+      expect(await listTasks(db, organisationId, { clientId, phase: "recurring" })).toHaveLength(1);
+    });
+  });
+
+  it("does not let one client's inactive package stop the next client's generation", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId: clientA, packageId: packageA } = await seedOrgWithClient(db);
+      const [packageB] = await db.insert(schema.packages).values({
+        organisationId, name: "Package B", slug: `pkg-b-${crypto.randomUUID()}`,
+        includes: { website: true, seo: true, ads: false, socialPostsPerMonth: 0, blogPostsPerMonth: 1, gbpUpdatesPerMonth: 0 },
+      }).returning();
+      const [clientB] = await db.insert(schema.clients).values({
+        organisationId, name: "Client B", slug: `client-b-${crypto.randomUUID()}`, packageId: packageB!.id,
+      }).returning();
+
+      await createTaskTemplate(db, organisationId, { phase: "recurring", kind: "content", title: "Blog post", recurrence: "monthly" });
+      await updatePackage(db, organisationId, { packageId: packageA, active: false });
+
+      const result = await generateRecurringTasks(db, organisationId, { now: NOW });
+      expect(result).toEqual({ created: 1, skipped: 0 });
+      expect(await listTasks(db, organisationId, { clientId: clientA, phase: "recurring" })).toHaveLength(0);
+      expect(await listTasks(db, organisationId, { clientId: clientB!.id, phase: "recurring" })).toHaveLength(1);
+    });
+  });
+
+  it("isolates one client's real failure so the next client's tasks are still created, then rethrows an aggregate error", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId: clientA, packageId: packageA } = await seedOrgWithClient(db);
+      const [packageB] = await db.insert(schema.packages).values({
+        organisationId, name: "Package B", slug: `pkg-b-${crypto.randomUUID()}`,
+        includes: { website: true, seo: true, ads: false, socialPostsPerMonth: 0, blogPostsPerMonth: 1, gbpUpdatesPerMonth: 0 },
+      }).returning();
+      const [clientB] = await db.insert(schema.clients).values({
+        organisationId, name: "Client B", slug: `client-b-${crypto.randomUUID()}`, packageId: packageB!.id,
+      }).returning();
+
+      const brokenTemplate = await createTaskTemplate(db, organisationId, { packageId: packageA, phase: "recurring", kind: "content", title: "Blog post A", recurrence: "monthly" });
+      await createTaskTemplate(db, organisationId, { packageId: packageB!.id, phase: "recurring", kind: "content", title: "Blog post B", recurrence: "monthly" });
+
+      // Corrupt client A's template beyond `createTask`'s own validation
+      // limit, bypassing `createTaskTemplate`'s check, to force a genuine
+      // (non-Postgres, non-precheck) failure while the generator processes
+      // client A — client B, on a different package, must still get its task.
+      await db.update(schema.taskTemplates).set({ title: "x".repeat(300) }).where(eq(schema.taskTemplates.id, brokenTemplate.id));
+
+      await expect(generateRecurringTasks(db, organisationId, { now: NOW })).rejects.toThrow(/1 of 2 client/);
+
+      expect(await listTasks(db, organisationId, { clientId: clientA, phase: "recurring" })).toHaveLength(0);
+      expect(await listTasks(db, organisationId, { clientId: clientB!.id, phase: "recurring" })).toHaveLength(1);
+    });
+  });
 });
