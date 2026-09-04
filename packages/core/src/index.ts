@@ -13,6 +13,13 @@ export { updateIncident, UpdateIncidentInput } from "./incidents/update-incident
 export { createTicket, CreateTicketInput } from "./support/create-ticket.js";
 export { ensureEmailIdentity, supportAddress, EnsureEmailIdentityInput } from "./email/ensure-email-identity.js";
 export { ingestInboundEmail, HOLDING_CLIENT_SLUG } from "./support/ingest-inbound-email.js";
+export { slaDueAt, SLA_HOURS_BY_SEVERITY } from "./support/sla.js";
+export type { Severity } from "./support/sla.js";
+export { updateTicket, UpdateTicketInput, TicketTriageSchema } from "./support/update-ticket.js";
+export { assignTicket, AssignTicketInput } from "./support/assign-ticket.js";
+export { escalateTicket, EscalateTicketInput } from "./support/escalate-ticket.js";
+export { replyToConversation, ReplyToConversationInput } from "./support/reply-to-conversation.js";
+export { sendQueuedMessage, SendQueuedMessageInput } from "./support/send-queued-message.js";
 export {
   assertOwned, assertClientInOrganisation, assertSiteInOrganisation, assertOrgMember,
 } from "./tenancy/assert-owned.js";
