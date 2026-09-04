@@ -22,7 +22,7 @@ import {
   ownerPasswordSource,
   ROOT_ENV_FILE,
 } from "./bootstrap.js";
-import { DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH } from "./passwords.js";
+import { DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH } from "./passwords.js";
 import * as schema from "./schema/index.js";
 import { withTestDb } from "./test/db.js";
 
@@ -38,9 +38,10 @@ function inputFor(stamp: string) {
 }
 
 /** The shape `assertBootstrapAllowed` guards, with a slug that is confirmed by default. */
-function guardInput(overrides: { organisationSlug?: string; ownerPassword?: string } = {}) {
+function guardInput(overrides: { organisationSlug?: string; ownerEmail?: string; ownerPassword?: string } = {}) {
   return {
     organisationSlug: overrides.organisationSlug ?? "acme",
+    ownerEmail: overrides.ownerEmail ?? "jo@acme.test",
     ownerPassword: overrides.ownerPassword ?? "a-real-long-password",
   };
 }
@@ -141,6 +142,54 @@ describe("assertBootstrapAllowed", () => {
           BOOTSTRAP_CONFIRM: "grays-cab-line-2",
         }),
       ).not.toThrow();
+    });
+  });
+
+  describe("the owner email, in every environment", () => {
+    // There is no default. The bootstrap creates the one account that can sign
+    // in, and it used to fall back to DEFAULT_OWNER_EMAIL — a real address
+    // committed to this repository — so a deployment that forgot the variable
+    // made its owner under somebody else's address and was told it succeeded.
+    it("refuses an unset SEED_OWNER_EMAIL, which bootstrapInputFromEnv reports as empty", () => {
+      for (const env of [LOCAL, PRODUCTION, REMOTE_NO_NODE_ENV]) {
+        try {
+          assertBootstrapAllowed(guardInput({ ownerEmail: "" }), env);
+          expect.unreachable("the owner-email guard should have thrown");
+        } catch (error) {
+          expect((error as BootstrapGuardError).guard).toBe("owner-email");
+          expect((error as Error).message).toMatch(/is not set \(or is empty\)/);
+        }
+      }
+    });
+
+    it("refuses a value that is not an address", () => {
+      for (const value of ["Shoji", "jo@localhost", "jo at acme.test", "jo@acme .test", "@acme.test", "jo@"]) {
+        expect(() => assertBootstrapAllowed(guardInput({ ownerEmail: value }), LOCAL)).toThrow(
+          /not a plausible email address/,
+        );
+      }
+    });
+
+    it("refuses an address longer than SMTP accepts", () => {
+      const long = `${"a".repeat(250)}@acme.test`;
+      expect(() => assertBootstrapAllowed(guardInput({ ownerEmail: long }), LOCAL)).toThrow(
+        /not a plausible email address/,
+      );
+    });
+
+    it("accepts ordinary addresses, subdomains and plus tags", () => {
+      for (const value of ["jo@acme.test", "jo.smith+owner@mail.acme.co.uk", "JO@ACME.TEST", "j_o-1@a-b.io"]) {
+        expect(() => assertBootstrapAllowed(guardInput({ ownerEmail: value }), LOCAL)).not.toThrow();
+      }
+    });
+
+    it("runs before the confirmation, so a missing email is not masked by a missing BOOTSTRAP_CONFIRM", () => {
+      try {
+        assertBootstrapAllowed(guardInput({ ownerEmail: "" }), { NODE_ENV: "production", DATABASE_URL: REMOTE_URL });
+        expect.unreachable("the owner-email guard should have thrown");
+      } catch (error) {
+        expect((error as BootstrapGuardError).guard).toBe("owner-email");
+      }
     });
   });
 
@@ -402,6 +451,20 @@ describe("loadRootEnv", () => {
 });
 
 describe("bootstrapInputFromEnv", () => {
+  it("has no default owner email — unset and empty both arrive as \"\" for the guard to refuse", () => {
+    expect(bootstrapInputFromEnv({} as NodeJS.ProcessEnv).ownerEmail).toBe("");
+    expect(bootstrapInputFromEnv({ SEED_OWNER_EMAIL: "" } as NodeJS.ProcessEnv).ownerEmail).toBe("");
+    expect(bootstrapInputFromEnv({ SEED_OWNER_EMAIL: "   " } as NodeJS.ProcessEnv).ownerEmail).toBe("");
+    // The address committed to this repository must not be reachable from here.
+    expect(bootstrapInputFromEnv({} as NodeJS.ProcessEnv).ownerEmail).not.toBe(DEFAULT_OWNER_EMAIL);
+  });
+
+  it("trims the owner email, so a pasted value is not a second user row", () => {
+    expect(bootstrapInputFromEnv({ SEED_OWNER_EMAIL: " jo@acme.test " } as NodeJS.ProcessEnv).ownerEmail).toBe(
+      "jo@acme.test",
+    );
+  });
+
   it("reads the organisation and owner from SEED_* variables", () => {
     const input = bootstrapInputFromEnv({
       SEED_ORG_NAME: "Acme",

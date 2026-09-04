@@ -45,10 +45,10 @@ Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED
 
 `pnpm db:seed` is development only — it writes demo clients, invoices with numbers from a live sequence, ad data and a portal login. A production install runs `pnpm db:bootstrap` instead: the organisation (`SEED_ORG_NAME` / `SEED_ORG_SLUG`) and the owner account (`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`) and nothing else.
 
-Because the bootstrap is the production tool, its guards hold **everywhere**: it refuses a password that is still a published default and requires `BOOTSTRAP_CONFIRM` to equal the slug it would write, in every environment and against every host — a tunnelled or private-network production database is indistinguishable from a local one by its hostname. Running it locally therefore looks like this:
+Because the bootstrap is the production tool, its guards hold **everywhere**: it refuses a password that is still a published default, requires `SEED_OWNER_EMAIL` (it has no default) and requires `BOOTSTRAP_CONFIRM` to equal the slug it would write, in every environment and against every host — a tunnelled or private-network production database is indistinguishable from a local one by its hostname. Running it locally therefore looks like this:
 
 ```bash
-SEED_OWNER_PASSWORD='a-real-long-password' BOOTSTRAP_CONFIRM=launchflow pnpm db:bootstrap
+SEED_OWNER_EMAIL=you@example.com SEED_OWNER_PASSWORD='a-real-long-password' BOOTSTRAP_CONFIRM=launchflow pnpm db:bootstrap
 ```
 
 See `docs/DEPLOYMENT.md`.

@@ -15,9 +15,16 @@
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, ensureOrganisation, ensureOwnerCredential } from "./bootstrap.js";
+import {
+  BootstrapGuardError,
+  CREDENTIAL_ISSUER,
+  CREDENTIAL_PROVIDER,
+  ensureOrganisation,
+  ensureOwnerCredential,
+} from "./bootstrap.js";
+import { DEFAULT_OWNER_EMAIL } from "./passwords.js";
 import * as schema from "./schema/index.js";
-import { seedClientUser, seedConfigFromEnv, seedMembership, seedOwnerUser } from "./seed.js";
+import { assertSeedOwnerEmail, seedClientUser, seedConfigFromEnv, seedMembership, seedOwnerUser } from "./seed.js";
 import { withTestDb } from "./test/db.js";
 
 /** A unique organisation, owner and portal user per test. */
@@ -52,6 +59,63 @@ describe("seedConfigFromEnv", () => {
   it("gives the portal login its own password, never the owner's", () => {
     const config = seedConfigFromEnv({ SEED_OWNER_PASSWORD: "owner-password-here" } as NodeJS.ProcessEnv);
     expect(config.clientUser.password).not.toBe(config.ownerPassword);
+  });
+
+  it("keeps the development default owner email, and treats an empty value as unset", () => {
+    // `.env.example` ships SEED_OWNER_EMAIL blank, because the bootstrap has no
+    // default and must refuse an unset one. A blank key must therefore not
+    // break `pnpm db:seed`, the local path — unlike SEED_ORG_SLUG, where an
+    // empty value is the mistake worth catching.
+    expect(seedConfigFromEnv({} as NodeJS.ProcessEnv).ownerEmail).toBe(DEFAULT_OWNER_EMAIL);
+    expect(seedConfigFromEnv({ SEED_OWNER_EMAIL: "" } as NodeJS.ProcessEnv).ownerEmail).toBe(DEFAULT_OWNER_EMAIL);
+    expect(seedConfigFromEnv({ SEED_OWNER_EMAIL: " jo@acme.test " } as NodeJS.ProcessEnv).ownerEmail).toBe(
+      "jo@acme.test",
+    );
+  });
+});
+
+describe("assertSeedOwnerEmail", () => {
+  const LOCAL = { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@localhost:5432/launchos" };
+  /** Nobody exported NODE_ENV and the host is not local — the run these guards exist for. */
+  const REMOTE = { DATABASE_URL: "postgres://u:p@db.launchflow.co.uk:5432/launchos" };
+
+  it("lets the local seed run on the built-in default", () => {
+    expect(() => assertSeedOwnerEmail(LOCAL as NodeJS.ProcessEnv, DEFAULT_OWNER_EMAIL, false)).not.toThrow();
+  });
+
+  it("refuses a value that is not an address, in every environment", () => {
+    expect(() =>
+      assertSeedOwnerEmail({ ...LOCAL, SEED_OWNER_EMAIL: "Shoji" } as NodeJS.ProcessEnv, "Shoji", false),
+    ).toThrow(/not a plausible email address/);
+  });
+
+  it("requires SEED_OWNER_EMAIL to be set against a production target", () => {
+    // Reachable only with SEED_DEMO=1 already said out loud — and at that point
+    // the seed is writing the same privileged owner account the bootstrap
+    // would, so it must not write it under an address from this repository.
+    try {
+      assertSeedOwnerEmail(REMOTE as NodeJS.ProcessEnv, DEFAULT_OWNER_EMAIL, true);
+      expect.unreachable("the owner-email guard should have thrown");
+    } catch (error) {
+      expect((error as BootstrapGuardError).guard).toBe("owner-email");
+      expect((error as Error).message).toMatch(/development default committed to this repository/);
+      // The half of the predicate that fired, for an operator who never set NODE_ENV.
+      expect((error as Error).message).toMatch(/not a local host/);
+    }
+  });
+
+  it("accepts an explicit address against a production target", () => {
+    expect(() =>
+      assertSeedOwnerEmail({ ...REMOTE, SEED_OWNER_EMAIL: "jo@acme.test" } as NodeJS.ProcessEnv, "jo@acme.test", true),
+    ).not.toThrow();
+  });
+
+  it("refuses a whitespace-only SEED_OWNER_EMAIL against a production target", () => {
+    // It falls back to the default in `seedConfigFromEnv`, so the plausible
+    // address it carries must not be read as "the operator set one".
+    expect(() =>
+      assertSeedOwnerEmail({ ...REMOTE, SEED_OWNER_EMAIL: "   " } as NodeJS.ProcessEnv, DEFAULT_OWNER_EMAIL, true),
+    ).toThrow(/is not set/);
   });
 });
 

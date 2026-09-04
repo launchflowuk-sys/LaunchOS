@@ -37,7 +37,60 @@
  *
  * `NODE_ENV=production` still forces production on, so nothing that was
  * guarded before is guarded less now.
+ *
+ * The repo-root `.env` loader lives here too, beside the predicate that judges
+ * what it loaded. It is here rather than in `./bootstrap.ts` because this
+ * module imports nothing but `node:path` / `node:url`, so every script in the
+ * package — including `./scripts/reconcile-support-emails.ts`, a repair tool
+ * that must still start in an image where `better-auth` or the workspace's dev
+ * dependencies are absent — can read the same file the same way without
+ * dragging the bootstrap's dependencies into its module graph. `./bootstrap.ts`
+ * re-exports both for its existing callers.
  */
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/**
+ * The repo-root `.env`, resolved from **this file's own location** — never from
+ * `process.cwd()`.
+ *
+ * This module is `<repo>/packages/db/src/env-target.ts`, so the root is three
+ * directories up. A ladder of `../../.env`, `../.env`, `.env` candidates
+ * resolved against the cwd was only correct for the one supported invocation
+ * (cwd `packages/db`); run from the repository root — which is what "a one-off
+ * from a restore box or a maintenance container" looks like — `../../.env`
+ * resolves *two directories above the repository*, and a stray file there would
+ * win the ladder, supply the configuration, and be reported as "the env file"
+ * while the repository's own `.env` went unread.
+ */
+export const ROOT_ENV_FILE = join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env");
+
+/**
+ * Merges the repo-root `.env` into `process.env`, and returns the absolute
+ * path of the file it read, or null if there is none.
+ *
+ * **Every key, not just `DATABASE_URL`.** This used to return immediately when
+ * `DATABASE_URL` was already in the environment, which meant the one-off run
+ * that matters most — `DATABASE_URL=postgres://…live… pnpm db:bootstrap` —
+ * never saw the `SEED_OWNER_PASSWORD` the operator had put in `.env`, silently
+ * fell back to the published default, and then printed that the password came
+ * from the variable it had not read.
+ *
+ * `process.loadEnvFile` leaves keys that are already set alone, so an explicit
+ * variable on the command line still wins over the file; the file only fills
+ * the gaps.
+ *
+ * `envFile` exists for the tests, which need a temp file to merge from. Nothing
+ * in any script passes it: the default is the only file this ever reads.
+ */
+export function loadRootEnv(envFile: string = ROOT_ENV_FILE): string | null {
+  try {
+    process.loadEnvFile(envFile);
+  } catch {
+    return null; // absent or unreadable — the process environment is all there is
+  }
+  return envFile;
+}
 
 /** Hostnames that are only ever this machine or this compose network. */
 const LOCAL_HOSTNAMES = new Set(["localhost", "postgres", "db"]);

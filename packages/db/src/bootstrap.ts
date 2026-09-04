@@ -14,9 +14,10 @@
  * ```
  *
  * Because this is the production tool, its guards are **unconditional**: a
- * published default password is refused and `BOOTSTRAP_CONFIRM` is required in
- * every environment, against every host. Running it locally therefore means
- * setting a real `SEED_OWNER_PASSWORD` and `BOOTSTRAP_CONFIRM=<slug>` — see
+ * published default password is refused, `SEED_OWNER_EMAIL` must be given, and
+ * `BOOTSTRAP_CONFIRM` is required — in every environment, against every host.
+ * Running it locally therefore means setting a real `SEED_OWNER_PASSWORD`,
+ * `SEED_OWNER_EMAIL=<you>` and `BOOTSTRAP_CONFIRM=<slug>` — see
  * `assertBootstrapAllowed` for why no host check can stand in for that.
  *
  * Idempotent: the organisation is looked up by slug, the user by email and the
@@ -30,19 +31,25 @@
  * Agents are left disabled; enable the ones you want in Settings → Agents.
  */
 import { randomUUID } from "node:crypto";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import { createDb, type Db } from "./client.js";
+import { loadRootEnv, ROOT_ENV_FILE } from "./env-target.js";
 import {
-  DEFAULT_OWNER_EMAIL,
   DEFAULT_OWNER_PASSWORD,
   isPublishedDefaultPassword,
   MIN_PASSWORD_LENGTH,
   shortPasswordMessage,
 } from "./passwords.js";
 import * as schema from "./schema/index.js";
+
+// The repo-root `.env` loader lives in `./env-target.ts`, which imports nothing
+// but `node:path` / `node:url`, so the repair scripts can read the same file
+// without pulling `better-auth` and the Postgres client in behind it. Re-exported
+// here because this is where every caller already looks for it.
+export { loadRootEnv, ROOT_ENV_FILE };
 
 // Better Auth namespaces credential accounts as "local:<providerId>"
 // (createLocalAccountIssuer in @better-auth/core/db, not publicly exported).
@@ -65,49 +72,6 @@ export class BootstrapGuardError extends Error {
     this.name = "BootstrapGuardError";
     this.guard = guard;
   }
-}
-
-/**
- * The repo-root `.env`, resolved from **this file's own location** — never from
- * `process.cwd()`.
- *
- * This module is `<repo>/packages/db/src/bootstrap.ts`, so the root is three
- * directories up. A ladder of `../../.env`, `../.env`, `.env` candidates
- * resolved against the cwd was only correct for the one supported invocation
- * (`pnpm --filter @launchos/db bootstrap`, cwd `packages/db`); run from the
- * repository root — which is what "a one-off from a restore box or a
- * maintenance container" looks like — `../../.env` resolves *two directories
- * above the repository*, and a stray file there would win the ladder, supply
- * the configuration, and be reported as "the env file" while the repository's
- * own `.env` went unread.
- */
-export const ROOT_ENV_FILE = join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env");
-
-/**
- * Merges the repo-root `.env` into `process.env`, and returns the absolute
- * path of the file it read, or null if there is none.
- *
- * **Every key, not just `DATABASE_URL`.** This used to return immediately when
- * `DATABASE_URL` was already in the environment, which meant the one-off run
- * that matters most — `DATABASE_URL=postgres://…live… pnpm db:bootstrap` —
- * never saw the `SEED_OWNER_PASSWORD` the operator had put in `.env`, silently
- * fell back to the published default, and then printed that the password came
- * from the variable it had not read.
- *
- * `process.loadEnvFile` leaves keys that are already set alone, so an explicit
- * variable on the command line still wins over the file; the file only fills
- * the gaps.
- *
- * `envFile` exists for the tests, which need a temp file to merge from. Nothing
- * in either script passes it: the default is the only file this ever reads.
- */
-export function loadRootEnv(envFile: string = ROOT_ENV_FILE): string | null {
-  try {
-    process.loadEnvFile(envFile);
-  } catch {
-    return null; // absent or unreadable — the process environment is all there is
-  }
-  return envFile;
 }
 
 /** Host and database of a connection string, with the credentials left out. Never log the URL itself. */
@@ -163,21 +127,74 @@ export function assertOrganisationSlug(slug: string): void {
 }
 
 /**
- * The pre-flight guards, in order. **All four run in every environment,
- * against every host.** Exported so they can be tested without a database.
+ * A plausible email address: a local part with no whitespace, no `@` and none
+ * of the characters a header or a shell would treat specially, then a domain of
+ * at least two dot-separated labels.
+ *
+ * Deliberately not RFC 5322. The job is to catch the value that is not an
+ * address at all — a name, a slug, a shell-mangled fragment, `SEED_OWNER_EMAIL`
+ * itself — before it becomes the identity of the only account that can sign in.
+ * Anything a mail server would actually reject is the operator's to notice.
+ */
+export const OWNER_EMAIL_PATTERN =
+  /^[^\s@,;:<>"']+@[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+/** The longest address any SMTP path accepts, RFC 5321 §4.5.3.1.3. */
+const MAX_EMAIL_LENGTH = 254;
+
+/**
+ * The owner's address, which **must be given explicitly** — the bootstrap has
+ * no default for it at all.
+ *
+ * It used to fall back to `DEFAULT_OWNER_EMAIL`, a real address committed to
+ * this repository. On the production tool that is the wrong shape of default
+ * twice over: a deployment that forgot the variable would silently create its
+ * one privileged account under somebody else's address — an owner who sees
+ * every client, invoice and approval in the tenant — and the operator running
+ * it would be told "owner user … created" with no hint that the email was not
+ * theirs. The account is also the thing password reset and every future invite
+ * hang off, so getting it wrong is not a cosmetic mistake.
+ *
+ * The seed keeps a default, because its demo fixtures are development-only; it
+ * calls this to validate the value, and requires the variable to be set on its
+ * own account when the target is production.
+ *
+ * `source` names the variable in the message, so the seed and the bootstrap can
+ * word the same refusal for the same reason.
+ */
+export function assertOwnerEmail(email: string, source = "SEED_OWNER_EMAIL"): void {
+  if (email !== "" && email.length <= MAX_EMAIL_LENGTH && OWNER_EMAIL_PATTERN.test(email)) return;
+  throw new BootstrapGuardError(
+    "owner-email",
+    (email === ""
+      ? `${source} is not set (or is empty).`
+      : `${source} is "${email}", which is not a plausible email address.`) +
+      " It is the address of the only account that can sign in to this installation, so there is no " +
+      "default: an unset variable would otherwise create the owner — who sees every client, invoice " +
+      "and approval — under an address committed to this repository, and report it as success. Set it " +
+      "to the address you will sign in as, beside SEED_OWNER_PASSWORD and BOOTSTRAP_CONFIRM.",
+  );
+}
+
+/**
+ * The pre-flight guards, in order. **All five run in every environment,
+ * against every host**, and all of them before a connection is opened.
+ * Exported so they can be tested without a database.
  *
  * 1. **password-floor** — the app's own floor (`MIN_PASSWORD_LENGTH`) applies
  *    to the owner account too; Better Auth only checks it on sign-up, change
  *    and reset, none of which this account will ever go through, so this is
  *    the only place it can be applied.
  * 2. **organisation-slug** — see above.
- * 3. **published-default** — a password printed in this repository must never
+ * 3. **owner-email** — `SEED_OWNER_EMAIL` must be set, and must look like an
+ *    address. There is no default: see `assertOwnerEmail`.
+ * 4. **published-default** — a password printed in this repository must never
  *    reach a database. Any database.
- * 4. **confirm-slug** — `BOOTSTRAP_CONFIRM` must equal the slug about to be
+ * 5. **confirm-slug** — `BOOTSTRAP_CONFIRM` must equal the slug about to be
  *    written, so a mistyped `SEED_ORG_SLUG` creates a refusal rather than a
  *    second, empty organisation nobody notices.
  *
- * 3 and 4 were briefly keyed on a host-derived "production target" predicate,
+ * 4 and 5 were briefly keyed on a host-derived "production target" predicate,
  * and that is the bug this shape closes: **no string test can tell a local
  * database from a live one.** `ssh -L 5433:<coolify-postgres>:5432 hetzner`
  * presents production as `localhost:5433`; a Hetzner Cloud private network is
@@ -194,7 +211,7 @@ export function assertOrganisationSlug(slug: string): void {
  * published-default refusal and stays runnable with the shipped defaults.
  */
 export function assertBootstrapAllowed(
-  input: { organisationSlug: string; ownerPassword: string },
+  input: { organisationSlug: string; ownerEmail: string; ownerPassword: string },
   env: NodeJS.ProcessEnv,
 ): void {
   if (input.ownerPassword.length < MIN_PASSWORD_LENGTH) {
@@ -202,6 +219,7 @@ export function assertBootstrapAllowed(
   }
 
   assertOrganisationSlug(input.organisationSlug);
+  assertOwnerEmail(input.ownerEmail);
 
   if (isPublishedDefaultPassword(input.ownerPassword)) {
     throw new BootstrapGuardError(
@@ -378,13 +396,21 @@ export function ownerPasswordSource(env: NodeJS.ProcessEnv): string {
     : "set from the built-in default (SEED_OWNER_PASSWORD was unset)";
 }
 
-/** Reads the five variables the bootstrap is configured by. */
+/**
+ * Reads the five variables the bootstrap is configured by.
+ *
+ * `ownerEmail` has **no fallback**: unset and set-but-empty both arrive as `""`
+ * so `assertOwnerEmail` can refuse them, rather than resolving to an address
+ * this repository ships. It is trimmed for the same reason the slug is — a
+ * value pasted into a resource box carries whatever whitespace came with it,
+ * and `" jo@acme.test"` is a different user row from `"jo@acme.test"`.
+ */
 export function bootstrapInputFromEnv(env: NodeJS.ProcessEnv): BootstrapInput {
   const organisation = organisationFromEnv(env);
   return {
     organisationName: organisation.name,
     organisationSlug: organisation.slug,
-    ownerEmail: env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL,
+    ownerEmail: env.SEED_OWNER_EMAIL?.trim() ?? "",
     ownerName: env.SEED_OWNER_NAME ?? "Owner",
     ownerPassword: env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD,
   };

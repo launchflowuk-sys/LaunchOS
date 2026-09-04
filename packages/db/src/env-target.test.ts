@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { isLocalDatabaseUrl, isProductionTarget, productionTargetReason } from "./env-target.js";
+import * as bootstrap from "./bootstrap.js";
+import {
+  isLocalDatabaseUrl,
+  isProductionTarget,
+  loadRootEnv,
+  productionTargetReason,
+  ROOT_ENV_FILE,
+} from "./env-target.js";
 
 const url = (host: string) => `postgres://launchos:s3cret@${host}:5432/launchos`;
 
@@ -96,5 +103,18 @@ describe("productionTargetReason", () => {
 
   it("names the host when NODE_ENV was never set", () => {
     expect(productionTargetReason({ DATABASE_URL: url("db.launchflow.co.uk") })).toMatch(/not a local host/);
+  });
+});
+
+describe("the root .env loader", () => {
+  // It lives here, in the module that imports nothing but node:path/node:url,
+  // so the repair scripts can read the same file without pulling `better-auth`
+  // and the Postgres client into their module graph. `bootstrap.ts` re-exports
+  // it for the callers that already look for it there — one loader, not two:
+  // the second copy is how `reconcile-support-emails.ts` ended up resolving a
+  // `.env` from `process.cwd()`.
+  it("is the same binding bootstrap.ts re-exports", () => {
+    expect(bootstrap.loadRootEnv).toBe(loadRootEnv);
+    expect(bootstrap.ROOT_ENV_FILE).toBe(ROOT_ENV_FILE);
   });
 });

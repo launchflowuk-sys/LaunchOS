@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import * as schema from "../schema/index.js";
@@ -300,5 +302,31 @@ describe("applyChanges", () => {
         expect(identity!.address).toBe(row.supportEmail);
       }
     });
+  });
+});
+
+describe("the environment this script reads", () => {
+  // A source-level check, because the damage is done before anything this test
+  // could observe: `main` loads the environment, resolves the domain from it and
+  // then rewrites every routable address in the database. The script used to
+  // carry its own ladder of `../../.env`, `../.env`, `.env` resolved against
+  // `process.cwd()` — correct only from `packages/db`. From the repository root
+  // its first candidate is *two directories above the repository*, so a stray
+  // file there would configure the rewrite; from a maintenance container it
+  // found nothing, and the fallback domain was one flag away. It now uses the
+  // one loader in `../env-target.js`, which resolves the repo-root `.env` from
+  // this package's own path.
+  const source = readFile(fileURLToPath(new URL("./reconcile-support-emails.ts", import.meta.url)), "utf8");
+
+  it("uses the shared root-env loader", async () => {
+    expect(await source).toMatch(/import \{ loadRootEnv, ROOT_ENV_FILE \} from "\.\.\/env-target\.js";/);
+  });
+
+  it("has no private, cwd-relative env ladder of its own", async () => {
+    // Comments stripped: they describe the ladder that was removed, and the
+    // point is that no code does it any more.
+    const code = (await source).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/process\.loadEnvFile/);
+    expect(code).not.toMatch(/process\.cwd\(\)/);
   });
 });

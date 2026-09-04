@@ -37,11 +37,11 @@
  * every later one gets `<slug>-<org-slug>@<domain>`.
  */
 import { randomBytes } from "node:crypto";
-import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { asc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { createDb, type Db } from "../client.js";
+import { loadRootEnv, ROOT_ENV_FILE } from "../env-target.js";
 import * as schema from "../schema/index.js";
 
 /**
@@ -87,24 +87,6 @@ export function resolveDomain(env: NodeJS.ProcessEnv, allowDefault: boolean): st
     );
   }
   return DEFAULT_SUPPORT_EMAIL_DOMAIN;
-}
-
-/**
- * Loaded unconditionally. The previous version short-circuited on
- * `DATABASE_URL`, so anyone with it exported in their shell never read .env at
- * all — and then silently rewrote every address to the fallback domain, the
- * exact damage this script exists to repair. Values already in the environment
- * still win: `process.loadEnvFile` does not overwrite them.
- */
-function loadRootEnv(): void {
-  for (const path of ["../../.env", "../.env", ".env"]) {
-    try {
-      process.loadEnvFile(resolve(process.cwd(), path));
-      return;
-    } catch {
-      // file absent — try the next candidate
-    }
-  }
 }
 
 type ClientRow = {
@@ -301,7 +283,23 @@ export function parseFlags(argv: readonly string[]): { dryRun: boolean; yes: boo
 }
 
 async function main(): Promise<void> {
-  loadRootEnv();
+  // The shared loader from `../env-target.js`: the repo-root `.env`, resolved
+  // from the package's own path rather than from `process.cwd()`, and merged
+  // key by key so a `DATABASE_URL` already exported in the shell does not stop
+  // SUPPORT_EMAIL_DOMAIN being read. This script kept a private cwd-relative
+  // ladder of `../../.env`, `../.env`, `.env`, which was only correct when run
+  // from `packages/db`: from the repository root its first candidate resolves
+  // *two directories above the repository*, so a stray file there would win and
+  // configure a mass rewrite of every routable address; run from anywhere else
+  // it found nothing at all, and the fallback domain — the exact damage this
+  // script exists to repair — was one --allow-default-domain away.
+  const envFile = loadRootEnv();
+  // First, and before the domain is resolved: "SUPPORT_EMAIL_DOMAIN is not set"
+  // is a refusal an operator answers by looking at the file they put it in, so
+  // the file this run actually read is the one thing that line needs beside it.
+  const envSource = envFile ?? `none found at ${ROOT_ENV_FILE}; using the process environment only`;
+  process.stdout.write(`env file: ${envSource}\n`);
+
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is required to reconcile support emails");
 

@@ -19,6 +19,11 @@
  * fills the organisation that is already there instead of creating a second
  * one beside it. Defaults are unchanged: "LaunchFlow" / "launchflow".
  *
+ * The owner's address comes from SEED_OWNER_EMAIL, which keeps a development
+ * default here — `pnpm db:bootstrap`, the production tool, has none — and is
+ * *required* when the target is production. A value that is not an address is
+ * refused in every environment.
+ *
  * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now")
  * and the portal login's from its own SEED_CLIENT_PASSWORD (default
  * "change-me-client") — never the owner's, because those two accounts are on
@@ -68,9 +73,9 @@ import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import {
-  assertOrganisationSlug, BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, describeDatabase,
-  ensureOrganisation, ensureOwnerCredential, ensureOwnerMembership, ensureUserRow, loadRootEnv,
-  organisationFromEnv, ownerPasswordSource, ROOT_ENV_FILE,
+  assertOrganisationSlug, assertOwnerEmail, BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER,
+  describeDatabase, ensureOrganisation, ensureOwnerCredential, ensureOwnerMembership, ensureUserRow,
+  loadRootEnv, organisationFromEnv, ownerPasswordSource, ROOT_ENV_FILE,
 } from "./bootstrap.js";
 import { createDb } from "./client.js";
 import { isProductionTarget, productionTargetReason } from "./env-target.js";
@@ -109,6 +114,16 @@ export interface SeedConfig {
  * then seeded got a *second* organisation holding every fixture, and signed in
  * to the empty one.
  *
+ * The owner's address keeps a default here and **only** here:
+ * `pnpm db:bootstrap`, the production entry point, has none at all, because a
+ * forgotten variable there would create a live tenant's one privileged account
+ * under an address committed to this repository. These fixtures are
+ * development-only, so the default costs nothing — but the moment the target is
+ * production (`SEED_DEMO=1` is the only way to get that far) `main` requires
+ * `SEED_OWNER_EMAIL` to have been set. An empty value falls back like
+ * `SEED_ORG_NAME` rather than surviving as `""`: `.env.example` ships the key
+ * blank, and a blank key must not break `pnpm db:seed`.
+ *
  * The portal login gets its **own** password, never the owner's. The two
  * accounts sit on opposite sides of a privilege boundary: the owner sees every
  * client, every invoice and every approval, while this one sees one client's
@@ -118,9 +133,10 @@ export interface SeedConfig {
  * a real, deliverable client domain.
  */
 export function seedConfigFromEnv(env: NodeJS.ProcessEnv): SeedConfig {
+  const ownerEmail = env.SEED_OWNER_EMAIL?.trim();
   return {
     organisation: organisationFromEnv(env),
-    ownerEmail: env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL,
+    ownerEmail: ownerEmail === undefined || ownerEmail === "" ? DEFAULT_OWNER_EMAIL : ownerEmail,
     ownerName: OWNER_NAME,
     ownerPassword: env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD,
     clientUser: {
@@ -129,6 +145,37 @@ export function seedConfigFromEnv(env: NodeJS.ProcessEnv): SeedConfig {
       password: env.SEED_CLIENT_PASSWORD ?? DEFAULT_CLIENT_PASSWORD,
     },
   };
+}
+
+/**
+ * The owner's address, in two parts.
+ *
+ * **Everywhere:** it must look like an address. Unset means the development
+ * default above, which passes, so this only ever fires on a value somebody
+ * actually typed — and that value is the identity of the account they will sign
+ * in as, so a mangled one is worth a refusal rather than a user row nobody can
+ * reach.
+ *
+ * **Against a production target:** `SEED_OWNER_EMAIL` must have been *set*.
+ * `pnpm db:bootstrap` refuses an unset one in every environment because it has
+ * no default at all; the seed keeps one for local fixtures, but a seed that has
+ * reached a live database (only possible with `SEED_DEMO=1` said out loud) is
+ * writing the same privileged owner account the bootstrap would, and must not
+ * write it under an address committed to this repository.
+ *
+ * Exported, and taking its environment as an argument, so both halves can be
+ * tested without a database and without `main`'s connection.
+ */
+export function assertSeedOwnerEmail(env: NodeJS.ProcessEnv, ownerEmail: string, productionTarget: boolean): void {
+  assertOwnerEmail(ownerEmail);
+  if (!productionTarget) return;
+  if ((env.SEED_OWNER_EMAIL ?? "").trim() !== "") return;
+  throw new BootstrapGuardError(
+    "owner-email",
+    "SEED_OWNER_EMAIL is not set, so the owner account would be created under the development default " +
+      "committed to this repository. That account sees every client, invoice and approval in the tenant. " +
+      `Set it to the address you will sign in as. Refusing because ${productionTargetReason(env)}.`,
+  );
 }
 
 const AD_ACCOUNT = { platform: "google" as const, externalId: "123-456-7890", name: "Grays CabLine — Search" };
@@ -348,6 +395,7 @@ async function main() {
         `set SEED_DEMO=1. ${because}`,
     );
   }
+  assertSeedOwnerEmail(process.env, config.ownerEmail, productionTarget);
   if (productionTarget) {
     const defaulted = [
       config.ownerPassword === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
