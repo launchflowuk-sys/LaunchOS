@@ -1,6 +1,6 @@
-import { listMembers } from "@launchos/core";
+import { isCourtesyNotice, listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, not } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
@@ -38,6 +38,19 @@ const STATUSES = schema.ticketStatusEnum.enumValues;
 
 /** The two sources the client raised themselves — see `createTicket`. */
 const CLIENT_ORIGINATED: readonly string[] = ["portal", "email"];
+
+/**
+ * What a history row changed, when its `kind` does not say.
+ * `setTicketClientVisibility` writes a `note` event with the answer in `data`,
+ * and "when did the client start seeing this?" is the question that toggle
+ * exists to answer — so a share and a hide must not both render as "note".
+ */
+function eventDetail(data: unknown): string | null {
+  if (!data || typeof data !== "object") return null;
+  const visible = (data as Record<string, unknown>)["clientVisible"];
+  if (typeof visible !== "boolean") return null;
+  return visible ? "shared with the client" : "hidden from the client";
+}
 
 export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]">) {
   const session = await requireAdmin();
@@ -94,6 +107,10 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             and(
               eq(schema.messages.conversationId, ticket.conversationId),
               eq(schema.messages.organisationId, session.organisationId),
+              // The "sign in to the portal to read it" nudge is addressed to
+              // the client, not to us: on the staff thread it would sit under
+              // every answer telling a colleague to go and read it.
+              not(isCourtesyNotice()),
             ),
           )
           .orderBy(asc(schema.messages.createdAt))
@@ -178,13 +195,16 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               <p className="text-sm text-neutral-400">Nothing recorded yet.</p>
             ) : (
               <ul className="space-y-1.5 text-sm text-neutral-700">
-                {events.map((event) => (
-                  <li key={event.id} className="flex flex-wrap gap-2">
-                    <span className="font-medium">{event.kind.replaceAll("_", " ")}</span>
-                    <span className="text-neutral-500">by {event.actorKind}</span>
-                    <span className="ml-auto text-xs text-neutral-400">{formatDateTime(event.createdAt)}</span>
-                  </li>
-                ))}
+                {events.map((event) => {
+                  const detail = eventDetail(event.data);
+                  return (
+                    <li key={event.id} className="flex flex-wrap gap-2">
+                      <span className="font-medium">{detail ?? event.kind.replaceAll("_", " ")}</span>
+                      <span className="text-neutral-500">by {event.actorKind}</span>
+                      <span className="ml-auto text-xs text-neutral-400">{formatDateTime(event.createdAt)}</span>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

@@ -122,6 +122,9 @@ function composerError(error: unknown): ActionResult {
   if (raw.includes("visible to the client")) {
     return { status: "error", message: "This case is internal. Share it with the client before replying." };
   }
+  if (raw.includes("participant email")) {
+    return { status: "error", message: "This case came in by email but the thread has no address to reply to. Add one on the conversation in the Inbox." };
+  }
   if (raw.includes("support email identity")) {
     return { status: "error", message: "This client has no support address yet. Add one on their client screen, then try again." };
   }

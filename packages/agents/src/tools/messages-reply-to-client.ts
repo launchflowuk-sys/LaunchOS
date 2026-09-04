@@ -4,6 +4,23 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { defineTool } from "../kernel/types.js";
 
+/**
+ * The app's own base URL, so a portal reply's courtesy email can say where to
+ * sign in. Read from the environment — the worker validates `APP_URL` at
+ * startup (`apps/worker/src/env.ts`) — rather than from the tool input, because
+ * where a client is told to log in is not a decision a model gets to make. An
+ * unset or malformed value is simply no link: `portalUrl` is optional.
+ */
+function portalUrl(): string | undefined {
+  const raw = process.env["APP_URL"];
+  if (!raw) return undefined;
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 export const messagesReplyToClient = defineTool({
   name: "messages_reply_to_client",
   description: "Send a reply to the client on this conversation. A human must approve it before it leaves the building.",
@@ -37,22 +54,44 @@ export const messagesReplyToClient = defineTool({
         details: { draftedReply: input.body },
       };
     }
+    // What approving actually does differs by thread, and the card is the last
+    // gate before this leaves the building, so it has to say which. An email
+    // thread is queued and a worker sends it; a portal thread has no outbox at
+    // all — writing the row is the delivery, and the client can read it the
+    // moment the approval is released.
+    const byEmail = thread.channel === "email";
+    const broken = byEmail && !thread.participantEmail;
     return {
       title: `Reply to ${thread.clientName} on "${thread.subject}"`,
-      summary:
-        `Approving queues this reply to ${thread.clientName} on the ${thread.channel} thread "${thread.subject}"` +
-        `${thread.participantEmail ? ` (${thread.participantEmail})` : ""}. The worker sends it from the outbox.`,
+      summary: broken
+        ? `The email thread "${thread.subject}" has no address to reply to, so approving this will fail.` +
+          ` Answer ${thread.clientName} on the case instead.`
+        : byEmail
+          ? `Approving queues this reply to ${thread.clientName} on the email thread "${thread.subject}"` +
+            ` (${thread.participantEmail}). The worker sends it from the outbox.`
+          : `Approving posts this reply to ${thread.clientName} on the ${thread.channel} thread "${thread.subject}".` +
+            ` It is delivered in the portal immediately — there is no outbox to catch it — and the case moves to` +
+            ` waiting on the client.`,
       details: {
         client: thread.clientName,
         subject: thread.subject,
         channel: thread.channel,
+        delivery: broken
+          ? "nowhere — this thread has no address"
+          : byEmail
+            ? `emailed to ${thread.participantEmail}`
+            : "delivered in the portal",
         draftedReply: input.body,
       },
     };
   },
   execute: async (input, ctx) => {
+    // A portal reply queues a courtesy email; without this it tells the client
+    // to sign in without saying where.
+    const base = portalUrl();
     const message = await replyToConversation(ctx.db, ctx.organisationId, {
       conversationId: input.conversationId, body: input.body, actorKind: "agent", actorId: "support-triage",
+      ...(base ? { portalUrl: base } : {}),
     });
     return { messageId: message.id, status: message.status };
   },

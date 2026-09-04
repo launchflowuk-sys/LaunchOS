@@ -21,6 +21,7 @@ export { setTicketClientVisibility, SetTicketClientVisibilityInput } from "./sup
 export { assignTicket, AssignTicketInput } from "./support/assign-ticket.js";
 export { escalateTicket, EscalateTicketInput } from "./support/escalate-ticket.js";
 export { replyToConversation, ReplyToConversationInput } from "./support/reply-to-conversation.js";
+export { isCourtesyNotice, PORTAL_REPLY_NOTICE_KIND } from "./support/courtesy-notice.js";
 export { replyAsClient, ReplyAsClientInput } from "./support/reply-as-client.js";
 export { sendQueuedMessage, SendQueuedMessageInput, MAX_SEND_ATTEMPTS, CLAIM_TTL_MINUTES } from "./support/send-queued-message.js";
 export {

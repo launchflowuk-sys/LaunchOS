@@ -1,11 +1,12 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
+import { isCourtesyNotice, PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
 import { replySubject, shortSubject } from "./subject.js";
 
 export const ReplyToConversationInput = z.object({
@@ -25,21 +26,15 @@ export type ReplyToConversationInput = z.input<typeof ReplyToConversationInput>;
 
 /**
  * The statuses a reply to the client moves on: we have answered, so the ball
- * is in their court. `triaged` is deliberately not here — a triaged case is
- * still ours until somebody works it.
+ * is in their court. `triaged` is one of them — Support Triage leaves every
+ * client-raised case there, so it is the status an answered case is most often
+ * in, and "triage is ours until somebody works it" stops being true the moment
+ * somebody has demonstrably worked it by writing the client an answer.
  */
-const AWAITING_CLIENT_FROM: readonly string[] = ["open", "in_progress"];
+const AWAITING_CLIENT_FROM: readonly string[] = ["open", "triaged", "in_progress"];
 
 /** What the courtesy email says. Never the reply itself — that stays behind the login. */
 const NOTICE_BODY = "LaunchFlow has replied to your support case. Sign in to the portal to read it.";
-
-/**
- * `messages.metadata.kind` on the courtesy notice. The portal thread filters on
- * it — `(portal)/portal/support/[id]/page.tsx` carries the same string, because
- * importing `@launchos/core` into a portal page would drag the whole domain
- * layer into that route — so keep the two in step.
- */
-export const PORTAL_REPLY_NOTICE_KIND = "portal_reply_notice";
 
 /**
  * The address a courtesy notice goes to: the client record's own email, else
@@ -67,6 +62,59 @@ async function noticeAddress(db: Db, organisationId: string, clientId: string): 
 }
 
 /**
+ * How many times this case has been pulled back to `open` — every client reply
+ * on a resolved, closed or waiting_client case writes one of these
+ * (`replyAsClient`, `ingestInboundEmail`). It is the round number of the case:
+ * a count rather than a timestamp because every row in one transaction shares
+ * the same `now()`, so "written after the reopen" is not a question the clock
+ * can answer.
+ */
+async function reopenCount(db: Db, organisationId: string, ticketId: string): Promise<number> {
+  const [row] = await db
+    .select({ n: count() })
+    .from(schema.ticketEvents)
+    .where(and(
+      eq(schema.ticketEvents.organisationId, organisationId),
+      eq(schema.ticketEvents.ticketId, ticketId),
+      eq(schema.ticketEvents.kind, "status_changed"),
+      sql`${schema.ticketEvents.data}->>'to' = 'open'`,
+    ));
+  return Number(row?.n ?? 0);
+}
+
+/**
+ * At most one courtesy email per case per round.
+ *
+ * The nudge says "there is something waiting for you", and that is true once:
+ * answering in three messages is one trip to the portal, not three identical
+ * emails. The round advances when the client replies, because their reply
+ * reopens the case and they are back to waiting on us — so a notice from the
+ * previous round does not silence the next one.
+ *
+ * `failed` is deliberately not counted: a notice that never left is not a
+ * notice the client has had.
+ */
+async function courtesyAlreadySent(
+  db: Db,
+  organisationId: string,
+  conversationId: string,
+  round: number,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ id: schema.messages.id })
+    .from(schema.messages)
+    .where(and(
+      eq(schema.messages.organisationId, organisationId),
+      eq(schema.messages.conversationId, conversationId),
+      isCourtesyNotice(),
+      inArray(schema.messages.status, ["queued", "sent"]),
+      sql`coalesce(${schema.messages.metadata}->>'round', '0') = ${String(round)}`,
+    ))
+    .limit(1);
+  return !!existing;
+}
+
+/**
  * Appends to a thread. An internal note stays inside LaunchOS: no email
  * status, no job.
  *
@@ -80,9 +128,10 @@ async function noticeAddress(db: Db, organisationId: string, clientId: string): 
  * - **A portal thread** has no address, and needs none: writing the row *is*
  *   the delivery, because the portal is the channel. The message is `outbound`
  *   and `sent` immediately, the case moves to `waiting_client`, and — if the
- *   client has a contact address — a separate courtesy notice is queued
- *   telling them to sign in. The notice carries no part of the reply body, and
- *   its absence never fails the reply.
+ *   client has a contact address, and has not already been nudged since the
+ *   case was last reopened — a separate courtesy notice is queued telling them
+ *   to sign in. The notice carries no part of the reply body, and its absence
+ *   never fails the reply.
  */
 export async function replyToConversation(db: Db, organisationId: string, input: ReplyToConversationInput) {
   const v = ReplyToConversationInput.parse(input);
@@ -115,20 +164,6 @@ export async function replyToConversation(db: Db, organisationId: string, input:
   }
   if (byEmail && !identity) throw new Error("client has no support email identity; run ensureEmailIdentity");
 
-  const [ticket] = conversation.ticketId
-    ? await db
-        .select()
-        .from(schema.tickets)
-        .where(and(eq(schema.tickets.id, conversation.ticketId), eq(schema.tickets.organisationId, organisationId)))
-    : [];
-
-  // Delivered by the portal alone, a reply on a case the client was never
-  // shown is a message written to nobody. Refuse it and say so: the case
-  // screen carries a "Visible to the client" toggle for exactly this.
-  if (outbound && !byEmail && ticket && !ticket.clientVisible) {
-    throw new Error("this case is internal; make it visible to the client before replying");
-  }
-
   // Only mail carries a Message-ID to thread against. A client's portal reply
   // is `inbound` too (see reply-as-client.ts) but has no external id, so it
   // must not shadow the last real email and strip the In-Reply-To header.
@@ -154,6 +189,30 @@ export async function replyToConversation(db: Db, organisationId: string, input:
   const created = await db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
     const now = new Date();
+
+    // Read here, and locked, rather than before the transaction: the same
+    // transaction goes on to update this row, and the `client_visible` refusal
+    // below is a boundary rather than a check only if it is decided against
+    // the row as it is at the moment of writing. Without the lock, "Hide from
+    // the client" committing between the read and the insert would let a
+    // client-facing reply land on a case that is now internal — visible to
+    // them, on a thread neither screen will admit to. `replyAsClient` reads
+    // its ticket inside its transaction for the same reason.
+    const [ticket] = conversation.ticketId
+      ? await tx
+          .select()
+          .from(schema.tickets)
+          .where(and(eq(schema.tickets.id, conversation.ticketId), eq(schema.tickets.organisationId, organisationId)))
+          .for("update")
+      : [];
+
+    // Delivered by the portal alone, a reply on a case the client was never
+    // shown is a message written to nobody. Refuse it and say so: the case
+    // screen carries a "Visible to the client" toggle for exactly this.
+    // Nothing has been written at this point, so throwing here leaves no trace.
+    if (outbound && !byEmail && ticket && !ticket.clientVisible) {
+      throw new Error("this case is internal; make it visible to the client before replying");
+    }
 
     const [message] = await tx.insert(schema.messages).values({
       organisationId,
@@ -214,9 +273,13 @@ export async function replyToConversation(db: Db, organisationId: string, input:
         link: ticket ? `/cases/${ticket.id}` : `/inbox/${conversation.id}`,
       });
 
-      if (noticeTo) {
+      const round = ticket ? await reopenCount(tx, organisationId, ticket.id) : 0;
+      if (noticeTo && !(await courtesyAlreadySent(tx, organisationId, conversation.id, round))) {
+        // `new URL` rather than concatenation: a configured `APP_URL` with a
+        // trailing slash would otherwise put a doubled slash in the one link a
+        // client actually sees.
         const link = v.portalUrl
-          ? `\n\n${v.portalUrl}/portal/support${ticket ? `/${ticket.id}` : ""}`
+          ? `\n\n${new URL(`/portal/support${ticket ? `/${ticket.id}` : ""}`, v.portalUrl).toString()}`
           : "";
         [notice] = await tx.insert(schema.messages).values({
           organisationId,
@@ -229,12 +292,13 @@ export async function replyToConversation(db: Db, organisationId: string, input:
           toEmail: noticeTo,
           subject: replySubject(conversation.subject),
           status: "queued",
-          // Marks it as the nudge rather than the answer: the portal thread
-          // hides it, and anything that later wants to count real replies or
-          // suppress duplicates can tell the two apart. `sendQueuedMessage`
-          // merges its own send bookkeeping into this object rather than
-          // replacing it, so the marker survives delivery.
-          metadata: { kind: PORTAL_REPLY_NOTICE_KIND },
+          // `kind` marks it as the nudge rather than the answer: every staff
+          // and agent read of the thread filters on it (`isCourtesyNotice`),
+          // and so does the portal. `round` is which pass of the case it
+          // belongs to, so the next reply on the same pass finds it and stays
+          // quiet. `sendQueuedMessage` merges its own send bookkeeping into
+          // this object rather than replacing it, so both survive delivery.
+          metadata: { kind: PORTAL_REPLY_NOTICE_KIND, round },
         }).returning();
         await recordAudit(tx, organisationId, {
           actorKind: "system", action: "message.queued",

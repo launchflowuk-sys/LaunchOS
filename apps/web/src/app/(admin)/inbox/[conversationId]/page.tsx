@@ -1,5 +1,6 @@
+import { isCourtesyNotice } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, not } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MessageThread } from "@/components/message-thread";
@@ -57,6 +58,10 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[co
       and(
         eq(schema.messages.conversationId, conversation.id),
         eq(schema.messages.organisationId, session.organisationId),
+        // The courtesy nudge is addressed to the client and would otherwise be
+        // the newest row under every portal reply, so the thread would end
+        // "sign in to the portal to read it" rather than with the answer.
+        not(isCourtesyNotice()),
       ),
     )
     .orderBy(asc(schema.messages.createdAt));

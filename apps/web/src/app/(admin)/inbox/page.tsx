@@ -1,3 +1,4 @@
+import { isCourtesyNotice } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { desc, eq, sql } from "drizzle-orm";
 import Link from "next/link";
@@ -31,9 +32,13 @@ export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
       lastMessageAt: schema.conversations.lastMessageAt,
       ticketId: schema.conversations.ticketId,
       clientName: schema.clients.name,
+      // The courtesy nudge is `outbound` and always the newest row on a
+      // portal thread, so counting it would answer "who spoke last" with a
+      // machine rather than with either party.
       lastDirection: sql<string | null>`(
         select m.direction from messages m
         where m.conversation_id = ${schema.conversations.id}
+          and not ${isCourtesyNotice(sql`m.metadata`)}
         order by m.created_at desc limit 1
       )`,
     })

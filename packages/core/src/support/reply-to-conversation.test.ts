@@ -6,9 +6,11 @@ import { MockEmailAdapter, type EmailAdapter, type SendResult } from "@launchos/
 import { createClient } from "../clients/create-client.js";
 import { ensureEmailIdentity } from "../email/ensure-email-identity.js";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
+import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
 import { createTicket } from "./create-ticket.js";
 import { ingestInboundEmail } from "./ingest-inbound-email.js";
-import { PORTAL_REPLY_NOTICE_KIND, replyToConversation } from "./reply-to-conversation.js";
+import { replyAsClient } from "./reply-as-client.js";
+import { replyToConversation } from "./reply-to-conversation.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
 
 const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "LaunchFlow <support@launchflow.test>" };
@@ -130,7 +132,9 @@ describe("replyToConversation on a portal thread", () => {
         const secret = "Your admin password is hunter2.";
         await replyToConversation(db, organisationId, {
           conversationId: conversation.id, body: secret, actorKind: "user", actorId: "u1",
-          portalUrl: "https://os.launchflow.test",
+          // Trailing slash on purpose: the link is built with `new URL`, so a
+          // configured base that carries one must not double it.
+          portalUrl: "https://os.launchflow.test/",
         });
 
         const [notice] = await db
@@ -146,9 +150,67 @@ describe("replyToConversation on a portal thread", () => {
         // The nudge, never the answer.
         expect(notice!.body).not.toContain(secret);
         expect(notice!.body).toContain("https://os.launchflow.test/portal/support/");
+        expect(notice!.body).not.toContain("//portal");
 
         // Exactly one thing to send: the notice, not the reply.
         expect(events).toEqual([{ name: "message.queued", organisationId, messageId: notice!.id }]);
+      });
+    });
+  });
+
+  it("moves a triaged case to waiting_client, because triage is not an answer", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, ticket, conversation } = await seedPortalCase(db);
+      // Where Support Triage leaves every client-raised case.
+      await db.update(schema.tickets).set({ status: "triaged" }).where(eq(schema.tickets.id, ticket.id));
+
+      await replyToConversation(db, organisationId, {
+        conversationId: conversation.id, body: "Answered.", actorKind: "user", actorId: "u1",
+      });
+
+      const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ticket.id));
+      expect(after!.status).toBe("waiting_client");
+    });
+  });
+
+  it("nudges the client once per open case, and again after they reply", async () => {
+    await withTestDb(async (db) => {
+      await withCapturedEvents(async (events) => {
+        const { organisationId, client, conversation } = await seedPortalCase(db);
+        await ensureEmailIdentity(db, organisationId, { clientId: client.id }, ENV);
+        await db.update(schema.clients).set({ email: "jo@client.test" }).where(eq(schema.clients.id, client.id));
+
+        const notices = () =>
+          db
+            .select()
+            .from(schema.messages)
+            .where(and(
+              eq(schema.messages.conversationId, conversation.id),
+              eq(schema.messages.authorKind, "system"),
+            ));
+
+        const send = (body: string) =>
+          replyToConversation(db, organisationId, {
+            conversationId: conversation.id, body, actorKind: "user", actorId: "u1",
+          });
+
+        await send("Looking at it now.");
+        await send("The form is fixed.");
+        await send("Let us know if anything else looks wrong.");
+        // Three answers, one trip to the portal to read them.
+        expect(await notices()).toHaveLength(1);
+        events.length = 0;
+
+        // The client replies: the case reopens, so the next answer is news again.
+        await replyAsClient(db, organisationId, {
+          conversationId: conversation.id, body: "Still not receiving them.", actorId: "portal-user-1",
+        });
+        await send("Try now.");
+
+        const after = await notices();
+        expect(after).toHaveLength(2);
+        expect(after.every((n) => n.metadata["kind"] === PORTAL_REPLY_NOTICE_KIND)).toBe(true);
+        expect(events.filter((e) => e.name === "message.queued")).toHaveLength(1);
       });
     });
   });

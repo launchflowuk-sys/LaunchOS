@@ -1,7 +1,7 @@
 import { createTicket } from "@launchos/core";
 import { createDb, schema } from "@launchos/db";
 import { expect, test } from "@playwright/test";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { DATABASE_URL, OWNER } from "./seed-credentials";
 import { signIn } from "./sign-in";
 
@@ -16,6 +16,9 @@ const portalSubject = `E2E portal request ${stamp}`;
 const internalSubject = `E2E internal renewal ${stamp}`;
 const portalAnswer = `We have updated the signature template. ${stamp}`;
 const note = `Checked the SMTP logs at ${stamp}`;
+// Two notes in a row on a case whose composer opens on "reply".
+const firstNote = `Billing is three invoices behind ${stamp}`;
+const secondNote = `Hold the DNS work until that clears ${stamp}`;
 const toolUseId = `toolu_e2e_${stamp}`;
 const approvalTitle = `E2E reply to client ${stamp}`;
 const draftedReply = `Thanks for letting us know about the contact form. ${stamp}`;
@@ -175,9 +178,10 @@ test("open cases: list, thread, internal note, assign and status", async ({ page
 
   // An internal note never leaves LaunchOS, and lands on the thread labelled.
   const composer = page.getByRole("form", { name: "Case message" });
-  await composer.getByLabel("Message type").selectOption("note");
+  await composer.getByRole("button", { name: "Internal note" }).click();
+  await expect(composer.getByRole("status")).toHaveText("Internal note — staff only");
   await composer.locator('textarea[name="body"]').fill(note);
-  await composer.getByRole("button", { name: "Post message" }).click();
+  await composer.getByRole("button", { name: "Add note" }).click();
   await expect(page.getByText(note)).toBeVisible({ timeout: 30_000 });
 
   // Assign to the owner.
@@ -210,9 +214,38 @@ test("a portal case can be answered from the case screen", async ({ page }) => {
   await expect(page.getByRole("group", { name: "Case status" })).toContainText("Visible to the client");
 
   const composer = page.getByRole("form", { name: "Case message" });
-  await expect(composer.getByLabel("Message type")).toHaveValue("reply");
+  const strip = composer.getByRole("status");
+  await expect(strip).toHaveText("Replying to the client — visible in their portal");
+
+  // The trap this composer exists to close: the case opens on "reply", so an
+  // internal note has to survive its own post. Two notes in a row, and the
+  // second one must not be the one that reaches the client.
+  await composer.getByRole("button", { name: "Internal note" }).click();
+  await composer.locator('textarea[name="body"]').fill(firstNote);
+  await composer.getByRole("button", { name: "Add note" }).click();
+  await expect(page.getByText(firstNote)).toBeVisible({ timeout: 30_000 });
+  // Posting cleared the box; it did not change who the next message is for.
+  await expect(strip).toHaveText("Internal note — staff only");
+  await expect(composer.getByRole("button", { name: "Add note" })).toBeVisible();
+  await composer.locator('textarea[name="body"]').fill(secondNote);
+  await composer.getByRole("button", { name: "Add note" }).click();
+  await expect(page.getByText(secondNote)).toBeVisible({ timeout: 30_000 });
+
+  const notes = await db
+    .select()
+    .from(schema.messages)
+    .where(inArray(schema.messages.body, [firstNote, secondNote]));
+  expect(notes).toHaveLength(2);
+  expect(notes.every((m) => m.direction === "internal")).toBe(true);
+  // Still on the client's own case, which has not moved on a note.
+  const [stillOpen] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, portalTicketId));
+  expect(stillOpen!.status).not.toBe("waiting_client");
+
+  // Now the reply, chosen deliberately.
+  await composer.getByRole("button", { name: "Reply to the client" }).click();
+  await expect(strip).toHaveText("Replying to the client — visible in their portal");
   await composer.locator('textarea[name="body"]').fill(portalAnswer);
-  await composer.getByRole("button", { name: "Post message" }).click();
+  await composer.getByRole("button", { name: "Send to client" }).click();
 
   // On the thread, and not as an internal note.
   await expect(page.getByText(portalAnswer)).toBeVisible({ timeout: 30_000 });
@@ -239,12 +272,12 @@ test("an internal case must be shared before it can be answered", async ({ page 
 
   // Nothing to reply to yet: the only thing on offer is a note.
   const composer = page.getByRole("form", { name: "Case message" });
-  await expect(composer.getByLabel("Message type")).toHaveValue("note");
-  await expect(composer.getByRole("option", { name: "Reply to the client" })).toHaveCount(0);
+  await expect(composer.getByRole("status")).toHaveText("Internal note — staff only");
+  await expect(composer.getByRole("button", { name: "Reply to the client" })).toHaveCount(0);
 
   await page.getByRole("form", { name: "Client visibility" }).getByRole("button", { name: "Share with the client" }).click();
   await expect(page.getByRole("group", { name: "Case status" })).toContainText("Visible to the client", { timeout: 30_000 });
-  await expect(composer.getByRole("option", { name: "Reply to the client" })).toHaveCount(1);
+  await expect(composer.getByRole("button", { name: "Reply to the client" })).toHaveCount(1);
 
   const [after] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, internalTicketId));
   expect(after!.clientVisible).toBe(true);

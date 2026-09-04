@@ -1,5 +1,6 @@
+import { isCourtesyNotice } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, not } from "drizzle-orm";
 import { z } from "zod";
 import { defineTool } from "../kernel/types.js";
 
@@ -25,7 +26,14 @@ export const ticketsGet = defineTool({
             body: schema.messages.body, createdAt: schema.messages.createdAt,
           })
           .from(schema.messages)
-          .where(eq(schema.messages.conversationId, row.ticket.conversationId))
+          // The courtesy notice is machine-written housekeeping addressed to
+          // the client, not conversation. In the context window it reads as the
+          // agency answering with a form letter, and one per reply would soon
+          // be most of the thread.
+          .where(and(
+            eq(schema.messages.conversationId, row.ticket.conversationId),
+            not(isCourtesyNotice()),
+          ))
           .orderBy(asc(schema.messages.createdAt))
           .limit(THREAD_LIMIT)
       : [];
