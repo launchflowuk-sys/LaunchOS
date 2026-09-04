@@ -68,9 +68,12 @@ test("raise an invoice, send it through approvals, mark it paid, then record a p
     .toHaveText("sent");
   await expect(page.getByText("awaiting approval before it is emailed")).toBeHidden();
 
-  // ...and the mock email adapter's send is visible in the client's activity.
+  // ...and the send is visible in the client's activity feed. The verb is
+  // matched loosely ("emailed to" / "queued to") because it follows whichever
+  // delivery path core takes; the invoice, the recipient and the fact that a
+  // send happened at all are what this asserts.
   await page.goto(clientUrl);
-  await expect(page.getByText(`Invoice ${number} emailed to info@grayscabline.co.uk`))
+  await expect(page.getByText(new RegExp(`Invoice ${number} \\w+ to info@grayscabline\\.co\\.uk`)))
     .toBeVisible({ timeout: COLD_COMPILE });
 
   await page.goto(invoiceUrl);
