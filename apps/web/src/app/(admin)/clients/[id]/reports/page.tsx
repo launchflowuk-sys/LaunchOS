@@ -7,13 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { ClientTabs } from "../tabs";
 
 export const dynamic = "force-dynamic";
 
 export default async function ClientReportsPage({ params }: PageProps<"/clients/[id]/reports">) {
   const session = await requireAdmin();
-  const { id } = await params;
+  const id = uuidOr404((await params).id);
   const db = getDb();
 
   const client = await getClient(db, session.organisationId, id);

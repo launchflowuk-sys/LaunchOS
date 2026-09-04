@@ -21,33 +21,24 @@ function NavList({ groups, onNavigate = NOOP }: { groups: readonly NavGroup[]; o
         <div key={group.label}>
           <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{group.label}</p>
           <div className="space-y-0.5">
-            {group.items.map((item) =>
-              item.plan ? (
-                <span
-                  key={item.label}
-                  title={`Arrives in Plan ${item.plan}`}
-                  className="flex items-center justify-between rounded-md px-3 py-2 text-sm text-neutral-400"
-                >
-                  {item.label}
-                  <span className="text-[10px] uppercase tracking-wide">Plan {item.plan}</span>
-                </span>
-              ) : (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                  className={cn(
-                    "block rounded-md px-3 py-2 text-sm transition-colors",
-                    isActive(pathname, item.href)
-                      ? "bg-neutral-100 font-medium text-neutral-900"
-                      : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900",
-                  )}
-                >
-                  {item.label}
-                </Link>
-              ),
-            )}
+            {/* Every entry is a link: the disabled "arrives in Plan N" label
+                went out with the last pending module (see `lib/nav.ts`). */}
+            {group.items.map((item) => (
+              <Link
+                key={item.label}
+                href={item.href}
+                onClick={onNavigate}
+                aria-current={isActive(pathname, item.href) ? "page" : undefined}
+                className={cn(
+                  "block rounded-md px-3 py-2 text-sm transition-colors",
+                  isActive(pathname, item.href)
+                    ? "bg-neutral-100 font-medium text-neutral-900"
+                    : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900",
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
           </div>
         </div>
       ))}
@@ -55,11 +46,20 @@ function NavList({ groups, onNavigate = NOOP }: { groups: readonly NavGroup[]; o
   );
 }
 
-function Identity({ email, role }: { email: string; role: string }) {
+/**
+ * The signed-in staff member's own corner of the shell. "Account" is the only
+ * way to `/account`, which is deliberately not a nav module: it is where a
+ * member replaces the one-time password an owner issued them with one of their
+ * own, so it has to be reachable from every admin screen.
+ */
+function Identity({ email, role, onNavigate = NOOP }: { email: string; role: string; onNavigate?: () => void }) {
   return (
     <div className="border-t border-neutral-200 px-5 py-4 text-xs text-neutral-500">
       <p className="truncate font-medium text-neutral-700">{email}</p>
       <p className="mt-0.5 capitalize">{role}</p>
+      <Link href="/account" onClick={onNavigate} className="mt-1.5 inline-block text-neutral-600 hover:text-neutral-900 hover:underline">
+        Account
+      </Link>
     </div>
   );
 }
@@ -103,7 +103,7 @@ export function AppNav({ groups, email, role }: { groups: readonly NavGroup[]; e
             <SheetDescription className="text-xs text-neutral-500">Admin portal</SheetDescription>
           </SheetHeader>
           <NavList groups={groups} onNavigate={() => setOpen(false)} />
-          <Identity email={email} role={role} />
+          <Identity email={email} role={role} onNavigate={() => setOpen(false)} />
         </SheetContent>
       </Sheet>
     </>

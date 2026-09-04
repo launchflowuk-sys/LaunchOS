@@ -22,7 +22,7 @@ export async function setAgentEnabled(formData: FormData) {
     agentKey: formData.get("agentKey"),
     enabled: formData.get("enabled"),
   });
-  if (!agentCatalog.some((a) => a.key === agentKey)) throw new Error(`unknown agent ${agentKey}`);
+  if (!agentCatalog().some((a) => a.key === agentKey)) throw new Error(`unknown agent ${agentKey}`);
 
   const [before] = await getDb()
     .select()

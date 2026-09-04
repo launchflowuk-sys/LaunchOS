@@ -2,7 +2,7 @@
 
 ## Admin portal `apps/web/src/app/(admin)`
 
-Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has not landed render as disabled navigation labels rather than links to a 404.
+Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Every module in the spec has landed, so every nav entry is a link to a route that exists — the disabled "arrives in Plan N" labels the earlier plans rendered are gone. `/account` is deliberately not in the nav: it is reached from the member's own identity block in the sidebar.
 
 | Route | Module | Plan | Reads | Writes |
 |---|---|---|---|---|
@@ -31,6 +31,7 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 | `/knowledge`, `/knowledge/new`, `/knowledge/[id]` | Knowledge Base | 4 | knowledge_articles, full-text search over them | create, edit, publish/unpublish, delete |
 | `/settings/email` | Email | 4 | `email_identities` per client, plus the configured domain, provider, adapter and `MAIL_FROM`. A secret is rendered as "Set" / "Not set", never its value | send a test email through the configured adapter |
 | `/team` | Team | 2 | organisation members + users | create member (one-time password), deactivate |
+| `/account` | Account | 2 | the signed-in member's own row | change your own password (Better Auth), which stamps `organisation_members.initial_password_set_at` and closes the re-issue window on `/team` |
 | `/settings/organisation` | Organisation | 2 | organisation, SUPPORT_EMAIL_DOMAIN | — |
 | `/api/search` | Global search | 2 | clients, sites, domains, tickets | — |
 | `/api/webhooks/email/inbound` | Inbound email | 4 | `email_identities` (to resolve the organisation), `organisations` | none — validates the shared secret, normalises by provider, writes attachments to `STORAGE_DIR` and enqueues `inbound.message` |
@@ -48,7 +49,7 @@ The Plan 2 folders and what each exports. Every function has the shape `(db, org
 | `billing` | `upsertBillingProfile`, `getBillingProfile` |
 | `sites` | `createSite`, `updateSite`, `listSites`, `getSite` |
 | `domains` | `createDomain`, `updateDomain`, `deleteDomain`, `listDomains`, `getDomain`, `createDnsRecord`, `updateDnsRecord`, `deleteDnsRecord`, `listDnsRecords` |
-| `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword` |
+| `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword`, `reissueOneTimePassword`, `markInitialPasswordSet` |
 | `search` | `search` — one query across clients, sites, domains and tickets |
 | `email` | `ensureEmailIdentity`, `supportAddress` — the routable inbox behind `clients.support_email` |
 | `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `sendQueuedMessage`, `slaDueAt`. `replyAsClient` — the portal reply path — is in flight and not yet exported from `packages/core/src/index.ts`; check `git ls-files packages/core/src/support` before importing it |

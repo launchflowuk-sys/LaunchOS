@@ -1,10 +1,12 @@
-export type NavItem = { label: string; href: string; plan?: 3 | 4 | 5 };
+export type NavItem = { label: string; href: string };
 export type NavGroup = { label: string; items: readonly NavItem[] };
 
 /**
- * The final admin navigation (spec §5). Items whose module arrives in a later
- * plan render as disabled labels rather than links to routes that 404.
- * "Open Cases" is the spec's name for the ticket list Plan 1 already ships.
+ * The final admin navigation (spec §5). Every module in the spec has landed, so
+ * every entry below is a link to a route that exists — the disabled "arrives in
+ * Plan N" label the earlier plans rendered is gone with the last of them. An
+ * entry added here without its route is a 404 in the sidebar, so add the route
+ * first. "Open Cases" is the spec's name for the ticket list Plan 1 ships.
  */
 export const NAV_GROUPS: readonly NavGroup[] = [
   { label: "Overview", items: [{ label: "Dashboard", href: "/" }] },

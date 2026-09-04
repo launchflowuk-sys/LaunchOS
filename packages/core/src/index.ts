@@ -64,6 +64,7 @@ export { listMembers, countActiveOwners } from "./team/list-members.js";
 export type { MemberRow } from "./team/list-members.js";
 export { deactivateMember, DeactivateMemberInput } from "./team/deactivate-member.js";
 export { reissueOneTimePassword, ReissueOneTimePasswordInput } from "./team/reissue-password.js";
+export { markInitialPasswordSet, MarkInitialPasswordSetInput } from "./team/mark-initial-password-set.js";
 export { search, SearchInput } from "./search/search.js";
 export type { SearchResults } from "./search/search.js";
 export { createPackage, CreatePackageInput, PackageIncludesInput } from "./packages/create-package.js";

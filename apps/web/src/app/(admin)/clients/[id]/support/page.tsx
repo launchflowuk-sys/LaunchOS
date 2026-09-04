@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { ClientTabs } from "../tabs";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ const Uuid = z.string().uuid();
 
 export default async function ClientSupportPage({ params }: PageProps<"/clients/[id]/support">) {
   const session = await requireAdmin();
-  const { id } = await params;
+  const id = uuidOr404((await params).id);
   const db = getDb();
 
   // A non-uuid path segment is a 404, not a Postgres uuid cast error.

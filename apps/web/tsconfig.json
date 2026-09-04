@@ -27,6 +27,7 @@
       "@launchos/core": ["../../packages/core/src/index.ts"],
       "@launchos/channels": ["../../packages/channels/src/index.ts"],
       "@launchos/agents": ["../../packages/agents/src/index.ts"],
+      "@launchos/agents/definitions": ["../../packages/agents/src/agents/index.ts"],
       "@launchos/integrations": ["../../packages/integrations/src/index.ts"]
     }
   },

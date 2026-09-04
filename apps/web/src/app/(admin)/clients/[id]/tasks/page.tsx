@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { setTaskVisibilityAction } from "../../../tasks/actions";
 import { NewTaskDialog } from "../../../tasks/new-task-dialog";
 import { TaskStatusForm } from "../../../tasks/task-row-status";
@@ -43,7 +44,7 @@ function progressOf(tasks: TaskListRow[], phase: string) {
 
 export default async function ClientTasksPage({ params }: PageProps<"/clients/[id]/tasks">) {
   const session = await requireAdmin();
-  const { id } = await params;
+  const id = uuidOr404((await params).id);
 
   const client = await getClient(getDb(), session.organisationId, id);
   if (!client) notFound();

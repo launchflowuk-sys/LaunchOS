@@ -6,6 +6,15 @@ import { hostingGuardDog } from "./hosting-guard-dog/index.js";
 import { supportTriage } from "./support-triage/index.js";
 
 /**
+ * This module is also the package's `./definitions` export, and that subpath
+ * exists so a caller can build the registry without the kernel: the root export
+ * re-exports `kernel/llm.js`, which imports the Anthropic SDK. Anything that
+ * only needs to read what the agents *are* — `apps/web`'s Settings → Agents
+ * catalogue — imports `@launchos/agents/definitions` and never loads a model
+ * client. Keep this file free of kernel imports beyond the types.
+ */
+
+/**
  * What every shipped agent needs to be constructed. It is an object rather than
  * a positional list because agents keep arriving with their own dependencies —
  * the Sentinel needs an email adapter and the portal URL for its

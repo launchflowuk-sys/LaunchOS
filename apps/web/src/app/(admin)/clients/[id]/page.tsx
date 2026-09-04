@@ -6,7 +6,9 @@ import { StatusBadge } from "@/components/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { isInAppPath } from "@/lib/in-app-path";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { SubscriptionsSection } from "./billing/subscriptions-section";
 import {
   AddContactForm, AddDomainForm, AddSiteForm, ArchiveClientButton, BillingForm, RemoveContactButton,
@@ -16,7 +18,7 @@ import { CLIENT_TABS, ClientTabs, type ClientTabKey } from "./tabs";
 export const dynamic = "force-dynamic";
 
 export default async function ClientDetailPage({ params, searchParams }: PageProps<"/clients/[id]">) {
-  const { id } = await params;
+  const id = uuidOr404((await params).id);
   const query = await searchParams;
   const session = await requireAdmin();
   const db = getDb();
@@ -56,7 +58,12 @@ async function OverviewTab({ clientId }: { clientId: string }) {
         <li key={event.id} className="rounded-lg border border-neutral-200 bg-white p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <p className="text-sm font-medium text-neutral-900">
-              {event.link ? (
+              {/* `activity_events.link` is free text a service or an agent
+                  wrote, so it is guarded exactly like `notifications.link`:
+                  anything that is not unambiguously a path inside this app —
+                  a protocol-relative `//host`, a scheme, a backslash — renders
+                  as plain text rather than as a link off the timeline. */}
+              {isInAppPath(event.link) ? (
                 <Link href={event.link} className="hover:underline">
                   {event.title}
                 </Link>

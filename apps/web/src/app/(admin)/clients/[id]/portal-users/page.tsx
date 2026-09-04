@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { ClientTabs } from "../tabs";
 import { setPortalUserStatusAction } from "./actions";
 import { InvitePortalUserForm } from "./invite-form";
@@ -18,7 +19,7 @@ const ROLE_LABELS: Record<string, string> = { client_admin: "Admin", client_memb
 
 export default async function ClientPortalUsersPage({ params }: PageProps<"/clients/[id]/portal-users">) {
   const session = await requireAdmin();
-  const { id } = await params;
+  const id = uuidOr404((await params).id);
   const db = getDb();
 
   // The org-scoped read `assertOwned` would perform, and the name for the
