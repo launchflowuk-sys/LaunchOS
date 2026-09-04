@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 
 export type AgentRunTrigger = "cron" | "event" | "manual" | "resume";
 export type AgentStepKind = "llm" | "tool_call" | "tool_result" | "approval_requested" | "note";
@@ -40,12 +40,21 @@ export class RunRecorder {
    * and the trace in the admin portal reads as one story.
    */
   static async reopen(db: Db, organisationId: string, runId: string): Promise<RunRecorder> {
-    const [run] = await db
-      .select({ id: schema.agentRuns.id, status: schema.agentRuns.status })
-      .from(schema.agentRuns)
-      .where(and(eq(schema.agentRuns.id, runId), eq(schema.agentRuns.organisationId, organisationId)));
-    if (!run) throw new Error(`agent run ${runId} not found in organisation`);
-    if (run.status !== "awaiting_approval") throw new Error(`agent run ${runId} is ${run.status}, expected awaiting_approval`);
+    // Claim the run in one statement: a check-then-update would let two
+    // approvals resume the same parked run and execute the tool twice.
+    const [claimed] = await db
+      .update(schema.agentRuns)
+      .set({ status: "running", updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.agentRuns.id, runId),
+          eq(schema.agentRuns.organisationId, organisationId),
+          eq(schema.agentRuns.status, "awaiting_approval"),
+          isNull(schema.agentRuns.deletedAt),
+        ),
+      )
+      .returning({ id: schema.agentRuns.id });
+    if (!claimed) throw await RunRecorder.claimFailure(db, organisationId, runId);
 
     const [last] = await db
       .select({ seq: schema.agentSteps.seq })
@@ -54,10 +63,19 @@ export class RunRecorder {
       .orderBy(desc(schema.agentSteps.seq))
       .limit(1);
 
-    await db.update(schema.agentRuns).set({ status: "running", updatedAt: new Date() }).where(eq(schema.agentRuns.id, runId));
     const recorder = new RunRecorder(db, organisationId, runId);
     recorder.seq = last?.seq ?? 0;
     return recorder;
+  }
+
+  /** Explains a lost claim. Read-only: the claim itself already decided. */
+  private static async claimFailure(db: Db, organisationId: string, runId: string): Promise<Error> {
+    const [run] = await db
+      .select({ status: schema.agentRuns.status, deletedAt: schema.agentRuns.deletedAt })
+      .from(schema.agentRuns)
+      .where(and(eq(schema.agentRuns.id, runId), eq(schema.agentRuns.organisationId, organisationId)));
+    if (!run || run.deletedAt) return new Error(`agent run ${runId} not found in organisation`);
+    return new Error(`agent run ${runId} is ${run.status}, expected awaiting_approval`);
   }
 
   async step(kind: AgentStepKind, data: RecordStepInput) {

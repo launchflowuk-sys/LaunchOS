@@ -80,6 +80,7 @@ describe("resumeAgent", () => {
         runId: run.runId,
         approvalId: approval.id,
         decision: "approved",
+        decidedByUserId: "user_42",
         llm,
         policy: "safe",
         logger: console,
@@ -105,9 +106,14 @@ describe("resumeAgent", () => {
       expect(steps.map((s) => s.seq)).toEqual([...steps.keys()].map((i) => i + 1)); // seq continues, never restarts
       expect(steps.map((s) => s.kind)).toContain("tool_result");
 
+      // The skipped remainder is visible in the trace, not only to the model.
+      const skipNote = steps.find((s) => s.kind === "note");
+      expect(skipNote!.output).toMatchObject({ skippedToolUseIds: ["tu_c"], reason: "skipped pending approval" });
+
       const [decided] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval.id));
       expect(decided!.status).toBe("approved");
       expect(decided!.decidedAt).toBeInstanceOf(Date);
+      expect(decided!.decidedBy).toBe("user_42");
     });
   });
 
@@ -159,6 +165,65 @@ describe("resumeAgent", () => {
           logger: console,
         }),
       ).rejects.toThrow(/awaiting_approval/);
+    });
+  });
+
+  it("refuses to replay a spent approval against a tool_use the human never saw", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+
+      // First resume approves tu_b; the model immediately parks a *new* send_mail.
+      const llm = new FakeLlmClient([
+        { content: [toolUse("tu_d", "send_mail", { to: "second@c.test" })], stopReason: "tool_use", usage: { inputTokens: 1, outputTokens: 1 } },
+      ]);
+      const reparked = await resumeAgent(agent, {
+        db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved", llm, policy: "safe", logger: console,
+      });
+      expect(reparked.status).toBe("awaiting_approval");
+      expect(sendMailCalls).toEqual([{ to: "jo@c.test" }]);
+
+      // Replaying the spent approval must not spend it again on tu_d.
+      await expect(
+        resumeAgent(agent, {
+          db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+          llm: new FakeLlmClient([]), policy: "safe", logger: console,
+        }),
+      ).rejects.toThrow(/is approved, expected pending/);
+      expect(sendMailCalls).toEqual([{ to: "jo@c.test" }]);
+
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("awaiting_approval"); // still parked, still resumable by the right approval
+    });
+  });
+
+  it("refuses an approval bound to a different tool_use id", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      await db
+        .update(schema.approvals)
+        .set({ payload: { toolName: "send_mail", input: { to: "jo@c.test" }, toolUseId: "tu_zzz" } })
+        .where(eq(schema.approvals.id, approval.id));
+
+      await expect(
+        resumeAgent(agent, {
+          db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+          llm: new FakeLlmClient([]), policy: "safe", logger: console,
+        }),
+      ).rejects.toThrow(/approves tool_use tu_zzz/);
+      expect(sendMailCalls).toEqual([]);
+    });
+  });
+
+  it("gives a domain error when the run carries no pending state", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      await db.update(schema.agentRuns).set({ metadata: {} }).where(eq(schema.agentRuns.id, run.runId));
+      await expect(
+        resumeAgent(agent, {
+          db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+          llm: new FakeLlmClient([]), policy: "safe", logger: console,
+        }),
+      ).rejects.toThrow(/no resumable pending state/);
     });
   });
 

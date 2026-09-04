@@ -1,7 +1,7 @@
 import type Anthropic from "@anthropic-ai/sdk";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import type { LlmClient } from "./llm.js";
 import { buildContext, runLoop, type ToolResultBlock } from "./run-loop.js";
@@ -16,7 +16,14 @@ export const PendingState = z.object({
   remainingToolUseIds: z.array(z.string()).default([]),
 });
 
-const ApprovalPayload = z.object({ toolName: z.string().min(1), input: z.unknown() });
+// `toolUseId` is required: it is what binds an approval to the exact tool_use
+// block a human looked at. Without it a stale approval could be replayed
+// against a later parked call and execute a tool nobody approved.
+const ApprovalPayload = z.object({
+  toolName: z.string().min(1),
+  input: z.unknown(),
+  toolUseId: z.string().min(1),
+});
 
 export type ApprovalDecision = "approved" | "rejected";
 
@@ -27,17 +34,27 @@ export interface ResumeAgentOptions {
   approvalId: string;
   decision: ApprovalDecision;
   note?: string;
+  /** The signed-in human who decided; stamped onto `approvals.decided_by`. */
+  decidedByUserId?: string;
   llm: LlmClient;
   policy: AgentPolicy;
   logger: Logger;
   now?: () => Date;
 }
 
+type Pending = z.infer<typeof PendingState>;
+
 interface LoadedApproval {
   id: string;
-  status: string;
   toolName: string;
   input: unknown;
+  toolUseId: string;
+}
+
+function parsePending(runId: string, metadata: unknown): Pending {
+  const parsed = PendingState.safeParse((metadata as { pending?: unknown } | null)?.pending);
+  if (!parsed.success) throw new Error(`agent run ${runId} has no resumable pending state`);
+  return parsed.data;
 }
 
 /**
@@ -45,15 +62,19 @@ interface LoadedApproval {
  * both scoped to the organisation. Anything inconsistent throws rather than
  * guessing: a resume that half-works would send outward traffic nobody approved.
  */
-async function loadParked(
-  opts: ResumeAgentOptions,
-): Promise<{ pending: z.infer<typeof PendingState>; approval: LoadedApproval }> {
+async function loadParked(opts: ResumeAgentOptions): Promise<{ pending: Pending; approval: LoadedApproval }> {
   const [run] = await opts.db
     .select()
     .from(schema.agentRuns)
-    .where(and(eq(schema.agentRuns.id, opts.runId), eq(schema.agentRuns.organisationId, opts.organisationId)));
+    .where(
+      and(
+        eq(schema.agentRuns.id, opts.runId),
+        eq(schema.agentRuns.organisationId, opts.organisationId),
+        isNull(schema.agentRuns.deletedAt),
+      ),
+    );
   if (!run) throw new Error(`agent run ${opts.runId} not found in organisation`);
-  const pending = PendingState.parse((run.metadata as { pending?: unknown }).pending);
+  const pending = parsePending(opts.runId, run.metadata);
 
   const [approval] = await opts.db
     .select()
@@ -63,24 +84,32 @@ async function loadParked(
         eq(schema.approvals.id, opts.approvalId),
         eq(schema.approvals.organisationId, opts.organisationId),
         eq(schema.approvals.runId, opts.runId),
+        isNull(schema.approvals.deletedAt),
       ),
     );
   if (!approval) throw new Error(`approval ${opts.approvalId} does not belong to run ${opts.runId}`);
-  if (approval.status !== "pending" && approval.status !== opts.decision) {
-    throw new Error(`approval ${opts.approvalId} is ${approval.status}, expected pending or ${opts.decision}`);
+  // A decided approval is spent. Replaying one is how a stale "approved" row
+  // gets spent a second time on a tool_use the human never saw.
+  if (approval.status !== "pending") {
+    throw new Error(`approval ${opts.approvalId} is ${approval.status}, expected pending`);
   }
   const payload = ApprovalPayload.parse(approval.payload);
-  return { pending, approval: { id: approval.id, status: approval.status, ...payload } };
+  if (payload.toolUseId !== pending.awaitingToolUseId) {
+    throw new Error(
+      `approval ${opts.approvalId} approves tool_use ${payload.toolUseId}, but run ${opts.runId} is awaiting ${pending.awaitingToolUseId}`,
+    );
+  }
+  return { pending, approval: { id: approval.id, ...payload } };
 }
 
-/** Records the human's verdict when the caller has not already stamped the row. */
+/** Records the human verdict on the approval row. */
 async function recordDecision(opts: ResumeAgentOptions, approval: LoadedApproval): Promise<void> {
-  if (approval.status !== "pending") return;
   await opts.db
     .update(schema.approvals)
     .set({
       status: opts.decision,
       decidedAt: (opts.now ?? (() => new Date()))(),
+      decidedBy: opts.decidedByUserId ?? null,
       decisionNote: opts.note ?? null,
       updatedAt: new Date(),
     })
@@ -117,7 +146,7 @@ async function executeApprovedTool(
 async function buildResumeResults(
   def: AgentDefinition,
   opts: ResumeAgentOptions,
-  pending: z.infer<typeof PendingState>,
+  pending: Pending,
   approval: LoadedApproval,
   tool: ToolDefinition | undefined,
   ctx: AgentContext,
@@ -126,21 +155,41 @@ async function buildResumeResults(
   const results: ToolResultBlock[] = [...(pending.completedResults as ToolResultBlock[])];
   if (opts.decision === "approved") {
     if (!tool) throw new Error(`approved tool ${approval.toolName} is not registered on agent ${def.key}`);
-    results.push(await executeApprovedTool(tool, approval.input, pending.awaitingToolUseId, ctx, recorder));
+    results.push(await executeApprovedTool(tool, approval.input, approval.toolUseId, ctx, recorder));
   } else {
     const note = opts.note?.trim() ?? "";
     await recorder.step("note", { toolName: approval.toolName, input: approval.input, output: { rejected: true, note } });
     results.push({
       type: "tool_result",
-      tool_use_id: pending.awaitingToolUseId,
+      tool_use_id: approval.toolUseId,
       content: `rejected by human: ${note.length > 0 ? note : "no reason given"}`,
       is_error: true,
     });
   }
-  for (const id of pending.remainingToolUseIds) {
-    results.push({ type: "tool_result", tool_use_id: id, content: "skipped pending approval", is_error: true });
+  if (pending.remainingToolUseIds.length > 0) {
+    // The rest of the batch never ran. Say so in the trace, not just to the model.
+    await recorder.step("note", {
+      output: { skippedToolUseIds: pending.remainingToolUseIds, reason: "skipped pending approval" },
+    });
+    for (const id of pending.remainingToolUseIds) {
+      results.push({ type: "tool_result", tool_use_id: id, content: "skipped pending approval", is_error: true });
+    }
   }
   return results;
+}
+
+async function resumeMessages(
+  def: AgentDefinition,
+  opts: ResumeAgentOptions,
+  pending: Pending,
+  approval: LoadedApproval,
+  tool: ToolDefinition | undefined,
+  ctx: AgentContext,
+  recorder: RunRecorder,
+): Promise<Anthropic.Beta.BetaMessageParam[]> {
+  await recordDecision(opts, approval);
+  const results = await buildResumeResults(def, opts, pending, approval, tool, ctx, recorder);
+  return [...(pending.messages as Anthropic.Beta.BetaMessageParam[]), { role: "user" as const, content: results }];
 }
 
 /**
@@ -157,15 +206,19 @@ export async function resumeAgent(def: AgentDefinition, opts: ResumeAgentOptions
     throw new Error(`approved tool ${approval.toolName} is not registered on agent ${def.key}`);
   }
 
-  // reopen() is what enforces status === "awaiting_approval".
+  // reopen() atomically claims the run; past this point the run is `running`, so
+  // every failure path must land it somewhere terminal rather than leave it stuck.
   const recorder = await RunRecorder.reopen(opts.db, opts.organisationId, opts.runId);
-  await recordDecision(opts, approval);
   const ctx = buildContext(opts.db, opts.organisationId, opts.runId, opts.logger, opts.now);
 
-  const results = await buildResumeResults(def, opts, pending, approval, tool, ctx, recorder);
-  const messages = [
-    ...(pending.messages as Anthropic.Beta.BetaMessageParam[]),
-    { role: "user" as const, content: results },
-  ];
+  let messages: Anthropic.Beta.BetaMessageParam[];
+  try {
+    messages = await resumeMessages(def, opts, pending, approval, tool, ctx, recorder);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    opts.logger.error("agent resume failed", { runId: opts.runId, err: message });
+    await recorder.finish("failed", "Resume failed", message);
+    return { runId: opts.runId, status: "failed", summary: message };
+  }
   return runLoop(def, ctx, recorder, opts.llm, opts.policy, messages);
 }
