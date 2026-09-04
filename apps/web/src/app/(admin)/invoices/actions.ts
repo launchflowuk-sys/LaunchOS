@@ -2,22 +2,17 @@
 
 import { createEmailAdapter } from "@launchos/channels";
 import {
-  activeSubscriptionForClient, createInvoiceFromSubscription, markInvoicePaid, requestInvoiceSend,
-  sendApprovedInvoice, voidInvoice, VAT_RATE_DEFAULT_PERCENT,
+  activeSubscriptionForClient, createInvoiceFromSubscription, markInvoicePaid, requestInvoiceSendOnce,
+  sendApprovedInvoice, voidInvoice,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { vatRateFromEnv } from "@/lib/env";
 import { requireAdmin } from "@/lib/session";
 import { type ActionResult, ApprovalRef, ClientRef, InvoiceRef } from "./schemas";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
-}
-
-/** The VAT rate the organisation charges, as a whole-number percentage. */
-function vatRatePercent(): number {
-  const parsed = Number(process.env.VAT_RATE);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : VAT_RATE_DEFAULT_PERCENT;
 }
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
@@ -33,7 +28,7 @@ export async function createInvoiceForClient(formData: FormData): Promise<Action
 
     const invoice = await createInvoiceFromSubscription(db, session.organisationId, {
       subscriptionId: subscription.id,
-      vatRatePercent: vatRatePercent(),
+      vatRatePercent: vatRateFromEnv(),
       actorKind: "user",
       actorId: session.userId,
     });
@@ -82,16 +77,30 @@ export async function voidInvoiceAction(formData: FormData): Promise<ActionResul
   }
 }
 
-/** Emailing a client is outward-facing, so it queues for approval first. */
+/**
+ * Emailing a client is outward-facing, so it queues for approval first.
+ *
+ * `requestInvoiceSendOnce`, not the raw request: a Server Action accepts direct
+ * POSTs, so a replay, a double click or a stale banner would otherwise file a
+ * second pending approval for the same invoice. Approving both would email the
+ * client the same invoice twice, because the send claim is per-approval. The
+ * decision already waiting is named instead of quietly returning a new id.
+ */
 export async function requestSendInvoice(formData: FormData): Promise<ActionResult> {
   const session = await requireAdmin();
   const parsed = InvoiceRef.safeParse({ invoiceId: formData.get("invoiceId") });
   if (!parsed.success) return { status: "error", message: "Invalid invoice" };
 
   try {
-    const approval = await requestInvoiceSend(getDb(), session.organisationId, {
+    const { approval, alreadyPending } = await requestInvoiceSendOnce(getDb(), session.organisationId, {
       invoiceId: parsed.data.invoiceId, actorId: session.userId,
     });
+    if (alreadyPending) {
+      return {
+        status: "error",
+        message: "A send for this invoice is already waiting in Approvals — approve or reject that decision instead of queueing another.",
+      };
+    }
     revalidatePath("/approvals");
     revalidatePath(`/invoices/${parsed.data.invoiceId}`);
     return { status: "ok", id: approval.id };

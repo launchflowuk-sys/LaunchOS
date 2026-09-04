@@ -8,6 +8,12 @@ import { recordPayment, reconcileInvoice } from "./payments.js";
 
 async function invoiced(db: Db, status: "draft" | "sent" | "overdue" = "sent") {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `pay-${randomUUID()}` }).returning();
+  // notifyOwner delivers to the oldest active owner membership — the
+  // settle-skipped test needs one to exist, same as overdue.test.ts.
+  const [ownerUser] = await db.insert(schema.user)
+    .values({ id: randomUUID(), name: "Owner", email: `owner-${randomUUID()}@example.test`, emailVerified: true }).returning();
+  await db.insert(schema.organisationMembers)
+    .values({ organisationId: org!.id, userId: ownerUser!.id, role: "owner", status: "active" });
   const [client] = await db.insert(schema.clients)
     .values({ organisationId: org!.id, name: "C", slug: `c-${randomUUID()}` }).returning();
   const [invoice] = await db.insert(schema.invoices).values({
@@ -59,17 +65,36 @@ describe("recordPayment", () => {
     });
   });
 
-  it("leaves a fully-paid draft in draft and flags it on the timeline", async () => {
+  it("leaves a fully-paid draft in draft, reports it as unsettled and tells the owner once", async () => {
     await withTestDb(async (db) => {
       const { orgId, clientId, invoice } = await invoiced(db, "draft");
       await recordPayment(db, orgId, { clientId, invoiceId: invoice.id, amountPence: 12000, provider: "bank" });
       expect(await status(db, invoice.id)).toBe("draft");
+
+      // `settled` must never claim an invoice was paid when it was not.
+      const summary = await reconcileInvoice(db, orgId, invoice.id);
+      expect(summary).toEqual({ paidPence: 12000, settled: false, reason: "draft_not_issued" });
 
       const events = await db.select().from(schema.activityEvents).where(and(
         eq(schema.activityEvents.clientId, clientId),
         eq(schema.activityEvents.kind, "invoice.settle_skipped"),
       ));
       expect(events).toHaveLength(1);
+
+      // Money against an invoice that was never issued is a same-day problem.
+      const notifications = await db.select().from(schema.notifications).where(and(
+        eq(schema.notifications.organisationId, orgId),
+        eq(schema.notifications.kind, "invoice.settle_skipped"),
+      ));
+      expect(notifications).toHaveLength(1);
+
+      // A second payment must not repeat the flag.
+      await recordPayment(db, orgId, { clientId, invoiceId: invoice.id, amountPence: 500, provider: "bank" });
+      const again = await db.select().from(schema.activityEvents).where(and(
+        eq(schema.activityEvents.clientId, clientId),
+        eq(schema.activityEvents.kind, "invoice.settle_skipped"),
+      ));
+      expect(again).toHaveLength(1);
     });
   });
 
@@ -123,7 +148,7 @@ describe("recordPayment", () => {
       const { orgId, clientId, invoice } = await invoiced(db);
       await recordPayment(db, orgId, { clientId, invoiceId: invoice.id, amountPence: 12000, provider: "stripe", status: "failed" });
       const summary = await reconcileInvoice(db, orgId, invoice.id);
-      expect(summary).toEqual({ paidPence: 0, settled: false });
+      expect(summary).toEqual({ paidPence: 0, settled: false, reason: "underpaid" });
     });
   });
 

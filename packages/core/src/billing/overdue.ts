@@ -1,12 +1,13 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, lt } from "drizzle-orm";
+import { and, eq, inArray, lt } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { createTicketInTx } from "../support/create-ticket.js";
 import { HOLDING_CLIENT_SLUG } from "../support/ingest-inbound-email.js";
+import { canTransition, statusesThatCanBecome } from "./invoices.js";
 
 export const FindOverdueInvoicesInput = z.object({ now: z.date().default(() => new Date()) });
 export type FindOverdueInvoicesInput = z.input<typeof FindOverdueInvoicesInput>;
@@ -17,21 +18,39 @@ export interface OverdueOutcome {
 }
 
 /**
+ * The statuses a sweep may act on, derived from the transition map rather than
+ * hard-coded: everything that can *become* overdue (`sent`), plus `overdue`
+ * itself via its self-transition, so an arrear that is still unpaid after its
+ * chase ticket closed can be chased again.
+ */
+const SWEEPABLE_STATUSES = statusesThatCanBecome("overdue");
+
+/** A chase ticket in one of these is finished; anything else is still being worked. */
+const SETTLED_TICKET_STATUSES = ["resolved", "closed"] as const;
+
+/**
  * Flips every sent invoice whose due date has passed to `overdue`, raises one
  * billing ticket per invoice and notifies the owner once.
  *
- * Each invoice is isolated in its own transaction that (a) atomically claims
- * the invoice with `UPDATE ... WHERE status = 'sent' RETURNING` — the claim
- * is the transaction's first write, so two overlapping sweeps can each claim
- * a given invoice at most once: whichever commits first moves the row off
- * `sent`, and the other sees no row to update and skips it; (b) raises the
- * ticket via `createTicketInTx` on the same `tx`; (c) stamps
- * `metadata.overdueTicketId`; (d) audits. `ticket.created` is emitted and the
- * owner notified only after that transaction commits — never a partial
- * state. A crash between "ticket raised" and "invoice flipped" is therefore
- * impossible: either the whole transaction lands or none of it does, and a
- * retried sweep finds the invoice still `sent` with no stray ticket behind
- * it.
+ * **One open chase per invoice.** `metadata.overdueTicketId` points at the
+ * ticket the last sweep raised, and it is *read* as well as written: while that
+ * ticket is still open the invoice is skipped entirely — no second ticket, no
+ * second conversation, no repeat owner notification, however many times the
+ * sweep runs and however often the invoice is chased by email in between. Once
+ * the ticket is resolved or closed and the money still has not arrived, the
+ * sweep may raise a fresh ticket, and it hangs that ticket off the **existing
+ * conversation** so the whole chase reads as one thread rather than a pile of
+ * identical cases.
+ *
+ * Each invoice is isolated in its own transaction that (a) takes the invoice
+ * row lock with `SELECT ... FOR UPDATE` as its first statement, so two
+ * overlapping sweeps serialise: the second one re-reads the row the first
+ * committed, sees the open ticket it just raised, and skips; (b) re-checks
+ * under that lock that the invoice is still sweepable — a `paid` or `void` that
+ * landed between the candidate query and the lock ends the work here; (c)
+ * raises the ticket via `createTicketInTx` on the same `tx`; (d) stamps
+ * `metadata.overdueTicketId`; (e) audits. `ticket.created` is emitted and the
+ * owner notified only after that transaction commits — never a partial state.
  *
  * One invoice's failure — a data problem, a transient error — is caught and
  * skipped rather than aborting the rest of the sweep. Every failure is
@@ -50,7 +69,7 @@ export async function findOverdueInvoices(
   const v = FindOverdueInvoicesInput.parse(input);
   const due = await db.select().from(schema.invoices).where(and(
     eq(schema.invoices.organisationId, organisationId),
-    eq(schema.invoices.status, "sent"),
+    inArray(schema.invoices.status, SWEEPABLE_STATUSES),
     lt(schema.invoices.dueAt, v.now),
   ));
 
@@ -65,35 +84,52 @@ export async function findOverdueInvoices(
 
       const amount = `£${(invoice.totalPence / 100).toFixed(2)}`;
       const dueOn = invoice.dueAt.toISOString().slice(0, 10);
+      const body = `Invoice ${invoice.number} for ${amount} was due on ${dueOn} and is still unpaid. Chase ${client?.name ?? "the client"} and record the payment once it lands.`;
 
       const claim = await db.transaction(async (tx) => {
+        const inner = tx as unknown as Db;
+        // The lock is the first statement, so a concurrent sweep waits here and
+        // then re-reads whatever this one commits — including the ticket id
+        // stamped below, which is what stops it raising a duplicate.
+        const [locked] = await tx.select().from(schema.invoices)
+          .where(and(eq(schema.invoices.id, invoice.id), eq(schema.invoices.organisationId, organisationId)))
+          .for("update");
+        if (!locked) return undefined;
+        if (!canTransition(locked.status, "overdue")) return undefined; // paid or voided since the scan
+        if (locked.dueAt >= v.now) return undefined;
+
+        const prior = await priorChase(inner, organisationId, locked);
+        if (prior?.open) return undefined; // the last chase is still being worked
+
         const [claimed] = await tx.update(schema.invoices)
           .set({ status: "overdue", updatedAt: new Date() })
-          .where(and(
-            eq(schema.invoices.id, invoice.id),
-            eq(schema.invoices.organisationId, organisationId),
-            eq(schema.invoices.status, "sent"),
-          ))
+          .where(eq(schema.invoices.id, locked.id))
           .returning();
-        if (!claimed) return undefined; // already claimed by another sweep
 
-        const { ticket } = await createTicketInTx(tx as unknown as Db, organisationId, {
-          clientId: invoice.clientId,
+        // A finished chase leaves its conversation behind: reuse it so a second
+        // chase reads as the next chapter of one thread. `createTicketInTx`
+        // writes no opening message when it is handed a conversation, so the
+        // chase note is added here.
+        const reuseConversationId = prior?.conversationId ?? undefined;
+        const { ticket } = await createTicketInTx(inner, organisationId, {
+          clientId: locked.clientId,
+          conversationId: reuseConversationId,
           subject: `Invoice ${invoice.number} is overdue`,
-          body: `Invoice ${invoice.number} for ${amount} was due on ${dueOn} and is still unpaid. Chase ${client?.name ?? "the client"} and record the payment once it lands.`,
+          body,
           severity: "high",
           category: "billing",
           source: "monitor",
           actorKind: "system",
         });
+        if (reuseConversationId) await appendChaseNote(inner, organisationId, reuseConversationId, body);
 
         const [after] = await tx.update(schema.invoices)
-          .set({ metadata: { ...claimed.metadata, overdueTicketId: ticket.id }, updatedAt: new Date() })
-          .where(eq(schema.invoices.id, invoice.id))
+          .set({ metadata: { ...claimed!.metadata, overdueTicketId: ticket.id }, updatedAt: new Date() })
+          .where(eq(schema.invoices.id, locked.id))
           .returning();
-        await recordAudit(tx as unknown as Db, organisationId, {
+        await recordAudit(inner, organisationId, {
           actorKind: "system", action: "invoice.overdue",
-          targetType: "invoice", targetId: invoice.id, before: invoice, after,
+          targetType: "invoice", targetId: locked.id, before: locked, after,
         });
         return { invoice: after!, ticketId: ticket.id };
       });
@@ -120,4 +156,43 @@ export async function findOverdueInvoices(
     throw new AggregateError(errors, `findOverdueInvoices: ${errors.length} of ${due.length} invoice(s) failed`);
   }
   return outcomes;
+}
+
+interface PriorChase {
+  open: boolean;
+  conversationId: string | null;
+}
+
+/**
+ * The chase ticket the last sweep raised for this invoice, if it still exists.
+ * `metadata` is untyped JSON that anything could have written, so the id is
+ * validated as a uuid before it reaches a uuid column.
+ */
+async function priorChase(
+  db: Db,
+  organisationId: string,
+  invoice: typeof schema.invoices.$inferSelect,
+): Promise<PriorChase | undefined> {
+  const parsed = z.string().uuid().safeParse(invoice.metadata["overdueTicketId"]);
+  if (!parsed.success) return undefined;
+  const [ticket] = await db
+    .select({ status: schema.tickets.status, conversationId: schema.tickets.conversationId })
+    .from(schema.tickets)
+    .where(and(eq(schema.tickets.id, parsed.data), eq(schema.tickets.organisationId, organisationId)));
+  if (!ticket) return undefined;
+  return {
+    open: !(SETTLED_TICKET_STATUSES as readonly string[]).includes(ticket.status),
+    conversationId: ticket.conversationId,
+  };
+}
+
+/** The chase note on a reused thread, plus the conversation bookkeeping that goes with it. */
+async function appendChaseNote(db: Db, organisationId: string, conversationId: string, body: string): Promise<void> {
+  const now = new Date();
+  await db.insert(schema.messages).values({
+    organisationId, conversationId, direction: "internal", authorKind: "system", body,
+  });
+  await db.update(schema.conversations)
+    .set({ status: "open", lastMessageAt: now, updatedAt: now })
+    .where(eq(schema.conversations.id, conversationId));
 }

@@ -114,7 +114,7 @@ async function applyTransition(
   });
 }
 
-type InvoiceStatus = (typeof schema.invoices.$inferSelect)["status"];
+export type InvoiceStatus = (typeof schema.invoices.$inferSelect)["status"];
 
 /**
  * The whole legal state machine, enforced in core rather than left to each
@@ -123,11 +123,22 @@ type InvoiceStatus = (typeof schema.invoices.$inferSelect)["status"];
  * cannot jump straight to `paid`: an invoice the client was never sent is not
  * something they can have paid, and letting it skip `sent` hides a missing
  * step in the ledger.
+ *
+ * `sent -> sent` and `overdue -> overdue` are deliberate self-transitions: a
+ * resend and an overdue chase are both real sends, and neither one changes what
+ * the status is asserting. `overdue -> sent` is **not** legal — chasing a debt
+ * does not un-overdue it, and letting a chase reset the status would hand the
+ * invoice back to the overdue sweep as if it had never been flagged.
+ *
+ * This map is the only authority. Anything that needs to know whether a status
+ * change is legal — including the send path and the overdue sweep — derives it
+ * from here via `canTransition` / `isSendableStatus` / `statusesThatCanBecome`
+ * rather than restating the rule in its own list or `WHERE` clause.
  */
 const ALLOWED_TRANSITIONS: Record<InvoiceStatus, readonly InvoiceStatus[]> = {
   draft: ["sent", "void"],
   sent: ["sent", "paid", "overdue", "void"],
-  overdue: ["paid", "sent", "void"],
+  overdue: ["overdue", "paid", "void"],
   paid: [],
   void: [],
 };
@@ -138,7 +149,32 @@ const TRANSITION_HINT: Partial<Record<`${InvoiceStatus}->${InvoiceStatus}`, stri
   "paid->void": "a paid invoice is settled; record a refund instead",
   "void->paid": "a void invoice cannot be paid; raise a new one",
   "void->sent": "a void invoice cannot be sent; raise a new one",
+  "overdue->sent": "chasing an overdue invoice does not un-overdue it",
 };
+
+/** Whether the state machine allows `from -> to`. */
+export function canTransition(from: InvoiceStatus, to: InvoiceStatus): boolean {
+  return ALLOWED_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * Where a send leaves the invoice. A chase records itself in
+ * `metadata.sendHistory` — that is the audit record that matters — while the
+ * status keeps saying the money is late.
+ */
+export function sendTargetStatus(from: InvoiceStatus): InvoiceStatus {
+  return from === "overdue" ? "overdue" : "sent";
+}
+
+/** Derived from the map, so there is no second list of sendable statuses to drift. */
+export function isSendableStatus(from: InvoiceStatus): boolean {
+  return canTransition(from, sendTargetStatus(from));
+}
+
+/** Every status the map allows to reach `to` — the sweep's candidate set. */
+export function statusesThatCanBecome(to: InvoiceStatus): InvoiceStatus[] {
+  return (Object.keys(ALLOWED_TRANSITIONS) as InvoiceStatus[]).filter((from) => canTransition(from, to));
+}
 
 function assertTransition(invoice: typeof schema.invoices.$inferSelect, to: InvoiceStatus): void {
   if (ALLOWED_TRANSITIONS[invoice.status].includes(to)) return;

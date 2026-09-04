@@ -67,6 +67,10 @@ export async function syncFromPaymentsEvent(
     if (!invoice) return { handled: false, action: "unknown_invoice" };
 
     const succeeded = event.type === "invoice.paid";
+    // Known assumption: when Stripe omits the amount we take the invoice total,
+    // so a partial capture that arrives without `amount_paid` settles the
+    // invoice in full. Accepted while every invoice here is paid in one go —
+    // revisit the moment partial captures are switched on.
     const amountPence = (succeeded ? parsed.data.amount_paid : parsed.data.amount_due) ?? invoice.totalPence;
     const currency = parsed.data.currency.toUpperCase();
 
@@ -79,6 +83,11 @@ export async function syncFromPaymentsEvent(
       // where two near-simultaneous deliveries of the same event can both
       // pass the check; this does not, because the conflict is resolved by
       // Postgres inside the insert itself.
+      //
+      // Known assumption: the key is the *event* id, not the underlying charge.
+      // Two distinct Stripe events describing the same charge would each insert
+      // a payment row. Accepted for the one-event-per-payment flows in use;
+      // dedup on the charge id if that ever stops holding.
       const [payment] = await tx.insert(schema.payments).values({
         organisationId,
         clientId: invoice.clientId,
@@ -110,8 +119,13 @@ export async function syncFromPaymentsEvent(
         return { handled: true, action: "payment.failed" };
       }
 
-      await reconcileInvoice(inner, organisationId, invoice.id);
-      return { handled: true, action: "invoice.paid" };
+      // The action reports what actually happened to the invoice, not what the
+      // event was called: a payment against a draft or a void invoice is a
+      // recorded payment and an open anomaly, never an `invoice.paid`.
+      const reconciled = await reconcileInvoice(inner, organisationId, invoice.id);
+      if (reconciled.settled) return { handled: true, action: "invoice.paid" };
+      if (reconciled.reason === "underpaid") return { handled: true, action: "payment.recorded" };
+      return { handled: true, action: "invoice.settle_skipped" };
     });
   }
 

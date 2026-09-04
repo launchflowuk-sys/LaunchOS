@@ -15,6 +15,13 @@ interface FixtureOptions {
 
 async function fixture(db: Db, opts: FixtureOptions = {}) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `snd-${randomUUID()}` }).returning();
+  // notifyOwner delivers to the oldest active owner membership — the
+  // send-failure test needs one on the books or its notification has no
+  // recipient to land on.
+  const [ownerUser] = await db.insert(schema.user)
+    .values({ id: randomUUID(), name: "Owner", email: `owner-${randomUUID()}@example.test`, emailVerified: true }).returning();
+  await db.insert(schema.organisationMembers)
+    .values({ organisationId: org!.id, userId: ownerUser!.id, role: "owner", status: "active" });
   const [client] = await db.insert(schema.clients).values({
     organisationId: org!.id, name: "C", slug: `c-${randomUUID()}`,
     email: opts.clientEmail === undefined ? "client@example.test" : opts.clientEmail,
@@ -89,6 +96,8 @@ describe("sendApprovedInvoice", () => {
       expect(after.status).toBe("sent");
       expect(after.metadata["sentApprovalId"]).toBe(approval.id);
       expect(sendHistory(after).map((e) => e.approvalId)).toEqual([approval.id]);
+      // The provider took it, so the send is confirmed as well as claimed.
+      expect(after.metadata["emailedAt"]).toEqual(expect.any(String));
     });
   });
 
@@ -130,7 +139,24 @@ describe("sendApprovedInvoice", () => {
     });
   });
 
-  it("chases an overdue invoice on a fresh approval", async () => {
+  it("stamps sentAt on the first send only, so a resend does not reset the issue date", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, invoice } = await fixture(db);
+      const email = new MockEmailAdapter();
+
+      const first = await approvedInvoiceSend(db, orgId, invoice.id);
+      await sendApprovedInvoice(db, orgId, { approvalId: first.id, actorId: "u1" }, email, "https://portal.test");
+      const sentAt = (await reload(db, invoice.id)).metadata["sentAt"];
+
+      const second = await approvedInvoiceSend(db, orgId, invoice.id);
+      await sendApprovedInvoice(db, orgId, { approvalId: second.id, actorId: "u1" }, email, "https://portal.test");
+
+      expect(sentAt).toEqual(expect.any(String));
+      expect((await reload(db, invoice.id)).metadata["sentAt"]).toBe(sentAt);
+    });
+  });
+
+  it("chases an overdue invoice without un-overduing it", async () => {
     await withTestDb(async (db) => {
       const { orgId, invoice } = await fixture(db, { invoiceStatus: "overdue" });
       const approval = await approvedInvoiceSend(db, orgId, invoice.id);
@@ -140,7 +166,11 @@ describe("sendApprovedInvoice", () => {
 
       expect(result.alreadySent).toBe(false);
       expect(email.sent).toHaveLength(1);
-      expect((await reload(db, invoice.id)).status).toBe("sent");
+      // The chase is recorded in sendHistory; the status keeps saying the money
+      // is late, so the sweep does not see a fresh, unflagged arrear.
+      const after = await reload(db, invoice.id);
+      expect(after.status).toBe("overdue");
+      expect(sendHistory(after).map((e) => e.approvalId)).toEqual([approval.id]);
     });
   });
 
@@ -159,12 +189,22 @@ describe("sendApprovedInvoice", () => {
       const after = await reload(db, invoice.id);
       expect(after.status).toBe("sent");
       expect((after.metadata["lastSendError"] as { message: string }).message).toBe("smtp: connection refused");
+      // Nothing reached the provider, so the send is claimed but never confirmed.
+      expect(after.metadata["emailedAt"]).toBeUndefined();
 
       const activity = await db.select().from(schema.activityEvents).where(and(
         eq(schema.activityEvents.clientId, clientId),
         eq(schema.activityEvents.kind, "invoice.send_failed"),
       ));
       expect(activity).toHaveLength(1);
+
+      // The notification is the surface Shoji actually sees.
+      const notifications = await db.select().from(schema.notifications).where(and(
+        eq(schema.notifications.organisationId, orgId),
+        eq(schema.notifications.kind, "invoice.send_failed"),
+      ));
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.title).toContain(invoice.number);
 
       // A retry with the spent approval must not reach the adapter at all.
       const retry = await sendApprovedInvoice(db, orgId, { approvalId: approval.id, actorId: "u1" }, failing, "https://portal.test");

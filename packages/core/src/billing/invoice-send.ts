@@ -8,17 +8,10 @@ import { recordAudit } from "../audit/record-audit.js";
 import { supportEmailFor } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
+import { isSendableStatus, sendTargetStatus } from "./invoices.js";
 
 /** Marks an approvals row as an invoice send rather than an agent tool call. */
 export const INVOICE_SEND_ACTION = "invoice_send";
-
-/** Statuses a send may be requested and executed against. `paid`/`void` are terminal. */
-const SENDABLE_STATUSES = ["draft", "sent", "overdue"] as const;
-type SendableStatus = (typeof SENDABLE_STATUSES)[number];
-
-function isSendable(status: string): status is SendableStatus {
-  return (SENDABLE_STATUSES as readonly string[]).includes(status);
-}
 
 export const RequestInvoiceSendInput = z.object({
   invoiceId: z.string().uuid(),
@@ -37,7 +30,7 @@ export async function requestInvoiceSend(db: Db, organisationId: string, input: 
   const v = RequestInvoiceSendInput.parse(input);
   await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
   const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, v.invoiceId));
-  if (!isSendable(invoice!.status)) throw new Error(`invoice ${invoice!.id} is ${invoice!.status}`);
+  if (!isSendableStatus(invoice!.status)) throw new Error(`invoice ${invoice!.id} is ${invoice!.status}`);
 
   const [client] = await db.select({ name: schema.clients.name })
     .from(schema.clients).where(eq(schema.clients.id, invoice!.clientId));
@@ -91,7 +84,16 @@ export interface SendApprovedInvoiceResult {
  *
  * A `paid` or `void` invoice is refused outright: those are terminal states a
  * send should never happen against, unlike "already sent for this approval",
- * which is a normal, retry-safe outcome.
+ * which is a normal, retry-safe outcome. An `overdue` invoice stays `overdue` —
+ * chasing a debt does not un-overdue it, and resetting it to `sent` would hand
+ * it straight back to the overdue sweep as a fresh, unflagged arrear.
+ *
+ * `metadata.sentAt` is the first send; `metadata.emailedAt` is written in a
+ * second, small transaction once the provider has actually accepted the
+ * message. An invoice with a `sentAt` and no `emailedAt` more than a few
+ * minutes old is therefore a one-line query for "claimed but never confirmed
+ * delivered" — the state a crash between COMMIT and `email.send()` leaves
+ * behind, which is otherwise indistinguishable from a successful send.
  *
  * `env` follows the same convention as `sendAdReport`/`sendQueuedMessage`: the
  * envelope sender is the verified `MAIL_FROM` when set, falling back to an
@@ -139,7 +141,26 @@ export async function sendApprovedInvoice(
     throw error;
   }
 
+  await confirmSend(db, organisationId, invoice.id, v.approvalId);
   return { invoiceId: invoice.id, to, alreadySent: false };
+}
+
+/**
+ * Stamps `metadata.emailedAt` now the provider has taken the message. Failing
+ * to write it is deliberately not fatal: the email has already gone, so
+ * throwing here would tell the operator the send failed and invite a second
+ * one. The invoice simply keeps the "sent but unconfirmed" shape a crash at
+ * this point would leave — which is exactly what the field exists to represent.
+ */
+async function confirmSend(db: Db, organisationId: string, invoiceId: string, approvalId: string): Promise<void> {
+  const confirmation = { emailedAt: new Date().toISOString(), emailedApprovalId: approvalId };
+  await db.update(schema.invoices)
+    .set({
+      metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb) || ${JSON.stringify(confirmation)}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)))
+    .catch(() => undefined);
 }
 
 interface InvoiceClaim {
@@ -185,21 +206,29 @@ async function claimApproval(
       .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)))
       .for("update");
     if (!before) throw new Error(`invoice ${invoiceId} not found in organisation`);
-    if (!isSendable(before.status)) throw new Error(`invoice ${before.id} is ${before.status}`);
+    if (!isSendableStatus(before.status)) throw new Error(`invoice ${before.id} is ${before.status}`);
 
     const [client] = await tx.select().from(schema.clients).where(eq(schema.clients.id, before.clientId));
     const to = client?.email ?? "";
     if (!to) throw new Error(`client ${before.clientId} has no email address to send invoice ${before.number} to`);
 
     const historyEntry = JSON.stringify({ approvalId, at: now.toISOString(), actorId });
+    // `sentAt` is the date the client first received this invoice, so a resend
+    // or a chase must not move it — `sendHistory` is where every send lands.
+    // Read under the same `FOR UPDATE` lock as the write, so no concurrent send
+    // can slip its own first-send stamp in between.
+    const firstSend = before.metadata["sentAt"] === undefined;
+    const stamp = firstSend
+      ? { sentAt: now.toISOString(), sentApprovalId: approvalId }
+      : { sentApprovalId: approvalId };
     const [after] = await tx.update(schema.invoices)
       .set({
-        status: "sent",
+        status: sendTargetStatus(before.status),
         // `sendHistory` is append-only: every approval that ever emailed this
         // invoice stays on the record, so a resend is auditable without a
         // second table.
         metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb)
-          || ${JSON.stringify({ sentAt: now.toISOString(), sentApprovalId: approvalId })}::jsonb
+          || ${JSON.stringify(stamp)}::jsonb
           || jsonb_build_object('sendHistory', coalesce(${schema.invoices.metadata}->'sendHistory', '[]'::jsonb) || ${historyEntry}::jsonb)`,
         updatedAt: now,
       })
@@ -212,26 +241,36 @@ async function claimApproval(
     });
     await recordActivity(inner, organisationId, {
       clientId: after!.clientId, actorKind: "user", actorId, kind: "invoice.sent",
-      title: `Invoice ${after!.number} emailed to ${to}`, link: `/invoices/${after!.id}`,
+      // "queued", not "emailed": this row commits before the provider is
+      // called, so it can only honestly claim the send was authorised and
+      // handed on. `metadata.emailedAt` is the confirmation.
+      title: `Invoice ${after!.number} queued to ${to}`, link: `/invoices/${after!.id}`,
     });
     return { invoice: after!, clientName: client!.name, to };
   });
 }
 
-/** The address the invoice would have gone to, for the already-sent report. */
+/**
+ * The address the invoice would have gone to, for the already-sent report. A
+ * missing join row is a broken invoice/client reference, not "sent to nobody",
+ * so it throws exactly as the send path does rather than the two disagreeing
+ * about the same condition. A client row that simply has no email address
+ * still reports the empty string: nothing is broken, there is just no address.
+ */
 async function clientEmailForInvoice(db: Db, organisationId: string, invoiceId: string): Promise<string> {
   const [row] = await db.select({ email: schema.clients.email })
     .from(schema.invoices)
     .innerJoin(schema.clients, eq(schema.clients.id, schema.invoices.clientId))
     .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)));
-  return row?.email ?? "";
+  if (!row) throw new Error(`invoice ${invoiceId} has no client in organisation ${organisationId}`);
+  return row.email ?? "";
 }
 
 /**
  * A send that failed after the claim committed. The claim stays taken on
  * purpose (see the `sendApprovedInvoice` doc comment), so this is what makes
- * the gap visible: the invoice reads `sent` with a `lastSendError`, the client
- * timeline says the email did not go, and the owner is told.
+ * the gap visible: the invoice carries a `lastSendError` and no `emailedAt`,
+ * the client timeline says the email did not go, and the owner is told.
  */
 async function recordSendFailure(
   db: Db,
