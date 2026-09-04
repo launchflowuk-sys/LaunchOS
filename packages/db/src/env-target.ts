@@ -62,6 +62,20 @@ import { fileURLToPath } from "node:url";
  * resolves *two directories above the repository*, and a stray file there would
  * win the ladder, supply the configuration, and be reported as "the env file"
  * while the repository's own `.env` went unread.
+ *
+ * **The invariant this depends on: this module must sit exactly three
+ * directories below the repository root in every layout it is executed from.**
+ * True from `src/` and, today, from the built output as well — `tsconfig.json`
+ * has `rootDir: "src"`, so `dist/env-target.js` is the same depth as
+ * `src/env-target.ts` — but that is a consequence of the build settings, not of
+ * this line. A build that emitted `dist/src/`, or a bundle written anywhere
+ * else in the package, would make this resolve to `packages/` instead:
+ * `loadRootEnv` would then find nothing, return null, and the run would fall
+ * back to the built-in defaults behind an `env file none found at …` line
+ * nobody reads. If the emitted layout ever changes, walk up to
+ * `pnpm-workspace.yaml` from this module's directory instead, which is
+ * depth-independent. `bootstrap.test.ts` pins both the arithmetic and the fact
+ * that the directory it lands on really is the workspace root.
  */
 export const ROOT_ENV_FILE = join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env");
 

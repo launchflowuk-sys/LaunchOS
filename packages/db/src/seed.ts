@@ -29,33 +29,39 @@
  * "change-me-client") — never the owner's, because those two accounts are on
  * opposite sides of a privilege boundary. Never commit a real password here.
  * **In every environment** both must clear MIN_PASSWORD_LENGTH, the same floor
- * `apps/web/src/lib/auth.ts` enforces on every other account. Against a
- * **production target** the seed additionally refuses to run while either
- * password is still its published default, or while the two are equal, so
- * neither default can ever reach a live database.
+ * `apps/web/src/lib/auth.ts` enforces on every other account.
  *
- * A production target is NODE_ENV=production **or** a DATABASE_URL that does
- * not point at localhost, the compose network or a private address
- * (`./env-target.ts`). Keying these guards on NODE_ENV alone meant the run
- * that most needed them — a one-off against a live database from a shell where
- * nobody exported NODE_ENV — was the one run that skipped them.
+ * **This script refuses to run at all unless SEED_DEMO=1** — the `demo-opt-in`
+ * guard, in every environment, against every host, before a connection is
+ * opened. That single flag is now the whole of the protection, and deliberately
+ * so. The guards it replaces (`demo-fixtures-in-production`, and the seed's own
+ * copies of `published-default` and `shared-password`) were keyed on a
+ * host-derived "production target", and **no host string can tell a local
+ * database from a live one**: `ssh -L 5433:<coolify-postgres>:5432` presents
+ * production as `localhost:5433`, a Hetzner private network is `10.0.0.0/16`,
+ * and `infra/docker-compose.coolify.yml` — this repository's own *production*
+ * topology — names its database host `postgres`. Each reads as local, so each
+ * was one tunnel away from writing demo invoices numbered from a live sequence,
+ * and an owner credential whose password is published in this repository, into
+ * a live tenant. An affirmative flag is a sentence the operator has to type; a
+ * hostname is a guess.
  *
- * That inference is good enough **here**, where being wrong in the local
- * direction only means demo fixtures are refused, and where the alternative is
- * refusing every local `pnpm db:seed`. It is not good enough for a credential,
- * which is why `pnpm db:bootstrap`'s own published-default and confirm-slug
- * guards do not consult it: a production database reached through an SSH
- * tunnel or a private network presents as a local host.
+ * The cost is nothing locally: `.env.example` ships SEED_DEMO=1, so the quick
+ * start is still `cp .env.example .env` and `pnpm db:seed`. `docs/DEPLOYMENT.md`
+ * says the variable must never be set on a production resource, where the entry
+ * point is `pnpm db:bootstrap` (`./bootstrap.ts`) — the organisation and the
+ * owner account and nothing else, with unconditional guards of its own for the
+ * same reason. The two share their organisation, user and membership helpers,
+ * so a bootstrapped database and a seeded one are the same shape underneath.
+ *
+ * `isProductionTarget` (`./env-target.ts`) survives here for exactly two things
+ * and guards nothing else: the `(production target)` / `(local)` annotation on
+ * the printed database line, and the requirement that SEED_OWNER_EMAIL be *set*
+ * rather than defaulted when the target is not demonstrably local. Being wrong
+ * about a host there costs one environment variable, which is the direction
+ * that inference is worth having in.
  *
  * Every refusal names the guard that tripped and exits non-zero.
- *
- * **It also refuses to run at all against a production target unless SEED_DEMO=1.**
- * The demo fixtures below — invoices with numbers from a live sequence
- * especially — are not something a live tenant can cleanly be rid of. The
- * production entry point is `pnpm db:bootstrap` (`./bootstrap.ts`), which
- * creates the organisation and the owner account and nothing else. The two
- * share their organisation, user and membership helpers, so a bootstrapped
- * database and a seeded one are the same shape underneath.
  *
  * This file imports `@launchos/core` and `@launchos/integrations`, which are
  * dev dependencies of `packages/db`. The seed is a dev script, so this does not
@@ -145,6 +151,38 @@ export function seedConfigFromEnv(env: NodeJS.ProcessEnv): SeedConfig {
       password: env.SEED_CLIENT_PASSWORD ?? DEFAULT_CLIENT_PASSWORD,
     },
   };
+}
+
+/**
+ * The one gate on this script: `SEED_DEMO=1`, or it does not run.
+ *
+ * **Unconditional** — no environment branch, no host check — and called before
+ * `createDb`, so a refusal never opens a connection. It used to fire only
+ * against a "production target", which meant a live database reached through an
+ * SSH tunnel, over a private network, or by the compose hostname `postgres`
+ * skipped it along with the seed's published-default and shared-password
+ * guards, and wrote demo invoices and a repository-published owner credential
+ * into a live tenant. Those three guards are gone; this one replaces all of
+ * them, because it asks the only question a host string cannot answer.
+ *
+ * Exactly `"1"`, not "any truthy value": `SEED_DEMO=0` and `SEED_DEMO=false`
+ * are the shapes of someone turning it *off*, and must not be read as consent.
+ *
+ * `.env.example` ships the flag set, so `cp .env.example .env` is all a local
+ * developer does; `docs/DEPLOYMENT.md` says a production resource must never
+ * carry it.
+ */
+export function assertDemoOptIn(env: NodeJS.ProcessEnv): void {
+  if (env.SEED_DEMO === "1") return;
+  throw new BootstrapGuardError(
+    "demo-opt-in",
+    "pnpm db:seed writes demo clients, invoices with numbers from a live sequence, ad data, a portal " +
+      "login and an owner account whose password may still be the default published in this repository. " +
+      "It runs only when SEED_DEMO=1 says you meant it — in every environment, against every host, " +
+      "because no hostname can tell a local database from a live one behind an SSH tunnel or a private " +
+      "network. `.env.example` ships SEED_DEMO=1 for local work. On a live install use `pnpm db:bootstrap`, " +
+      "which creates only the organisation and the owner account.",
+  );
 }
 
 /**
@@ -359,7 +397,10 @@ async function main() {
   console.log("database      ", describeDatabase(url), productionTarget ? "(production target)" : "(local)");
   console.log("env file      ", envFile ?? `none found at ${ROOT_ENV_FILE}; using the process environment only`);
   console.log("password      ", ownerPasswordSource(process.env));
-  // The floor first, and in every environment: both of these accounts are
+  // The opt-in first, because it is the one refusal that applies to running
+  // this script at all rather than to how it is configured.
+  assertDemoOptIn(process.env);
+  // The floor next, and in every environment: both of these accounts are
   // written straight into `account`, which Better Auth never re-validates, so
   // a short password set here would stand for the life of the account. This is
   // the same constant `apps/web/src/lib/auth.ts` enforces on everyone else.
@@ -376,137 +417,101 @@ async function main() {
   // than finding the one that is already there.
   assertOrganisationSlug(config.organisation.slug);
 
-  // Everything below is keyed on the *target*, not on NODE_ENV: a seed run
-  // against a live database from a shell where nobody exported NODE_ENV is
-  // exactly the run these guards exist for. `productionTargetReason` says
-  // which half of the predicate fired, because an operator who did not set
-  // NODE_ENV needs to be told it was the host that decided.
-  const because = `Refusing because ${productionTargetReason(process.env)}.`;
-  // No account this seed creates may reach a live database on a password that
-  // is published in this repository — the owner's or the portal user's. The
-  // two are also required to differ: satisfying the guard by setting them to
-  // the same value would put the owner's password into a client's hands.
-  if (productionTarget && process.env.SEED_DEMO !== "1") {
-    throw new BootstrapGuardError(
-      "demo-fixtures-in-production",
-      "pnpm db:seed writes demo clients, invoices with numbers from a live sequence, ad data and a " +
-        "portal login. It must not run against a production database. Use `pnpm db:bootstrap`, which " +
-        "creates only the organisation and the owner account. If you really do want the fixtures here, " +
-        `set SEED_DEMO=1. ${because}`,
-    );
-  }
+  // The only remaining use of the target inference, and it decides one thing:
+  // whether SEED_OWNER_EMAIL must have been *set* rather than defaulted to the
+  // address this repository ships. Being wrong the local way costs one
+  // variable, which is the direction this guess is worth making.
   assertSeedOwnerEmail(process.env, config.ownerEmail, productionTarget);
-  if (productionTarget) {
-    const defaulted = [
-      config.ownerPassword === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
-      config.clientUser.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
-    ].filter((name): name is string => name !== null);
-    if (defaulted.length > 0) {
-      throw new BootstrapGuardError(
-        "published-default",
-        `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} still a default published in ` +
-          "this repository. Refusing to seed an account with it. " +
-          `Set them in the resource environment, run the seed once, then remove them. ${because}`,
-      );
-    }
-    if (config.clientUser.password === config.ownerPassword) {
-      throw new BootstrapGuardError(
-        "shared-password",
-        "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
-          "The portal login is a client's credential and the owner's opens the whole admin shell; " +
-          `they must never be the same secret. ${because}`,
-      );
-    }
-  }
   console.log("organisation  ", config.organisation.slug, `(${config.organisation.name})`);
 
   const db = createDb(url);
 
   try {
-    // Same order as `bootstrap()`, and for the same reason: the membership is
-    // settled before **any** write a later refusal would strand — the owner
-    // credential above all, because this seed manufactures exactly the account
-    // that triggers that refusal (the invited `team@launchflow.example`) and,
-    // unlike `bootstrap()`, runs outside a transaction, so the order of these
-    // four lines is the only protection there is. The organisation's
-    // placeholder supplier details are backfilled after the membership for the
-    // same reason: a refused seed must not have edited the organisation row it
-    // refused to finish.
-    const { row: created } = await ensureOrganisation(db, config.organisation);
-    const user = await seedOwnerUser(db, config);
-    const membership = await seedMembership(db, created.id, user.id);
-    await ensureOwnerCredential(db, user.id, config.ownerPassword);
-    const organisation = await backfillOrganisationSupplier(db, created);
-    const enabledAgents: string[] = [];
-    for (const agentKey of AGENT_KEYS) {
-      const enablement = await seedAgentEnablement(db, organisation.id, agentKey);
-      enabledAgents.push(`${enablement.agentKey}=${enablement.enabled}`);
-    }
-    const staff = await seedStaffMember(db, organisation.id);
-    const packagesBySlug = await seedPackages(db, organisation.id);
-    const templateCount = await seedTaskTemplates(db, organisation.id, packagesBySlug);
-
-    console.log("organisation  ", organisation.id, organisation.slug);
-    console.log("owner user    ", user.id, user.email);
-    console.log("membership    ", membership.id, membership.role);
-    console.log("staff member  ", staff.id, `${STAFF.email} ${staff.role}/${staff.status}`);
-    console.log("agents        ", enabledAgents.join(", "));
-    console.log("packages      ", [...packagesBySlug.keys()].join(", "));
-    console.log("templates     ", `${templateCount} created`);
-
-    const seededClients: { id: string; name: string; email: string; supportAddress: string | null }[] = [];
-    for (const spec of SEED_CLIENTS) {
-      const client = await seedClient(db, organisation.id, spec);
-      const identity = await seedEmailIdentity(db, organisation.id, client.id, client.name);
-      seededClients.push({
-        id: client.id, name: client.name, email: client.email ?? spec.email,
-        supportAddress: identity?.address ?? null,
-      });
-      const site = await seedSite(db, organisation.id, client.id, spec);
-      const monitor = await seedMonitor(db, organisation.id, site.id, spec.url);
-      const billing = await seedBillingProfile(db, organisation.id, client.id, spec.name);
-      await seedContacts(db, organisation.id, client.id, spec.contacts);
-      await seedDomains(db, organisation.id, client.id, site.id, spec.domains);
-      await seedActivity(db, organisation.id, client.id, spec.name, site.id);
-      const withPackage = await assignPackage(db, organisation.id, client, packagesBySlug.get(CLIENT_PACKAGES[spec.name]!)!.id);
-      const taskCount = await seedOnboardingTasks(db, organisation.id, withPackage.id, withPackage.createdAt, user.id);
-      console.log("client        ", client.id, client.name);
-      console.log("  identity    ", identity ? `${identity.id} ${identity.address}` : "skipped");
-      console.log("  site        ", site.id, site.primaryUrl);
-      console.log("  monitor     ", monitor.id, `${monitor.target} every ${monitor.intervalSeconds}s`);
-      console.log("  billing     ", billing.id, `terms ${billing.paymentTermsDays} days`);
-      console.log("  contacts    ", spec.contacts.length);
-      console.log("  domains     ", spec.domains.length, spec.domains.join(", "));
-      console.log("  package     ", withPackage.packageId);
-      console.log("  tasks       ", `${taskCount} onboarding tasks created`);
-    }
-
-    const articles = await seedKnowledgeArticles(db, organisation.id);
-    console.log("knowledge     ", `${articles} of ${KNOWLEDGE_ARTICLES.length} articles created`);
-
-    const grays = seededClients[0]!;
-    const support = await seedSupportConversation(db, organisation.id, grays.supportAddress);
-    console.log(
-      "support case  ",
-      support ? `${support.ticketId} ${support.created ? "created" : "already present"}` : "skipped",
-    );
-
-    const clientUser = await seedClientUser(db, organisation.id, grays.id, config.clientUser);
-    console.log("client user   ", clientUser.id, `${config.clientUser.email} client_admin`);
-
-    const billing = await seedBillingAndAds(db, organisation.id, seededClients);
-    // What this run created, not a constant: a second seed prints zeros, which
-    // is what makes the line evidence of idempotency rather than decoration.
-    // Snapshots are upserted every run, so they are reported as written.
-    console.log(
-      "billing/ads   ",
-      `created ${billing.subscriptions} subscriptions, ${billing.invoices} invoices, ` +
-        `${billing.reports} published reports; wrote ${billing.snapshots} ad snapshots ` +
-        `(${billing.snapshotsInPeriod} inside the report period)`,
-    );
+    await runSeed(db, config);
   } finally {
     await db.$client.end();
   }
+}
+
+/**
+ * Everything the seed writes, in the order it must be written in. Exported and
+ * separate from `main` so a test can run **this** sequence — the one production
+ * uses — rather than a copy of it assembled in the test file. `main` keeps the
+ * environment, the guards, the log preamble and the connection.
+ */
+export async function runSeed(db: Db, config: SeedConfig): Promise<void> {
+  const { user, organisation: created, membership } = await seedOwnerAccount(db, config);
+  // The organisation's placeholder supplier details are backfilled only once
+  // the owner account is settled: a refused seed must not have edited the
+  // organisation row it refused to finish.
+  const organisation = await backfillOrganisationSupplier(db, created);
+  const enabledAgents: string[] = [];
+  for (const agentKey of AGENT_KEYS) {
+    const enablement = await seedAgentEnablement(db, organisation.id, agentKey);
+    enabledAgents.push(`${enablement.agentKey}=${enablement.enabled}`);
+  }
+  const staff = await seedStaffMember(db, organisation.id);
+  const packagesBySlug = await seedPackages(db, organisation.id);
+  const templateCount = await seedTaskTemplates(db, organisation.id, packagesBySlug);
+
+  console.log("organisation  ", organisation.id, organisation.slug);
+  console.log("owner user    ", user.id, user.email);
+  console.log("membership    ", membership.id, membership.role);
+  console.log("staff member  ", staff.id, `${STAFF.email} ${staff.role}/${staff.status}`);
+  console.log("agents        ", enabledAgents.join(", "));
+  console.log("packages      ", [...packagesBySlug.keys()].join(", "));
+  console.log("templates     ", `${templateCount} created`);
+
+  const seededClients: { id: string; name: string; email: string; supportAddress: string | null }[] = [];
+  for (const spec of SEED_CLIENTS) {
+    const client = await seedClient(db, organisation.id, spec);
+    const identity = await seedEmailIdentity(db, organisation.id, client.id, client.name);
+    seededClients.push({
+      id: client.id, name: client.name, email: client.email ?? spec.email,
+      supportAddress: identity?.address ?? null,
+    });
+    const site = await seedSite(db, organisation.id, client.id, spec);
+    const monitor = await seedMonitor(db, organisation.id, site.id, spec.url);
+    const billing = await seedBillingProfile(db, organisation.id, client.id, spec.name);
+    await seedContacts(db, organisation.id, client.id, spec.contacts);
+    await seedDomains(db, organisation.id, client.id, site.id, spec.domains);
+    await seedActivity(db, organisation.id, client.id, spec.name, site.id);
+    const withPackage = await assignPackage(db, organisation.id, client, packagesBySlug.get(CLIENT_PACKAGES[spec.name]!)!.id);
+    const taskCount = await seedOnboardingTasks(db, organisation.id, withPackage.id, withPackage.createdAt, user.id);
+    console.log("client        ", client.id, client.name);
+    console.log("  identity    ", identity ? `${identity.id} ${identity.address}` : "skipped");
+    console.log("  site        ", site.id, site.primaryUrl);
+    console.log("  monitor     ", monitor.id, `${monitor.target} every ${monitor.intervalSeconds}s`);
+    console.log("  billing     ", billing.id, `terms ${billing.paymentTermsDays} days`);
+    console.log("  contacts    ", spec.contacts.length);
+    console.log("  domains     ", spec.domains.length, spec.domains.join(", "));
+    console.log("  package     ", withPackage.packageId);
+    console.log("  tasks       ", `${taskCount} onboarding tasks created`);
+  }
+
+  const articles = await seedKnowledgeArticles(db, organisation.id);
+  console.log("knowledge     ", `${articles} of ${KNOWLEDGE_ARTICLES.length} articles created`);
+
+  const grays = seededClients[0]!;
+  const support = await seedSupportConversation(db, organisation.id, grays.supportAddress);
+  console.log(
+    "support case  ",
+    support ? `${support.ticketId} ${support.created ? "created" : "already present"}` : "skipped",
+  );
+
+  const clientUser = await seedClientUser(db, organisation.id, grays.id, config.clientUser);
+  console.log("client user   ", clientUser.id, `${config.clientUser.email} client_admin`);
+
+  const billing = await seedBillingAndAds(db, organisation.id, seededClients);
+  // What this run created, not a constant: a second seed prints zeros, which
+  // is what makes the line evidence of idempotency rather than decoration.
+  // Snapshots are upserted every run, so they are reported as written.
+  console.log(
+    "billing/ads   ",
+    `created ${billing.subscriptions} subscriptions, ${billing.invoices} invoices, ` +
+      `${billing.reports} published reports; wrote ${billing.snapshots} ad snapshots ` +
+      `(${billing.snapshotsInPeriod} inside the report period)`,
+  );
 }
 
 type Db = ReturnType<typeof createDb>;
@@ -646,7 +651,41 @@ export async function backfillOrganisationSupplier(db: Db, row: typeof schema.or
   return filled!;
 }
 
-/** The owner's user row only. `main` writes the credential after the membership. */
+/**
+ * The organisation, the owner's user row, the owner membership and the owner
+ * credential — in the order that is this seed's only protection.
+ *
+ * `runSeed` has no transaction (unlike `bootstrap()`), so the order of these
+ * writes is all there is. The membership is settled **before** the credential:
+ * a refusal on a membership that belongs to somebody else must not leave
+ * SEED_OWNER_PASSWORD hashed onto their account, and this seed manufactures
+ * exactly the account that triggers that refusal — the invited
+ * `team@launchflow.example` of `seedStaffMember`.
+ *
+ * The organisation is *looked up* first and created only where a refusal cannot
+ * strand it: against a row that is already there the membership is settled
+ * before anything is written at all, and a freshly created organisation has no
+ * members, so `seedMembership` cannot refuse against one. Either way a refused
+ * seed leaves no new, empty tenant behind.
+ */
+export async function seedOwnerAccount(db: Db, config: SeedConfig) {
+  const user = await seedOwnerUser(db, config);
+  const [found] = await db
+    .select()
+    .from(schema.organisations)
+    .where(eq(schema.organisations.slug, config.organisation.slug));
+  if (found) {
+    const membership = await seedMembership(db, found.id, user.id);
+    await ensureOwnerCredential(db, user.id, config.ownerPassword);
+    return { user, organisation: found, membership };
+  }
+  const { row } = await ensureOrganisation(db, config.organisation);
+  const membership = await seedMembership(db, row.id, user.id);
+  await ensureOwnerCredential(db, user.id, config.ownerPassword);
+  return { user, organisation: row, membership };
+}
+
+/** The owner's user row only. `seedOwnerAccount` writes the credential after the membership. */
 export async function seedOwnerUser(db: Db, config: Pick<SeedConfig, "ownerEmail" | "ownerName">) {
   const { row } = await ensureUserRow(db, { email: config.ownerEmail, name: config.ownerName });
   return row;

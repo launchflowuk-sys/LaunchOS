@@ -43,7 +43,7 @@ pnpm dev:worker           # second terminal
 
 Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED_OWNER_PASSWORD` (default `change-me-now`). There is no sign-up page. The same page signs in the seeded client user (`SEED_CLIENT_EMAIL`, default `portal@grayscabline.example`, password `SEED_CLIENT_PASSWORD`, default `change-me-client`) and routes it to `/portal`.
 
-`pnpm db:seed` is development only — it writes demo clients, invoices with numbers from a live sequence, ad data and a portal login. A production install runs `pnpm db:bootstrap` instead: the organisation (`SEED_ORG_NAME` / `SEED_ORG_SLUG`) and the owner account (`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`) and nothing else.
+`pnpm db:seed` is development only — it writes demo clients, invoices with numbers from a live sequence, ad data and a portal login — and it refuses to run at all unless `SEED_DEMO=1`, in every environment and against every host. `.env.example` ships that flag set, so the quick start above needs nothing extra; a production resource must never carry it. A production install runs `pnpm db:bootstrap` instead: the organisation (`SEED_ORG_NAME` / `SEED_ORG_SLUG`) and the owner account (`SEED_OWNER_EMAIL` / `SEED_OWNER_PASSWORD`) and nothing else.
 
 Because the bootstrap is the production tool, its guards hold **everywhere**: it refuses a password that is still a published default, requires `SEED_OWNER_EMAIL` (it has no default) and requires `BOOTSTRAP_CONFIRM` to equal the slug it would write, in every environment and against every host — a tunnelled or private-network production database is indistinguishable from a local one by its hostname. Running it locally therefore looks like this:
 

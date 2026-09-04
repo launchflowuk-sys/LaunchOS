@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -381,8 +381,9 @@ describe("loadRootEnv", () => {
   }
 
   it("resolves the repo root from this module's location, not from the cwd", () => {
-    // `packages/db/src/bootstrap.ts` → three directories up. The test file
-    // sits beside it, so the same arithmetic must land on the same file.
+    // `packages/db/src/env-target.ts` → three directories up. The test file
+    // sits beside it, so the same arithmetic must land on the same file — and
+    // that depth is the invariant the constant's doc comment names.
     expect(ROOT_ENV_FILE).toBe(join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env"));
     // And that directory really is the repository root, cwd notwithstanding.
     expect(existsSync(join(dirname(ROOT_ENV_FILE), "pnpm-workspace.yaml"))).toBe(true);
@@ -399,13 +400,25 @@ describe("loadRootEnv", () => {
     for (const dir of [outside, join(outside, "packages"), cwd]) {
       await writeFile(join(dir, ".env"), `${DECOY}=from-decoy\n`, "utf8");
     }
+    // What the repo-root file actually holds, read here so the assertions below
+    // are about which file won rather than about `loadRootEnv`'s return type.
+    const rootEnv = existsSync(ROOT_ENV_FILE) ? await readFile(ROOT_ENV_FILE, "utf8") : null;
     try {
       await withCleanEnv(() => {
+        // `process.chdir` throws under Vitest's `threads` pool. This suite runs
+        // on the default `forks` pool, where it is fine; moving the pool means
+        // re-siting this case rather than deleting it.
         process.chdir(cwd);
+        // Only the repo-root file can supply this: every decoy defines the
+        // decoy key alone, so a ladder that read one would leave it unset.
+        delete process.env.DATABASE_URL;
 
         const read = loadRootEnv();
 
-        expect(read === null || read === ROOT_ENV_FILE).toBe(true);
+        expect(read).toBe(rootEnv === null ? null : ROOT_ENV_FILE);
+        if (rootEnv !== null && /^\s*DATABASE_URL=/m.test(rootEnv)) {
+          expect(process.env.DATABASE_URL).toBeDefined();
+        }
         expect(process.env[DECOY]).toBeUndefined();
       });
     } finally {
@@ -615,15 +628,15 @@ describe("bootstrap", () => {
 
         await expect(bootstrap(db, input)).rejects.toThrow(/role "staff" and status "invited"/);
 
-        // `bootstrap()` is one transaction, so this proves the rollback, not
-        // the ordering — the ordering is pinned by the next case, which runs
-        // the same helpers with no transaction to hide a stray write.
+        // `bootstrap()` is one transaction of its own, so this proves the
+        // rollback rather than the ordering — the ordering is pinned by the
+        // next case, which calls the two helpers itself.
         const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.row.id));
         expect(accounts).toHaveLength(0);
       });
     });
 
-    it("settles the membership before any credential is written, with no transaction to hide it", async () => {
+    it("settles the membership before any credential is written", async () => {
       await withTestDb(async (db) => {
         const input = inputFor(randomUUID());
         const organisation = await ensureOrganisation(db, {
@@ -635,10 +648,13 @@ describe("bootstrap", () => {
           .insert(schema.organisationMembers)
           .values({ organisationId: organisation.row.id, userId: user.row.id, role: "staff", status: "invited" });
 
-        // The sequence `bootstrap()` runs, and the sequence `seed.ts` runs
-        // outside a transaction. If the credential ever moves above the
-        // membership check, the refusal below leaves a password hashed onto
-        // somebody else's account and this assertion is what catches it.
+        // The two helpers in the order `bootstrap()` calls them, and the order
+        // `seed.ts` calls them outside any transaction of its own. If the
+        // credential ever moves above the membership check, the refusal below
+        // leaves a password hashed onto somebody else's account. `withTestDb`
+        // wraps this case in a transaction it rolls back, but that is not what
+        // the assertion rests on: a write is visible to a later read inside the
+        // same transaction, so an empty `account` means none was made.
         await expect(ensureOwnerMembership(db, organisation.row.id, user.row.id)).rejects.toThrow(
           /role "staff" and status "invited"/,
         );

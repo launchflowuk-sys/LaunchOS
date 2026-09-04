@@ -28,7 +28,12 @@ export const MIN_PASSWORD_LENGTH = 12;
 export const DEFAULT_OWNER_PASSWORD = "change-me-now";
 export const DEFAULT_CLIENT_PASSWORD = "change-me-client";
 
-/** The first owner's address when `SEED_OWNER_EMAIL` is unset. */
+/**
+ * The **dev seed's** owner address when `SEED_OWNER_EMAIL` is unset or empty.
+ * `pnpm db:bootstrap`, the production entry point, has no default at all and
+ * refuses an unset variable in every environment, so nothing but `seed.ts`
+ * reads this.
+ */
 export const DEFAULT_OWNER_EMAIL = "shujaat@nexusedu.co.uk";
 
 /** Every password literal this repository ships. Checked by value, not by variable. */

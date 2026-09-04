@@ -1,30 +1,34 @@
 /**
- * The three properties of `pnpm db:seed` that nothing else pins.
+ * The properties of `pnpm db:seed` that nothing else pins.
  *
- * `seed.ts` `main` is deliberately **not** transactional, so for the seed the
- * order of its four owner writes is the only protection there is: if
- * `ensureOwnerCredential` ever drifts above the membership check, a refusal
- * leaves `SEED_OWNER_PASSWORD` hashed onto somebody else's account and nothing
- * fails. The seed also manufactures exactly the account that triggers that
- * refusal — the invited `team@launchflow.example`.
+ * The seed runs **only** on an explicit `SEED_DEMO=1`, and `runSeed` — the
+ * sequence `main` actually executes — is deliberately not transactional, so the
+ * order of its owner writes is the only protection there is: if the credential
+ * ever drifts above the membership check, a refusal leaves
+ * `SEED_OWNER_PASSWORD` hashed onto somebody else's account and nothing fails.
+ * The seed manufactures exactly the account that triggers that refusal — the
+ * invited `team@launchflow.example`.
  *
- * These run the helpers directly rather than `main()`: `main` opens its own
- * connection and writes the whole fixture set, which cannot be rolled back into
- * a test transaction.
+ * The ordering case calls `runSeed` itself rather than re-assembling its steps
+ * here, so it is evidence about production code. The rest call the exported
+ * helpers directly: `main` reads the environment, opens its own connection and
+ * writes the whole fixture set.
  */
 import { randomUUID } from "node:crypto";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  BootstrapGuardError,
-  CREDENTIAL_ISSUER,
-  CREDENTIAL_PROVIDER,
-  ensureOrganisation,
-  ensureOwnerCredential,
-} from "./bootstrap.js";
+import { BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, ensureOrganisation } from "./bootstrap.js";
 import { DEFAULT_OWNER_EMAIL } from "./passwords.js";
 import * as schema from "./schema/index.js";
-import { assertSeedOwnerEmail, seedClientUser, seedConfigFromEnv, seedMembership, seedOwnerUser } from "./seed.js";
+import {
+  assertDemoOptIn,
+  assertSeedOwnerEmail,
+  runSeed,
+  seedClientUser,
+  seedConfigFromEnv,
+  seedOwnerAccount,
+  seedOwnerUser,
+} from "./seed.js";
 import { withTestDb } from "./test/db.js";
 
 /** A unique organisation, owner and portal user per test. */
@@ -71,6 +75,49 @@ describe("seedConfigFromEnv", () => {
     expect(seedConfigFromEnv({ SEED_OWNER_EMAIL: " jo@acme.test " } as NodeJS.ProcessEnv).ownerEmail).toBe(
       "jo@acme.test",
     );
+  });
+});
+
+describe("assertDemoOptIn", () => {
+  it("refuses when SEED_DEMO is unset, whatever the target looks like", () => {
+    // A local-looking host is not consent: `ssh -L 5433:…` presents a live
+    // database as localhost, which is why this guard reads a variable and not a
+    // hostname. Neither environment below can satisfy it.
+    for (const env of [
+      {},
+      { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@localhost:5432/launchos" },
+      { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@localhost:5433/launchos" },
+      { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@10.0.0.3:5432/launchos" },
+      { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@postgres:5432/launchos" },
+      { NODE_ENV: "development", DATABASE_URL: "postgres://u:p@db:5432/launchos" },
+    ]) {
+      try {
+        assertDemoOptIn(env as NodeJS.ProcessEnv);
+        expect.unreachable(`the demo-opt-in guard should have thrown for ${JSON.stringify(env)}`);
+      } catch (error) {
+        expect((error as BootstrapGuardError).guard).toBe("demo-opt-in");
+        expect((error as Error).message).toMatch(/SEED_DEMO=1/);
+      }
+    }
+  });
+
+  it("refuses anything but exactly 1 — a value that reads as off is not consent", () => {
+    for (const value of ["", "0", "false", "true", "yes", " 1", "1 ", "01"]) {
+      expect(() => assertDemoOptIn({ SEED_DEMO: value } as NodeJS.ProcessEnv)).toThrow(/SEED_DEMO=1/);
+    }
+  });
+
+  it("runs on SEED_DEMO=1, including against a production target", () => {
+    // The flag is the whole gate: having said it out loud, the operator gets
+    // the fixtures wherever they pointed the run.
+    expect(() => assertDemoOptIn({ SEED_DEMO: "1" } as NodeJS.ProcessEnv)).not.toThrow();
+    expect(() =>
+      assertDemoOptIn({
+        SEED_DEMO: "1",
+        NODE_ENV: "production",
+        DATABASE_URL: "postgres://u:p@db.launchflow.co.uk:5432/launchos",
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
   });
 });
 
@@ -132,13 +179,15 @@ describe("the seed's owner sequence", () => {
         .insert(schema.organisationMembers)
         .values({ organisationId: organisation.id, userId: user.id, role: "staff", status: "invited" });
 
-      await expect(seedMembership(db, organisation.id, user.id)).rejects.toThrow(
-        /role "staff" and status "invited"/,
-      );
+      // `runSeed` is the sequence `main` executes, not a copy of it assembled
+      // here: reorder the owner writes in `seed.ts` and this is what fails.
+      await expect(runSeed(db, config)).rejects.toThrow(/role "staff" and status "invited"/);
 
-      // Nothing rolled back here — `main` has no transaction — so an empty
-      // `account` is evidence the credential step is genuinely downstream of
-      // the membership check.
+      // `withTestDb` does wrap this case in a transaction, and always rolls it
+      // back — but that is not what makes the assertion hold. A write made
+      // earlier in a transaction is visible to a later read inside the same
+      // one, so an empty `account` here means the credential step never ran,
+      // which is the property `runSeed` has to keep outside a transaction too.
       const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.id));
       expect(accounts).toHaveLength(0);
     });
@@ -147,31 +196,31 @@ describe("the seed's owner sequence", () => {
   it("writes the credential once the membership is an active owner, and never rewrites it", async () => {
     await withTestDb(async (db) => {
       const config = configFor(randomUUID());
-      const { row: organisation } = await ensureOrganisation(db, config.organisation);
-      const user = await seedOwnerUser(db, config);
-      const membership = await seedMembership(db, organisation.id, user.id);
-      expect(membership.role).toBe("owner");
-      expect(membership.status).toBe("active");
+      const first = await seedOwnerAccount(db, config);
+      expect(first.membership.role).toBe("owner");
+      expect(first.membership.status).toBe("active");
+      const [before] = await db.select().from(schema.account).where(eq(schema.account.userId, first.user.id));
+      expect(before?.password).toBeTruthy();
 
-      const first = await ensureOwnerCredential(db, user.id, config.ownerPassword);
-      expect(first.passwordSet).toBe(true);
-      const [before] = await db.select().from(schema.account).where(eq(schema.account.userId, user.id));
+      // A second seed, with a different password in the environment: the
+      // existing credential is kept and no second organisation appears.
+      const second = await seedOwnerAccount(db, { ...config, ownerPassword: "a-different-password" });
+      expect(second.user.id).toBe(first.user.id);
+      expect(second.organisation.id).toBe(first.organisation.id);
 
-      // A second seed: the same three calls, nothing new.
-      const again = await seedOwnerUser(db, config);
-      expect(again.id).toBe(user.id);
-      await seedMembership(db, organisation.id, user.id);
-      const second = await ensureOwnerCredential(db, user.id, "a-different-password");
-      expect(second.passwordSet).toBe(false);
-
-      const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.id));
+      const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, first.user.id));
       expect(accounts).toHaveLength(1);
       expect(accounts[0]?.password).toBe(before?.password);
       const members = await db
         .select()
         .from(schema.organisationMembers)
-        .where(eq(schema.organisationMembers.organisationId, organisation.id));
+        .where(eq(schema.organisationMembers.organisationId, first.organisation.id));
       expect(members).toHaveLength(1);
+      const organisations = await db
+        .select()
+        .from(schema.organisations)
+        .where(eq(schema.organisations.slug, config.organisation.slug));
+      expect(organisations).toHaveLength(1);
     });
   });
 });
