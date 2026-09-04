@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,7 +13,9 @@ import {
   describeDatabase,
   ensureOrganisation,
   ensureUserRow,
+  loadRootEnv,
   organisationFromEnv,
+  ownerPasswordSource,
 } from "./bootstrap.js";
 import { DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH } from "./passwords.js";
 import * as schema from "./schema/index.js";
@@ -35,7 +40,15 @@ function guardInput(overrides: { organisationSlug?: string; ownerPassword?: stri
   };
 }
 
-const PRODUCTION = { NODE_ENV: "production", BOOTSTRAP_CONFIRM: "acme" };
+const LOCAL_URL = "postgres://launchos:launchos@localhost:5432/launchos";
+const REMOTE_URL = "postgres://launchos:s3cret@db.launchflow.co.uk:5432/launchos";
+
+/** A local target with NODE_ENV set: the guards that only run in production must not fire. */
+const LOCAL = { NODE_ENV: "development", DATABASE_URL: LOCAL_URL };
+/** NODE_ENV=production forces production on even when the host is local. */
+const PRODUCTION = { NODE_ENV: "production", DATABASE_URL: LOCAL_URL, BOOTSTRAP_CONFIRM: "acme" };
+/** Nobody exported NODE_ENV — the host is what makes this a production run. */
+const REMOTE_NO_NODE_ENV = { DATABASE_URL: REMOTE_URL, BOOTSTRAP_CONFIRM: "acme" };
 
 describe("assertBootstrapAllowed", () => {
   describe("the password floor, in every environment", () => {
@@ -43,9 +56,7 @@ describe("assertBootstrapAllowed", () => {
     const atFloor = "x".repeat(MIN_PASSWORD_LENGTH);
 
     it("refuses a password one character under the floor, outside production", () => {
-      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: short }), { NODE_ENV: "development" })).toThrow(
-        /minimum is 12/,
-      );
+      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: short }), LOCAL)).toThrow(/minimum is 12/);
     });
 
     it("refuses a password one character under the floor, in production", () => {
@@ -53,14 +64,12 @@ describe("assertBootstrapAllowed", () => {
     });
 
     it("allows a password exactly at the floor, outside production", () => {
-      expect(() =>
-        assertBootstrapAllowed(guardInput({ ownerPassword: atFloor }), { NODE_ENV: "development" }),
-      ).not.toThrow();
+      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: atFloor }), LOCAL)).not.toThrow();
     });
 
     it("names the guard that refused", () => {
       try {
-        assertBootstrapAllowed(guardInput({ ownerPassword: short }), { NODE_ENV: "development" });
+        assertBootstrapAllowed(guardInput({ ownerPassword: short }), LOCAL);
         expect.unreachable("the floor guard should have thrown");
       } catch (error) {
         expect(error).toBeInstanceOf(BootstrapGuardError);
@@ -71,6 +80,40 @@ describe("assertBootstrapAllowed", () => {
     it("holds the same floor the app enforces on everyone else", () => {
       // apps/web/src/lib/auth.ts: emailAndPassword.minPasswordLength.
       expect(MIN_PASSWORD_LENGTH).toBe(12);
+    });
+  });
+
+  describe("the slug, in every environment", () => {
+    it("refuses a slug that is set but empty", () => {
+      try {
+        assertBootstrapAllowed(guardInput({ organisationSlug: "" }), LOCAL);
+        expect.unreachable("the slug guard should have thrown");
+      } catch (error) {
+        expect((error as BootstrapGuardError).guard).toBe("organisation-slug");
+        expect((error as Error).message).toMatch(/set but empty/);
+      }
+    });
+
+    it("refuses an empty slug even when BOOTSTRAP_CONFIRM is equally empty", () => {
+      // The `.env.example` paste: SEED_ORG_SLUG cleared, BOOTSTRAP_CONFIRM
+      // shipped empty. Two empty strings used to compare equal and pass.
+      expect(() =>
+        assertBootstrapAllowed(guardInput({ organisationSlug: "" }), {
+          NODE_ENV: "production",
+          DATABASE_URL: LOCAL_URL,
+          BOOTSTRAP_CONFIRM: "",
+        }),
+      ).toThrow(/set but empty/);
+    });
+
+    it("refuses a slug that is not slug-shaped", () => {
+      expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "Acme Ltd" }), LOCAL)).toThrow(
+        /not a valid slug/,
+      );
+      expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "-acme" }), LOCAL)).toThrow(
+        /not a valid slug/,
+      );
+      expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "a" }), LOCAL)).toThrow(/not a valid slug/);
     });
   });
 
@@ -88,21 +131,70 @@ describe("assertBootstrapAllowed", () => {
     });
 
     it("allows the owner default outside production — it clears the floor", () => {
+      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), LOCAL)).not.toThrow();
+    });
+  });
+
+  describe("the production predicate is the database, not just NODE_ENV", () => {
+    it("refuses the published default against a remote host with NODE_ENV unset", () => {
+      try {
+        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), REMOTE_NO_NODE_ENV);
+        expect.unreachable("a remote target must be treated as production");
+      } catch (error) {
+        expect((error as BootstrapGuardError).guard).toBe("published-default");
+        expect((error as Error).message).toMatch(/not a local host/);
+      }
+    });
+
+    it("requires BOOTSTRAP_CONFIRM against a remote host with NODE_ENV unset", () => {
+      expect(() => assertBootstrapAllowed(guardInput(), { DATABASE_URL: REMOTE_URL })).toThrow(/BOOTSTRAP_CONFIRM/);
+    });
+
+    it("treats a missing DATABASE_URL as production", () => {
+      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), {})).toThrow(
+        /published in this repository/,
+      );
+    });
+
+    it("allows the published default against localhost with NODE_ENV unset", () => {
       expect(() =>
-        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), { NODE_ENV: "development" }),
+        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), { DATABASE_URL: LOCAL_URL }),
       ).not.toThrow();
+    });
+
+    it("allows the published default against the compose service name and a private address", () => {
+      for (const host of ["postgres", "db", "127.0.0.1", "10.0.1.7", "172.20.0.3", "192.168.1.9"]) {
+        expect(() =>
+          assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), {
+            DATABASE_URL: `postgres://u:p@${host}:5432/launchos`,
+          }),
+        ).not.toThrow();
+      }
     });
   });
 
   describe("BOOTSTRAP_CONFIRM", () => {
     it("refuses in production when it is unset", () => {
-      expect(() => assertBootstrapAllowed(guardInput(), { NODE_ENV: "production" })).toThrow(/BOOTSTRAP_CONFIRM/);
+      expect(() => assertBootstrapAllowed(guardInput(), { NODE_ENV: "production", DATABASE_URL: LOCAL_URL })).toThrow(
+        /BOOTSTRAP_CONFIRM/,
+      );
+    });
+
+    it("refuses in production when it is empty", () => {
+      expect(() =>
+        assertBootstrapAllowed(guardInput(), {
+          NODE_ENV: "production",
+          DATABASE_URL: LOCAL_URL,
+          BOOTSTRAP_CONFIRM: "   ",
+        }),
+      ).toThrow(/unset or empty/);
     });
 
     it("refuses in production when it does not match the slug", () => {
       expect(() =>
         assertBootstrapAllowed(guardInput({ organisationSlug: "acme" }), {
           NODE_ENV: "production",
+          DATABASE_URL: LOCAL_URL,
           BOOTSTRAP_CONFIRM: "acme-typo",
         }),
       ).toThrow(/"acme"/);
@@ -112,13 +204,23 @@ describe("assertBootstrapAllowed", () => {
       expect(() => assertBootstrapAllowed(guardInput(), PRODUCTION)).not.toThrow();
     });
 
+    it("accepts a confirmation with stray whitespace around the right slug", () => {
+      expect(() =>
+        assertBootstrapAllowed(guardInput(), {
+          NODE_ENV: "production",
+          DATABASE_URL: LOCAL_URL,
+          BOOTSTRAP_CONFIRM: " acme ",
+        }),
+      ).not.toThrow();
+    });
+
     it("is not required outside production", () => {
-      expect(() => assertBootstrapAllowed(guardInput(), { NODE_ENV: "development" })).not.toThrow();
+      expect(() => assertBootstrapAllowed(guardInput(), LOCAL)).not.toThrow();
     });
 
     it("names the guard that refused", () => {
       try {
-        assertBootstrapAllowed(guardInput(), { NODE_ENV: "production" });
+        assertBootstrapAllowed(guardInput(), { NODE_ENV: "production", DATABASE_URL: LOCAL_URL });
         expect.unreachable("the confirm guard should have thrown");
       } catch (error) {
         expect((error as BootstrapGuardError).guard).toBe("confirm-slug");
@@ -145,6 +247,97 @@ describe("organisationFromEnv", () => {
 
   it("defaults to LaunchFlow", () => {
     expect(organisationFromEnv({} as NodeJS.ProcessEnv)).toEqual({ name: "LaunchFlow", slug: "launchflow" });
+  });
+
+  it("trims, so a pasted trailing space cannot make a second organisation", () => {
+    expect(organisationFromEnv({ SEED_ORG_SLUG: " launchflow " } as NodeJS.ProcessEnv).slug).toBe("launchflow");
+    expect(organisationFromEnv({ SEED_ORG_NAME: "  Acme  " } as NodeJS.ProcessEnv).name).toBe("Acme");
+  });
+
+  it("keeps a set-but-empty slug empty, for the guard to refuse", () => {
+    expect(organisationFromEnv({ SEED_ORG_SLUG: "   " } as NodeJS.ProcessEnv).slug).toBe("");
+  });
+
+  it("falls back to the default name when SEED_ORG_NAME is set but empty", () => {
+    expect(organisationFromEnv({ SEED_ORG_NAME: " " } as NodeJS.ProcessEnv).name).toBe("LaunchFlow");
+  });
+});
+
+describe("ownerPasswordSource", () => {
+  it("names the variable when it was set", () => {
+    expect(ownerPasswordSource({ SEED_OWNER_PASSWORD: "a-real-password" } as NodeJS.ProcessEnv)).toBe(
+      "set from SEED_OWNER_PASSWORD",
+    );
+  });
+
+  it("says so when the value came from the built-in default", () => {
+    // The line an operator reads to confirm their password took. It must not
+    // claim a variable that was never read.
+    expect(ownerPasswordSource({} as NodeJS.ProcessEnv)).toMatch(/built-in default \(SEED_OWNER_PASSWORD was unset\)/);
+  });
+});
+
+describe("loadRootEnv", () => {
+  const KEY = "LOAD_ROOT_ENV_TEST_KEY";
+
+  /** A repo-shaped temp tree: the `.env` sits two levels above the cwd, like packages/db. */
+  async function withEnvFile(contents: string, fn: (envPath: string) => void): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), "launchos-env-"));
+    const cwd = join(root, "packages", "db");
+    const originalCwd = process.cwd();
+    const originalUrl = process.env.DATABASE_URL;
+    await mkdir(cwd, { recursive: true });
+    await writeFile(join(root, ".env"), contents, "utf8");
+    try {
+      process.chdir(cwd);
+      fn(join(root, ".env"));
+    } finally {
+      process.chdir(originalCwd);
+      if (originalUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = originalUrl;
+      delete process.env[KEY];
+      await rm(root, { recursive: true, force: true });
+    }
+  }
+
+  it("merges keys that are unset even when DATABASE_URL was already set", async () => {
+    // The failure this closes: a one-off run with DATABASE_URL on the command
+    // line used to skip the file entirely, so the SEED_OWNER_PASSWORD the
+    // operator had put in `.env` was never read and the published default was
+    // installed in its place.
+    await withEnvFile(`DATABASE_URL=postgres://from-file:5432/file\n${KEY}=from-file\n`, (envPath) => {
+      process.env.DATABASE_URL = "postgres://localhost:5432/from-shell";
+
+      expect(loadRootEnv()).toBe(envPath);
+
+      expect(process.env[KEY]).toBe("from-file");
+      // Never overridden: an explicit variable still wins over the file.
+      expect(process.env.DATABASE_URL).toBe("postgres://localhost:5432/from-shell");
+    });
+  });
+
+  it("still supplies DATABASE_URL when it was not set", async () => {
+    await withEnvFile(`DATABASE_URL=postgres://localhost:5432/from-file\n${KEY}=from-file\n`, () => {
+      delete process.env.DATABASE_URL;
+
+      loadRootEnv();
+
+      expect(process.env.DATABASE_URL).toBe("postgres://localhost:5432/from-file");
+    });
+  });
+
+  it("returns null when there is no .env to read", async () => {
+    const root = await mkdtemp(join(tmpdir(), "launchos-noenv-"));
+    const cwd = join(root, "packages", "db");
+    const originalCwd = process.cwd();
+    await mkdir(cwd, { recursive: true });
+    try {
+      process.chdir(cwd);
+      expect(loadRootEnv()).toBeNull();
+    } finally {
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

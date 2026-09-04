@@ -24,14 +24,20 @@
  * "change-me-client") — never the owner's, because those two accounts are on
  * opposite sides of a privilege boundary. Never commit a real password here.
  * **In every environment** both must clear MIN_PASSWORD_LENGTH, the same floor
- * `apps/web/src/lib/auth.ts` enforces on every other account. Under
- * NODE_ENV=production the seed additionally refuses to run while either
+ * `apps/web/src/lib/auth.ts` enforces on every other account. Against a
+ * **production target** the seed additionally refuses to run while either
  * password is still its published default, or while the two are equal, so
  * neither default can ever reach a live database.
  *
+ * A production target is NODE_ENV=production **or** a DATABASE_URL that does
+ * not point at localhost, the compose network or a private address
+ * (`./env-target.ts`). Keying these guards on NODE_ENV alone meant the run
+ * that most needed them — a one-off against a live database from a shell where
+ * nobody exported NODE_ENV — was the one run that skipped them.
+ *
  * Every refusal names the guard that tripped and exits non-zero.
  *
- * **It also refuses to run at all under NODE_ENV=production unless SEED_DEMO=1.**
+ * **It also refuses to run at all against a production target unless SEED_DEMO=1.**
  * The demo fixtures below — invoices with numbers from a live sequence
  * especially — are not something a live tenant can cleanly be rid of. The
  * production entry point is `pnpm db:bootstrap` (`./bootstrap.ts`), which
@@ -44,6 +50,8 @@
  * invert the shipped `core → db` dependency direction.
  */
 import { randomUUID } from "node:crypto";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   buildClientReport, createAdAccount, createInvoiceFromSubscription, createKnowledgeArticle,
   createSubscription, ensureEmailIdentity, ingestDailyMetrics,
@@ -53,10 +61,12 @@ import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
 import { and, asc, eq, gte, lt } from "drizzle-orm";
 import {
-  BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, describeDatabase, ensureOrganisation,
-  ensureOwnerMembership, ensureOwnerUser, loadRootEnv, organisationFromEnv,
+  assertOrganisationSlug, BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, describeDatabase,
+  ensureOrganisation, ensureOwnerCredential, ensureOwnerMembership, ensureUserRow, loadRootEnv,
+  organisationFromEnv,
 } from "./bootstrap.js";
 import { createDb } from "./client.js";
+import { isProductionTarget, productionTargetReason } from "./env-target.js";
 import {
   DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_EMAIL, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH,
   shortPasswordMessage,
@@ -263,6 +273,10 @@ const CLIENT_PACKAGES: Record<string, string> = {
 async function main() {
   const url = process.env.DATABASE_URL;
   if (!url) throw new BootstrapGuardError("database-url", "DATABASE_URL is required to seed");
+  // Before the guards: an operator who trips one needs to know which database
+  // they were pointed at, which is usually the actual mistake.
+  const productionTarget = isProductionTarget(process.env);
+  console.log("database      ", describeDatabase(url), productionTarget ? "(production target)" : "(local)");
   // The floor first, and in every environment: both of these accounts are
   // written straight into `account`, which Better Auth never re-validates, so
   // a short password set here would stand for the life of the account. This is
@@ -275,20 +289,31 @@ async function main() {
       throw new BootstrapGuardError("password-floor", shortPasswordMessage(name, value));
     }
   }
+  // The organisation this run would fill or create, in every environment. An
+  // empty or malformed SEED_ORG_SLUG makes a second, nameless tenant rather
+  // than finding the one that is already there.
+  assertOrganisationSlug(ORGANISATION.slug);
+
+  // Everything below is keyed on the *target*, not on NODE_ENV: a seed run
+  // against a live database from a shell where nobody exported NODE_ENV is
+  // exactly the run these guards exist for. `productionTargetReason` says
+  // which half of the predicate fired, because an operator who did not set
+  // NODE_ENV needs to be told it was the host that decided.
+  const because = `Refusing because ${productionTargetReason(process.env)}.`;
   // No account this seed creates may reach a live database on a password that
   // is published in this repository — the owner's or the portal user's. The
   // two are also required to differ: satisfying the guard by setting them to
   // the same value would put the owner's password into a client's hands.
-  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "1") {
+  if (productionTarget && process.env.SEED_DEMO !== "1") {
     throw new BootstrapGuardError(
       "demo-fixtures-in-production",
       "pnpm db:seed writes demo clients, invoices with numbers from a live sequence, ad data and a " +
         "portal login. It must not run against a production database. Use `pnpm db:bootstrap`, which " +
         "creates only the organisation and the owner account. If you really do want the fixtures here, " +
-        "set SEED_DEMO=1.",
+        `set SEED_DEMO=1. ${because}`,
     );
   }
-  if (process.env.NODE_ENV === "production") {
+  if (productionTarget) {
     const defaulted = [
       OWNER_PASSWORD === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
       CLIENT_USER.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
@@ -296,9 +321,9 @@ async function main() {
     if (defaulted.length > 0) {
       throw new BootstrapGuardError(
         "published-default",
-        `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} required when NODE_ENV=production. ` +
-          "Refusing to seed an account with a default password published in this repository. " +
-          "Set them in the resource environment, run the seed once, then remove them.",
+        `${defaulted.join(" and ")} ${defaulted.length > 1 ? "are" : "is"} still a default published in ` +
+          "this repository. Refusing to seed an account with it. " +
+          `Set them in the resource environment, run the seed once, then remove them. ${because}`,
       );
     }
     if (CLIENT_USER.password === OWNER_PASSWORD) {
@@ -306,19 +331,23 @@ async function main() {
         "shared-password",
         "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
           "The portal login is a client's credential and the owner's opens the whole admin shell; " +
-          "they must never be the same secret.",
+          `they must never be the same secret. ${because}`,
       );
     }
   }
-  console.log("database      ", describeDatabase(url));
   console.log("organisation  ", ORGANISATION.slug, `(${ORGANISATION.name})`);
 
   const db = createDb(url);
 
   try {
     const organisation = await seedOrganisation(db);
-    const user = await seedOwner(db);
+    // Same order as `bootstrap()`, and for the same reason: the membership is
+    // settled before any credential is written, so a refusal on somebody
+    // else's membership — this seed manufactures exactly that account, the
+    // invited `team@launchflow.example` — cannot leave a password behind on it.
+    const user = await seedOwnerUser(db);
     const membership = await seedMembership(db, organisation.id, user.id);
+    await ensureOwnerCredential(db, user.id, OWNER_PASSWORD);
     const enabledAgents: string[] = [];
     for (const agentKey of AGENT_KEYS) {
       const enablement = await seedAgentEnablement(db, organisation.id, agentKey);
@@ -529,8 +558,9 @@ async function seedOrganisation(db: Db) {
   return filled!;
 }
 
-async function seedOwner(db: Db) {
-  const { row } = await ensureOwnerUser(db, { email: OWNER_EMAIL, name: OWNER_NAME, password: OWNER_PASSWORD });
+/** The owner's user row only. `main` writes the credential after the membership. */
+async function seedOwnerUser(db: Db) {
+  const { row } = await ensureUserRow(db, { email: OWNER_EMAIL, name: OWNER_NAME });
   return row;
 }
 
@@ -741,7 +771,7 @@ async function seedStaffMember(db: Db, organisationId: string) {
  * A portal login for Grays CabLine. The password is a known env value rather
  * than the one-time password `createClientUser` generates, because a developer
  * has to be able to sign in to the portal after a fresh seed. It is its own
- * secret, `SEED_CLIENT_PASSWORD`, and under NODE_ENV=production `main` refuses
+ * secret, `SEED_CLIENT_PASSWORD`, and against a production target `main` refuses
  * to run while it is the default or equal to the owner's. A production portal
  * user should come from the admin Portal Users screen and `createClientUser`'s
  * one-time password instead, which is what that path exists for.
@@ -755,11 +785,13 @@ async function seedClientUser(db: Db, organisationId: string, clientId: string) 
       .values({ id: randomUUID(), name: CLIENT_USER.name, email: CLIENT_USER.email, emailVerified: true })
       .returning())[0]!;
 
-  const [credential] = await db
-    .select()
-    .from(schema.account)
-    .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
-  if (!credential) {
+  // Any `account` row, not just a credential one — the same rule
+  // `ensureOwnerCredential` uses. The narrower "no credential row" test would
+  // attach SEED_CLIENT_PASSWORD to a user who exists with only an external
+  // provider link, which is somebody's sign-in this seed has no business
+  // changing.
+  const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.id));
+  if (accounts.length === 0) {
     await db.insert(schema.account).values({
       id: randomUUID(),
       accountId: user.id,
@@ -948,15 +980,22 @@ async function seedMonitor(db: Db, organisationId: string, siteId: string, targe
   return created!;
 }
 
+// Only when run as a script, the same guard `bootstrap.ts` has. Nothing
+// imports this module today, but a future test that pulled one helper out of
+// it would otherwise seed the developer's database as a side effect of
+// collecting the file.
+//
 // A refused seed must never look like one that ran: name the guard that
 // stopped it and exit non-zero.
-try {
-  await main();
-} catch (error) {
-  if (error instanceof BootstrapGuardError) {
-    console.error(`\ndb:seed refused — guard "${error.guard}"\n${error.message}`);
-  } else {
-    console.error("\ndb:seed failed", error);
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  try {
+    await main();
+  } catch (error) {
+    if (error instanceof BootstrapGuardError) {
+      console.error(`\ndb:seed refused — guard "${error.guard}"\n${error.message}`);
+    } else {
+      console.error("\ndb:seed failed", error);
+    }
+    process.exitCode = 1;
   }
-  process.exitCode = 1;
 }
