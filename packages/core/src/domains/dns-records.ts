@@ -71,11 +71,14 @@ export async function createDnsRecord(db: Db, organisationId: string, input: Cre
   const { actorKind, actorId, ...fields } = CreateDnsRecordInput.parse(input);
   assertValidDnsValue(fields.type, fields.value);
   await assertOwned(db, organisationId, schema.domains, fields.domainId);
-  const [row] = await db.insert(schema.dnsRecords).values({ organisationId, ...fields }).returning();
-  await recordAudit(db, organisationId, {
-    actorKind, actorId, action: "dns_record.created", targetType: "dns_record", targetId: row!.id, after: row,
+
+  return db.transaction(async (tx) => {
+    const [row] = await tx.insert(schema.dnsRecords).values({ organisationId, ...fields }).returning();
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind, actorId, action: "dns_record.created", targetType: "dns_record", targetId: row!.id, after: row,
+    });
+    return row!;
   });
-  return row!;
 }
 
 export const UpdateDnsRecordInput = z.object({

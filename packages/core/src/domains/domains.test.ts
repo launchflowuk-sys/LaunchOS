@@ -69,6 +69,26 @@ describe("domains", () => {
     });
   });
 
+  it("refuses to point a client's domain at another client's site, on both create and update", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const clientA = await createClient(db, org.id, { name: "Acme" });
+      const clientB = await createClient(db, org.id, { name: "Other" });
+      const nameA = `a-${crypto.randomUUID().slice(0, 8)}.test`;
+      const nameB = `b-${crypto.randomUUID().slice(0, 8)}.test`;
+      const siteB = await createSite(db, org.id, { clientId: clientB.id, name: nameB, primaryUrl: `https://${nameB}` });
+
+      await expect(
+        createDomain(db, org.id, { clientId: clientA.id, name: nameA, siteId: siteB.id }),
+      ).rejects.toThrow(`site ${siteB.id} belongs to another client`);
+
+      const domain = await createDomain(db, org.id, { clientId: clientA.id, name: nameA });
+      await expect(
+        updateDomain(db, org.id, { domainId: domain.id, siteId: siteB.id }),
+      ).rejects.toThrow(`site ${siteB.id} belongs to another client`);
+    });
+  });
+
   it("rejects an A record whose value is not an IPv4 literal", async () => {
     await withTestDb(async (db) => {
       const org = await makeOrg(db);

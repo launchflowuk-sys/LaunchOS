@@ -16,6 +16,20 @@ const ACTOR = {
 // Hostnames only: no scheme, no path, no trailing dot.
 const HOSTNAME = /^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/;
 
+/**
+ * `siteId` is only asserted against the organisation by `assertOwned`, which
+ * would let client A's domain point at client B's site as long as both sites
+ * live in the same org. Call after `assertOwned(..., schema.sites, siteId)`
+ * has already confirmed the site is in this organisation.
+ */
+async function assertSiteBelongsToClient(db: Db, organisationId: string, siteId: string, clientId: string): Promise<void> {
+  const [site] = await db
+    .select({ clientId: schema.sites.clientId })
+    .from(schema.sites)
+    .where(and(eq(schema.sites.id, siteId), eq(schema.sites.organisationId, organisationId)));
+  if (site && site.clientId !== clientId) throw new Error(`site ${siteId} belongs to another client`);
+}
+
 export const CreateDomainInput = z.object({
   clientId: z.string().uuid(),
   name: z.string().trim().toLowerCase().max(253).regex(HOSTNAME),
@@ -33,7 +47,10 @@ export type CreateDomainInput = z.input<typeof CreateDomainInput>;
 export async function createDomain(db: Db, organisationId: string, input: CreateDomainInput) {
   const { actorKind, actorId, ...fields } = CreateDomainInput.parse(input);
   await assertOwned(db, organisationId, schema.clients, fields.clientId);
-  if (fields.siteId) await assertOwned(db, organisationId, schema.sites, fields.siteId);
+  if (fields.siteId) {
+    await assertOwned(db, organisationId, schema.sites, fields.siteId);
+    await assertSiteBelongsToClient(db, organisationId, fields.siteId, fields.clientId);
+  }
 
   // Checked explicitly so the UI gets a sentence rather than a unique-index error.
   const [clash] = await db
@@ -75,12 +92,16 @@ export type UpdateDomainInput = z.input<typeof UpdateDomainInput>;
 
 export async function updateDomain(db: Db, organisationId: string, input: UpdateDomainInput) {
   const { domainId, actorKind, actorId, ...patch } = UpdateDomainInput.parse(input);
-  if (patch.siteId) await assertOwned(db, organisationId, schema.sites, patch.siteId);
   const where = and(eq(schema.domains.id, domainId), eq(schema.domains.organisationId, organisationId));
 
   return db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
     const [before] = await tx.select().from(schema.domains).where(where);
     if (!before) throw new Error(`domain ${domainId} not found in organisation`);
+    if (patch.siteId) {
+      await assertOwned(inner, organisationId, schema.sites, patch.siteId);
+      await assertSiteBelongsToClient(inner, organisationId, patch.siteId, before.clientId);
+    }
     const [after] = await tx.update(schema.domains).set({ ...patch, updatedAt: new Date() }).where(where).returning();
     await recordAudit(tx as unknown as Db, organisationId, {
       actorKind, actorId, action: "domain.updated", targetType: "domain", targetId: domainId, before, after,
