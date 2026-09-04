@@ -83,8 +83,37 @@ describe("createInvoiceFromSubscription", () => {
     await withTestDb(async (db) => {
       const { orgId, subscription } = await subscribed(db);
       const invoice = await createInvoiceFromSubscription(db, orgId, { subscriptionId: subscription.id });
+      await markInvoiceSent(db, orgId, { invoiceId: invoice.id });
       await markInvoicePaid(db, orgId, { invoiceId: invoice.id });
       await expect(voidInvoice(db, orgId, { invoiceId: invoice.id })).rejects.toThrow(/paid/i);
+    });
+  });
+
+  it("refuses to pay a draft that was never sent", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, subscription } = await subscribed(db);
+      const invoice = await createInvoiceFromSubscription(db, orgId, { subscriptionId: subscription.id });
+
+      await expect(markInvoicePaid(db, orgId, { invoiceId: invoice.id })).rejects.toThrow(/draft.*cannot be marked paid.*send it first/);
+
+      const [unchanged] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoice.id));
+      expect(unchanged!.status).toBe("draft");
+    });
+  });
+
+  it("treats paid and void as terminal", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, subscription } = await subscribed(db);
+      const paid = await createInvoiceFromSubscription(db, orgId, { subscriptionId: subscription.id });
+      await markInvoiceSent(db, orgId, { invoiceId: paid.id });
+      await markInvoicePaid(db, orgId, { invoiceId: paid.id });
+      await expect(markInvoicePaid(db, orgId, { invoiceId: paid.id })).rejects.toThrow(/is paid and cannot be marked paid/);
+      await expect(markInvoiceSent(db, orgId, { invoiceId: paid.id })).rejects.toThrow(/is paid and cannot be marked sent/);
+
+      const voided = await createInvoiceFromSubscription(db, orgId, { subscriptionId: subscription.id });
+      await voidInvoice(db, orgId, { invoiceId: voided.id });
+      await expect(voidInvoice(db, orgId, { invoiceId: voided.id })).rejects.toThrow(/is void and cannot be marked void/);
+      await expect(markInvoicePaid(db, orgId, { invoiceId: voided.id })).rejects.toThrow(/raise a new one/);
     });
   });
 });

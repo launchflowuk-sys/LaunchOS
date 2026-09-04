@@ -1,9 +1,10 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, gte, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
+import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
-import { assertOwned } from "../tenancy/assert-owned.js";
+import { assertInvoiceBelongsToClient, assertOwned } from "../tenancy/assert-owned.js";
 import { markInvoicePaid } from "./invoices.js";
 
 export const RecordPaymentInput = z.object({
@@ -13,6 +14,12 @@ export const RecordPaymentInput = z.object({
   currency: z.string().length(3).default("GBP"),
   provider: z.enum(["stripe", "bank", "cash", "other"]),
   providerRef: z.string().optional(),
+  /**
+   * Idempotency key for a hand-entered payment — a form nonce, a bank
+   * statement line id, anything stable across a resubmit. Optional because
+   * agent and webhook paths dedup on `providerRef` instead.
+   */
+  reference: z.string().min(1).max(200).optional(),
   status: z.enum(["pending", "succeeded", "failed", "refunded"]).default("succeeded"),
   paidAt: z.date().optional(),
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
@@ -20,19 +27,55 @@ export const RecordPaymentInput = z.object({
 });
 export type RecordPaymentInput = z.input<typeof RecordPaymentInput>;
 
+/** Midnight UTC of the day `at` falls in — the window a `reference` dedups over. */
+function startOfDay(at: Date): Date {
+  return new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), at.getUTCDate()));
+}
+
 /**
  * Insert, audit and reconciliation all land in one transaction: a payment row
  * that exists but was never audited, or one that settled the invoice without
  * itself being durable, would be a worse failure mode than the whole write
  * not having happened yet — so a throw at any step rolls all three back.
+ *
+ * When an invoice is named, its row is locked for the whole transaction. That
+ * serialises two payments against the same invoice — both the duplicate check
+ * and the reconciliation below — so a second payment can never compute a total
+ * that excludes the first.
+ *
+ * `payments_org_provider_ref` cannot dedup a manual entry, because a bank or
+ * cash payment usually has no `providerRef` and Postgres treats NULLs in a
+ * unique index as distinct. A caller that can produce a stable key passes it as
+ * `reference`; an exact repeat of the same invoice, amount and reference within
+ * the same day is refused rather than silently double-counted.
  */
 export async function recordPayment(db: Db, organisationId: string, input: RecordPaymentInput) {
   const v = RecordPaymentInput.parse(input);
   await assertOwned(db, organisationId, schema.clients, v.clientId);
-  if (v.invoiceId) await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
+  if (v.invoiceId) {
+    await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
+    // Same organisation is not enough: without this, a payment for client A
+    // would settle client B's invoice.
+    await assertInvoiceBelongsToClient(db, organisationId, v.invoiceId, v.clientId);
+  }
 
   return db.transaction(async (tx) => {
     const inner = tx as unknown as Db;
+    if (v.invoiceId) {
+      await tx.select({ id: schema.invoices.id }).from(schema.invoices)
+        .where(and(eq(schema.invoices.id, v.invoiceId), eq(schema.invoices.organisationId, organisationId)))
+        .for("update");
+    }
+
+    if (v.reference) {
+      const duplicate = await findSameDayPayment(inner, organisationId, v.clientId, v.invoiceId, v.amountPence, v.reference);
+      if (duplicate) {
+        throw new Error(
+          `a payment of £${(v.amountPence / 100).toFixed(2)} with reference "${v.reference}" was already recorded today (payment ${duplicate.id})`,
+        );
+      }
+    }
+
     const [payment] = await tx.insert(schema.payments).values({
       organisationId,
       clientId: v.clientId,
@@ -43,6 +86,7 @@ export async function recordPayment(db: Db, organisationId: string, input: Recor
       providerRef: v.providerRef ?? null,
       status: v.status,
       paidAt: v.paidAt ?? (v.status === "succeeded" ? new Date() : null),
+      metadata: v.reference ? { reference: v.reference } : {},
     }).returning();
     await recordAudit(inner, organisationId, {
       actorKind: v.actorKind, actorId: v.actorId, action: "payment.recorded",
@@ -54,10 +98,42 @@ export async function recordPayment(db: Db, organisationId: string, input: Recor
   });
 }
 
+/** An identical entry for the same client, invoice, amount and reference today. */
+async function findSameDayPayment(
+  db: Db,
+  organisationId: string,
+  clientId: string,
+  invoiceId: string | undefined,
+  amountPence: number,
+  reference: string,
+) {
+  const [row] = await db.select({ id: schema.payments.id }).from(schema.payments).where(and(
+    eq(schema.payments.organisationId, organisationId),
+    eq(schema.payments.clientId, clientId),
+    invoiceId ? eq(schema.payments.invoiceId, invoiceId) : isNull(schema.payments.invoiceId),
+    eq(schema.payments.amountPence, amountPence),
+    sql`${schema.payments.metadata}->>'reference' = ${reference}`,
+    gte(schema.payments.createdAt, startOfDay(new Date())),
+  )).limit(1);
+  return row;
+}
+
 /**
  * Sums the succeeded payments against an invoice and marks it paid once they
- * cover the total. Refunds and failures are excluded, so a refunded invoice
- * naturally falls back below its total and is no longer treated as settled.
+ * cover the total. Refunds and failures are excluded from the sum, so `settled`
+ * falls back below the total after a refund — but the invoice itself is not
+ * un-paid automatically: reverting a settled invoice is a deliberate, manual
+ * decision (void it, or raise a credit), never a side effect of a webhook.
+ *
+ * The invoice row is locked with `SELECT ... FOR UPDATE` before the sum. Under
+ * READ COMMITTED a concurrent transaction's payment row is invisible to the
+ * SUM, so without the lock two payments arriving together would each compute a
+ * total excluding the other and leave a fully-paid invoice unsettled forever.
+ * Callers already run inside a transaction, so the lock is held to their commit.
+ *
+ * A `draft` invoice is never settled by this: it was never issued to the client
+ * (`draft → paid` is not a legal transition), so the payment is recorded and
+ * the anomaly is written to the client timeline instead of being swallowed.
  */
 export async function reconcileInvoice(
   db: Db,
@@ -66,7 +142,9 @@ export async function reconcileInvoice(
   actorId?: string,
 ): Promise<{ paidPence: number; settled: boolean }> {
   await assertOwned(db, organisationId, schema.invoices, invoiceId);
-  const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+  const [invoice] = await db.select().from(schema.invoices)
+    .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)))
+    .for("update");
   const rows = await db.select({ amountPence: schema.payments.amountPence }).from(schema.payments).where(and(
     eq(schema.payments.organisationId, organisationId),
     eq(schema.payments.invoiceId, invoiceId),
@@ -74,8 +152,17 @@ export async function reconcileInvoice(
   ));
   const paidPence = rows.reduce((sum, row) => sum + row.amountPence, 0);
   const settled = paidPence >= invoice!.totalPence;
-  if (settled && invoice!.status !== "paid" && invoice!.status !== "void") {
+  if (!settled) return { paidPence, settled };
+
+  if (invoice!.status === "sent" || invoice!.status === "overdue") {
     await markInvoicePaid(db, organisationId, { invoiceId, actorKind: "system", actorId });
+  } else if (invoice!.status === "draft") {
+    await recordActivity(db, organisationId, {
+      clientId: invoice!.clientId, actorKind: "system", actorId, kind: "invoice.settle_skipped",
+      title: `Invoice ${invoice!.number} is paid in full but still a draft`,
+      body: "Send the invoice to mark it paid — a draft was never issued to the client.",
+      link: `/invoices/${invoice!.id}`,
+    });
   }
   return { paidPence, settled };
 }

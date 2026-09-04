@@ -115,13 +115,21 @@ export async function sendApprovedInvoiceAction(formData: FormData): Promise<Act
   if (!parsed.success) return { status: "error", message: "Invalid approval" };
 
   try {
-    const { invoiceId } = await sendApprovedInvoice(
+    const { invoiceId, alreadySent } = await sendApprovedInvoice(
       getDb(),
       session.organisationId,
       { approvalId: parsed.data.approvalId, actorId: session.userId },
       createEmailAdapter(process.env),
       process.env.APP_URL ?? "http://localhost:3000",
     );
+    // A spent approval is not a send. Reporting it as `ok` would tell the
+    // operator the client was emailed when nothing left the building.
+    if (alreadySent) {
+      return {
+        status: "error",
+        message: "This invoice was already sent by an earlier decision — nothing was emailed. Request a new send to email it again.",
+      };
+    }
     revalidatePath("/invoices");
     revalidatePath(`/invoices/${invoiceId}`);
     revalidatePath("/approvals");

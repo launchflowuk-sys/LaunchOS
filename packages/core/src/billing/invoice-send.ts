@@ -1,15 +1,24 @@
 import type { EmailAdapter } from "@launchos/channels";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { supportEmailFor } from "../config.js";
+import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 
 /** Marks an approvals row as an invoice send rather than an agent tool call. */
 export const INVOICE_SEND_ACTION = "invoice_send";
+
+/** Statuses a send may be requested and executed against. `paid`/`void` are terminal. */
+const SENDABLE_STATUSES = ["draft", "sent", "overdue"] as const;
+type SendableStatus = (typeof SENDABLE_STATUSES)[number];
+
+function isSendable(status: string): status is SendableStatus {
+  return (SENDABLE_STATUSES as readonly string[]).includes(status);
+}
 
 export const RequestInvoiceSendInput = z.object({
   invoiceId: z.string().uuid(),
@@ -20,11 +29,16 @@ export type RequestInvoiceSendInput = z.input<typeof RequestInvoiceSendInput>;
 /**
  * Emailing a client is outward-facing, so it goes through the same approvals
  * queue an agent tool would use — with no run id, because a human raised it.
+ *
+ * A `paid` or `void` invoice is refused here rather than at execution time: an
+ * approval a human can never act on is worse than no approval at all.
  */
 export async function requestInvoiceSend(db: Db, organisationId: string, input: RequestInvoiceSendInput) {
   const v = RequestInvoiceSendInput.parse(input);
   await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
   const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, v.invoiceId));
+  if (!isSendable(invoice!.status)) throw new Error(`invoice ${invoice!.id} is ${invoice!.status}`);
+
   const [client] = await db.select({ name: schema.clients.name })
     .from(schema.clients).where(eq(schema.clients.id, invoice!.clientId));
 
@@ -47,28 +61,37 @@ export const SendApprovedInvoiceInput = z.object({
 });
 export type SendApprovedInvoiceInput = z.input<typeof SendApprovedInvoiceInput>;
 
-const INVOICE_UNCLAIMED_STATUSES = ["draft", "sent"] as const;
+export interface SendApprovedInvoiceResult {
+  invoiceId: string;
+  to: string;
+  alreadySent: boolean;
+}
 
 /**
- * A staff member sending an approved invoice by hand. This is a human action,
- * audited rather than queued — the approval gate is what raised it in the
- * first place (`requestInvoiceSend`).
+ * Executes an invoice send that a human has already approved.
  *
- * The metadata flag is the claim: `UPDATE ... WHERE (metadata->>'sentApprovalId')
- * IS NULL` inside a transaction takes the invoice only if no approval has
- * claimed it yet, so two concurrent calls for the same approval (or a retry
- * racing the first attempt) cannot both pass and email the client twice. An
- * invoice already claimed is not an error — it returns `alreadySent: true` so
- * a caller (a doubled button click, an approval-resume path) can treat it as
- * a no-op. The email send happens *after* the claim but still inside the same
- * transaction: if it throws — bad address, provider outage — the whole
- * transaction rolls back, so the invoice reverts to its prior status rather
- * than being stuck `sent` with no mail actually delivered, and a retry can
- * claim it again.
+ * **The guarantee is: at most one email per approval.** The claim is the
+ * approval row, not the invoice — one `UPDATE approvals SET metadata =
+ * metadata || {consumedAt, invoiceId} WHERE id = ? AND status = 'approved' AND
+ * (metadata->>'consumedAt') IS NULL RETURNING *`. Only one caller can flip
+ * `consumedAt` from null, so a doubled button click or a retry racing the first
+ * attempt cannot both pass. An approval that is already consumed is not an
+ * error — it returns `alreadySent: true` and touches nothing. Because the claim
+ * is per-approval, a *new* approval sends the same invoice again: resends and
+ * overdue chases work exactly as an operator expects.
  *
- * A `paid` or `void` invoice is refused outright rather than silently
- * no-opped: those are terminal states a send should never happen against,
- * unlike "already sent", which is a normal, retry-safe outcome.
+ * The email is sent **after** the transaction commits, never inside it. The
+ * claim, the invoice transition, the audit row and the activity row are durable
+ * before a single byte reaches the mail provider, and the claim is *not* rolled
+ * back when the send fails — rolling it back would re-arm a second email for
+ * the same approval, which is precisely what this function exists to prevent.
+ * So: a failed send needs a fresh approval. The failure is recorded rather than
+ * hidden — an `invoice.send_failed` activity, an owner notification and
+ * `metadata.lastSendError` on the invoice — and the error is rethrown.
+ *
+ * A `paid` or `void` invoice is refused outright: those are terminal states a
+ * send should never happen against, unlike "already sent for this approval",
+ * which is a normal, retry-safe outcome.
  *
  * `env` follows the same convention as `sendAdReport`/`sendQueuedMessage`: the
  * envelope sender is the verified `MAIL_FROM` when set, falling back to an
@@ -81,7 +104,7 @@ export async function sendApprovedInvoice(
   email: EmailAdapter,
   portalBaseUrl: string,
   env: NodeJS.ProcessEnv = process.env,
-): Promise<{ invoiceId: string; to: string; alreadySent: boolean }> {
+): Promise<SendApprovedInvoiceResult> {
   const v = SendApprovedInvoiceInput.parse(input);
   await assertOwned(db, organisationId, schema.approvals, v.approvalId);
   const [approval] = await db.select().from(schema.approvals)
@@ -91,54 +114,151 @@ export async function sendApprovedInvoice(
   const payload = z.object({ action: z.literal(INVOICE_SEND_ACTION), invoiceId: z.string().uuid() }).parse(approval.payload);
   await assertOwned(db, organisationId, schema.invoices, payload.invoiceId);
 
-  return db.transaction(async (tx) => {
-    const inner = tx as unknown as Db;
-    const [before] = await tx.select().from(schema.invoices).where(eq(schema.invoices.id, payload.invoiceId));
-    if (before!.status === "paid" || before!.status === "void") {
-      throw new Error(`invoice ${before!.id} is ${before!.status}`);
-    }
+  const claim = await claimApproval(db, organisationId, v.approvalId, payload.invoiceId, v.actorId);
+  if (!claim) {
+    const to = await clientEmailForInvoice(db, organisationId, payload.invoiceId);
+    return { invoiceId: payload.invoiceId, to, alreadySent: true };
+  }
 
-    // See the doc comment: the metadata guard is the atomic claim, resolved
-    // by Postgres inside this single UPDATE rather than a separate
-    // SELECT-then-UPDATE that would leave a race window.
-    const [claimed] = await tx.update(schema.invoices)
-      .set({
-        status: "sent",
-        metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb) || ${JSON.stringify({ sentApprovalId: v.approvalId })}::jsonb`,
-        updatedAt: new Date(),
-      })
-      .where(and(
-        eq(schema.invoices.id, payload.invoiceId),
-        eq(schema.invoices.organisationId, organisationId),
-        inArray(schema.invoices.status, INVOICE_UNCLAIMED_STATUSES),
-        sql`(${schema.invoices.metadata}->>'sentApprovalId') IS NULL`,
-      ))
-      .returning();
+  const { invoice, clientName, to } = claim;
+  const link = `${portalBaseUrl}/portal/invoices/${invoice.id}`;
+  const amount = `£${(invoice.totalPence / 100).toFixed(2)}`;
+  const from = env.MAIL_FROM ?? supportEmailFor("invoices", env);
 
-    const [client] = await tx.select().from(schema.clients).where(eq(schema.clients.id, before!.clientId));
-    const to = client?.email ?? "";
-
-    if (!claimed) return { invoiceId: before!.id, to, alreadySent: true };
-    if (!to) throw new Error(`client ${client!.id} has no email address to send invoice ${claimed.number} to`);
-
-    const link = `${portalBaseUrl}/portal/invoices/${claimed.id}`;
-    const amount = `£${(claimed.totalPence / 100).toFixed(2)}`;
-    const from = env.MAIL_FROM ?? supportEmailFor("invoices", env);
+  try {
     await email.send({
       to,
       from,
-      subject: `Invoice ${claimed.number} from LaunchFlow`,
-      text: `Hello ${client!.name},\n\nInvoice ${claimed.number} for ${amount} is ready. You can view and print it here:\n${link}\n\nIt is due on ${claimed.dueAt.toISOString().slice(0, 10)}.\n\nThank you,\nLaunchFlow`,
+      subject: `Invoice ${invoice.number} from LaunchFlow`,
+      text: `Hello ${clientName},\n\nInvoice ${invoice.number} for ${amount} is ready. You can view and print it here:\n${link}\n\nIt is due on ${invoice.dueAt.toISOString().slice(0, 10)}.\n\nThank you,\nLaunchFlow`,
     });
+  } catch (error) {
+    await recordSendFailure(db, organisationId, invoice, v.approvalId, to, error).catch((bookkeeping: unknown) => {
+      throw new AggregateError([error, bookkeeping], `invoice ${invoice.number} failed to send and the failure could not be recorded`);
+    });
+    throw error;
+  }
+
+  return { invoiceId: invoice.id, to, alreadySent: false };
+}
+
+interface InvoiceClaim {
+  invoice: typeof schema.invoices.$inferSelect;
+  clientName: string;
+  to: string;
+}
+
+/**
+ * Consumes the approval and transitions the invoice, or returns undefined when
+ * this approval has already been consumed. Everything here commits together:
+ * the claim is never durable without the transition it authorises, and neither
+ * is durable without its audit and activity rows.
+ */
+async function claimApproval(
+  db: Db,
+  organisationId: string,
+  approvalId: string,
+  invoiceId: string,
+  actorId: string,
+): Promise<InvoiceClaim | undefined> {
+  const now = new Date();
+  return db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
+    const [consumed] = await tx.update(schema.approvals)
+      .set({
+        metadata: sql`coalesce(${schema.approvals.metadata}, '{}'::jsonb) || ${JSON.stringify({ consumedAt: now.toISOString(), invoiceId })}::jsonb`,
+        updatedAt: now,
+      })
+      .where(and(
+        eq(schema.approvals.id, approvalId),
+        eq(schema.approvals.organisationId, organisationId),
+        eq(schema.approvals.status, "approved"),
+        sql`(${schema.approvals.metadata}->>'consumedAt') IS NULL`,
+      ))
+      .returning();
+    if (!consumed) return undefined;
+
+    // The row lock serialises this transition against a concurrent
+    // reconciliation, so a send cannot overwrite a `paid` that landed between
+    // the read and the write.
+    const [before] = await tx.select().from(schema.invoices)
+      .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)))
+      .for("update");
+    if (!before) throw new Error(`invoice ${invoiceId} not found in organisation`);
+    if (!isSendable(before.status)) throw new Error(`invoice ${before.id} is ${before.status}`);
+
+    const [client] = await tx.select().from(schema.clients).where(eq(schema.clients.id, before.clientId));
+    const to = client?.email ?? "";
+    if (!to) throw new Error(`client ${before.clientId} has no email address to send invoice ${before.number} to`);
+
+    const historyEntry = JSON.stringify({ approvalId, at: now.toISOString(), actorId });
+    const [after] = await tx.update(schema.invoices)
+      .set({
+        status: "sent",
+        // `sendHistory` is append-only: every approval that ever emailed this
+        // invoice stays on the record, so a resend is auditable without a
+        // second table.
+        metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb)
+          || ${JSON.stringify({ sentAt: now.toISOString(), sentApprovalId: approvalId })}::jsonb
+          || jsonb_build_object('sendHistory', coalesce(${schema.invoices.metadata}->'sendHistory', '[]'::jsonb) || ${historyEntry}::jsonb)`,
+        updatedAt: now,
+      })
+      .where(eq(schema.invoices.id, before.id))
+      .returning();
 
     await recordAudit(inner, organisationId, {
-      actorKind: "user", actorId: v.actorId, action: "invoice.sent",
-      targetType: "invoice", targetId: claimed.id, before, after: claimed,
+      actorKind: "user", actorId, action: "invoice.sent",
+      targetType: "invoice", targetId: after!.id, before, after,
     });
     await recordActivity(inner, organisationId, {
-      clientId: claimed.clientId, actorKind: "user", actorId: v.actorId, kind: "invoice.sent",
-      title: `Invoice ${claimed.number} emailed to ${to}`, link: `/invoices/${claimed.id}`,
+      clientId: after!.clientId, actorKind: "user", actorId, kind: "invoice.sent",
+      title: `Invoice ${after!.number} emailed to ${to}`, link: `/invoices/${after!.id}`,
     });
-    return { invoiceId: claimed.id, to, alreadySent: false };
+    return { invoice: after!, clientName: client!.name, to };
+  });
+}
+
+/** The address the invoice would have gone to, for the already-sent report. */
+async function clientEmailForInvoice(db: Db, organisationId: string, invoiceId: string): Promise<string> {
+  const [row] = await db.select({ email: schema.clients.email })
+    .from(schema.invoices)
+    .innerJoin(schema.clients, eq(schema.clients.id, schema.invoices.clientId))
+    .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)));
+  return row?.email ?? "";
+}
+
+/**
+ * A send that failed after the claim committed. The claim stays taken on
+ * purpose (see the `sendApprovedInvoice` doc comment), so this is what makes
+ * the gap visible: the invoice reads `sent` with a `lastSendError`, the client
+ * timeline says the email did not go, and the owner is told.
+ */
+async function recordSendFailure(
+  db: Db,
+  organisationId: string,
+  invoice: typeof schema.invoices.$inferSelect,
+  approvalId: string,
+  to: string,
+  error: unknown,
+): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  const lastSendError = { at: new Date().toISOString(), approvalId, to, message };
+  await db.update(schema.invoices)
+    .set({
+      metadata: sql`coalesce(${schema.invoices.metadata}, '{}'::jsonb) || ${JSON.stringify({ lastSendError })}::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(and(eq(schema.invoices.id, invoice.id), eq(schema.invoices.organisationId, organisationId)));
+  await recordActivity(db, organisationId, {
+    clientId: invoice.clientId, actorKind: "system", kind: "invoice.send_failed",
+    title: `Invoice ${invoice.number} was not emailed to ${to}`,
+    body: `${message}\n\nThe approval is spent. Request a new send to try again.`,
+    link: `/invoices/${invoice.id}`,
+  });
+  await notifyOwner(db, organisationId, {
+    kind: "invoice.send_failed",
+    title: `Invoice ${invoice.number} was not emailed`,
+    body: `Sending to ${to} failed: ${message}. The approval is spent — request a new send to try again.`,
+    link: `/invoices/${invoice.id}`,
   });
 }

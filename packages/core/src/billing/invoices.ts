@@ -114,17 +114,50 @@ async function applyTransition(
   });
 }
 
+type InvoiceStatus = (typeof schema.invoices.$inferSelect)["status"];
+
+/**
+ * The whole legal state machine, enforced in core rather than left to each
+ * caller. `paid` and `void` are terminal — a settled or cancelled invoice is a
+ * financial record, and un-settling one is a credit note, not an edit. `draft`
+ * cannot jump straight to `paid`: an invoice the client was never sent is not
+ * something they can have paid, and letting it skip `sent` hides a missing
+ * step in the ledger.
+ */
+const ALLOWED_TRANSITIONS: Record<InvoiceStatus, readonly InvoiceStatus[]> = {
+  draft: ["sent", "void"],
+  sent: ["sent", "paid", "overdue", "void"],
+  overdue: ["paid", "sent", "void"],
+  paid: [],
+  void: [],
+};
+
+/** Explains the refusal in the operator's terms, not the state machine's. */
+const TRANSITION_HINT: Partial<Record<`${InvoiceStatus}->${InvoiceStatus}`, string>> = {
+  "draft->paid": "send it first",
+  "paid->void": "a paid invoice is settled; record a refund instead",
+  "void->paid": "a void invoice cannot be paid; raise a new one",
+  "void->sent": "a void invoice cannot be sent; raise a new one",
+};
+
+function assertTransition(invoice: typeof schema.invoices.$inferSelect, to: InvoiceStatus): void {
+  if (ALLOWED_TRANSITIONS[invoice.status].includes(to)) return;
+  const hint = TRANSITION_HINT[`${invoice.status}->${to}`];
+  throw new Error(`invoice ${invoice.number} is ${invoice.status} and cannot be marked ${to}${hint ? ` — ${hint}` : ""}`);
+}
+
 async function transition(
   db: Db,
   organisationId: string,
   invoiceId: string,
   action: string,
-  patch: Partial<typeof schema.invoices.$inferInsert>,
+  patch: Partial<typeof schema.invoices.$inferInsert> & { status: InvoiceStatus },
   actorKind: ActorKind,
   actorId: string | undefined,
 ) {
   await assertOwned(db, organisationId, schema.invoices, invoiceId);
   const [before] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
+  assertTransition(before!, patch.status);
   return applyTransition(db, organisationId, invoiceId, before!, action, patch, actorKind, actorId);
 }
 
@@ -144,12 +177,15 @@ export async function markInvoicePaid(db: Db, organisationId: string, input: Mar
   );
 }
 
+/**
+ * Voiding a settled invoice would silently unbalance the ledger; a refund is
+ * recorded as a payment instead. `assertTransition` is the single authority on
+ * that — voiding a `paid` or an already-`void` invoice is refused there.
+ */
 export async function voidInvoice(db: Db, organisationId: string, input: z.input<typeof InvoiceActionInput>) {
   const v = InvoiceActionInput.parse(input);
   await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
   const [existing] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, v.invoiceId));
-  // Voiding a settled invoice would silently unbalance the ledger; a refund is
-  // recorded as a payment instead.
-  if (existing!.status === "paid") throw new Error(`invoice ${existing!.number} is paid and cannot be voided`);
+  assertTransition(existing!, "void");
   return applyTransition(db, organisationId, v.invoiceId, existing!, "invoice.voided", { status: "void" }, v.actorKind, v.actorId);
 }
