@@ -99,7 +99,6 @@ describe("support-triage", () => {
               },
             }),
             toolUse("t4", "tasks_create", {
-              clientId: f.clientId,
               ticketId: f.ticketId,
               title: "Re-check grayscabline.co.uk nameserver propagation in 24h",
             }),
@@ -289,8 +288,82 @@ describe("support-triage", () => {
       expect(notifications).toHaveLength(1);
       expect(notifications[0]!.body).toBe("The site is offline and the client is threatening to leave.");
 
-      // Escalation is not a reply: nothing was drafted to the client.
+      // Escalation is not a reply: nothing was drafted to the client, and no
+      // reply is sitting in the approvals queue waiting to become one.
       expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
+      expect(await db.select().from(schema.approvals).where(eq(schema.approvals.runId, result.runId))).toHaveLength(0);
+    });
+  });
+
+  it("escalates rather than answering from its own knowledge when the search finds nothing", async () => {
+    await withTestDb(async (db) => {
+      const f = await fixture(db);
+      const agent = supportTriage(integrations);
+      // Nothing in the seeded knowledge base ("DNS propagation") matches this
+      // query, so `knowledge_search` genuinely returns no hits.
+      const query = "vat invoice chargeback refund dispute";
+
+      const llm = new FakeLlmClient([
+        { content: [toolUse("t1", "tickets_get", { ticketId: f.ticketId })], stopReason: "tool_use", usage },
+        { content: [toolUse("t2", "knowledge_search", { query, limit: 3 })], stopReason: "tool_use", usage },
+        {
+          content: [
+            toolUse("t3", "tickets_update", {
+              ticketId: f.ticketId,
+              category: "billing",
+              severity: "medium",
+              status: "triaged",
+              triage: {
+                category: "billing",
+                severity: "medium",
+                summary: "No knowledge base article covers this; nothing to ground an answer on.",
+                suggestedFix: "Shoji to answer the billing question directly",
+                confidence: 0.15,
+              },
+            }),
+            toolUse("t4", "tickets_escalate", {
+              ticketId: f.ticketId,
+              reason: "The knowledge base has no article covering this, so I will not answer from my own knowledge.",
+            }),
+          ],
+          stopReason: "tool_use",
+          usage,
+        },
+        { content: [text("No matching article, so I escalated rather than guessing.")], stopReason: "end_turn", usage },
+      ]);
+
+      const result = await runAgent(agent, {
+        db,
+        organisationId: f.organisationId,
+        trigger: "event",
+        payload: { ticketId: f.ticketId, clientId: f.clientId, conversationId: f.conversationId },
+        llm,
+        policy: "safe",
+        logger: console,
+      });
+      expect(result.status).toBe("completed");
+
+      // The search really did come back empty — the escalation is not scripted
+      // around a knowledge base that quietly had an answer all along.
+      const [searchResult] = await db
+        .select()
+        .from(schema.agentSteps)
+        .where(and(eq(schema.agentSteps.runId, result.runId), eq(schema.agentSteps.kind, "tool_result"), eq(schema.agentSteps.toolName, "knowledge_search")));
+      expect(searchResult!.output).toEqual({ hits: [] });
+
+      const [ticket] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, f.ticketId));
+      expect(ticket!.escalated).toBe(true);
+      expect(ticket!.triage).toMatchObject({
+        summary: "No knowledge base article covers this; nothing to ground an answer on.",
+        confidence: 0.15,
+      });
+      expect(ticket!.escalationReason).toBe(
+        "The knowledge base has no article covering this, so I will not answer from my own knowledge.",
+      );
+
+      // Ungrounded means unanswered: no reply drafted, none queued for approval.
+      expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
+      expect(await db.select().from(schema.approvals).where(eq(schema.approvals.runId, result.runId))).toHaveLength(0);
     });
   });
 });

@@ -102,7 +102,7 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 
 | Tool | Risk | What it does |
 |---|---|---|
-| `tickets_get` | safe | The ticket, its client, and the last 20 messages on the conversation. |
+| `tickets_get` | safe | The ticket, its client, and the first 20 messages on the conversation (oldest first). |
 | `knowledge_search` | safe | Ranked published knowledge articles; the prompt caps it at two searches. |
 | `tickets_update` | safe | `category`, `severity`, `status: "triaged"` and the `triage` json. |
 | `tasks_create` | safe | A support task linked to the ticket when a human must do the work. |
@@ -113,6 +113,10 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 | `cms_update_content` | **requires_approval** | One page on a client's CMS; the site ref likewise comes from our rows. |
 
 - Prompt: classify → search the knowledge base → decide fix vs escalate → draft the reply. It never invents detail, escalates below 0.4 confidence, and uses the `tickets` table's own category and severity enums.
+- Three guardrails live in the prompt rather than in code, because no schema can express them:
+  - **Grounding.** An empty `knowledge_search` is not licence to answer from the model's own knowledge — it escalates or files a task instead, and names the article it relied on in the triage summary.
+  - **Escalation ends the run.** Escalating stops the agent; it does not also draft a reply, so a case that needs Shoji does not arrive with an answer already half-sent.
+  - **One channel to the client.** The closing sentence is an internal note for the run trace. Everything a client reads goes through `messages_reply_to_client`, which is approval-gated; nothing else the agent emits is client-visible. A payload with a null `conversationId` has no thread to reply on, and the agent says so instead of inventing an id.
 - Output: `tickets.category`, `tickets.severity` and `tickets.triage` set; either a drafted reply (plus any fix) parked as an approval, or an escalation with a reason and an owner notification.
 - Approval flow: the reply parks the run as `awaiting_approval` with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which writes the `queued` message; the worker's `outbound.message` job then calls `sendQueuedMessage` through the `EmailAdapter`. Rejecting resumes with a `rejected by human: <note>` tool result and nothing is queued.
 
