@@ -49,7 +49,7 @@ The Plan 2 folders and what each exports. Every function has the shape `(db, org
 | `billing` | `upsertBillingProfile`, `getBillingProfile` |
 | `sites` | `createSite`, `updateSite`, `listSites`, `getSite` |
 | `domains` | `createDomain`, `updateDomain`, `deleteDomain`, `listDomains`, `getDomain`, `createDnsRecord`, `updateDnsRecord`, `deleteDnsRecord`, `listDnsRecords` |
-| `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword`, `reissueOneTimePassword`, `markInitialPasswordSet` |
+| `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword`, `reissueOneTimePassword`, `recordOwnPasswordChange` |
 | `search` | `search` — one query across clients, sites, domains and tickets |
 | `email` | `ensureEmailIdentity`, `supportAddress` — the routable inbox behind `clients.support_email` |
 | `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `sendQueuedMessage`, `slaDueAt`. `replyAsClient` — the portal reply path — is in flight and not yet exported from `packages/core/src/index.ts`; check `git ls-files packages/core/src/support` before importing it |
