@@ -96,9 +96,25 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 - Output: incident summary in Markdown, an internal ticket, incident status `acknowledged`.
 
 ### support-triage
-- Trigger: `event: ticket.created`.
-- Tools: `tickets.get`, `knowledge.search`, `tickets.update`, `tickets.escalate`, `dns.update_record` (approval), `cms.update_content` (approval), `messages.reply_to_client` (approval).
-- Output: category and severity set; either a drafted reply plus optional fix awaiting approval, or an escalation with reason.
+- Trigger: `event: ticket.created` (emitted by `ingestInboundEmail` and by `createTicket`). Payload: `{ ticketId, clientId, conversationId }`.
+- `maxTurns: 10`.
+- Tools (nine, in the order the prompt uses them):
+
+| Tool | Risk | What it does |
+|---|---|---|
+| `tickets_get` | safe | The ticket, its client, and the last 20 messages on the conversation. |
+| `knowledge_search` | safe | Ranked published knowledge articles; the prompt caps it at two searches. |
+| `tickets_update` | safe | `category`, `severity`, `status: "triaged"` and the `triage` json. |
+| `tasks_create` | safe | A support task linked to the ticket when a human must do the work. |
+| `tickets_assign` | safe | Assigns the least-loaded active member (`pickLeastLoadedStaff`). |
+| `tickets_escalate` | safe | Marks the ticket escalated and notifies the owner in-app. |
+| `messages_reply_to_client` | **requires_approval** | Writes the reply as a `queued` outbound message. |
+| `dns_update_record` | **requires_approval** | One record on a domain we manage; the zone is read from our own rows, never from the model. |
+| `cms_update_content` | **requires_approval** | One page on a client's CMS; the site ref likewise comes from our rows. |
+
+- Prompt: classify → search the knowledge base → decide fix vs escalate → draft the reply. It never invents detail, escalates below 0.4 confidence, and uses the `tickets` table's own category and severity enums.
+- Output: `tickets.category`, `tickets.severity` and `tickets.triage` set; either a drafted reply (plus any fix) parked as an approval, or an escalation with a reason and an owner notification.
+- Approval flow: the reply parks the run as `awaiting_approval` with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which writes the `queued` message; the worker's `outbound.message` job then calls `sendQueuedMessage` through the `EmailAdapter`. Rejecting resumes with a `rejected by human: <note>` tool result and nothing is queued.
 
 ### ad-performance-sentinel
 - Trigger: `cron 0 7 * * *` Europe/London.
