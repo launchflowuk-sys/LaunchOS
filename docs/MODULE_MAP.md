@@ -14,11 +14,12 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 | `/clients/[id]/tasks` | Client tasks tab | 3 | tasks for one client, phase progress | status, visibility, regenerate onboarding |
 | `/settings/packages` | Packages | 3 | packages | create, edit, archive |
 | `/settings/task-templates` | Task templates | 3 | task_templates, packages | create, edit, reorder, delete |
-| `/inbox` | Inbox | 4 | — | — |
-| `/tickets` | Open Cases | 1 (list), 4 (full) | tickets | — |
+| `/inbox`, `/inbox/[conversationId]` | Inbox | 4 | conversations, messages, clients, linked ticket | staff reply (queued outbound email), internal note |
+| `/cases`, `/cases/[id]` | Open Cases | 1 (list), 4 (full) | tickets, conversation messages, ticket_events, linked tasks, members | status, assign, escalate, internal note, run Support Triage |
+| `/tickets` | Open Cases (legacy) | 1 | — | redirects to `/cases` |
 | `/incidents`, `/incidents/[id]` | Incidents | 1 | incidents, checks, agent run | acknowledge, resolve |
 | `/payments`, `/invoices`, `/ads` | Money | 5 | — | — |
-| `/approvals` | Approvals | 1 | pending approvals | approve/reject |
+| `/approvals` | Approvals | 1 (decision), 4 (resume) | approvals with their agent run | approve/reject, queueing `agent.resume` so the kernel runs the tool and stamps the row |
 | `/settings/agents` | Agents | 1 | agent_enablement | toggle |
 | `/knowledge` | Knowledge Base | 4 | — | — |
 | `/team` | Team | 2 | organisation members + users | create member (one-time password), deactivate |
