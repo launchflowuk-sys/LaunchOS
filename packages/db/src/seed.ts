@@ -35,6 +35,13 @@
  * that most needed them — a one-off against a live database from a shell where
  * nobody exported NODE_ENV — was the one run that skipped them.
  *
+ * That inference is good enough **here**, where being wrong in the local
+ * direction only means demo fixtures are refused, and where the alternative is
+ * refusing every local `pnpm db:seed`. It is not good enough for a credential,
+ * which is why `pnpm db:bootstrap`'s own published-default and confirm-slug
+ * guards do not consult it: a production database reached through an SSH
+ * tunnel or a private network presents as a local host.
+ *
  * Every refusal names the guard that tripped and exits non-zero.
  *
  * **It also refuses to run at all against a production target unless SEED_DEMO=1.**
@@ -63,7 +70,7 @@ import { and, asc, eq, gte, lt } from "drizzle-orm";
 import {
   assertOrganisationSlug, BootstrapGuardError, CREDENTIAL_ISSUER, CREDENTIAL_PROVIDER, describeDatabase,
   ensureOrganisation, ensureOwnerCredential, ensureOwnerMembership, ensureUserRow, loadRootEnv,
-  organisationFromEnv,
+  organisationFromEnv, ownerPasswordSource, ROOT_ENV_FILE,
 } from "./bootstrap.js";
 import { createDb } from "./client.js";
 import { isProductionTarget, productionTargetReason } from "./env-target.js";
@@ -73,37 +80,56 @@ import {
 } from "./passwords.js";
 import * as schema from "./schema/index.js";
 
-loadRootEnv();
-
-const OWNER_EMAIL = process.env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL;
 const OWNER_NAME = "Shoji";
-// The same two variables `pnpm db:bootstrap` reads, through the same helper.
-// Hardcoding "launchflow" here meant a developer who bootstrapped `acme` and
-// then seeded got a *second* organisation holding every fixture, and signed in
-// to the empty one.
-const ORGANISATION = organisationFromEnv(process.env);
 // Enabled up front so the events that dispatch them have somewhere to land:
 // `incident.opened` for the Guard-Dog, `ticket.created` for Support Triage.
 // The Sentinel is enabled beside its ad data, in `seedBillingAndAds`.
 const AGENT_KEYS = ["hosting-guard-dog", "support-triage"] as const;
 const SENTINEL_AGENT_KEY = "ad-performance-sentinel";
 
-const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD;
+/** Everything this seed reads from the environment, in one value. */
+export interface SeedConfig {
+  organisation: { name: string; slug: string };
+  ownerEmail: string;
+  ownerName: string;
+  ownerPassword: string;
+  clientUser: { email: string; name: string; password: string };
+}
+
 /**
- * The portal login gets its **own** password, never the owner's.
+ * The configuration, read **inside `main`** rather than at module scope.
  *
- * The two accounts sit on opposite sides of a privilege boundary: the owner
- * sees every client, every invoice and every approval, while this one sees one
- * client's portal. Deriving the client password from the owner's — as this
- * previously did — meant handing a client credentials that also opened the
- * admin shell as the owner. The default address is `.example` so the seed
- * cannot create a login on a real, deliverable client domain.
+ * Module scope meant that merely importing this file — which
+ * `seed.test.ts` does, to reach the helpers below — called `loadRootEnv()` and
+ * mutated `process.env` for the whole test process as a side effect of
+ * collecting the file.
+ *
+ * The organisation comes from the same helper `pnpm db:bootstrap` uses.
+ * Hardcoding "launchflow" here meant a developer who bootstrapped `acme` and
+ * then seeded got a *second* organisation holding every fixture, and signed in
+ * to the empty one.
+ *
+ * The portal login gets its **own** password, never the owner's. The two
+ * accounts sit on opposite sides of a privilege boundary: the owner sees every
+ * client, every invoice and every approval, while this one sees one client's
+ * portal. Deriving the client password from the owner's — as this once did —
+ * meant handing a client credentials that also opened the admin shell as the
+ * owner. The default address is `.example` so the seed cannot create a login on
+ * a real, deliverable client domain.
  */
-const CLIENT_USER = {
-  email: process.env.SEED_CLIENT_EMAIL ?? "portal@grayscabline.example",
-  name: "Grays CabLine portal",
-  password: process.env.SEED_CLIENT_PASSWORD ?? DEFAULT_CLIENT_PASSWORD,
-} as const;
+export function seedConfigFromEnv(env: NodeJS.ProcessEnv): SeedConfig {
+  return {
+    organisation: organisationFromEnv(env),
+    ownerEmail: env.SEED_OWNER_EMAIL ?? DEFAULT_OWNER_EMAIL,
+    ownerName: OWNER_NAME,
+    ownerPassword: env.SEED_OWNER_PASSWORD ?? DEFAULT_OWNER_PASSWORD,
+    clientUser: {
+      email: env.SEED_CLIENT_EMAIL ?? "portal@grayscabline.example",
+      name: "Grays CabLine portal",
+      password: env.SEED_CLIENT_PASSWORD ?? DEFAULT_CLIENT_PASSWORD,
+    },
+  };
+}
 
 const AD_ACCOUNT = { platform: "google" as const, externalId: "123-456-7890", name: "Grays CabLine — Search" };
 const SNAPSHOT_DAYS = 30;
@@ -112,7 +138,9 @@ const VAT_RATE_PERCENT = 20;
 
 const isoDay = (value: Date) => value.toISOString().slice(0, 10);
 
-const SUPPORT_EMAIL_DOMAIN = process.env.SUPPORT_EMAIL_DOMAIN ?? "support.launchflow.co.uk";
+// Read at call time, not at module scope: `loadRootEnv()` now runs inside
+// `main`, so a module-scope read would miss the value in the repo-root `.env`.
+const supportEmailDomain = () => process.env.SUPPORT_EMAIL_DOMAIN ?? "support.launchflow.co.uk";
 
 const STAFF = { email: "team@launchflow.example", name: "Sam Staff", title: "Support" } as const;
 
@@ -271,19 +299,26 @@ const CLIENT_PACKAGES: Record<string, string> = {
 };
 
 async function main() {
+  // Inside `main`, not at module scope: importing this file must not mutate
+  // the importer's environment.
+  const envFile = loadRootEnv();
+  const config = seedConfigFromEnv(process.env);
   const url = process.env.DATABASE_URL;
   if (!url) throw new BootstrapGuardError("database-url", "DATABASE_URL is required to seed");
   // Before the guards: an operator who trips one needs to know which database
-  // they were pointed at, which is usually the actual mistake.
+  // they were pointed at and which file configured the run, which is usually
+  // the actual mistake. The same lines `pnpm db:bootstrap` prints.
   const productionTarget = isProductionTarget(process.env);
   console.log("database      ", describeDatabase(url), productionTarget ? "(production target)" : "(local)");
+  console.log("env file      ", envFile ?? `none found at ${ROOT_ENV_FILE}; using the process environment only`);
+  console.log("password      ", ownerPasswordSource(process.env));
   // The floor first, and in every environment: both of these accounts are
   // written straight into `account`, which Better Auth never re-validates, so
   // a short password set here would stand for the life of the account. This is
   // the same constant `apps/web/src/lib/auth.ts` enforces on everyone else.
   for (const [name, value] of [
-    ["SEED_OWNER_PASSWORD", OWNER_PASSWORD],
-    ["SEED_CLIENT_PASSWORD", CLIENT_USER.password],
+    ["SEED_OWNER_PASSWORD", config.ownerPassword],
+    ["SEED_CLIENT_PASSWORD", config.clientUser.password],
   ] as const) {
     if (value.length < MIN_PASSWORD_LENGTH) {
       throw new BootstrapGuardError("password-floor", shortPasswordMessage(name, value));
@@ -292,7 +327,7 @@ async function main() {
   // The organisation this run would fill or create, in every environment. An
   // empty or malformed SEED_ORG_SLUG makes a second, nameless tenant rather
   // than finding the one that is already there.
-  assertOrganisationSlug(ORGANISATION.slug);
+  assertOrganisationSlug(config.organisation.slug);
 
   // Everything below is keyed on the *target*, not on NODE_ENV: a seed run
   // against a live database from a shell where nobody exported NODE_ENV is
@@ -315,8 +350,8 @@ async function main() {
   }
   if (productionTarget) {
     const defaulted = [
-      OWNER_PASSWORD === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
-      CLIENT_USER.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
+      config.ownerPassword === DEFAULT_OWNER_PASSWORD ? "SEED_OWNER_PASSWORD" : null,
+      config.clientUser.password === DEFAULT_CLIENT_PASSWORD ? "SEED_CLIENT_PASSWORD" : null,
     ].filter((name): name is string => name !== null);
     if (defaulted.length > 0) {
       throw new BootstrapGuardError(
@@ -326,7 +361,7 @@ async function main() {
           `Set them in the resource environment, run the seed once, then remove them. ${because}`,
       );
     }
-    if (CLIENT_USER.password === OWNER_PASSWORD) {
+    if (config.clientUser.password === config.ownerPassword) {
       throw new BootstrapGuardError(
         "shared-password",
         "SEED_CLIENT_PASSWORD must differ from SEED_OWNER_PASSWORD. " +
@@ -335,19 +370,25 @@ async function main() {
       );
     }
   }
-  console.log("organisation  ", ORGANISATION.slug, `(${ORGANISATION.name})`);
+  console.log("organisation  ", config.organisation.slug, `(${config.organisation.name})`);
 
   const db = createDb(url);
 
   try {
-    const organisation = await seedOrganisation(db);
     // Same order as `bootstrap()`, and for the same reason: the membership is
-    // settled before any credential is written, so a refusal on somebody
-    // else's membership — this seed manufactures exactly that account, the
-    // invited `team@launchflow.example` — cannot leave a password behind on it.
-    const user = await seedOwnerUser(db);
-    const membership = await seedMembership(db, organisation.id, user.id);
-    await ensureOwnerCredential(db, user.id, OWNER_PASSWORD);
+    // settled before **any** write a later refusal would strand — the owner
+    // credential above all, because this seed manufactures exactly the account
+    // that triggers that refusal (the invited `team@launchflow.example`) and,
+    // unlike `bootstrap()`, runs outside a transaction, so the order of these
+    // four lines is the only protection there is. The organisation's
+    // placeholder supplier details are backfilled after the membership for the
+    // same reason: a refused seed must not have edited the organisation row it
+    // refused to finish.
+    const { row: created } = await ensureOrganisation(db, config.organisation);
+    const user = await seedOwnerUser(db, config);
+    const membership = await seedMembership(db, created.id, user.id);
+    await ensureOwnerCredential(db, user.id, config.ownerPassword);
+    const organisation = await backfillOrganisationSupplier(db, created);
     const enabledAgents: string[] = [];
     for (const agentKey of AGENT_KEYS) {
       const enablement = await seedAgentEnablement(db, organisation.id, agentKey);
@@ -402,8 +443,8 @@ async function main() {
       support ? `${support.ticketId} ${support.created ? "created" : "already present"}` : "skipped",
     );
 
-    const clientUser = await seedClientUser(db, organisation.id, grays.id);
-    console.log("client user   ", clientUser.id, `${CLIENT_USER.email} client_admin`);
+    const clientUser = await seedClientUser(db, organisation.id, grays.id, config.clientUser);
+    console.log("client user   ", clientUser.id, `${config.clientUser.email} client_admin`);
 
     const billing = await seedBillingAndAds(db, organisation.id, seededClients);
     // What this run created, not a constant: a second seed prints zeros, which
@@ -534,8 +575,7 @@ const LEGACY_COUNTRY_NAME = "United Kingdom";
  * db:bootstrap` uses, so the two entry points can never create the row two
  * different ways; the supplier backfill is the part that is demo-only.
  */
-async function seedOrganisation(db: Db) {
-  const { row } = await ensureOrganisation(db, ORGANISATION);
+export async function backfillOrganisationSupplier(db: Db, row: typeof schema.organisations.$inferSelect) {
   // Backfill only, and only when nobody has filled these in: a re-seed must
   // never overwrite the real registration details an operator has typed.
   if (row.legalName !== null) {
@@ -559,12 +599,12 @@ async function seedOrganisation(db: Db) {
 }
 
 /** The owner's user row only. `main` writes the credential after the membership. */
-async function seedOwnerUser(db: Db) {
-  const { row } = await ensureUserRow(db, { email: OWNER_EMAIL, name: OWNER_NAME });
+export async function seedOwnerUser(db: Db, config: Pick<SeedConfig, "ownerEmail" | "ownerName">) {
+  const { row } = await ensureUserRow(db, { email: config.ownerEmail, name: config.ownerName });
   return row;
 }
 
-async function seedMembership(db: Db, organisationId: string, userId: string) {
+export async function seedMembership(db: Db, organisationId: string, userId: string) {
   return ensureOwnerMembership(db, organisationId, userId);
 }
 
@@ -602,7 +642,7 @@ async function seedClient(db: Db, organisationId: string, spec: (typeof SEED_CLI
       name: spec.name,
       slug: spec.slug,
       email: spec.email,
-      supportEmail: `${spec.slug}@${SUPPORT_EMAIL_DOMAIN}`,
+      supportEmail: `${spec.slug}@${supportEmailDomain()}`,
     })
     .returning();
   return created!;
@@ -776,13 +816,18 @@ async function seedStaffMember(db: Db, organisationId: string) {
  * user should come from the admin Portal Users screen and `createClientUser`'s
  * one-time password instead, which is what that path exists for.
  */
-async function seedClientUser(db: Db, organisationId: string, clientId: string) {
-  const [existingUser] = await db.select().from(schema.user).where(eq(schema.user.email, CLIENT_USER.email));
+export async function seedClientUser(
+  db: Db,
+  organisationId: string,
+  clientId: string,
+  clientUser: SeedConfig["clientUser"],
+) {
+  const [existingUser] = await db.select().from(schema.user).where(eq(schema.user.email, clientUser.email));
   const user =
     existingUser ??
     (await db
       .insert(schema.user)
-      .values({ id: randomUUID(), name: CLIENT_USER.name, email: CLIENT_USER.email, emailVerified: true })
+      .values({ id: randomUUID(), name: clientUser.name, email: clientUser.email, emailVerified: true })
       .returning())[0]!;
 
   // Any `account` row, not just a credential one — the same rule
@@ -798,7 +843,7 @@ async function seedClientUser(db: Db, organisationId: string, clientId: string) 
       providerId: CREDENTIAL_PROVIDER,
       issuer: CREDENTIAL_ISSUER,
       userId: user.id,
-      password: await hashPassword(CLIENT_USER.password),
+      password: await hashPassword(clientUser.password),
     });
   }
 

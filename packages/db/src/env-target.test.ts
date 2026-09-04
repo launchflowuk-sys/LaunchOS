@@ -10,6 +10,26 @@ describe("isLocalDatabaseUrl", () => {
     }
   });
 
+  it("accepts IPv6 loopback in every spelling, not just the two canonical ones", () => {
+    // A developer on an IPv6-only docker network used to be told their
+    // database "is not a local host".
+    for (const host of ["[::1]", "[0:0:0:0:0:0:0:1]", "[0::1]", "[::0001]", "[::ffff:127.0.0.1]"]) {
+      expect(isLocalDatabaseUrl(url(host)), host).toBe(true);
+    }
+  });
+
+  it("accepts IPv6 unique-local addresses — a docker IPv6 network", () => {
+    for (const host of ["[fd00::1]", "[fc00:1234::5]"]) {
+      expect(isLocalDatabaseUrl(url(host)), host).toBe(true);
+    }
+  });
+
+  it("rejects public and link-local IPv6", () => {
+    for (const host of ["[2606:4700::1111]", "[fe80::1]", "[::ffff:1.2.3.4]"]) {
+      expect(isLocalDatabaseUrl(url(host)), host).toBe(false);
+    }
+  });
+
   it("accepts RFC1918 addresses — a docker bridge or a LAN box", () => {
     for (const host of ["10.0.1.7", "172.16.0.2", "172.31.255.254", "192.168.1.9"]) {
       expect(isLocalDatabaseUrl(url(host)), host).toBe(true);
@@ -36,6 +56,9 @@ describe("isLocalDatabaseUrl", () => {
     expect(isLocalDatabaseUrl("")).toBe(false);
     expect(isLocalDatabaseUrl("not a url")).toBe(false);
     expect(isLocalDatabaseUrl("postgres:///var/run/postgresql/launchos")).toBe(false);
+    // postgres.js accepts a comma-separated host list; `new URL` cannot parse
+    // the port that follows it, so it fails safe as production.
+    expect(isLocalDatabaseUrl("postgres://u:p@localhost,prod.example.com:5432/launchos")).toBe(false);
   });
 });
 

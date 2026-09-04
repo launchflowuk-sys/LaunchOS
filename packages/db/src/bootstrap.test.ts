@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
@@ -12,10 +14,13 @@ import {
   CREDENTIAL_PROVIDER,
   describeDatabase,
   ensureOrganisation,
+  ensureOwnerCredential,
+  ensureOwnerMembership,
   ensureUserRow,
   loadRootEnv,
   organisationFromEnv,
   ownerPasswordSource,
+  ROOT_ENV_FILE,
 } from "./bootstrap.js";
 import { DEFAULT_CLIENT_PASSWORD, DEFAULT_OWNER_PASSWORD, MIN_PASSWORD_LENGTH } from "./passwords.js";
 import * as schema from "./schema/index.js";
@@ -42,12 +47,17 @@ function guardInput(overrides: { organisationSlug?: string; ownerPassword?: stri
 
 const LOCAL_URL = "postgres://launchos:launchos@localhost:5432/launchos";
 const REMOTE_URL = "postgres://launchos:s3cret@db.launchflow.co.uk:5432/launchos";
+/** What `ssh -L 5433:<coolify-postgres>:5432 hetzner` presents production as. */
+const TUNNEL_URL = "postgres://launchos:s3cret@localhost:5433/launchos";
 
-/** A local target with NODE_ENV set: the guards that only run in production must not fire. */
-const LOCAL = { NODE_ENV: "development", DATABASE_URL: LOCAL_URL };
-/** NODE_ENV=production forces production on even when the host is local. */
+/**
+ * A developer's local run, configured the way the bootstrap now requires:
+ * a real password and the slug confirmed. Nothing here is a "safe" environment
+ * as far as the guards are concerned — they run identically on every row below.
+ */
+const LOCAL = { NODE_ENV: "development", DATABASE_URL: LOCAL_URL, BOOTSTRAP_CONFIRM: "acme" };
 const PRODUCTION = { NODE_ENV: "production", DATABASE_URL: LOCAL_URL, BOOTSTRAP_CONFIRM: "acme" };
-/** Nobody exported NODE_ENV — the host is what makes this a production run. */
+/** Nobody exported NODE_ENV and the host is remote. */
 const REMOTE_NO_NODE_ENV = { DATABASE_URL: REMOTE_URL, BOOTSTRAP_CONFIRM: "acme" };
 
 describe("assertBootstrapAllowed", () => {
@@ -115,9 +125,30 @@ describe("assertBootstrapAllowed", () => {
       );
       expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "a" }), LOCAL)).toThrow(/not a valid slug/);
     });
+
+    it("refuses a trailing or doubled hyphen — shapes the app's own slugs never take", () => {
+      // `acme-` passed the old pattern and creates a tenant distinct from
+      // `acme`: the blank-slug mistake, one character quieter.
+      expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "acme-" }), LOCAL)).toThrow(
+        /not a valid slug/,
+      );
+      expect(() => assertBootstrapAllowed(guardInput({ organisationSlug: "a--b" }), LOCAL)).toThrow(
+        /not a valid slug/,
+      );
+      expect(() =>
+        assertBootstrapAllowed(guardInput({ organisationSlug: "grays-cab-line-2" }), {
+          ...LOCAL,
+          BOOTSTRAP_CONFIRM: "grays-cab-line-2",
+        }),
+      ).not.toThrow();
+    });
   });
 
-  describe("the published defaults", () => {
+  describe("the published default, in every environment", () => {
+    // The bootstrap is the production tool, and no host string can tell a
+    // local database from a live one: a tunnel presents production as
+    // `localhost:5433`, a Hetzner private network as `10.x`, and this repo's
+    // own production compose file names its database host `postgres`.
     it("refuses the owner default in production", () => {
       expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), PRODUCTION)).toThrow(
         /published in this repository/,
@@ -130,101 +161,95 @@ describe("assertBootstrapAllowed", () => {
       );
     });
 
-    it("allows the owner default outside production — it clears the floor", () => {
-      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), LOCAL)).not.toThrow();
-    });
-  });
-
-  describe("the production predicate is the database, not just NODE_ENV", () => {
-    it("refuses the published default against a remote host with NODE_ENV unset", () => {
+    it("refuses the owner default against localhost, with NODE_ENV=development", () => {
       try {
-        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), REMOTE_NO_NODE_ENV);
-        expect.unreachable("a remote target must be treated as production");
+        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), LOCAL);
+        expect.unreachable("the published default must be refused on every host");
       } catch (error) {
         expect((error as BootstrapGuardError).guard).toBe("published-default");
-        expect((error as Error).message).toMatch(/not a local host/);
       }
     });
 
-    it("requires BOOTSTRAP_CONFIRM against a remote host with NODE_ENV unset", () => {
-      expect(() => assertBootstrapAllowed(guardInput(), { DATABASE_URL: REMOTE_URL })).toThrow(/BOOTSTRAP_CONFIRM/);
-    });
-
-    it("treats a missing DATABASE_URL as production", () => {
-      expect(() => assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), {})).toThrow(
-        /published in this repository/,
-      );
-    });
-
-    it("allows the published default against localhost with NODE_ENV unset", () => {
+    it("refuses the owner default against localhost with NODE_ENV unset", () => {
       expect(() =>
-        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), { DATABASE_URL: LOCAL_URL }),
-      ).not.toThrow();
+        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), {
+          DATABASE_URL: LOCAL_URL,
+          BOOTSTRAP_CONFIRM: "acme",
+        }),
+      ).toThrow(/published in this repository/);
     });
 
-    it("allows the published default against the compose service name and a private address", () => {
-      for (const host of ["postgres", "db", "127.0.0.1", "10.0.1.7", "172.20.0.3", "192.168.1.9"]) {
+    it("refuses the owner default down a tunnel, a private network and the compose service names", () => {
+      // Each of these reads as "local" to `isProductionTarget`, and each is a
+      // normal way to reach a production database.
+      for (const url of [
+        TUNNEL_URL,
+        "postgres://u:p@10.0.0.3:5432/launchos",
+        "postgres://u:p@postgres:5432/launchos",
+        "postgres://u:p@db:5432/launchos",
+      ]) {
         expect(() =>
           assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), {
-            DATABASE_URL: `postgres://u:p@${host}:5432/launchos`,
+            DATABASE_URL: url,
+            BOOTSTRAP_CONFIRM: "acme",
           }),
-        ).not.toThrow();
+        ).toThrow(/published in this repository/);
       }
+    });
+
+    it("refuses the owner default with no DATABASE_URL at all", () => {
+      expect(() =>
+        assertBootstrapAllowed(guardInput({ ownerPassword: DEFAULT_OWNER_PASSWORD }), { BOOTSTRAP_CONFIRM: "acme" }),
+      ).toThrow(/published in this repository/);
+    });
+
+    it("allows a real password on any host", () => {
+      expect(() => assertBootstrapAllowed(guardInput(), LOCAL)).not.toThrow();
+      expect(() => assertBootstrapAllowed(guardInput(), REMOTE_NO_NODE_ENV)).not.toThrow();
     });
   });
 
-  describe("BOOTSTRAP_CONFIRM", () => {
-    it("refuses in production when it is unset", () => {
-      expect(() => assertBootstrapAllowed(guardInput(), { NODE_ENV: "production", DATABASE_URL: LOCAL_URL })).toThrow(
-        /BOOTSTRAP_CONFIRM/,
-      );
+  describe("BOOTSTRAP_CONFIRM, in every environment", () => {
+    it("refuses on localhost when it is unset", () => {
+      // The developer's own machine is not an exception: the confirmation is
+      // what says the slug about to be written was meant.
+      try {
+        assertBootstrapAllowed(guardInput(), { NODE_ENV: "development", DATABASE_URL: LOCAL_URL });
+        expect.unreachable("the confirm guard should have thrown");
+      } catch (error) {
+        expect((error as BootstrapGuardError).guard).toBe("confirm-slug");
+        expect((error as Error).message).toMatch(/unset or empty/);
+      }
     });
 
-    it("refuses in production when it is empty", () => {
+    it("refuses when it is unset and there is no DATABASE_URL", () => {
+      expect(() => assertBootstrapAllowed(guardInput(), {})).toThrow(/BOOTSTRAP_CONFIRM/);
+    });
+
+    it("refuses when it is empty", () => {
       expect(() =>
-        assertBootstrapAllowed(guardInput(), {
-          NODE_ENV: "production",
-          DATABASE_URL: LOCAL_URL,
-          BOOTSTRAP_CONFIRM: "   ",
-        }),
+        assertBootstrapAllowed(guardInput(), { ...PRODUCTION, BOOTSTRAP_CONFIRM: "   " }),
       ).toThrow(/unset or empty/);
     });
 
-    it("refuses in production when it does not match the slug", () => {
+    it("refuses when it does not match the slug", () => {
       expect(() =>
         assertBootstrapAllowed(guardInput({ organisationSlug: "acme" }), {
-          NODE_ENV: "production",
-          DATABASE_URL: LOCAL_URL,
+          ...PRODUCTION,
           BOOTSTRAP_CONFIRM: "acme-typo",
         }),
       ).toThrow(/"acme"/);
     });
 
-    it("allows in production when it matches the slug", () => {
+    it("allows when it matches the slug", () => {
       expect(() => assertBootstrapAllowed(guardInput(), PRODUCTION)).not.toThrow();
+      expect(() => assertBootstrapAllowed(guardInput(), LOCAL)).not.toThrow();
     });
 
     it("accepts a confirmation with stray whitespace around the right slug", () => {
       expect(() =>
-        assertBootstrapAllowed(guardInput(), {
-          NODE_ENV: "production",
-          DATABASE_URL: LOCAL_URL,
-          BOOTSTRAP_CONFIRM: " acme ",
-        }),
+        assertBootstrapAllowed(guardInput(), { ...PRODUCTION, BOOTSTRAP_CONFIRM: " acme " }),
       ).not.toThrow();
-    });
-
-    it("is not required outside production", () => {
-      expect(() => assertBootstrapAllowed(guardInput(), LOCAL)).not.toThrow();
-    });
-
-    it("names the guard that refused", () => {
-      try {
-        assertBootstrapAllowed(guardInput(), { NODE_ENV: "production", DATABASE_URL: LOCAL_URL });
-        expect.unreachable("the confirm guard should have thrown");
-      } catch (error) {
-        expect((error as BootstrapGuardError).guard).toBe("confirm-slug");
-      }
     });
   });
 });
@@ -279,26 +304,66 @@ describe("ownerPasswordSource", () => {
 
 describe("loadRootEnv", () => {
   const KEY = "LOAD_ROOT_ENV_TEST_KEY";
+  const DECOY = "LOAD_ROOT_ENV_DECOY_KEY";
 
-  /** A repo-shaped temp tree: the `.env` sits two levels above the cwd, like packages/db. */
-  async function withEnvFile(contents: string, fn: (envPath: string) => void): Promise<void> {
-    const root = await mkdtemp(join(tmpdir(), "launchos-env-"));
-    const cwd = join(root, "packages", "db");
-    const originalCwd = process.cwd();
+  /** Runs fn, then removes every variable it added and restores DATABASE_URL. */
+  async function withCleanEnv(fn: () => void | Promise<void>): Promise<void> {
+    const before = new Set(Object.keys(process.env));
     const originalUrl = process.env.DATABASE_URL;
-    await mkdir(cwd, { recursive: true });
-    await writeFile(join(root, ".env"), contents, "utf8");
     try {
-      process.chdir(cwd);
-      fn(join(root, ".env"));
+      await fn();
     } finally {
-      process.chdir(originalCwd);
+      for (const key of Object.keys(process.env)) if (!before.has(key)) delete process.env[key];
       if (originalUrl === undefined) delete process.env.DATABASE_URL;
       else process.env.DATABASE_URL = originalUrl;
-      delete process.env[KEY];
+    }
+  }
+
+  /** A `.env` in a temp directory, passed to `loadRootEnv` explicitly. */
+  async function withEnvFile(contents: string, fn: (envPath: string) => void): Promise<void> {
+    const root = await mkdtemp(join(tmpdir(), "launchos-env-"));
+    const envPath = join(root, ".env");
+    await writeFile(envPath, contents, "utf8");
+    try {
+      await withCleanEnv(() => fn(envPath));
+    } finally {
       await rm(root, { recursive: true, force: true });
     }
   }
+
+  it("resolves the repo root from this module's location, not from the cwd", () => {
+    // `packages/db/src/bootstrap.ts` → three directories up. The test file
+    // sits beside it, so the same arithmetic must land on the same file.
+    expect(ROOT_ENV_FILE).toBe(join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env"));
+    // And that directory really is the repository root, cwd notwithstanding.
+    expect(existsSync(join(dirname(ROOT_ENV_FILE), "pnpm-workspace.yaml"))).toBe(true);
+  });
+
+  it("reads only the repo-root file, whatever the cwd is", async () => {
+    // The failure this closes: the old ladder resolved `../../.env` against
+    // the cwd, so a run from the repository root read a file *two directories
+    // above the repository* and reported it as the repo root.
+    const outside = await mkdtemp(join(tmpdir(), "launchos-decoy-"));
+    const cwd = join(outside, "packages", "db");
+    const originalCwd = process.cwd();
+    await mkdir(cwd, { recursive: true });
+    for (const dir of [outside, join(outside, "packages"), cwd]) {
+      await writeFile(join(dir, ".env"), `${DECOY}=from-decoy\n`, "utf8");
+    }
+    try {
+      await withCleanEnv(() => {
+        process.chdir(cwd);
+
+        const read = loadRootEnv();
+
+        expect(read === null || read === ROOT_ENV_FILE).toBe(true);
+        expect(process.env[DECOY]).toBeUndefined();
+      });
+    } finally {
+      process.chdir(originalCwd);
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
 
   it("merges keys that are unset even when DATABASE_URL was already set", async () => {
     // The failure this closes: a one-off run with DATABASE_URL on the command
@@ -308,7 +373,7 @@ describe("loadRootEnv", () => {
     await withEnvFile(`DATABASE_URL=postgres://from-file:5432/file\n${KEY}=from-file\n`, (envPath) => {
       process.env.DATABASE_URL = "postgres://localhost:5432/from-shell";
 
-      expect(loadRootEnv()).toBe(envPath);
+      expect(loadRootEnv(envPath)).toBe(envPath);
 
       expect(process.env[KEY]).toBe("from-file");
       // Never overridden: an explicit variable still wins over the file.
@@ -317,10 +382,10 @@ describe("loadRootEnv", () => {
   });
 
   it("still supplies DATABASE_URL when it was not set", async () => {
-    await withEnvFile(`DATABASE_URL=postgres://localhost:5432/from-file\n${KEY}=from-file\n`, () => {
+    await withEnvFile(`DATABASE_URL=postgres://localhost:5432/from-file\n${KEY}=from-file\n`, (envPath) => {
       delete process.env.DATABASE_URL;
 
-      loadRootEnv();
+      loadRootEnv(envPath);
 
       expect(process.env.DATABASE_URL).toBe("postgres://localhost:5432/from-file");
     });
@@ -328,14 +393,9 @@ describe("loadRootEnv", () => {
 
   it("returns null when there is no .env to read", async () => {
     const root = await mkdtemp(join(tmpdir(), "launchos-noenv-"));
-    const cwd = join(root, "packages", "db");
-    const originalCwd = process.cwd();
-    await mkdir(cwd, { recursive: true });
     try {
-      process.chdir(cwd);
-      expect(loadRootEnv()).toBeNull();
+      expect(loadRootEnv(join(root, ".env"))).toBeNull();
     } finally {
-      process.chdir(originalCwd);
       await rm(root, { recursive: true, force: true });
     }
   });
@@ -476,7 +536,7 @@ describe("bootstrap", () => {
       });
     });
 
-    it("refuses when the membership exists with a non-owner role, and writes no credential", async () => {
+    it("refuses when the membership exists with a non-owner role, and rolls back", async () => {
       await withTestDb(async (db) => {
         const input = inputFor(randomUUID());
         const organisation = await ensureOrganisation(db, {
@@ -492,8 +552,40 @@ describe("bootstrap", () => {
 
         await expect(bootstrap(db, input)).rejects.toThrow(/role "staff" and status "invited"/);
 
+        // `bootstrap()` is one transaction, so this proves the rollback, not
+        // the ordering — the ordering is pinned by the next case, which runs
+        // the same helpers with no transaction to hide a stray write.
         const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.row.id));
         expect(accounts).toHaveLength(0);
+      });
+    });
+
+    it("settles the membership before any credential is written, with no transaction to hide it", async () => {
+      await withTestDb(async (db) => {
+        const input = inputFor(randomUUID());
+        const organisation = await ensureOrganisation(db, {
+          name: input.organisationName,
+          slug: input.organisationSlug,
+        });
+        const user = await ensureUserRow(db, { email: input.ownerEmail, name: input.ownerName });
+        await db
+          .insert(schema.organisationMembers)
+          .values({ organisationId: organisation.row.id, userId: user.row.id, role: "staff", status: "invited" });
+
+        // The sequence `bootstrap()` runs, and the sequence `seed.ts` runs
+        // outside a transaction. If the credential ever moves above the
+        // membership check, the refusal below leaves a password hashed onto
+        // somebody else's account and this assertion is what catches it.
+        await expect(ensureOwnerMembership(db, organisation.row.id, user.row.id)).rejects.toThrow(
+          /role "staff" and status "invited"/,
+        );
+        const accounts = await db.select().from(schema.account).where(eq(schema.account.userId, user.row.id));
+        expect(accounts).toHaveLength(0);
+
+        // And the credential step itself is what would have written one.
+        await ensureOwnerCredential(db, user.row.id, input.ownerPassword);
+        const after = await db.select().from(schema.account).where(eq(schema.account.userId, user.row.id));
+        expect(after).toHaveLength(1);
       });
     });
 

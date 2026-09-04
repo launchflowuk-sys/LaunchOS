@@ -13,6 +13,12 @@
  * docker exec <web-container> pnpm db:bootstrap
  * ```
  *
+ * Because this is the production tool, its guards are **unconditional**: a
+ * published default password is refused and `BOOTSTRAP_CONFIRM` is required in
+ * every environment, against every host. Running it locally therefore means
+ * setting a real `SEED_OWNER_PASSWORD` and `BOOTSTRAP_CONFIRM=<slug>` — see
+ * `assertBootstrapAllowed` for why no host check can stand in for that.
+ *
  * Idempotent: the organisation is looked up by slug, the user by email and the
  * credential by user. Re-running it never changes an existing password — to
  * rotate one, sign in and change it, or delete the `account` row first.
@@ -24,12 +30,11 @@
  * Agents are left disabled; enable the ones you want in Settings → Agents.
  */
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { hashPassword } from "better-auth/crypto";
 import { and, eq } from "drizzle-orm";
 import { fileURLToPath } from "node:url";
 import { createDb, type Db } from "./client.js";
-import { isProductionTarget, productionTargetReason, type TargetEnv } from "./env-target.js";
 import {
   DEFAULT_OWNER_EMAIL,
   DEFAULT_OWNER_PASSWORD,
@@ -62,12 +67,25 @@ export class BootstrapGuardError extends Error {
   }
 }
 
-/** Where the repo-root `.env` sits, relative to any cwd either script is run from. */
-const ENV_FILE_CANDIDATES = ["../../.env", "../.env", ".env"] as const;
+/**
+ * The repo-root `.env`, resolved from **this file's own location** — never from
+ * `process.cwd()`.
+ *
+ * This module is `<repo>/packages/db/src/bootstrap.ts`, so the root is three
+ * directories up. A ladder of `../../.env`, `../.env`, `.env` candidates
+ * resolved against the cwd was only correct for the one supported invocation
+ * (`pnpm --filter @launchos/db bootstrap`, cwd `packages/db`); run from the
+ * repository root — which is what "a one-off from a restore box or a
+ * maintenance container" looks like — `../../.env` resolves *two directories
+ * above the repository*, and a stray file there would win the ladder, supply
+ * the configuration, and be reported as "the env file" while the repository's
+ * own `.env` went unread.
+ */
+export const ROOT_ENV_FILE = join(resolve(dirname(fileURLToPath(import.meta.url)), "../../.."), ".env");
 
 /**
- * Merges the repo-root `.env` into `process.env`, and returns the file it
- * read.
+ * Merges the repo-root `.env` into `process.env`, and returns the absolute
+ * path of the file it read, or null if there is none.
  *
  * **Every key, not just `DATABASE_URL`.** This used to return immediately when
  * `DATABASE_URL` was already in the environment, which meant the one-off run
@@ -79,22 +97,17 @@ const ENV_FILE_CANDIDATES = ["../../.env", "../.env", ".env"] as const;
  * `process.loadEnvFile` leaves keys that are already set alone, so an explicit
  * variable on the command line still wins over the file; the file only fills
  * the gaps.
+ *
+ * `envFile` exists for the tests, which need a temp file to merge from. Nothing
+ * in either script passes it: the default is the only file this ever reads.
  */
-export function loadRootEnv(): string | null {
-  const hadDatabaseUrl = Boolean(process.env.DATABASE_URL);
-  for (const candidate of ENV_FILE_CANDIDATES) {
-    const path = resolve(process.cwd(), candidate);
-    try {
-      process.loadEnvFile(path);
-    } catch {
-      continue; // file absent — try the next candidate
-    }
-    // A file that supplies the connection string is the repo root. When the
-    // connection string came from the command line instead, the first file
-    // that loads is as good an answer as we can get.
-    if (hadDatabaseUrl || process.env.DATABASE_URL) return path;
+export function loadRootEnv(envFile: string = ROOT_ENV_FILE): string | null {
+  try {
+    process.loadEnvFile(envFile);
+  } catch {
+    return null; // absent or unreadable — the process environment is all there is
   }
-  return null;
+  return envFile;
 }
 
 /** Host and database of a connection string, with the credentials left out. Never log the URL itself. */
@@ -116,10 +129,14 @@ export interface BootstrapInput {
 }
 
 /**
- * What every slug in this system looks like: lowercase alphanumerics and
- * hyphens, starting on an alphanumeric, 2–63 characters.
+ * What every slug in this system looks like: lowercase alphanumerics separated
+ * by single hyphens, starting and ending on an alphanumeric, 2–63 characters.
+ *
+ * The lookahead is what rejects `acme-` and `a--b`, which the app's own slugs
+ * never take and which would each create a tenant distinct from `acme` /
+ * `a-b` — the same mistake a blank slug makes, one character quieter.
  */
-export const ORGANISATION_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}$/;
+export const ORGANISATION_SLUG_PATTERN = /^[a-z0-9](?:[a-z0-9]|-(?=[a-z0-9])){1,62}$/;
 
 /**
  * The slug this run would write, in **every** environment.
@@ -146,29 +163,39 @@ export function assertOrganisationSlug(slug: string): void {
 }
 
 /**
- * The pre-flight guards, in order. Exported so they can be tested without a
- * database.
+ * The pre-flight guards, in order. **All four run in every environment,
+ * against every host.** Exported so they can be tested without a database.
  *
- * 1. **password-floor** — every environment. The app's own floor
- *    (`MIN_PASSWORD_LENGTH`) applies to the owner account too; Better Auth
- *    only checks it on sign-up, change and reset, none of which this account
- *    will ever go through, so this is the only place it can be applied.
- * 2. **organisation-slug** — every environment. See above.
- * 3. **published-default** — production target. A password printed in this
- *    repository must never reach a live database.
- * 4. **confirm-slug** — production target. `BOOTSTRAP_CONFIRM` must equal the
- *    slug about to be written, so a mistyped `SEED_ORG_SLUG` creates a refusal
- *    rather than a second, empty organisation nobody notices.
+ * 1. **password-floor** — the app's own floor (`MIN_PASSWORD_LENGTH`) applies
+ *    to the owner account too; Better Auth only checks it on sign-up, change
+ *    and reset, none of which this account will ever go through, so this is
+ *    the only place it can be applied.
+ * 2. **organisation-slug** — see above.
+ * 3. **published-default** — a password printed in this repository must never
+ *    reach a database. Any database.
+ * 4. **confirm-slug** — `BOOTSTRAP_CONFIRM` must equal the slug about to be
+ *    written, so a mistyped `SEED_ORG_SLUG` creates a refusal rather than a
+ *    second, empty organisation nobody notices.
  *
- * "Production target" is `isProductionTarget`: `NODE_ENV=production`, **or** a
- * `DATABASE_URL` that does not point at localhost, the compose network or a
- * private address. Keying 3 and 4 on `NODE_ENV` alone meant the run that most
- * needed them — a one-off against a live database from a shell where nobody
- * exported `NODE_ENV` — was the one run that skipped them.
+ * 3 and 4 were briefly keyed on a host-derived "production target" predicate,
+ * and that is the bug this shape closes: **no string test can tell a local
+ * database from a live one.** `ssh -L 5433:<coolify-postgres>:5432 hetzner`
+ * presents production as `localhost:5433`; a Hetzner Cloud private network is
+ * `10.0.0.0/16`; and `infra/docker-compose.coolify.yml` — this repository's own
+ * *production* topology — names its database host `postgres`. Every one of
+ * those reads as local, and each is the normal way an operator reaches a
+ * production database.
+ *
+ * The bootstrap has no legitimate published-default use, so making these
+ * unconditional costs exactly one thing: a developer who wants to run
+ * `pnpm db:bootstrap` locally sets a real 12-character `SEED_OWNER_PASSWORD`
+ * and `BOOTSTRAP_CONFIRM=<slug>` once. The local development path is
+ * `pnpm db:seed`, which keeps its own target-gated copy of the
+ * published-default refusal and stays runnable with the shipped defaults.
  */
 export function assertBootstrapAllowed(
   input: { organisationSlug: string; ownerPassword: string },
-  env: TargetEnv & { BOOTSTRAP_CONFIRM?: string | undefined },
+  env: NodeJS.ProcessEnv,
 ): void {
   if (input.ownerPassword.length < MIN_PASSWORD_LENGTH) {
     throw new BootstrapGuardError("password-floor", shortPasswordMessage("SEED_OWNER_PASSWORD", input.ownerPassword));
@@ -176,15 +203,13 @@ export function assertBootstrapAllowed(
 
   assertOrganisationSlug(input.organisationSlug);
 
-  if (!isProductionTarget(env)) return;
-  const because = `Refusing because ${productionTargetReason(env)}.`;
-
   if (isPublishedDefaultPassword(input.ownerPassword)) {
     throw new BootstrapGuardError(
       "published-default",
       "SEED_OWNER_PASSWORD is still a default published in this repository. " +
         "Set a real one in the resource environment, bootstrap once, then remove it and redeploy. " +
-        because,
+        "This refusal is not conditional on the host: a database reached through an SSH tunnel or a " +
+        "private network looks local and is not.",
     );
   }
 
@@ -196,7 +221,8 @@ export function assertBootstrapAllowed(
         (confirm === "" ? " (it is unset or empty)." : `, not "${confirm}".`) +
         " The bootstrap creates an organisation whenever it finds no row with that slug, so a mistyped " +
         "SEED_ORG_SLUG would silently create a second, empty one. Confirming the slug is how you say you " +
-        `meant this exact value. ${because}`,
+        "meant this exact value, and it is required in every environment — the host cannot tell us whether " +
+        "the database on the other end of this connection is live.",
     );
   }
 }
@@ -370,8 +396,12 @@ async function main(): Promise<void> {
   if (!url) throw new BootstrapGuardError("database-url", "DATABASE_URL is required to bootstrap");
   // Before the guards, not after: an operator who trips one needs to know
   // which database they were pointed at, which is usually the actual mistake.
-  console.log("database      ", describeDatabase(url), isProductionTarget(process.env) ? "(production target)" : "(local)");
-  console.log("env file      ", envFile ?? "none found; using the process environment only");
+  // No "(local)" / "(production target)" annotation here: every guard below
+  // runs either way, and a line saying "local" would suggest some of them did
+  // not — which is exactly the inference that made a tunnelled production
+  // database look safe.
+  console.log("database      ", describeDatabase(url));
+  console.log("env file      ", envFile ?? `none found at ${ROOT_ENV_FILE}; using the process environment only`);
 
   const input = bootstrapInputFromEnv(process.env);
   assertBootstrapAllowed(input, process.env);

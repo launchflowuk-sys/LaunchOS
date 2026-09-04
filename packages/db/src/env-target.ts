@@ -1,32 +1,46 @@
 /**
- * What "production" means to the two scripts that can write a credential.
+ * What "production" means to `pnpm db:seed`.
  *
- * `NODE_ENV` is a statement of intent, and the failure that matters is the one
- * where nobody made that statement: a one-off run against a live database from
- * a restore box, a maintenance container or a laptop, in a shell where
- * `NODE_ENV` was never exported. The guards that stop a published password or
- * an unconfirmed slug reaching a live tenant must not be skippable by
- * forgetting a variable.
+ * **This predicate guards demo fixtures, not credentials.** The two guards that
+ * stop a published password or an unconfirmed slug — `published-default` and
+ * `confirm-slug` in `./bootstrap.ts` — do not consult it at all: they run in
+ * every environment, against every host, because no host string can tell a
+ * local database from a production one reached through an SSH tunnel
+ * (`ssh -L 5433:…` presents a live database as `localhost:5433`) or over a
+ * private network (Hetzner Cloud private networks are `10.0.0.0/16`; this
+ * repository's own production compose file names its database `postgres`).
  *
- * So the target is what decides. A run is a **production target** unless the
- * database it is pointed at is demonstrably local:
+ * What is left is the seed's `demo-fixtures-in-production` gate and its refusal
+ * to write a published default, where the inference is worth having and the
+ * cost of being wrong runs the other way: keying those on `NODE_ENV` alone
+ * meant a demo seed against a live database from a shell where nobody exported
+ * `NODE_ENV` was the one run that skipped them, while treating a laptop's
+ * docker Postgres as production would refuse every local `pnpm db:seed`.
  *
- * - `localhost`, `127.0.0.1` (any `127.x` loopback) or `::1`;
+ * A run is a **production target** unless the database it is pointed at is
+ * demonstrably local:
+ *
+ * - `localhost`, `127.0.0.1` (any `127.x` loopback), or IPv6 loopback in any
+ *   spelling (`::1`, `0:0:0:0:0:0:0:1`, `::ffff:127.0.0.1`);
  * - `postgres` or `db`, the docker-compose service names this repo ships;
- * - an RFC1918 address (`10/8`, `172.16/12`, `192.168/16`), which is a docker
- *   bridge or a LAN box, not a hosted database.
+ * - an RFC1918 address (`10/8`, `172.16/12`, `192.168/16`) or an IPv6
+ *   unique-local address (`fc00::/7`), which is a docker bridge or a LAN box,
+ *   not a hosted database.
  *
- * Everything else — a public hostname, a Coolify service address, an
- * unparseable or missing URL — is treated as production. Erring that way costs
- * a developer one environment variable; erring the other way installs a
- * password printed in this repository on a live tenant.
+ * Everything else is treated as production: a public hostname, a Coolify
+ * service address, a missing or unparseable URL, a **hostless** URL (the unix
+ * socket form `postgres:///launchos`) and a comma-separated **multi-host** URL,
+ * both of which postgres.js accepts and `new URL` does not resolve to a single
+ * host we can judge. Erring that way costs a developer one environment
+ * variable; erring the other way writes demo invoices, numbered from a live
+ * sequence, into a live tenant.
  *
  * `NODE_ENV=production` still forces production on, so nothing that was
  * guarded before is guarded less now.
  */
 
 /** Hostnames that are only ever this machine or this compose network. */
-const LOCAL_HOSTNAMES = new Set(["localhost", "postgres", "db", "::1", "0:0:0:0:0:0:0:1"]);
+const LOCAL_HOSTNAMES = new Set(["localhost", "postgres", "db"]);
 
 /** 10/8, 172.16/12, 192.168/16 (RFC 1918) and 127/8 (loopback). */
 function isPrivateIpv4(hostname: string): boolean {
@@ -41,9 +55,48 @@ function isPrivateIpv4(hostname: string): boolean {
 }
 
 /**
+ * The eight 16-bit groups of an IPv6 address, or null if it is not one.
+ * `new URL` already normalises a bracketed host to the canonical compressed
+ * form, so this mostly re-expands `::`; it is written to accept the other
+ * spellings too rather than depending on that.
+ */
+function ipv6Groups(address: string): number[] | null {
+  const halves = address.split("::");
+  if (halves.length > 2) return null;
+  const toGroups = (part: string) => (part === "" ? [] : part.split(":"));
+  const head = toGroups(halves[0] ?? "");
+  const tail = halves.length === 2 ? toGroups(halves[1]!) : [];
+  const missing = 8 - head.length - tail.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const groups = [...head, ...Array.from({ length: halves.length === 2 ? missing : 0 }, () => "0"), ...tail];
+  const parsed = groups.map((group) => (/^[0-9a-f]{1,4}$/.test(group) ? Number.parseInt(group, 16) : Number.NaN));
+  return parsed.some(Number.isNaN) ? null : parsed;
+}
+
+/**
+ * IPv6 loopback in **any** spelling, an IPv4-mapped loopback or private
+ * address (`::ffff:127.0.0.1`, which `new URL` serialises as `::ffff:7f00:1`),
+ * and the unique-local range `fc00::/7` — a docker IPv6 network.
+ *
+ * Only two spellings used to be recognised, so a developer on an IPv6-only
+ * docker network was told their database "is not a local host".
+ */
+function isLocalIpv6(hostname: string): boolean {
+  if (!hostname.includes(":")) return false;
+  const groups = ipv6Groups(hostname.split("%")[0]!); // drop a zone index: fe80::1%eth0
+  if (!groups) return false;
+  if (groups.every((group, index) => group === (index === 7 ? 1 : 0))) return true;
+  if (groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff) {
+    const octets = [groups[6]! >> 8, groups[6]! & 0xff, groups[7]! >> 8, groups[7]! & 0xff];
+    return isPrivateIpv4(octets.join("."));
+  }
+  return (groups[0]! & 0xfe00) === 0xfc00;
+}
+
+/**
  * True only when the connection string demonstrably points at this machine or
- * this compose network. Missing, unparseable or socket-only URLs are false:
- * an unknown target is treated as live.
+ * this compose network. Missing, unparseable, hostless (unix socket) and
+ * multi-host URLs are false: an unknown target is treated as live.
  */
 export function isLocalDatabaseUrl(url: string | undefined): boolean {
   if (!url) return false;
@@ -55,7 +108,7 @@ export function isLocalDatabaseUrl(url: string | undefined): boolean {
     return false;
   }
   if (hostname === "") return false;
-  return LOCAL_HOSTNAMES.has(hostname) || isPrivateIpv4(hostname);
+  return LOCAL_HOSTNAMES.has(hostname) || isPrivateIpv4(hostname) || isLocalIpv6(hostname);
 }
 
 /** The two variables the predicate reads. `NodeJS.ProcessEnv` satisfies it. */
@@ -65,11 +118,16 @@ export interface TargetEnv {
 }
 
 /**
- * The predicate every production guard in `bootstrap.ts` and `seed.ts` is
- * keyed on: `NODE_ENV=production`, **or** a database that is not local.
+ * The predicate `seed.ts`'s demo-fixture guards are keyed on:
+ * `NODE_ENV=production`, **or** a database that is not local. Nothing in
+ * `bootstrap.ts` consults it — those guards are unconditional.
  *
  * Call it only after `loadRootEnv()`, so the `DATABASE_URL` it judges is the
- * one the run will actually connect to.
+ * one the run will actually connect to. Note that `.env` supplies `NODE_ENV`
+ * like any other unset key, so a repo-root `.env` carrying
+ * `NODE_ENV=production` does turn these guards on locally — the fail-safe
+ * direction, and the converse cannot happen: unset and `development` are
+ * identical here, and the file never overrides an exported variable.
  */
 export function isProductionTarget(env: TargetEnv): boolean {
   if (env.NODE_ENV === "production") return true;
