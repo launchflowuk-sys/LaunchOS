@@ -15,6 +15,16 @@ export function supportAddress(slug: string, domain: string): string {
 }
 
 /**
+ * The inbound secret authenticates a provider's forwards for this client. The
+ * audit log is read in the admin UI and exported, so it never carries it.
+ */
+function withoutSecret(identity: Record<string, unknown>): Record<string, unknown> {
+  const copy = { ...identity };
+  delete copy["inboundSecret"];
+  return copy;
+}
+
+/**
  * Idempotent: one identity per client, created from the `client.created`
  * handler and backfilled by the seed. The env is injectable so tests do not
  * depend on the developer's .env. The domain comes from `supportEmailDomain`,
@@ -51,7 +61,8 @@ export async function ensureEmailIdentity(
     .returning();
 
   await recordAudit(db, organisationId, {
-    actorKind: "system", action: "email_identity.created", targetType: "email_identity", targetId: created!.id, after: created,
+    actorKind: "system", action: "email_identity.created", targetType: "email_identity", targetId: created!.id,
+    after: withoutSecret(created!),
   });
   return created!;
 }

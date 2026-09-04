@@ -3,8 +3,9 @@ import { schema } from "@launchos/db";
 import { InboundEmailSchema, type InboundEmail } from "@launchos/channels";
 import { and, eq, inArray } from "drizzle-orm";
 import { recordActivity } from "../activity/record-activity.js";
+import { emit } from "../events/emit.js";
 import { notifyOwner } from "../notifications/notify.js";
-import { createTicket } from "./create-ticket.js";
+import { createTicketInTx } from "./create-ticket.js";
 
 export const HOLDING_CLIENT_SLUG = "unmatched";
 const HOLDING_CLIENT_NAME = "Unmatched inbound";
@@ -47,6 +48,13 @@ async function ensureHoldingClientId(db: Db, organisationId: string): Promise<st
   return created.id;
 }
 
+function ticketInput(clientId: string, conversationId: string, subject: string, inbound: InboundEmail) {
+  return {
+    clientId, conversationId, subject, body: inbound.text || subject,
+    source: "email" as const, severity: "medium" as const, actorKind: "client" as const, actorId: inbound.from,
+  };
+}
+
 export async function ingestInboundEmail(db: Db, organisationId: string, raw: InboundEmail) {
   const inbound = InboundEmailSchema.parse(raw) as InboundEmail;
   const identityClientId = await findIdentityClientId(db, organisationId, inbound.to);
@@ -57,18 +65,17 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
     .select()
     .from(schema.messages)
     .where(and(eq(schema.messages.organisationId, organisationId), eq(schema.messages.externalId, inbound.messageId)));
-  if (duplicate) {
-    const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, duplicate.conversationId));
-    if (!conversation?.ticketId) throw new Error(`conversation for message ${duplicate.id} has no ticket`);
-    const [ticket] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, conversation.ticketId));
-    return { conversation, message: duplicate, ticket: ticket!, matched };
-  }
+  if (duplicate) return healRedelivery(db, organisationId, inbound, duplicate, matched);
 
   const clientId = identityClientId ?? (await ensureHoldingClientId(db, organisationId));
   const subject = inbound.subject.trim() || "(no subject)";
 
-  const appended = await db.transaction(async (tx) => {
-    const [existing] = await tx
+  // Conversation, message and ticket commit together: a thread whose ticket
+  // rolled back would never reach Support Triage and would never be retried,
+  // because the message row alone makes the next delivery look like a duplicate.
+  const result = await db.transaction(async (txRaw) => {
+    const tx = txRaw as unknown as Db;
+    const [candidate] = await tx
       .select()
       .from(schema.conversations)
       .where(
@@ -78,12 +85,20 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
         ),
       );
 
+    // Thread keys come off the wire, so a forged In-Reply-To naming another
+    // client's Message-ID would otherwise splice this mail into their thread.
+    // A key that resolves to a different client starts a fresh conversation.
+    const existing = candidate && candidate.clientId === clientId ? candidate : undefined;
+
     const conversation =
       existing ??
       (
         await tx.insert(schema.conversations).values({
           organisationId, clientId, subject, channel: "email", status: "open",
-          externalThreadKey: inbound.messageId, participantEmail: inbound.from, lastMessageAt: new Date(),
+          // A hijacked key already belongs to the other client's conversation,
+          // so the new thread is keyed on this message instead.
+          externalThreadKey: inbound.messageId,
+          participantEmail: inbound.from, lastMessageAt: new Date(),
         }).returning()
       )[0]!;
 
@@ -98,39 +113,68 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
       .set({ lastMessageAt: new Date(), status: "open", updatedAt: new Date() })
       .where(eq(schema.conversations.id, conversation.id));
 
-    return { conversation, message: message! };
+    const linked = conversation.ticketId
+      ? (await tx.select().from(schema.tickets).where(eq(schema.tickets.id, conversation.ticketId)))[0]
+      : undefined;
+    const reusable = linked && !CLOSED_TICKET_STATUSES.includes(linked.status);
+
+    // createTicketInTx owns the ticket + event + audit, so a new email thread
+    // reaches Support Triage down exactly the same path as any other source.
+    const ticket = reusable
+      ? linked
+      : (await createTicketInTx(tx, organisationId, ticketInput(clientId, conversation.id, subject, inbound))).ticket;
+
+    await recordActivity(tx, organisationId, {
+      clientId, actorKind: "client", actorId: inbound.from, kind: "support.email_received",
+      title: `Email received: ${subject}`, link: `/cases/${ticket.id}`,
+    });
+
+    const [fresh] = await tx.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
+    return { conversation: fresh!, message: message!, ticket, opened: !reusable };
   });
 
-  const linked = appended.conversation.ticketId
-    ? (await db.select().from(schema.tickets).where(eq(schema.tickets.id, appended.conversation.ticketId)))[0]
-    : undefined;
-  const reusable = linked && !CLOSED_TICKET_STATUSES.includes(linked.status);
-
-  // createTicket owns the ticket + event + audit + `ticket.created` emit, so a
-  // new email thread reaches Support Triage down exactly the same path as any
-  // other ticket source.
-  const ticket = reusable
-    ? linked
-    : (
-        await createTicket(db, organisationId, {
-          clientId, conversationId: appended.conversation.id, subject, body: inbound.text || subject,
-          source: "email", severity: "medium", actorKind: "client", actorId: inbound.from,
-        })
-      ).ticket;
-
-  await recordActivity(db, organisationId, {
-    clientId, actorKind: "client", actorId: inbound.from, kind: "support.email_received",
-    title: `Email received: ${subject}`, link: `/cases/${ticket.id}`,
-  });
+  // After commit: a subscriber must never see an id the transaction rolled back.
+  if (result.opened) await emit({ name: "ticket.created", organisationId, ticketId: result.ticket.id });
   if (!matched) {
     await notifyOwner(db, organisationId, {
       kind: "support.unmatched_inbound",
       title: "Email to an unknown support address",
       body: `From ${inbound.from} to ${inbound.to.join(", ")} — filed under the unmatched holding client.`,
-      link: `/inbox/${appended.conversation.id}`,
+      link: `/inbox/${result.conversation.id}`,
     });
   }
 
-  const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, appended.conversation.id));
-  return { conversation: conversation!, message: appended.message, ticket, matched };
+  return { conversation: result.conversation, message: result.message, ticket: result.ticket, matched };
+}
+
+/**
+ * The payload is already stored. Return what we have — and open the ticket the
+ * thread is missing rather than throwing, so a delivery interrupted between the
+ * message and its ticket heals on the provider's next retry instead of leaving
+ * a thread nobody is working.
+ */
+async function healRedelivery(
+  db: Db,
+  organisationId: string,
+  inbound: InboundEmail,
+  duplicate: typeof schema.messages.$inferSelect,
+  matched: boolean,
+) {
+  const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, duplicate.conversationId));
+  if (!conversation) throw new Error(`conversation ${duplicate.conversationId} not found in organisation`);
+
+  const linked = conversation.ticketId
+    ? (await db.select().from(schema.tickets).where(eq(schema.tickets.id, conversation.ticketId)))[0]
+    : undefined;
+  if (linked) return { conversation, message: duplicate, ticket: linked, matched };
+
+  const healed = await db.transaction(async (txRaw) =>
+    createTicketInTx(
+      txRaw as unknown as Db,
+      organisationId,
+      ticketInput(conversation.clientId, conversation.id, conversation.subject, inbound),
+    ),
+  );
+  await emit({ name: "ticket.created", organisationId, ticketId: healed.ticket.id });
+  return { conversation: healed.conversation, message: duplicate, ticket: healed.ticket, matched };
 }

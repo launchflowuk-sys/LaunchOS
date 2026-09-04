@@ -11,8 +11,11 @@ import { updateTicket } from "./update-ticket.js";
 async function seedTicket(db: Db) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
   const [client] = await db.insert(schema.clients).values({ organisationId: org!.id, name: "C", slug: `c-${crypto.randomUUID()}` }).returning();
+  const userId = crypto.randomUUID();
+  await db.insert(schema.user).values({ id: userId, name: "Staff", email: `staff-${userId}@example.test`, emailVerified: true });
+  await db.insert(schema.organisationMembers).values({ organisationId: org!.id, userId, role: "staff" });
   const { ticket } = await createTicket(db, org!.id, { clientId: client!.id, subject: "S", body: "B", source: "email" });
-  return { organisationId: org!.id, ticket };
+  return { organisationId: org!.id, ticket, userId };
 }
 
 describe("ticket lifecycle", () => {
@@ -46,12 +49,12 @@ describe("ticket lifecycle", () => {
 
   it("assigns explicitly and escalates with a reason", async () => {
     await withTestDb(async (db) => {
-      const { organisationId, ticket } = await seedTicket(db);
+      const { organisationId, ticket, userId } = await seedTicket(db);
 
       const assigned = await assignTicket(db, organisationId, {
-        ticketId: ticket.id, assignedUserId: "user-1", actorKind: "agent", actorId: "support-triage",
+        ticketId: ticket.id, assignedUserId: userId, actorKind: "agent", actorId: "support-triage",
       });
-      expect(assigned.assignedUserId).toBe("user-1");
+      expect(assigned.assignedUserId).toBe(userId);
 
       const escalated = await escalateTicket(db, organisationId, {
         ticketId: ticket.id, reason: "Needs Shoji", actorKind: "agent", actorId: "support-triage",
@@ -62,6 +65,19 @@ describe("ticket lifecycle", () => {
 
       const events = await db.select().from(schema.ticketEvents).where(eq(schema.ticketEvents.ticketId, ticket.id));
       expect(events.map((e) => e.kind)).toEqual(expect.arrayContaining(["assigned", "escalated"]));
+    });
+  });
+
+  it("refuses to assign a user who is not a member of the organisation", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, ticket } = await seedTicket(db);
+
+      await expect(
+        assignTicket(db, organisationId, { ticketId: ticket.id, assignedUserId: "not-a-member", actorKind: "agent" }),
+      ).rejects.toThrow(/not found in organisation/);
+
+      const [unchanged] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ticket.id));
+      expect(unchanged!.assignedUserId).toBeNull();
     });
   });
 });

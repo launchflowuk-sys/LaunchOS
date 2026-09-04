@@ -12,6 +12,7 @@ export type DomainEvent =
   | { name: "task.overdue"; organisationId: string; taskId: string }
   | { name: "email.received"; organisationId: string; inbound: InboundEmail }
   | { name: "message.queued"; organisationId: string; messageId: string }
+  | { name: "ticket.escalated"; organisationId: string; ticketId: string }
   | {
       name: "approval.decided";
       organisationId: string;

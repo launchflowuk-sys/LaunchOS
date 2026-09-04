@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { emit } from "../events/emit.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 import { slaDueAt } from "./sla.js";
@@ -23,35 +24,44 @@ export async function escalateTicket(db: Db, organisationId: string, input: Esca
   await assertOwned(db, organisationId, schema.tickets, v.ticketId);
 
   const where = and(eq(schema.tickets.id, v.ticketId), eq(schema.tickets.organisationId, organisationId));
-  const [before] = await db.select().from(schema.tickets).where(where);
-  if (!before) throw new Error(`ticket ${v.ticketId} not found in organisation`);
 
-  const raise = RAISEABLE.includes(before.severity);
-  const [after] = await db
-    .update(schema.tickets)
-    .set({
-      escalated: true,
-      escalationReason: v.reason,
-      severity: raise ? "high" : before.severity,
-      slaDueAt: raise ? slaDueAt("high", before.createdAt) : before.slaDueAt,
-      updatedAt: new Date(),
-    })
-    .where(where)
-    .returning();
+  const after = await db.transaction(async (txRaw) => {
+    const tx = txRaw as unknown as Db;
+    const [before] = await tx.select().from(schema.tickets).where(where);
+    if (!before) throw new Error(`ticket ${v.ticketId} not found in organisation`);
 
-  await db.insert(schema.ticketEvents).values({
-    organisationId, ticketId: v.ticketId, kind: "escalated",
-    actorKind: v.actorKind, actorId: v.actorId ?? null, data: { reason: v.reason },
+    const raise = RAISEABLE.includes(before.severity);
+    const [row] = await tx
+      .update(schema.tickets)
+      .set({
+        escalated: true,
+        escalationReason: v.reason,
+        severity: raise ? "high" : before.severity,
+        slaDueAt: raise ? slaDueAt("high", before.createdAt) : before.slaDueAt,
+        updatedAt: new Date(),
+      })
+      .where(where)
+      .returning();
+
+    await tx.insert(schema.ticketEvents).values({
+      organisationId, ticketId: v.ticketId, kind: "escalated",
+      actorKind: v.actorKind, actorId: v.actorId ?? null, data: { reason: v.reason },
+    });
+    await recordAudit(tx, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "ticket.escalated",
+      targetType: "ticket", targetId: v.ticketId, before, after: row,
+    });
+    return row!;
   });
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "ticket.escalated",
-    targetType: "ticket", targetId: v.ticketId, before, after,
-  });
+
+  // After commit: neither Shoji's notification nor a subscriber may see an
+  // escalation the transaction went on to roll back.
   await notifyOwner(db, organisationId, {
     kind: "support.escalated",
-    title: `Escalated: ${after!.subject}`,
+    title: `Escalated: ${after.subject}`,
     body: v.reason,
     link: `/cases/${v.ticketId}`,
   });
-  return after!;
+  await emit({ name: "ticket.escalated", organisationId, ticketId: v.ticketId });
+  return after;
 }

@@ -34,7 +34,11 @@ export async function replyToConversation(db: Db, organisationId: string, input:
     .where(and(eq(schema.conversations.id, v.conversationId), eq(schema.conversations.organisationId, organisationId)));
   if (!conversation) throw new Error(`conversation ${v.conversationId} not found in organisation`);
 
-  const outbound = !v.internal;
+  // A client replying in the portal is writing into the thread, not sending
+  // mail as the agency. Their own words never leave LaunchOS as an outbound
+  // email, whatever the caller passed for `internal`.
+  const internal = v.internal || v.actorKind === "client";
+  const outbound = !internal;
   const [identity] = await db
     .select()
     .from(schema.emailIdentities)

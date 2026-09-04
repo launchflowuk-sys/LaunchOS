@@ -32,34 +32,40 @@ export async function updateTicket(db: Db, organisationId: string, input: Update
   await assertOwned(db, organisationId, schema.tickets, v.ticketId);
 
   const where = and(eq(schema.tickets.id, v.ticketId), eq(schema.tickets.organisationId, organisationId));
-  const [before] = await db.select().from(schema.tickets).where(where);
-  if (!before) throw new Error(`ticket ${v.ticketId} not found in organisation`);
 
-  const severity = (v.severity ?? before.severity) as Severity;
-  const [after] = await db
-    .update(schema.tickets)
-    .set({
-      category: v.category ?? before.category,
-      severity,
-      status: v.status ?? before.status,
-      triage: v.triage ?? before.triage,
-      // Severity *is* the SLA: change one and the other follows.
-      slaDueAt: v.severity ? slaDueAt(severity, before.createdAt) : before.slaDueAt,
-      resolvedAt: v.status && CLOSING.has(v.status) ? (before.resolvedAt ?? new Date()) : before.resolvedAt,
-      updatedAt: new Date(),
-    })
-    .where(where)
-    .returning();
+  // The row, its ticket_events entry and its audit row move together: a status
+  // change with no event behind it is a case history that quietly lies.
+  return db.transaction(async (txRaw) => {
+    const tx = txRaw as unknown as Db;
+    const [before] = await tx.select().from(schema.tickets).where(where);
+    if (!before) throw new Error(`ticket ${v.ticketId} not found in organisation`);
 
-  if (v.status && v.status !== before.status) {
-    await db.insert(schema.ticketEvents).values({
-      organisationId, ticketId: v.ticketId, kind: "status_changed",
-      actorKind: v.actorKind, actorId: v.actorId ?? null, data: { from: before.status, to: v.status },
+    const severity = (v.severity ?? before.severity) as Severity;
+    const [after] = await tx
+      .update(schema.tickets)
+      .set({
+        category: v.category ?? before.category,
+        severity,
+        status: v.status ?? before.status,
+        triage: v.triage ?? before.triage,
+        // Severity *is* the SLA: change one and the other follows.
+        slaDueAt: v.severity ? slaDueAt(severity, before.createdAt) : before.slaDueAt,
+        resolvedAt: v.status && CLOSING.has(v.status) ? (before.resolvedAt ?? new Date()) : before.resolvedAt,
+        updatedAt: new Date(),
+      })
+      .where(where)
+      .returning();
+
+    if (v.status && v.status !== before.status) {
+      await tx.insert(schema.ticketEvents).values({
+        organisationId, ticketId: v.ticketId, kind: "status_changed",
+        actorKind: v.actorKind, actorId: v.actorId ?? null, data: { from: before.status, to: v.status },
+      });
+    }
+    await recordAudit(tx, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "ticket.updated",
+      targetType: "ticket", targetId: v.ticketId, before, after,
     });
-  }
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "ticket.updated",
-    targetType: "ticket", targetId: v.ticketId, before, after,
+    return after!;
   });
-  return after!;
 }

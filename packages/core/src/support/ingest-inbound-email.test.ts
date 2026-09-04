@@ -4,6 +4,7 @@ import { schema, type Db } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import type { InboundEmail } from "@launchos/channels";
 import { ensureEmailIdentity } from "../email/ensure-email-identity.js";
+import { createTicket } from "./create-ticket.js";
 import { HOLDING_CLIENT_SLUG, ingestInboundEmail } from "./ingest-inbound-email.js";
 
 const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test" };
@@ -18,6 +19,11 @@ function inbound(over: Partial<InboundEmail> & Pick<InboundEmail, "to">): Inboun
 async function newOrg(db: Db) {
   const [o] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
   return o!;
+}
+
+async function newClient(db: Db, organisationId: string, name = "C") {
+  const [c] = await db.insert(schema.clients).values({ organisationId, name, slug: `c-${crypto.randomUUID()}` }).returning();
+  return c!;
 }
 
 describe("ingestInboundEmail", () => {
@@ -43,8 +49,8 @@ describe("ingestInboundEmail", () => {
   it("threads a reply onto the existing conversation and reuses its open ticket", async () => {
     await withTestDb(async (db) => {
       const o = await newOrg(db);
-      const [client] = await db.insert(schema.clients).values({ organisationId: o.id, name: "C", slug: `c-${crypto.randomUUID()}` }).returning();
-      const identity = await ensureEmailIdentity(db, o.id, { clientId: client!.id }, ENV);
+      const client = await newClient(db, o.id);
+      const identity = await ensureEmailIdentity(db, o.id, { clientId: client.id }, ENV);
 
       const first = await ingestInboundEmail(db, o.id, inbound({ to: [identity.address] }));
       const second = await ingestInboundEmail(db, o.id, inbound({
@@ -55,6 +61,29 @@ describe("ingestInboundEmail", () => {
       expect(second.ticket.id).toBe(first.ticket.id);
       const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, first.conversation.id));
       expect(messages).toHaveLength(2);
+    });
+  });
+
+  it("does not splice a forged In-Reply-To into another client's conversation", async () => {
+    await withTestDb(async (db) => {
+      const o = await newOrg(db);
+      const clientA = await newClient(db, o.id, "A");
+      const clientB = await newClient(db, o.id, "B");
+      const identityA = await ensureEmailIdentity(db, o.id, { clientId: clientA.id }, ENV);
+      const identityB = await ensureEmailIdentity(db, o.id, { clientId: clientB.id }, ENV);
+
+      const a = await ingestInboundEmail(db, o.id, inbound({ to: [identityA.address] }));
+      // Client A's Message-ID replayed at client B's support address.
+      const forged = await ingestInboundEmail(db, o.id, inbound({
+        to: [identityB.address], from: "mallory@evil.test",
+        inReplyTo: a.message.externalId!, references: [a.message.externalId!],
+      }));
+
+      expect(forged.conversation.id).not.toBe(a.conversation.id);
+      expect(forged.conversation.clientId).toBe(clientB.id);
+      expect(forged.ticket.id).not.toBe(a.ticket.id);
+      const aMessages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, a.conversation.id));
+      expect(aMessages).toHaveLength(1);
     });
   });
 
@@ -89,16 +118,56 @@ describe("ingestInboundEmail", () => {
   it("is idempotent for a redelivered provider payload", async () => {
     await withTestDb(async (db) => {
       const o = await newOrg(db);
-      const [client] = await db.insert(schema.clients).values({ organisationId: o.id, name: "C", slug: `c-${crypto.randomUUID()}` }).returning();
-      const identity = await ensureEmailIdentity(db, o.id, { clientId: client!.id }, ENV);
+      const client = await newClient(db, o.id);
+      const identity = await ensureEmailIdentity(db, o.id, { clientId: client.id }, ENV);
       const payload = inbound({ to: [identity.address] });
 
       const a = await ingestInboundEmail(db, o.id, payload);
       const b = await ingestInboundEmail(db, o.id, payload);
 
       expect(b.message.id).toBe(a.message.id);
+      expect(b.ticket.id).toBe(a.ticket.id);
       const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, a.conversation.id));
       expect(messages).toHaveLength(1);
+    });
+  });
+
+  it("heals a redelivery whose thread lost its ticket instead of throwing", async () => {
+    await withTestDb(async (db) => {
+      const o = await newOrg(db);
+      const client = await newClient(db, o.id);
+      const identity = await ensureEmailIdentity(db, o.id, { clientId: client.id }, ENV);
+      const payload = inbound({ to: [identity.address] });
+
+      const first = await ingestInboundEmail(db, o.id, payload);
+      // Simulate a delivery that stored the message but never got its ticket.
+      await db.update(schema.conversations).set({ ticketId: null }).where(eq(schema.conversations.id, first.conversation.id));
+      await db.delete(schema.tickets).where(eq(schema.tickets.id, first.ticket.id));
+
+      const healed = await ingestInboundEmail(db, o.id, payload);
+
+      expect(healed.message.id).toBe(first.message.id);
+      expect(healed.ticket.id).not.toBe(first.ticket.id);
+      expect(healed.conversation.ticketId).toBe(healed.ticket.id);
+      const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, first.conversation.id));
+      expect(messages).toHaveLength(1);
+    });
+  });
+
+  it("refuses to open a ticket on a conversation belonging to another client", async () => {
+    await withTestDb(async (db) => {
+      const o = await newOrg(db);
+      const clientA = await newClient(db, o.id, "A");
+      const clientB = await newClient(db, o.id, "B");
+      const identityA = await ensureEmailIdentity(db, o.id, { clientId: clientA.id }, ENV);
+      const a = await ingestInboundEmail(db, o.id, inbound({ to: [identityA.address] }));
+
+      await expect(
+        createTicket(db, o.id, {
+          clientId: clientB.id, conversationId: a.conversation.id,
+          subject: "Hijack", body: "Hijack", source: "portal",
+        }),
+      ).rejects.toThrow(/belongs to another client/);
     });
   });
 });

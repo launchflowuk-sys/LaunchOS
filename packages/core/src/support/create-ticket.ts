@@ -23,53 +23,67 @@ export const CreateTicketInput = z.object({
 });
 export type CreateTicketInput = z.input<typeof CreateTicketInput>;
 
-export async function createTicket(db: Db, organisationId: string, input: CreateTicketInput) {
+/**
+ * The whole of ticket creation, minus the transaction and the emit, so a
+ * caller that is already inside a transaction (`ingestInboundEmail`) can make
+ * the conversation, the message and the ticket atomically. Callers that use
+ * this MUST emit `ticket.created` themselves, after their own commit.
+ */
+export async function createTicketInTx(tx: Db, organisationId: string, input: CreateTicketInput) {
   const v = CreateTicketInput.parse(input);
-  await assertClientInOrganisation(db, organisationId, v.clientId);
-  if (v.siteId) await assertSiteInOrganisation(db, organisationId, v.siteId);
+  await assertClientInOrganisation(tx, organisationId, v.clientId);
+  if (v.siteId) await assertSiteInOrganisation(tx, organisationId, v.siteId);
 
+  const conversation = v.conversationId
+    ? (
+        await tx.select().from(schema.conversations)
+          .where(and(eq(schema.conversations.id, v.conversationId), eq(schema.conversations.organisationId, organisationId)))
+      )[0]
+    : (
+        await tx.insert(schema.conversations).values({
+          organisationId, clientId: v.clientId, siteId: v.siteId ?? null, subject: v.subject,
+          channel: "internal", lastMessageAt: new Date(),
+        }).returning()
+      )[0];
+  if (!conversation) throw new Error(`conversation ${v.conversationId} not found in organisation`);
+  // A conversation id arrives from outside the trust boundary just like any
+  // other foreign key: without this, a caller could hang client A's ticket off
+  // client B's thread and expose B's messages on A's case page.
+  if (conversation.clientId !== v.clientId) {
+    throw new Error(`conversation ${conversation.id} belongs to another client`);
+  }
+
+  // The opening message is the ticket body only when we made the conversation.
+  // An email thread already carries the client's own words.
+  if (!v.conversationId) {
+    await tx.insert(schema.messages).values({
+      organisationId, conversationId: conversation.id, direction: "internal",
+      authorKind: v.actorKind, authorId: v.actorId ?? null, body: v.body,
+    });
+  }
+
+  const [ticket] = await tx.insert(schema.tickets).values({
+    organisationId, conversationId: conversation.id, clientId: v.clientId, siteId: v.siteId ?? null,
+    subject: v.subject, severity: v.severity, category: v.category ?? null, source: v.source,
+    slaDueAt: slaDueAt(v.severity, new Date()),
+  }).returning();
+
+  // Both sides of the conversation/ticket pair are written here, so
+  // `conversations.ticket_id` is never stale.
+  const [linked] = await tx.update(schema.conversations)
+    .set({ ticketId: ticket!.id, updatedAt: new Date() })
+    .where(eq(schema.conversations.id, conversation.id))
+    .returning();
+
+  await tx.insert(schema.ticketEvents).values({ organisationId, ticketId: ticket!.id, kind: "created", actorKind: v.actorKind, actorId: v.actorId ?? null });
+  await recordAudit(tx, organisationId, { actorKind: v.actorKind, actorId: v.actorId, action: "ticket.created", targetType: "ticket", targetId: ticket!.id, after: ticket });
+  return { ticket: ticket!, conversation: linked ?? conversation };
+}
+
+export async function createTicket(db: Db, organisationId: string, input: CreateTicketInput) {
   // One transaction: a ticket without its conversation, opening message, event
   // or audit row is worse than no ticket at all.
-  const created = await db.transaction(async (tx) => {
-    const conversation = v.conversationId
-      ? (
-          await tx.select().from(schema.conversations)
-            .where(and(eq(schema.conversations.id, v.conversationId), eq(schema.conversations.organisationId, organisationId)))
-        )[0]
-      : (
-          await tx.insert(schema.conversations).values({
-            organisationId, clientId: v.clientId, siteId: v.siteId ?? null, subject: v.subject,
-            channel: "internal", lastMessageAt: new Date(),
-          }).returning()
-        )[0];
-    if (!conversation) throw new Error(`conversation ${v.conversationId} not found in organisation`);
-
-    // The opening message is the ticket body only when we made the conversation.
-    // An email thread already carries the client's own words.
-    if (!v.conversationId) {
-      await tx.insert(schema.messages).values({
-        organisationId, conversationId: conversation.id, direction: "internal",
-        authorKind: v.actorKind, authorId: v.actorId ?? null, body: v.body,
-      });
-    }
-
-    const [ticket] = await tx.insert(schema.tickets).values({
-      organisationId, conversationId: conversation.id, clientId: v.clientId, siteId: v.siteId ?? null,
-      subject: v.subject, severity: v.severity, category: v.category ?? null, source: v.source,
-      slaDueAt: slaDueAt(v.severity, new Date()),
-    }).returning();
-
-    // Both sides of the conversation/ticket pair are written here, so
-    // `conversations.ticket_id` is never stale.
-    const [linked] = await tx.update(schema.conversations)
-      .set({ ticketId: ticket!.id, updatedAt: new Date() })
-      .where(eq(schema.conversations.id, conversation.id))
-      .returning();
-
-    await tx.insert(schema.ticketEvents).values({ organisationId, ticketId: ticket!.id, kind: "created", actorKind: v.actorKind, actorId: v.actorId ?? null });
-    await recordAudit(tx as unknown as Db, organisationId, { actorKind: v.actorKind, actorId: v.actorId, action: "ticket.created", targetType: "ticket", targetId: ticket!.id, after: ticket });
-    return { ticket: ticket!, conversation: linked ?? conversation };
-  });
+  const created = await db.transaction(async (tx) => createTicketInTx(tx as unknown as Db, organisationId, input));
 
   // Emitted only once the rows are durable — a subscriber must never see a
   // ticket id the transaction went on to roll back.
