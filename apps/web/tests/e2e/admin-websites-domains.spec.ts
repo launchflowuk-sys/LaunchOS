@@ -7,6 +7,9 @@ import { DATABASE_URL } from "./seed-credentials";
 
 const SEEDED_SITE_NAME = "Grays CabLine";
 
+// First visit to a route compiles it in `next dev`; give it the same budget as the other specs.
+const COLD_COMPILE = 90_000;
+
 test("websites and domains screens: navigate to a domain and manage its DNS records", async ({ page }) => {
   // Domain creation lives on the client page (Task 10); this spec seeds one
   // directly against the local dev database, attached to a seeded site, so
@@ -42,7 +45,7 @@ test("websites and domains screens: navigate to a domain and manage its DNS reco
     await expect(page.getByRole("heading", { name: SEEDED_SITE_NAME })).toBeVisible();
     await page.getByRole("link", { name: domainName }).click();
 
-    await expect(page.getByRole("heading", { name: domainName })).toBeVisible();
+    await expect(page.getByRole("heading", { name: domainName })).toBeVisible({ timeout: COLD_COMPILE });
 
     await page.getByLabel("Value").fill("203.0.113.10");
     await page.getByRole("button", { name: "Add record" }).click();

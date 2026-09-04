@@ -16,6 +16,9 @@ const PORT = Number(process.env.PORT ?? 3000);
 const baseURL = `http://localhost:${PORT}`;
 
 export default defineConfig({
+  // First visits compile routes in `next dev`; a 5s expect default turns every cold
+  // route into a flake, so the default matches the slowest observed compile.
+  expect: { timeout: 45_000 },
   testDir: "./tests/e2e",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
