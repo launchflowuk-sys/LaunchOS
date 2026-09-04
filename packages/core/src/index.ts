@@ -81,3 +81,15 @@ export { setTaskVisibility, toggleChecklistItem, SetTaskVisibilityInput, ToggleC
 export { generateOnboardingTasks } from "./tasks/generate-onboarding-tasks.js";
 export { generateRecurringTasks, quantityFor, GenerateRecurringTasksInput } from "./tasks/generate-recurring-tasks.js";
 export { findOverdueTasks, notifyOverdueTasks, OverdueInput } from "./tasks/find-overdue-tasks.js";
+// `slugify` here is not re-exported from the barrel: `clients/slug.js` already
+// exports a `slugify` of its own (different length cap and diacritics
+// handling) under the same name, so re-exporting this one too would collide.
+// It stays reachable via the direct module path for anything that needs it.
+export { createKnowledgeArticle, CreateKnowledgeArticleInput } from "./knowledge/create-article.js";
+export { updateKnowledgeArticle, UpdateKnowledgeArticleInput } from "./knowledge/update-article.js";
+export { deleteKnowledgeArticle, DeleteKnowledgeArticleInput } from "./knowledge/delete-article.js";
+export { listKnowledgeArticles } from "./knowledge/list-articles.js";
+export type { ListKnowledgeArticlesInput } from "./knowledge/list-articles.js";
+export { searchKnowledge, KNOWLEDGE_SEARCH_LIMIT } from "./knowledge/search-knowledge.js";
+export type { KnowledgeHit } from "./knowledge/search-knowledge.js";
+export { createClientUser, CreateClientUserInput } from "./client-users/create-client-user.js";
