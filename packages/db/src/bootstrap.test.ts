@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isMainThread } from "node:worker_threads";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import {
@@ -389,7 +390,9 @@ describe("loadRootEnv", () => {
     expect(existsSync(join(dirname(ROOT_ENV_FILE), "pnpm-workspace.yaml"))).toBe(true);
   });
 
-  it("reads only the repo-root file, whatever the cwd is", async () => {
+  // `process.chdir` throws inside worker threads, so under vitest's threads pool this
+  // case cannot run; the forks pool (the package default) exercises it.
+  it.skipIf(!isMainThread)("reads only the repo-root file, whatever the cwd is", async () => {
     // The failure this closes: the old ladder resolved `../../.env` against
     // the cwd, so a run from the repository root read a file *two directories
     // above the repository* and reported it as the repo root.
