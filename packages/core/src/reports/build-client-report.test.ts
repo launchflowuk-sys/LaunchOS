@@ -27,15 +27,27 @@ async function busyClient(db: Db) {
     { organisationId: org!.id, monitorId: monitor!.id, checkedAt: new Date("2026-09-05T00:00:00Z"), ok: false },
   ]);
 
+  // createdAt is explicit throughout: `tasksOpen` is "open as at the period
+  // end", so a task's creation date decides whether it belongs in this report.
   await db.insert(schema.tasks).values([
-    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "social", title: "Post 1", status: "done", completedAt: new Date("2026-08-10T00:00:00Z") },
-    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "content", title: "Post 2", status: "done", completedAt: new Date("2026-08-20T00:00:00Z") },
-    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "seo", title: "Audit", status: "todo" },
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "social", title: "Post 1", status: "done", createdAt: new Date("2026-08-02T00:00:00Z"), completedAt: new Date("2026-08-10T00:00:00Z") },
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "content", title: "Post 2", status: "done", createdAt: new Date("2026-08-03T00:00:00Z"), completedAt: new Date("2026-08-20T00:00:00Z") },
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "seo", title: "Audit", status: "todo", createdAt: new Date("2026-08-04T00:00:00Z") },
+    // Completed outside the period — not this month's work.
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "seo", title: "July job", status: "done", createdAt: new Date("2026-07-02T00:00:00Z"), completedAt: new Date("2026-07-10T00:00:00Z") },
+    // Cancelled work is neither done nor open.
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "other", title: "Dropped", status: "cancelled", createdAt: new Date("2026-08-05T00:00:00Z") },
+    // Raised after the period closed — outstanding today, but not in August's report.
+    { organisationId: org!.id, clientId: client!.id, phase: "recurring", kind: "other", title: "September job", status: "todo", createdAt: new Date("2026-09-04T00:00:00Z") },
   ]);
 
   await db.insert(schema.tickets).values([
     { organisationId: org!.id, clientId: client!.id, subject: "Opened in August", source: "portal", createdAt: new Date("2026-08-12T00:00:00Z") },
     { organisationId: org!.id, clientId: client!.id, subject: "Resolved in August", source: "portal", status: "resolved", createdAt: new Date("2026-08-13T00:00:00Z"), updatedAt: new Date("2026-08-14T00:00:00Z") },
+    // Raised and resolved outside the period — counts towards neither figure.
+    { organisationId: org!.id, clientId: client!.id, subject: "Raised in September", source: "portal", status: "resolved", createdAt: new Date("2026-09-02T00:00:00Z"), updatedAt: new Date("2026-09-03T00:00:00Z"), resolvedAt: new Date("2026-09-03T00:00:00Z") },
+    // Resolved in August but raised in July: resolved yes, opened no.
+    { organisationId: org!.id, clientId: client!.id, subject: "Raised in July", source: "portal", status: "closed", createdAt: new Date("2026-07-20T00:00:00Z"), updatedAt: new Date("2026-08-02T00:00:00Z"), resolvedAt: new Date("2026-08-01T12:00:00Z") },
   ]);
 
   await db.insert(schema.invoices).values([
@@ -68,7 +80,7 @@ describe("buildClientReport", () => {
       expect(report.stats.tasksOpen).toBe(1);
       expect(report.stats.uptimePercent).toBeCloseTo(75, 1);
       expect(report.stats.ticketsOpened).toBe(2);
-      expect(report.stats.ticketsResolved).toBe(1);
+      expect(report.stats.ticketsResolved).toBe(2);
       expect(report.stats.ads).toBeNull();
       expect(report.stats.invoices).toEqual({ issued: 2, paidPence: 12000, outstandingPence: 6000 });
       expect(report.summaryMd).toContain("## Work delivered");
@@ -141,7 +153,7 @@ describe("buildClientReport", () => {
     });
   });
 
-  it("leaves a published report untouched when rebuilt", async () => {
+  it("leaves a published report's content untouched when rebuilt", async () => {
     await withTestDb(async (db) => {
       const { orgId, clientId } = await busyClient(db);
       const draft = await buildClientReport(db, orgId, clientId, PERIOD);
@@ -149,8 +161,63 @@ describe("buildClientReport", () => {
       expect(published.status).toBe("published");
       expect(published.publishedAt).not.toBeNull();
 
+      // Change the underlying data so a rebuild that got through would be
+      // visible: asserting `status` alone proves nothing, because `status` is
+      // not in the upsert's SET list and could not change either way.
+      await db.insert(schema.tasks).values({
+        organisationId: orgId, clientId, phase: "recurring", kind: "seo", title: "Post-publish work",
+        status: "done", createdAt: new Date("2026-08-25T00:00:00Z"), completedAt: new Date("2026-08-26T00:00:00Z"),
+      });
+
       const rebuilt = await buildClientReport(db, orgId, clientId, PERIOD);
+
       expect(rebuilt.status).toBe("published");
+      expect(rebuilt.summaryMd).toBe(published.summaryMd);
+      expect(rebuilt.stats).toEqual(published.stats);
+      expect(rebuilt.updatedAt.toISOString()).toBe(published.updatedAt.toISOString());
+      expect(rebuilt.stats.tasksDone).toBe(2);
+    });
+  });
+
+  it("bounds task and ticket counts to the report period", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await busyClient(db);
+
+      const report = await buildClientReport(db, orgId, clientId, PERIOD);
+
+      // tasksDone: completed inside the period. The July job (completed
+      // 2026-07-10) is excluded even though it is `done`.
+      expect(report.stats.tasksDone).toBe(2);
+      // tasksOpen: not done/cancelled *and* raised by the period end. The
+      // cancelled task and the September task are both excluded.
+      expect(report.stats.tasksOpen).toBe(1);
+      // ticketsOpened: created inside the period only.
+      expect(report.stats.ticketsOpened).toBe(2);
+      // ticketsResolved: coalesce(resolvedAt, updatedAt) inside the period —
+      // including a ticket raised in July, excluding one resolved in September.
+      expect(report.stats.ticketsResolved).toBe(2);
+    });
+  });
+
+  it("attributes the built audit row to the caller and records what a rebuild replaced", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await busyClient(db);
+      const builtAudits = () => db.select().from(schema.auditLog).where(and(
+        eq(schema.auditLog.organisationId, orgId),
+        eq(schema.auditLog.action, "client_report.built"),
+      ));
+
+      const first = await buildClientReport(db, orgId, clientId, PERIOD, { actorKind: "user", actorId: "u1" });
+      const [insert] = await builtAudits();
+      expect(insert!.actorKind).toBe("user");
+      expect(insert!.actorId).toBe("u1");
+      expect(insert!.before).toBeNull();
+
+      await buildClientReport(db, orgId, clientId, PERIOD);
+      const rows = await builtAudits();
+      const rebuild = rows.find((r) => r.id !== insert!.id);
+      expect(rebuild!.actorKind).toBe("system");
+      expect((rebuild!.before as { id: string }).id).toBe(first.id);
     });
   });
 });
