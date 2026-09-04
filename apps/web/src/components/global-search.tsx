@@ -44,7 +44,9 @@ export function GlobalSearch() {
     { label: "Clients", rows: results.clients.map((c) => ({ id: c.id, label: c.name, hint: c.slug, href: `/clients/${c.id}` })) },
     { label: "Websites", rows: results.sites.map((s) => ({ id: s.id, label: s.name, hint: s.primaryUrl, href: `/websites/${s.id}` })) },
     { label: "Domains", rows: results.domains.map((d) => ({ id: d.id, label: d.name, hint: "", href: `/domains/${d.id}` })) },
-    { label: "Open cases", rows: results.tickets.map((t) => ({ id: t.id, label: t.subject, hint: t.status, href: "/tickets" })) },
+    // Straight to the case: search finds closed ones too, and the default
+    // /cases view hides those.
+    { label: "Open cases", rows: results.tickets.map((t) => ({ id: t.id, label: t.subject, hint: t.status, href: `/cases/${t.id}` })) },
     { label: "Tasks", rows: results.tasks.map((t) => ({ id: t.id, label: t.title, hint: t.status, href: `/tasks/${t.id}` })) },
   ].filter((g) => g.rows.length > 0);
 

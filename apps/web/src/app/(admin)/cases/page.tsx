@@ -3,13 +3,14 @@ import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray, type SQL } from "drizzle-orm";
 import Link from "next/link";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
-import { CASE_FILTER_SCHEMA, CLOSED_STATUSES, isClosed } from "./filters";
+import { ALL_STATUSES, CASE_FILTER_SCHEMA, CLOSED_STATUSES, isClosed } from "./filters";
 
 export const dynamic = "force-dynamic";
 
@@ -36,17 +37,22 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
   const severityFilter = severity.success ? severity.data : undefined;
   const assigneeFilter = assignee.success ? assignee.data : undefined;
   const clientFilter = clientId.success ? clientId.data : undefined;
+  const page = pageParam(sp.page);
 
   const conditions: SQL[] = [eq(schema.tickets.organisationId, session.organisationId)];
-  if (statusFilter) conditions.push(eq(schema.tickets.status, statusFilter));
-  // "Open Cases" is the default view, so with no explicit status the finished
-  // ones stay out of the way.
-  else conditions.push(notInArray(schema.tickets.status, [...CLOSED_STATUSES]));
+  // Three cases: one status, "all" (no condition at all, so a case closed last
+  // week is still reachable), or — the default "Open Cases" view — everything
+  // whose work is not finished.
+  if (statusFilter && statusFilter !== ALL_STATUSES) {
+    conditions.push(eq(schema.tickets.status, statusFilter));
+  } else if (!statusFilter) {
+    conditions.push(notInArray(schema.tickets.status, [...CLOSED_STATUSES]));
+  }
   if (severityFilter) conditions.push(eq(schema.tickets.severity, severityFilter));
   if (assigneeFilter) conditions.push(eq(schema.tickets.assignedUserId, assigneeFilter));
   if (clientFilter) conditions.push(eq(schema.tickets.clientId, clientFilter));
 
-  const [rows, clients, members] = await Promise.all([
+  const [found, clients, members] = await Promise.all([
     getDb()
       .select({
         id: schema.tickets.id,
@@ -63,11 +69,16 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
       .innerJoin(schema.clients, eq(schema.tickets.clientId, schema.clients.id))
       .leftJoin(schema.user, eq(schema.tickets.assignedUserId, schema.user.id))
       .where(and(...conditions))
-      .orderBy(desc(schema.tickets.createdAt)),
+      .orderBy(desc(schema.tickets.createdAt))
+      // One extra row answers "is there a next page" without a second count query.
+      .limit(PAGE_SIZE + 1)
+      .offset((page - 1) * PAGE_SIZE),
     listClients(getDb(), session.organisationId, { limit: 200 }),
     listMembers(getDb(), session.organisationId),
   ]);
 
+  const hasNext = found.length > PAGE_SIZE;
+  const rows = hasNext ? found.slice(0, PAGE_SIZE) : found;
   const now = new Date();
 
   return (
@@ -85,6 +96,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
           Status
           <select name="status" defaultValue={statusFilter ?? ""} className={`${CONTROL} min-w-40`}>
             <option value="">Open only</option>
+            <option value={ALL_STATUSES}>All statuses</option>
             {schema.ticketStatusEnum.enumValues.map((v) => (
               <option key={v} value={v}>
                 {v.replaceAll("_", " ")}
@@ -131,7 +143,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
       </form>
 
       {rows.length === 0 ? (
-        <EmptyState>No cases match this view.</EmptyState>
+        <EmptyState>{page > 1 ? "No more cases on this page." : "No cases match this view."}</EmptyState>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
           <Table>
@@ -180,6 +192,19 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
           </Table>
         </div>
       )}
+
+      {/* Only the filters that survived validation are carried across pages. */}
+      <Pager
+        basePath="/cases"
+        query={{
+          status: statusFilter,
+          severity: severityFilter,
+          assignee: assigneeFilter,
+          clientId: clientFilter,
+        }}
+        page={page}
+        hasNext={hasNext}
+      />
     </>
   );
 }

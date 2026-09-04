@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { isClosed } from "../filters";
 import {
   addCaseNote,
@@ -21,6 +22,7 @@ import {
   runTriageNow,
   setTicketStatus,
 } from "./actions";
+import { hasTriageInFlight } from "./triage-status";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +38,8 @@ const STATUSES = schema.ticketStatusEnum.enumValues;
 export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]">) {
   const session = await requireAdmin();
   const { id } = await params;
+  // A malformed id is a 404, not a 22P02 from Postgres rendered as a 500.
+  uuidOr404(id);
 
   const [ticket] = await getDb()
     .select({
@@ -62,7 +66,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
     .where(and(eq(schema.tickets.id, id), eq(schema.tickets.organisationId, session.organisationId)));
   if (!ticket) notFound();
 
-  const [messages, events, tasks, members] = await Promise.all([
+  const [messages, events, tasks, members, triageInFlight] = await Promise.all([
     ticket.conversationId
       ? getDb()
           .select({
@@ -108,6 +112,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
       )
       .orderBy(asc(schema.tasks.createdAt)),
     listMembers(getDb(), session.organisationId),
+    hasTriageInFlight(session.organisationId, ticket.id),
   ]);
 
   const breached = !!ticket.slaDueAt && ticket.slaDueAt < new Date() && !isClosed(ticket.status);
@@ -137,10 +142,11 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             <MessageThread messages={messages} />
           </section>
 
+          {/* The composer posts no conversationId: `addCaseNote` reads the
+              thread off the org-scoped ticket, so the two cannot disagree. */}
           {ticket.conversationId ? (
             <ThreadComposer
               action={addCaseNote}
-              conversationId={ticket.conversationId}
               hidden={{ ticketId: ticket.id }}
               label="Internal note"
               submitLabel="Add internal note"
@@ -173,8 +179,10 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             <TriagePanel triage={ticket.triage} />
             <ActionForm action={runTriageNow} ariaLabel="Run triage" success="Triage queued" className="mt-3">
               <input type="hidden" name="ticketId" value={ticket.id} />
-              <Button type="submit" variant="outline">
-                Run triage now
+              {/* Each press is a billed Claude run; the action refuses a second
+                  one too, so a direct POST is bounded by the same rule. */}
+              <Button type="submit" variant="outline" disabled={triageInFlight}>
+                {triageInFlight ? "Triage running…" : "Run triage now"}
               </Button>
             </ActionForm>
           </section>

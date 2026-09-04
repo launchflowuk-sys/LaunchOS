@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { ThreadComposer } from "@/components/thread-composer";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
 import { addInternalNote, sendThreadReply } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -15,6 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function ConversationPage({ params }: PageProps<"/inbox/[conversationId]">) {
   const session = await requireAdmin();
   const { conversationId } = await params;
+  // A malformed id is a 404, not a 22P02 from Postgres rendered as a 500.
+  uuidOr404(conversationId);
 
   const [conversation] = await getDb()
     .select({

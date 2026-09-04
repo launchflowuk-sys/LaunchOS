@@ -19,7 +19,11 @@ export function ThreadComposer({
   hidden,
 }: {
   action: (formData: FormData) => Promise<ActionResult>;
-  conversationId: string;
+  /**
+   * Omitted when the action derives the thread itself — the case screen posts
+   * only the ticket id, and the conversation is read off that row.
+   */
+  conversationId?: string;
   label: string;
   submitLabel: string;
   placeholder?: string;
@@ -35,7 +39,7 @@ export function ThreadComposer({
       resetOnSuccess
       className="space-y-2 rounded-lg border border-neutral-200 bg-white p-4"
     >
-      <input type="hidden" name="conversationId" value={conversationId} />
+      {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
       {Object.entries(hidden ?? {}).map(([name, value]) => (
         <input key={name} type="hidden" name={name} value={value} />
       ))}

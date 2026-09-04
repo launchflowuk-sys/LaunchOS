@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 import { sites } from "./sites.js";
@@ -52,7 +52,12 @@ export const messages = pgTable("messages", {
   attachments: jsonb("attachments").$type<StoredAttachment[]>().default([]).notNull(),
   // Null for internal notes: queued/sent/failed/received describe email only.
   status: messageStatusEnum("status"),
-});
+}, (t) => [
+  // Postgres does not index a foreign key for you. Every thread read and the
+  // Inbox list's "newest message" subquery filter on conversation_id and order
+  // by created_at, so both are one index lookup rather than a scan of messages.
+  index("messages_conversation_created").on(t.conversationId, t.createdAt),
+]);
 
 export const tickets = pgTable("tickets", {
   ...tenantColumns(),

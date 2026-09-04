@@ -2,21 +2,10 @@
 
 import { replyToConversation } from "@launchos/core";
 import { revalidatePath } from "next/cache";
-import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { installWebEnqueue } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
-
-/**
- * Every admin module declares its own `ActionResult` with this shape so the
- * modules stay independently editable (see `tasks/schemas.ts`).
- */
-export type ActionResult = { status: "ok" } | { status: "error"; message: string };
-
-const ReplyInput = z.object({
-  conversationId: z.string().uuid(),
-  body: z.string().trim().min(1).max(8000),
-});
+import { type ActionResult, ReplyInput } from "./schemas";
 
 /**
  * A staff member sending from the Inbox is a human action, so it does not go

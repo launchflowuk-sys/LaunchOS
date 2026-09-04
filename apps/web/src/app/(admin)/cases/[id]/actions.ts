@@ -8,19 +8,15 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
-
-/** Each admin module declares its own `ActionResult` with this shape. */
-export type ActionResult = { status: "ok" } | { status: "error"; message: string };
-
-const TicketId = z.string().uuid();
-const StatusInput = z.object({ ticketId: TicketId, status: z.enum(schema.ticketStatusEnum.enumValues) });
-const AssignInput = z.object({ ticketId: TicketId, assignedUserId: z.string().min(1).optional() });
-const EscalateInput = z.object({ ticketId: TicketId, reason: z.string().trim().min(1).max(1000) });
-const NoteInput = z.object({
-  ticketId: TicketId,
-  conversationId: z.string().uuid(),
-  body: z.string().trim().min(1).max(8000),
-});
+import {
+  type ActionResult,
+  AssignInput,
+  EscalateInput,
+  NoteInput,
+  StatusInput,
+  TicketId,
+} from "./schemas";
+import { hasTriageInFlight } from "./triage-status";
 
 function failed(error: unknown): ActionResult {
   return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
@@ -112,26 +108,42 @@ export async function escalateTicketAction(formData: FormData): Promise<ActionRe
  * An internal note on the case thread. A human writing here is never an
  * outbound email — `replyToConversation` writes it `internal` and emits
  * nothing, so nothing leaves LaunchOS.
+ *
+ * The thread is read off the ticket rather than taken from the form: the
+ * ticket id is the thing the operator actually chose, and two ids that can
+ * disagree would let a stale form drop a note into another client's
+ * conversation with nothing in the case history to show for it.
  */
 export async function addCaseNote(formData: FormData): Promise<ActionResult> {
   const session = await requireAdmin();
   const parsed = NoteInput.safeParse({
     ticketId: formData.get("ticketId"),
-    conversationId: formData.get("conversationId"),
     body: formData.get("body"),
   });
   if (!parsed.success) return invalid(parsed.error);
 
   try {
+    const [ticket] = await getDb()
+      .select({ conversationId: schema.tickets.conversationId })
+      .from(schema.tickets)
+      .where(
+        and(
+          eq(schema.tickets.id, parsed.data.ticketId),
+          eq(schema.tickets.organisationId, session.organisationId),
+        ),
+      );
+    if (!ticket) return { status: "error", message: "Case not found" };
+    if (!ticket.conversationId) return { status: "error", message: "This case has no conversation" };
+
     await replyToConversation(getDb(), session.organisationId, {
-      conversationId: parsed.data.conversationId,
+      conversationId: ticket.conversationId,
       body: parsed.data.body,
       actorKind: "user",
       actorId: session.userId,
       internal: true,
     });
     revalidateCase(parsed.data.ticketId);
-    revalidatePath(`/inbox/${parsed.data.conversationId}`);
+    revalidatePath(`/inbox/${ticket.conversationId}`);
     return { status: "ok" };
   } catch (error) {
     return failed(error);
@@ -164,6 +176,13 @@ export async function runTriageNow(formData: FormData): Promise<ActionResult> {
       .from(schema.tickets)
       .where(and(eq(schema.tickets.id, ticketId), eq(schema.tickets.organisationId, session.organisationId)));
     if (!ticket) return { status: "error", message: "Case not found" };
+
+    // Every press is a real, billed Claude run, and a run still in flight may
+    // yet park an approval for this case. Refuse a second one rather than pay
+    // for it twice and queue two drafts of the same reply.
+    if (await hasTriageInFlight(session.organisationId, ticketId)) {
+      return { status: "error", message: "Triage is already running for this case." };
+    }
 
     await sendJob(
       "agent.run",
