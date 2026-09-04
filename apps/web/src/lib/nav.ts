@@ -14,7 +14,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Clients", href: "/clients" },
       { label: "Websites", href: "/websites" },
       { label: "Domains", href: "/domains" },
-      { label: "Tasks", href: "/tasks", plan: 3 },
+      { label: "Tasks", href: "/tasks" },
     ],
   },
   {

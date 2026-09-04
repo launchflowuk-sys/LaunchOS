@@ -8,7 +8,8 @@ test("the shell shows the grouped nav, later plans disabled, and search finds a 
   await expect(page.getByRole("navigation").getByRole("link", { name: "Websites" })).toBeVisible();
   await expect(page.getByRole("navigation").getByRole("link", { name: "Domains" })).toBeVisible();
   await expect(page.getByRole("navigation").getByRole("link", { name: "Team" })).toBeVisible();
-  await expect(page.getByRole("navigation").getByText("Tasks")).toHaveAttribute("title", "Arrives in Plan 3");
+  await expect(page.getByRole("navigation").getByRole("link", { name: "Tasks" })).toBeVisible();
+  await expect(page.getByRole("navigation").getByText("Inbox")).toHaveAttribute("title", "Arrives in Plan 4");
 
   await page.getByRole("searchbox", { name: "Search" }).fill("Grays");
   await expect(page.getByRole("link", { name: /Grays CabLine/ }).first()).toBeVisible();

@@ -1,5 +1,5 @@
 import { schema } from "@launchos/db";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDb } from "@/lib/db";
@@ -9,12 +9,19 @@ export const dynamic = "force-dynamic";
 
 const OPEN_TICKET_STATUSES = ["open", "triaged", "in_progress", "waiting_client"] as const;
 const UNRESOLVED_INCIDENT_STATUSES = ["open", "acknowledged"] as const;
+const UNFINISHED_TASK_STATUSES = ["todo", "in_progress", "blocked", "review"] as const;
+const FINISHED_TASK_STATUSES = ["done", "cancelled"] as const;
+
+const WEEK_MS = 7 * 86_400_000;
 
 export default async function DashboardPage() {
   const session = await requireAdmin();
   const org = session.organisationId;
 
-  const [openIncidents, pendingApprovals, openTickets] = await Promise.all([
+  const now = new Date();
+  const weekEnd = new Date(now.getTime() + WEEK_MS);
+
+  const [openIncidents, pendingApprovals, openTickets, overdueTasks, dueThisWeek, onboarding] = await Promise.all([
     getDb()
       .select({ value: count() })
       .from(schema.incidents)
@@ -32,6 +39,38 @@ export default async function DashboardPage() {
       .select({ value: count() })
       .from(schema.tickets)
       .where(and(eq(schema.tickets.organisationId, org), inArray(schema.tickets.status, [...OPEN_TICKET_STATUSES]))),
+    getDb()
+      .select({ value: count() })
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.organisationId, org),
+          isNotNull(schema.tasks.dueAt),
+          lt(schema.tasks.dueAt, now),
+          notInArray(schema.tasks.status, [...FINISHED_TASK_STATUSES]),
+        ),
+      ),
+    getDb()
+      .select({ value: count() })
+      .from(schema.tasks)
+      .where(
+        and(
+          eq(schema.tasks.organisationId, org),
+          gte(schema.tasks.dueAt, now),
+          lte(schema.tasks.dueAt, weekEnd),
+          inArray(schema.tasks.status, [...UNFINISHED_TASK_STATUSES]),
+        ),
+      ),
+    getDb()
+      .select({ value: count() })
+      .from(schema.clients)
+      .where(
+        and(
+          eq(schema.clients.organisationId, org),
+          isNotNull(schema.clients.packageId),
+          isNull(schema.clients.onboardedAt),
+        ),
+      ),
   ]);
 
   const cards = [
@@ -52,6 +91,24 @@ export default async function DashboardPage() {
       value: openTickets[0]?.value ?? 0,
       href: "/tickets",
       hint: "Not resolved or closed",
+    },
+    {
+      label: "Overdue tasks",
+      value: overdueTasks[0]?.value ?? 0,
+      href: "/tasks",
+      hint: "Past their due date",
+    },
+    {
+      label: "Due this week",
+      value: dueThisWeek[0]?.value ?? 0,
+      href: "/tasks",
+      hint: "Next seven days",
+    },
+    {
+      label: "Onboarding in progress",
+      value: onboarding[0]?.value ?? 0,
+      href: "/clients",
+      hint: "Clients on a package, not handed over",
     },
   ];
 
