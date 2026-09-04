@@ -17,9 +17,16 @@ async function main() {
   const db = createDb(env.DATABASE_URL);
   const boss = await createBoss(env.DATABASE_URL);
   const integrations = createIntegrations(process.env);
-  const registry = agentRegistry(integrations);
   const llm = env.LLM === "fake" ? new FakeLlmClient([]) : new AnthropicLlmClient();
   const emailAdapter = createEmailAdapter(process.env);
+  // The Ad Performance Sentinel emails clients a portal link once a human
+  // approves the send, so the registry needs the same adapter and base URL the
+  // web app serves the portal from.
+  const registry = agentRegistry({
+    integrations,
+    email: emailAdapter,
+    portalBaseUrl: process.env.APP_URL ?? "http://localhost:3000",
+  });
 
   // One mapping for both entry points: events emitted inside the worker, and
   // events the web process sent through the domain.event queue. The routing

@@ -121,9 +121,28 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 - Approval flow: the reply parks the run as `awaiting_approval` with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which writes the `queued` message; the worker's `outbound.message` job then calls `sendQueuedMessage` through the `EmailAdapter`. Rejecting resumes with a `rejected by human: <note>` tool result and nothing is queued.
 
 ### ad-performance-sentinel
-- Trigger: `cron 0 7 * * *` Europe/London.
-- Tools: `ads.list_accounts`, `ads.get_metrics`, `tickets.create`, `ads.save_draft_report`.
-- Output: one internal ticket per flagged account and a draft report per account. Sending the report is a separate approval.
+- Trigger: `cron 0 7 * * *` Europe/London. Payload carries `now`; the tools read the run's clock through `ctx.now()`, so a test can pin the comparison windows.
+- Constructed with its own dependencies: `adPerformanceSentinel({ email, portalBaseUrl })`.
+- `maxTurns: 12`.
+- Tools (five, in the order the prompt uses them):
+
+| Tool | Risk | What it does |
+|---|---|---|
+| `ads_list_accounts` | safe | Every `active` ad account with its client, platform and currency. |
+| `ads_get_signals` | safe | `computeAccountSignals`: both 7-day windows, the ROAS and CPC deltas, `flagged` and the human-readable `reasons`. |
+| `tickets_create` | safe | One internal ticket per flagged account, `category: "ads"`. Built by `makeTicketsCreate("ad-performance-sentinel")` so `audit_log.actor_id` names this agent. |
+| `ads_save_draft_report` | safe | Writes `ad_reports` as `draft` with `agent_run_id` set to the current run. |
+| `reports_send_to_client` | **requires_approval** | `sendAdReport` through the `EmailAdapter`: emails the client the portal link and moves the report to `sent`. |
+
+- Prompt: list accounts → read signals per account → one ticket and one draft report per flagged account. It may quote only figures a tool returned, creates nothing when no account is flagged, and never sends without being asked to.
+- Output: one internal ticket per flagged account and a draft report per account. Sending is a separate approval.
+- Approval flow: `reports_send_to_client` parks the run with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which emails the client `<portalBaseUrl>/portal/reports` and sets `ad_reports.status = "sent"`. Rejecting resumes with a rejection tool result and nothing leaves the building.
+
+`tickets_create` is a factory (`makeTicketsCreate(agentKey)`) precisely so two agents can share one tool without lying about who acted; `ticketsCreate` remains the bound export the Hosting Guard-Dog uses.
+
+## Registry
+
+`agentRegistry({ integrations, email, portalBaseUrl })` returns every shipped agent keyed by `key`. It takes an object because agents keep arriving with their own dependencies; the worker builds it once at boot from the same `EmailAdapter` it uses for outbound mail and `APP_URL` for the portal link.
 
 ## Adding an agent
 
