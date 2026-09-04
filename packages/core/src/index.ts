@@ -108,7 +108,9 @@ export {
 } from "./billing/invoices.js";
 export { findOverdueInvoices, FindOverdueInvoicesInput } from "./billing/overdue.js";
 export type { OverdueOutcome } from "./billing/overdue.js";
-export { createAdAccount, listAdAccounts, CreateAdAccountInput } from "./ads/accounts.js";
+export {
+  createAdAccount, updateAdAccount, listAdAccounts, CreateAdAccountInput, UpdateAdAccountInput, CurrencyCode,
+} from "./ads/accounts.js";
 export type { AdAccountRow } from "./ads/accounts.js";
 export { ingestDailyMetrics, IngestDailyMetricsInput } from "./ads/ingest.js";
 export type { IngestResult } from "./ads/ingest.js";

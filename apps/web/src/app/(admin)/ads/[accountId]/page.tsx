@@ -3,27 +3,33 @@ import { schema } from "@launchos/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Sparkline } from "@/components/sparkline";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
-import { formatDate, formatPence } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { uuidOr404 } from "@/lib/uuid-route";
+import { editAdAccount } from "../actions";
 
 export const dynamic = "force-dynamic";
 
 const CARD = "rounded-lg border border-neutral-200 bg-white p-4";
 const HEADING = "mb-2 text-sm font-semibold text-neutral-900";
+const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
+const LABEL = "block text-xs font-medium text-neutral-500";
 const SNAPSHOT_DAYS = 30;
 
 function WindowCard({ title, window: w, currency }: { title: string; window: SignalWindow; currency: string }) {
   const stats = [
-    ["Spend", formatPence(w.spendPence, currency)],
+    ["Spend", formatMoney(w.spendPence, currency)],
     ["Clicks", w.clicks.toLocaleString("en-GB")],
     ["Conversions", w.conversions.toLocaleString("en-GB")],
     ["ROAS", w.roas.toFixed(2)],
-    ["CPC", formatPence(Math.round(w.cpcPence), currency)],
+    ["CPC", formatMoney(Math.round(w.cpcPence), currency)],
   ] as const;
 
   return (
@@ -46,7 +52,9 @@ function WindowCard({ title, window: w, currency }: { title: string; window: Sig
 
 export default async function AdAccountPage({ params }: PageProps<"/ads/[accountId]">) {
   const session = await requireAdmin();
-  const { accountId } = await params;
+  // A malformed segment (`/ads/new`, `/ads/undefined`) is a 404, not the 22P02
+  // Postgres raises when a non-UUID literal reaches a `uuid` column.
+  const accountId = uuidOr404((await params).accountId);
   const db = getDb();
 
   const [account] = await db
@@ -107,6 +115,53 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
         </Link>
       </p>
 
+      {/*
+        The platform and the external id are the account's identity — the key
+        the ingest matches on — so they are not editable; a wrong one is a new
+        account. The currency is why this form exists: before it, a mistyped
+        code could only be fixed with an UPDATE against production Postgres.
+      */}
+      <details className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-neutral-900">Edit account</summary>
+        <ActionForm
+          action={editAdAccount}
+          ariaLabel="Edit ad account"
+          success="Ad account updated"
+          className="mt-3 space-y-3"
+        >
+          <input type="hidden" name="adAccountId" value={account.id} />
+          <div className="grid gap-3 sm:grid-cols-3">
+            <label className={LABEL}>
+              Account name
+              <input name="name" required maxLength={200} defaultValue={account.name} className={FIELD} />
+            </label>
+            <label className={LABEL}>
+              Currency
+              <input
+                name="currency"
+                required
+                maxLength={3}
+                pattern="[A-Za-z]{3}"
+                title="A three-letter currency code, such as GBP"
+                defaultValue={account.currency}
+                className={FIELD}
+              />
+            </label>
+            <label className={LABEL}>
+              Status
+              <select name="status" defaultValue={account.status} className={FIELD}>
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+                <option value="disconnected">Disconnected</option>
+              </select>
+            </label>
+          </div>
+          <div className="flex justify-end">
+            <Button type="submit">Save changes</Button>
+          </div>
+        </ActionForm>
+      </details>
+
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <WindowCard title="Last 7 days" window={signals.current} currency={account.currency} />
         <WindowCard title="Previous 7 days" window={signals.previous} currency={account.currency} />
@@ -161,7 +216,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
                   <TableRow key={snapshot.id}>
                     <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(snapshot.date)}</TableCell>
                     <TableCell className="text-right tabular-nums text-neutral-900">
-                      {formatPence(snapshot.spendPence, account.currency)}
+                      {formatMoney(snapshot.spendPence, account.currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-neutral-600">
                       {snapshot.impressions.toLocaleString("en-GB")}
@@ -173,7 +228,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
                       {snapshot.conversions.toLocaleString("en-GB")}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-neutral-600">
-                      {formatPence(Math.round(snapshot.cpcPence), account.currency)}
+                      {formatMoney(Math.round(snapshot.cpcPence), account.currency)}
                     </TableCell>
                     <TableCell className="text-right tabular-nums text-neutral-900">
                       {snapshot.roas.toFixed(2)}

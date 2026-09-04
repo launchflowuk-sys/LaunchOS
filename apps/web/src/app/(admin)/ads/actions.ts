@@ -1,11 +1,12 @@
 "use server";
 
 import { createEmailAdapter } from "@launchos/channels";
-import { approveAdReport, createAdAccount, sendAdReport } from "@launchos/core";
+import { approveAdReport, createAdAccount, sendAdReport, updateAdAccount } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { requireAdmin } from "@/lib/session";
-import { type ActionResult, AddAdAccount, AdReportRef } from "./schemas";
+import { type ActionResult, AddAdAccount, AdReportRef, EditAdAccount, textField } from "./schemas";
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong";
@@ -19,7 +20,7 @@ export async function addAdAccount(formData: FormData): Promise<ActionResult> {
     platform: formData.get("platform"),
     externalId: formData.get("externalId"),
     name: formData.get("name"),
-    currency: (formData.get("currency") as string | null)?.toUpperCase() || "GBP",
+    currency: textField(formData.get("currency"), "GBP") || "GBP",
   });
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid ad account" };
 
@@ -31,6 +32,35 @@ export async function addAdAccount(formData: FormData): Promise<ActionResult> {
     });
     revalidatePath("/ads");
     revalidatePath(`/clients/${parsed.data.clientId}`);
+    return { status: "ok", id: account.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+/**
+ * Corrects an account already connected. The point of it is the currency: a bad
+ * code used to need an `UPDATE` against production Postgres, because there was
+ * no edit form anywhere in the portal. Core audits the change.
+ */
+export async function editAdAccount(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = EditAdAccount.safeParse({
+    adAccountId: formData.get("adAccountId"),
+    name: formData.get("name"),
+    currency: textField(formData.get("currency"), "GBP") || "GBP",
+    status: formData.get("status"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid ad account" };
+
+  try {
+    const account = await updateAdAccount(getDb(), session.organisationId, {
+      ...parsed.data,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath("/ads");
+    revalidatePath(`/ads/${account.id}`);
     return { status: "ok", id: account.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };
@@ -76,10 +106,16 @@ export async function sendAdReportAction(formData: FormData): Promise<ActionResu
       session.organisationId,
       { adReportId: parsed.data.adReportId, actorId: session.userId, actorKind: "user" },
       createEmailAdapter(process.env),
-      process.env.APP_URL ?? "http://localhost:3000",
+      env.APP_URL,
     );
     revalidatePath("/ads/reports");
     revalidatePath(`/ads/${report.adAccountId}`);
+    // A doubled click or an approval-resume race lands here having sent
+    // nothing. Saying "Report sent" would report an email that did not go on
+    // this click; core's own idempotency is what makes that safe, not silent.
+    if ("alreadySent" in report && report.alreadySent) {
+      return { status: "error", message: "That report had already been sent — no second email went out." };
+    }
     return { status: "ok", id: report.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };

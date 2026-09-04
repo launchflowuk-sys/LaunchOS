@@ -8,7 +8,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
-import { formatPence } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { addAdAccount } from "./actions";
@@ -18,8 +18,25 @@ export const dynamic = "force-dynamic";
 const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
 const LABEL = "block text-xs font-medium text-neutral-500";
 
-/** A percentage change, signed, coloured red only once it is past the signal threshold. */
-function Delta({ percent, threshold, direction }: { percent: number; threshold: number; direction: "drop" | "rise" }) {
+/**
+ * A percentage change, signed, coloured red only once it is past the signal
+ * threshold — or an em dash when there is no window to compare against.
+ *
+ * `deltaPercent` returns 0 with no previous window, which is the right call for
+ * the flagging logic (core deliberately does not flag an account with no prior
+ * week). Printing that 0 as "+0.0%" says "nothing changed" about an account
+ * that has nothing to change from, and hides a real week-one collapse.
+ */
+function Delta({
+  percent, threshold, direction, hasBaseline,
+}: { percent: number; threshold: number; direction: "drop" | "rise"; hasBaseline: boolean }) {
+  if (!hasBaseline) {
+    return (
+      <span className="text-neutral-400" title="No previous week to compare against">
+        —
+      </span>
+    );
+  }
   const bad = direction === "drop" ? percent < -threshold : percent > threshold;
   return (
     <span className={cn("tabular-nums", bad ? "text-red-600" : "text-neutral-600")}>
@@ -29,12 +46,18 @@ function Delta({ percent, threshold, direction }: { percent: number; threshold: 
   );
 }
 
+/** The most accounts one screen will render; past this, the list is paginated work. */
+const MAX_ACCOUNTS = 100;
+
 export default async function AdsPage() {
   const session = await requireAdmin();
   const db = getDb();
 
+  // Each account costs three queries in computeAccountSignals, all fired at
+  // once against a pool of ten, on a force-dynamic page. Bounded so the page
+  // degrades into "the first hundred by client" rather than into a timeout.
   const [accounts, clients] = await Promise.all([
-    listAdAccounts(db, session.organisationId),
+    listAdAccounts(db, session.organisationId, { limit: MAX_ACCOUNTS }),
     listClients(db, session.organisationId, { status: "active" }),
   ]);
 
@@ -98,7 +121,14 @@ export default async function AdsPage() {
               </label>
               <label className={LABEL}>
                 Currency
-                <input name="currency" maxLength={3} defaultValue="GBP" className={FIELD} />
+                <input
+                  name="currency"
+                  maxLength={3}
+                  pattern="[A-Za-z]{3}"
+                  title="A three-letter currency code, such as GBP"
+                  defaultValue="GBP"
+                  className={FIELD}
+                />
               </label>
             </div>
             <div className="flex justify-end">
@@ -145,20 +175,32 @@ export default async function AdsPage() {
                     <StatusBadge value={account.status} />
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(signals.current.spendPence, account.currency)}
+                    {formatMoney(signals.current.spendPence, account.currency)}
                   </TableCell>
                   <TableCell className="text-right tabular-nums text-neutral-900">
-                    {signals.current.roas.toFixed(2)}
+                    {signals.current.days === 0 ? (
+                      <span className="text-neutral-400" title="No metrics collected for this week yet">
+                        —
+                      </span>
+                    ) : (
+                      signals.current.roas.toFixed(2)
+                    )}
                   </TableCell>
                   <TableCell className="text-right">
                     <Delta
                       percent={signals.roasDeltaPercent}
                       threshold={ROAS_DROP_THRESHOLD_PERCENT}
                       direction="drop"
+                      hasBaseline={signals.previous.days > 0}
                     />
                   </TableCell>
                   <TableCell className="text-right">
-                    <Delta percent={signals.cpcDeltaPercent} threshold={CPC_RISE_THRESHOLD_PERCENT} direction="rise" />
+                    <Delta
+                      percent={signals.cpcDeltaPercent}
+                      threshold={CPC_RISE_THRESHOLD_PERCENT}
+                      direction="rise"
+                      hasBaseline={signals.previous.days > 0}
+                    />
                   </TableCell>
                   <TableCell>
                     <StatusBadge
