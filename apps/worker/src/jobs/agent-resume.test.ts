@@ -44,6 +44,23 @@ describe("handleAgentResume", () => {
     });
   });
 
+  it("is a no-op when the run has already finished, so a pg-boss retry does not fail for ever", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await parked(db);
+      await db.update(schema.agentRuns).set({ status: "completed" }).where(eq(schema.agentRuns.id, run.runId));
+
+      // No scripted LLM response: reaching the kernel at all would throw.
+      const result = await handleAgentResume(
+        { db, registry: { "test-agent": agent }, llm: new FakeLlmClient([]), policy: "safe", logger: console },
+        { organisationId, runId: run.runId, approvalId: approval.id, decision: "approved" },
+      );
+
+      expect(result).toBeUndefined();
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("completed");
+    });
+  });
+
   it("resumes even when the agent has since been disabled, because a human already decided", async () => {
     await withTestDb(async (db) => {
       const { organisationId, run, approval } = await parked(db);

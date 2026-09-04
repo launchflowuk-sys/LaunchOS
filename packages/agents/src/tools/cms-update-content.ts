@@ -15,6 +15,41 @@ export function cmsUpdateContent(cms: CmsProvider) {
       contentMd: z.string().min(1).max(20000),
     }),
     risk: "requires_approval",
+    // The site and client come from our rows; the replacement content is the
+    // thing being released, so the approver reads it in full before deciding.
+    describeApproval: async (input, ctx) => {
+      const [site] = await ctx.db
+        .select({
+          name: schema.sites.name,
+          primaryUrl: schema.sites.primaryUrl,
+          platform: schema.sites.platform,
+          clientName: schema.clients.name,
+        })
+        .from(schema.sites)
+        .innerJoin(schema.clients, eq(schema.sites.clientId, schema.clients.id))
+        .where(and(eq(schema.sites.id, input.siteId), eq(schema.sites.organisationId, ctx.organisationId)));
+      if (!site) {
+        return {
+          title: "Change content on a site that does not exist",
+          summary: `No site ${input.siteId} exists in this organisation. Approving it will fail.`,
+          details: { path: input.path, newContentMd: input.contentMd },
+        };
+      }
+      return {
+        title: `Replace the content at ${input.path} on ${site.name}`,
+        summary:
+          `Approving overwrites the page at ${site.primaryUrl}${input.path} on ${site.name} ` +
+          `(${site.clientName}, ${site.platform}) with the ${input.contentMd.length}-character draft below. ` +
+          `It replaces the whole page and goes live immediately.`,
+        details: {
+          client: site.clientName,
+          site: site.name,
+          page: `${site.primaryUrl}${input.path}`,
+          platform: site.platform,
+          newContentMd: input.contentMd,
+        },
+      };
+    },
     execute: async (input, ctx) => {
       // The site ref is read from our own records, never from the model, so an
       // approved change can only ever touch a site we manage.

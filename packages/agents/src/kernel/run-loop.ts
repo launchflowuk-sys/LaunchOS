@@ -5,7 +5,15 @@ import type { LlmClient } from "./llm.js";
 import { decide } from "./policy-gate.js";
 import type { RunRecorder } from "./run-recorder.js";
 import { findTool, toClaudeTools } from "./tool-registry.js";
-import type { AgentContext, AgentDefinition, AgentPolicy, AgentRunResult, Logger, ToolDefinition } from "./types.js";
+import type {
+  AgentContext,
+  AgentDefinition,
+  AgentPolicy,
+  AgentRunResult,
+  ApprovalDescription,
+  Logger,
+  ToolDefinition,
+} from "./types.js";
 
 export type ToolResultBlock = Anthropic.Beta.BetaToolResultBlockParam;
 
@@ -18,8 +26,24 @@ export interface ToolUseOutcome {
   remainingToolUseIds?: string[];
 }
 
-export function buildContext(db: Db, organisationId: string, runId: string, logger: Logger, now?: () => Date): AgentContext {
-  return { organisationId, runId, db, logger, now: now ?? (() => new Date()) };
+export function buildContext(
+  db: Db,
+  organisationId: string,
+  runId: string,
+  logger: Logger,
+  now?: () => Date,
+  approvedByUserId?: string,
+): AgentContext {
+  return {
+    organisationId,
+    runId,
+    db,
+    logger,
+    now: now ?? (() => new Date()),
+    // `exactOptionalPropertyTypes`: an explicit undefined is not the same as an
+    // absent key, and "nobody approved this" must read as absent.
+    ...(approvedByUserId !== undefined && { approvedByUserId }),
+  };
 }
 
 /**
@@ -133,6 +157,31 @@ async function handleToolUses(
   return { parked: false, summary: "", results };
 }
 
+/**
+ * A human cannot release what they cannot see. `describeApproval` reads our own
+ * rows and turns a bare `{ adReportId }` into "Send the 1–7 September ads report
+ * to Grays CabLine", plus the text that will actually leave the building. It is
+ * best-effort: a description that throws must not stop the run parking, or a
+ * lookup failure would turn an approval gate into an unrecorded silence.
+ */
+async function describeForApproval(
+  tool: ToolDefinition,
+  input: unknown,
+  ctx: AgentContext,
+): Promise<ApprovalDescription | undefined> {
+  if (!tool.describeApproval) return undefined;
+  try {
+    return await tool.describeApproval(input, ctx);
+  } catch (err) {
+    ctx.logger.warn("approval description failed", {
+      tool: tool.name,
+      runId: ctx.runId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return undefined;
+  }
+}
+
 async function parkForApproval(
   def: AgentDefinition,
   tool: ToolDefinition,
@@ -141,13 +190,20 @@ async function parkForApproval(
   ctx: AgentContext,
   recorder: RunRecorder,
 ): Promise<void> {
-  const step = await recorder.step("approval_requested", { toolName: tool.name, input });
+  const description = await describeForApproval(tool, input, ctx);
+  const step = await recorder.step("approval_requested", { toolName: tool.name, input, output: description ?? {} });
   await ctx.db.insert(schema.approvals).values({
     organisationId: ctx.organisationId,
     runId: ctx.runId,
     stepId: step.id,
     kind: "tool_call",
-    title: `${def.name} wants to run ${tool.name}`,
-    payload: { toolName: tool.name, input, toolUseId, awaitingToolUseId: toolUseId },
+    title: description?.title ?? `${def.name} wants to run ${tool.name}`,
+    payload: {
+      toolName: tool.name,
+      input,
+      toolUseId,
+      awaitingToolUseId: toolUseId,
+      ...(description && { description }),
+    },
   });
 }

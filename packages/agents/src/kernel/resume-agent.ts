@@ -1,4 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
+import { notifyOwner } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, isNull } from "drizzle-orm";
@@ -193,32 +194,68 @@ async function resumeMessages(
 }
 
 /**
+ * Finishes a run that is `running` — one this resume claimed, or one a killed
+ * earlier attempt left behind — as `failed`, and tells the owner. The status
+ * predicate is the whole point: a run still sitting in `awaiting_approval` is
+ * legitimately parked for some *other* approval, and a stale or mismatched
+ * approval must never be able to destroy it. Returns whether it claimed.
+ */
+async function failStrandedRun(opts: ResumeAgentOptions, error: string): Promise<boolean> {
+  const [failed] = await opts.db
+    .update(schema.agentRuns)
+    .set({ status: "failed", summary: "Resume failed", error, finishedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(schema.agentRuns.id, opts.runId),
+        eq(schema.agentRuns.organisationId, opts.organisationId),
+        eq(schema.agentRuns.status, "running"),
+        isNull(schema.agentRuns.deletedAt),
+      ),
+    )
+    .returning({ agentKey: schema.agentRuns.agentKey });
+  if (!failed) return false;
+  // An approved outward action just vanished. Nothing else surfaces that, so
+  // the person who approved it hears about it here.
+  await notifyOwner(opts.db, opts.organisationId, {
+    kind: "agent.resume_failed",
+    title: `${failed.agentKey} could not finish an approved action`,
+    body: error,
+    link: `/agents/runs/${opts.runId}`,
+  }).catch((err) => opts.logger.error("resume failure notification failed", { runId: opts.runId, err: String(err) }));
+  return true;
+}
+
+/**
  * Continues a run parked by the policy gate. The human already decided, so the
  * awaiting tool executes without consulting the gate again; every later turn
  * goes through the gate as normal.
+ *
+ * Everything from `loadParked` onwards sits in one try/catch, because the run
+ * flips to `running` in the middle of it: a throw past that point (a lost claim
+ * after a killed retry, a database error mid-decision) would otherwise leave the
+ * run `running` for ever, with an approved send neither done nor visible. A
+ * claimed run is finished `failed` and the owner is told; an unclaimed one — a
+ * spent approval, a mismatched tool_use, another organisation's run — is still
+ * thrown to the caller with the run left exactly as it was.
  */
 export async function resumeAgent(def: AgentDefinition, opts: ResumeAgentOptions): Promise<AgentRunResult> {
-  const { pending, approval } = await loadParked(opts);
-  // Resolve the tool before reopening: an unregistered tool must leave the run
-  // parked and resumable, not stranded in `running` with nobody driving it.
-  const tool = findTool(def.tools, approval.toolName);
-  if (opts.decision === "approved" && !tool) {
-    throw new Error(`approved tool ${approval.toolName} is not registered on agent ${def.key}`);
-  }
-
-  // reopen() atomically claims the run; past this point the run is `running`, so
-  // every failure path must land it somewhere terminal rather than leave it stuck.
-  const recorder = await RunRecorder.reopen(opts.db, opts.organisationId, opts.runId);
-  const ctx = buildContext(opts.db, opts.organisationId, opts.runId, opts.logger, opts.now);
-
-  let messages: Anthropic.Beta.BetaMessageParam[];
   try {
-    messages = await resumeMessages(def, opts, pending, approval, tool, ctx, recorder);
+    const { pending, approval } = await loadParked(opts);
+    // Resolve the tool before reopening: an unregistered tool must leave the run
+    // parked and resumable, not stranded in `running` with nobody driving it.
+    const tool = findTool(def.tools, approval.toolName);
+    if (opts.decision === "approved" && !tool) {
+      throw new Error(`approved tool ${approval.toolName} is not registered on agent ${def.key}`);
+    }
+
+    const recorder = await RunRecorder.reopen(opts.db, opts.organisationId, opts.runId);
+    const ctx = buildContext(opts.db, opts.organisationId, opts.runId, opts.logger, opts.now, opts.decidedByUserId);
+    const messages = await resumeMessages(def, opts, pending, approval, tool, ctx, recorder);
+    return runLoop(def, ctx, recorder, opts.llm, opts.policy, messages);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     opts.logger.error("agent resume failed", { runId: opts.runId, err: message });
-    await recorder.finish("failed", "Resume failed", message);
+    if (!(await failStrandedRun(opts, message))) throw err;
     return { runId: opts.runId, status: "failed", summary: message };
   }
-  return runLoop(def, ctx, recorder, opts.llm, opts.policy, messages);
 }

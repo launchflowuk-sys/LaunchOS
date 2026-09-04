@@ -1,5 +1,5 @@
 import type { EmailAdapter } from "@launchos/channels";
-import { CPC_RISE_THRESHOLD_PERCENT, ROAS_DROP_THRESHOLD_PERCENT } from "@launchos/core";
+import { CPC_RISE_THRESHOLD_PERCENT, ROAS_DROP_THRESHOLD_PERCENT, SIGNAL_WINDOW_DAYS } from "@launchos/core";
 import type { AgentDefinition } from "../../kernel/types.js";
 import { adsGetSignals } from "../../tools/ads-get-signals.js";
 import { adsListAccounts } from "../../tools/ads-list-accounts.js";
@@ -9,13 +9,21 @@ import { makeTicketsCreate } from "../../tools/tickets-create.js";
 
 export const AD_SENTINEL_KEY = "ad-performance-sentinel";
 
-/** The thresholds come from `computeAccountSignals` itself so the prompt can never quote a stale number. */
+/**
+ * How far ROAS must fall before a flagged account is worth waking someone for.
+ * Unlike the flagging thresholds this is the Sentinel's own editorial line, not
+ * a system rule `computeAccountSignals` enforces — it lives here so the prompt
+ * cannot drift from it and a future reader can see it is a judgement call.
+ */
+export const SEVERITY_HIGH_ROAS_DROP_PERCENT = 40;
+
+/** Every threshold is interpolated so the prompt can never quote a stale number. */
 export const AD_SENTINEL_PROMPT = `You are the Ad Performance Sentinel for a UK web agency that manages Google and Meta advertising for local-service clients. You run once a day.
 
 Your job, in order:
 1. Call ads_list_accounts to get every active ad account.
-2. For each account, call ads_get_signals. It compares the last 7 days with the 7 before them and tells you whether the account is flagged (ROAS down more than ${ROAS_DROP_THRESHOLD_PERCENT} percent, or CPC up more than ${CPC_RISE_THRESHOLD_PERCENT} percent).
-3. For every flagged account, call tickets_create once: category "ads", severity "high" when ROAS fell more than 40 percent otherwise "medium", subject naming the account and the headline change, body a short Markdown diagnosis quoting the exact figures the tool returned.
+2. For each account, call ads_get_signals. It compares the last ${SIGNAL_WINDOW_DAYS} days with the ${SIGNAL_WINDOW_DAYS} before them and tells you whether the account is flagged (ROAS down more than ${ROAS_DROP_THRESHOLD_PERCENT} percent, or CPC up more than ${CPC_RISE_THRESHOLD_PERCENT} percent).
+3. For every flagged account, call tickets_create once: category "ads", severity "high" when ROAS fell more than ${SEVERITY_HIGH_ROAS_DROP_PERCENT} percent otherwise "medium", subject naming the account and the headline change, body a short Markdown diagnosis quoting the exact figures the tool returned.
 4. For every flagged account, call ads_save_draft_report once with a client-facing summary: what changed, by how much, the likely reason in plain English, and what you recommend. Use the account's own period dates from the signals.
 5. Do not call reports_send_to_client unless the payload explicitly asks you to send a specific report. Sending is a human decision. Its adReportId must be one a tool gave you — the adReportId returned by ads_save_draft_report in this run, or one named in the payload. Never guess or construct an id, and send a report at most once.
 

@@ -196,6 +196,93 @@ describe("resumeAgent", () => {
     });
   });
 
+  it("ends the run failed when a resume throws, rather than leaving it running", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      const exploding: AgentDefinition = {
+        ...agent,
+        tools: [
+          ping,
+          defineTool({
+            name: "send_mail",
+            description: "send",
+            input: z.object({ to: z.string() }),
+            risk: "requires_approval",
+            execute: async () => {
+              throw new Error("smtp exploded");
+            },
+          }),
+        ],
+      };
+
+      // The tool's failure goes back to the model, and the model call is the
+      // next thing to fail. Whatever breaks, the run must land somewhere
+      // terminal: a run left `running` is one nothing ever picks up again.
+      const resumed = await resumeAgent(exploding, {
+        db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+        llm: new FakeLlmClient([]), policy: "safe", logger: console,
+      });
+
+      expect(resumed.status).toBe("failed");
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("failed");
+      expect(row!.error).toBeTruthy();
+      expect(row!.finishedAt).toBeInstanceOf(Date);
+    });
+  });
+
+  it("fails a run stranded in running by a killed resume, and tells the owner", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      // An earlier delivery claimed the run and was killed before it finished.
+      await db.update(schema.agentRuns).set({ status: "running" }).where(eq(schema.agentRuns.id, run.runId));
+      const [user] = await db.insert(schema.user)
+        .values({ id: `u-${crypto.randomUUID()}`, name: "Shoji", email: `${crypto.randomUUID()}@t.test` })
+        .returning();
+      await db.insert(schema.organisationMembers)
+        .values({ organisationId, userId: user!.id, role: "owner", status: "active" });
+
+      const resumed = await resumeAgent(agent, {
+        db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+        llm: new FakeLlmClient([]), policy: "safe", logger: console,
+      });
+
+      // Terminal and visible, rather than retried for ever against a lost claim.
+      expect(resumed.status).toBe("failed");
+      expect(sendMailCalls).toEqual([]);
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("failed");
+      expect(row!.error).toMatch(/is running, expected awaiting_approval/);
+      expect(row!.finishedAt).toBeInstanceOf(Date);
+
+      const notifications = await db.select().from(schema.notifications)
+        .where(eq(schema.notifications.userId, user!.id));
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]!.kind).toBe("agent.resume_failed");
+      expect(notifications[0]!.link).toBe(`/agents/runs/${run.runId}`);
+    });
+  });
+
+  it("leaves a parked run parked when a spent approval is replayed", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, run, approval } = await park(db);
+      await db.update(schema.approvals).set({ status: "approved" }).where(eq(schema.approvals.id, approval.id));
+
+      // The run is still `awaiting_approval` for this tool_use, so the stale
+      // approval must throw and change nothing — never fail the live run.
+      await expect(
+        resumeAgent(agent, {
+          db, organisationId, runId: run.runId, approvalId: approval.id, decision: "approved",
+          llm: new FakeLlmClient([]), policy: "safe", logger: console,
+        }),
+      ).rejects.toThrow(/is approved, expected pending/);
+
+      const [row] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.id, run.runId));
+      expect(row!.status).toBe("awaiting_approval");
+      expect(row!.error).toBeNull();
+    });
+  });
+
   it("refuses an approval bound to a different tool_use id", async () => {
     await withTestDb(async (db) => {
       const { organisationId, run, approval } = await park(db);

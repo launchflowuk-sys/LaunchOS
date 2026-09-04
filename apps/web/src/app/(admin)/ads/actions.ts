@@ -39,9 +39,12 @@ export async function addAdAccount(formData: FormData): Promise<ActionResult> {
 
 /**
  * The human gate on an outward-facing send. A report is drafted by the Ad
- * Performance Sentinel as `draft`; only a person moves it to `approved`, and
- * `sendAdReport` refuses anything that is not approved at the instant it claims
- * the row. Approving is deliberately not the send.
+ * Performance Sentinel as `draft` and reaches `approved` only by a human
+ * decision — either here, where a person reads it on /ads/reports and clicks
+ * Approve, or on /approvals, where a person releases the Sentinel's
+ * `reports_send_to_client` call after reading the same summary on the approval
+ * card. `sendAdReport` refuses anything that is not approved at the instant it
+ * claims the row. Approving here is deliberately not the send.
  */
 export async function approveAdReportAction(formData: FormData): Promise<ActionResult> {
   const session = await requireAdmin();

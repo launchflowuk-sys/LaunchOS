@@ -10,7 +10,12 @@ export * from "./agents/integrations.js";
 export * from "./agents/index.js";
 export { hostingGuardDog, HOSTING_GUARD_DOG_PROMPT } from "./agents/hosting-guard-dog/index.js";
 export { supportTriage, SUPPORT_TRIAGE_PROMPT } from "./agents/support-triage/index.js";
-export { adPerformanceSentinel, AD_SENTINEL_KEY, AD_SENTINEL_PROMPT } from "./agents/ad-performance-sentinel/index.js";
+export {
+  adPerformanceSentinel,
+  AD_SENTINEL_KEY,
+  AD_SENTINEL_PROMPT,
+  SEVERITY_HIGH_ROAS_DROP_PERCENT,
+} from "./agents/ad-performance-sentinel/index.js";
 export { uptimeCheckSite } from "./tools/uptime-check-site.js";
 export { hostingGetResources } from "./tools/hosting-get-resources.js";
 export { incidentsUpdate } from "./tools/incidents-update.js";

@@ -7,12 +7,21 @@ The agent framework is a small kernel in `packages/agents/src/kernel` that any n
 ```ts
 export type ToolRisk = "safe" | "requires_approval";
 
+export interface ApprovalDescription {
+  title: string;                            // replaces the approval's title
+  summary: string;                          // what will actually happen, in one or two sentences
+  details?: Record<string, unknown>;        // labelled facts, including the exact text being sent
+}
+
 export interface ToolDefinition<TInput extends z.ZodTypeAny = z.ZodTypeAny, TOutput = unknown> {
   name: string;                 // "uptime.check_site"
   description: string;          // shown to the model
   input: TInput;                // Zod schema, converted to strict JSON Schema
   risk: ToolRisk;
   execute: (input: z.infer<TInput>, ctx: AgentContext) => Promise<TOutput>;
+  // Optional, and only meaningful on a requires_approval tool. See "Describing
+  // an approval" below.
+  describeApproval?: (input: z.infer<TInput>, ctx: AgentContext) => Promise<ApprovalDescription>;
 }
 
 export type AgentTrigger =
@@ -37,6 +46,7 @@ export interface AgentContext {
   db: Db;
   logger: Logger;
   now: () => Date;
+  approvedByUserId?: string;    // resume path only: the human who released this tool call
 }
 
 export interface AgentRunResult {
@@ -58,10 +68,30 @@ export interface AgentRunResult {
    - Validate input with the tool's Zod schema. Invalid input becomes a `tool_result` with `is_error: true`.
    - Ask `PolicyGate.decide(tool, policy)`.
    - `execute`: run the tool, record `tool_call` and `tool_result` steps, collect the result block.
-   - `queue_approval`: insert `approvals` with the tool name and input, record an `approval_requested` step, park the run as `awaiting_approval`, and stop the loop. The pending assistant message and tool_use id are stored in `agent_runs.metadata.pending` so the run can resume.
+   - `queue_approval`: call the tool's `describeApproval` if it has one, insert `approvals` with the tool name, the input and that description, record an `approval_requested` step, park the run as `awaiting_approval`, and stop the loop. The pending assistant message and tool_use id are stored in `agent_runs.metadata.pending` so the run can resume.
 8. Append all tool results as one user message and loop until `maxTurns`.
 
-Resume (`agent.resume` job): loads the parked run, executes the approved tool (or substitutes a rejection tool_result), and continues the loop from step 3.
+Resume (`agent.resume` job): loads the parked run, executes the approved tool (or substitutes a rejection tool_result), and continues the loop from step 3. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent.
+
+## Describing an approval
+
+A bare `{ "adReportId": "6f2c…" }` on the approvals screen is not a decision a human can make. A `requires_approval` tool may therefore implement `describeApproval`, which the kernel calls while parking the run; the result sets `approvals.title` and `approvals.payload.description`, and `/approvals` renders the summary and every detail above the raw payload.
+
+Two rules:
+
+- **Facts come from our rows.** `describeApproval` reads the database — the client, the recipient address, the zone, the period, the current status. It never restates the model's claims as fact. What it does copy from the tool input is the *text being released* (the drafted reply, the DNS value, the replacement page), because that is exactly what the approver has to read.
+- **It is best effort.** A description that throws is logged and dropped; the run still parks with the default title. A lookup failure must never turn an approval gate into silence.
+
+`reports_send_to_client`, `messages_reply_to_client`, `dns_update_record` and `cms_update_content` all implement it.
+
+## When a resume fails
+
+`resumeAgent` flips the run to `running` before the approved tool executes, so from that point every failure has to land somewhere terminal. Everything from loading the parked run onwards sits in one try/catch:
+
+- If the run was claimed (it is `running`), it is finished `failed` with the error, and `notifyOwner` tells the owner an approved action did not complete, linking the run.
+- If it was not claimed — a spent approval, an approval bound to a different `tool_use`, another organisation's run — the error is thrown to the caller and the parked run is left exactly as it was. A stale approval must never be able to kill a run that is legitimately waiting for a different decision.
+
+The worker's `agent.resume` handler treats a run that is already `completed` or `failed` as an idempotent no-op with a log line, so a pg-boss retry after a partial failure does not fail identically five times over. A run left `running` by a killed delivery is deliberately *not* skipped: it is the one case the kernel still has to close out.
 
 ## LLM client (`llm.ts`)
 
@@ -86,7 +116,7 @@ Per-organisation overrides live in `agent_enablement.config.policy`.
 
 ## Recording
 
-Every run produces a readable trace in the admin portal under Agent Runs: prompt, each tool call with input and output, approvals raised, token usage, and the summary. `audit_log` receives a row for every business record the agent changes, with `actor_kind = "agent"` and `actor_id = agentKey`.
+Every run produces a readable trace in the admin portal under Agent Runs: prompt, each tool call with input and output, approvals raised, token usage, and the summary. `audit_log` receives a row for every business record the agent changes, with `actor_kind = "agent"` and `actor_id = agentKey` — except where a human released the tool call and the tool passes `ctx.approvedByUserId` through, in which case the row names them (`actor_kind = "user"`). The decision was theirs; the trail should say so.
 
 ## The three agents
 
@@ -118,7 +148,7 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
   - **Escalation ends the run.** Escalating stops the agent; it does not also draft a reply, so a case that needs Shoji does not arrive with an answer already half-sent.
   - **One channel to the client.** The closing sentence is an internal note for the run trace. Everything a client reads goes through `messages_reply_to_client`, which is approval-gated; nothing else the agent emits is client-visible. A payload with a null `conversationId` has no thread to reply on, and the agent says so instead of inventing an id.
 - Output: `tickets.category`, `tickets.severity` and `tickets.triage` set; either a drafted reply (plus any fix) parked as an approval, or an escalation with a reason and an owner notification.
-- Approval flow: the reply parks the run as `awaiting_approval` with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which writes the `queued` message; the worker's `outbound.message` job then calls `sendQueuedMessage` through the `EmailAdapter`. Rejecting resumes with a `rejected by human: <note>` tool result and nothing is queued.
+- Approval flow: the reply parks the run as `awaiting_approval` with an `approvals` row carrying `{ toolName, input, toolUseId, description }` — the description names the client, the thread subject and the drafted body. Approving resumes the run, which writes the `queued` message; the worker's `outbound.message` job then calls `sendQueuedMessage` through the `EmailAdapter`. Rejecting resumes with a `rejected by human: <note>` tool result and nothing is queued.
 
 ### ad-performance-sentinel
 - Trigger: `cron 0 7 * * *` Europe/London. Payload carries `now`; the tools read the run's clock through `ctx.now()`, so a test can pin the comparison windows.
@@ -132,11 +162,12 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 | `ads_get_signals` | safe | `computeAccountSignals`: both 7-day windows, the ROAS and CPC deltas, `flagged` and the human-readable `reasons`. |
 | `tickets_create` | safe | One internal ticket per flagged account, `category: "ads"`. Built by `makeTicketsCreate("ad-performance-sentinel")` so `audit_log.actor_id` names this agent. |
 | `ads_save_draft_report` | safe | Writes `ad_reports` as `draft` with `agent_run_id` set to the current run. |
-| `reports_send_to_client` | **requires_approval** | `sendAdReport` through the `EmailAdapter`: emails the client the portal link and moves the report to `sent`. |
+| `reports_send_to_client` | **requires_approval** | Moves the report to `approved` if it is still a `draft`, then `sendAdReport` through the `EmailAdapter`: emails the client the portal link and moves the report to `sent`. |
 
 - Prompt: list accounts → read signals per account → one ticket and one draft report per flagged account. It may quote only figures a tool returned, creates nothing when no account is flagged, and never sends without being asked to.
 - Output: one internal ticket per flagged account and a draft report per account. Sending is a separate approval.
-- Approval flow: `reports_send_to_client` parks the run with an `approvals` row carrying `{ toolName, input, toolUseId }`. Approving resumes the run, which emails the client `<portalBaseUrl>/portal/reports` and sets `ad_reports.status = "sent"`. Rejecting resumes with a rejection tool result and nothing leaves the building.
+- Approval flow: `reports_send_to_client` parks the run with an `approvals` row carrying `{ toolName, input, toolUseId, description }`. The description is the point: the card names the client, the recipient address, the reporting period and the whole `summaryMd`, all read from `ad_reports`, `ad_accounts` and `clients`, so the approver reads the report before releasing it. Approving resumes the run, which stamps the draft `approved` **attributed to the approver** (`ctx.approvedByUserId`, `actorKind: "user"`), emails the client `<portalBaseUrl>/portal/reports` and sets `ad_reports.status = "sent"`. Rejecting resumes with a rejection tool result and nothing leaves the building.
+- So a report reaches `approved` by exactly two routes, both of them a person: Approve on `/ads/reports` after reading the draft, or Approve on `/approvals` after reading the same summary on the card. The agent never approves its own report — it acts on a decision, and the audit rows name whoever made it. A report a person already approved by hand is not re-approved, so the audit log carries no second, no-op `ad_report.approved` row.
 
 `tickets_create` is a factory (`makeTicketsCreate(agentKey)`) precisely so two agents can share one tool without lying about who acted; `ticketsCreate` remains the bound export the Hosting Guard-Dog uses.
 
