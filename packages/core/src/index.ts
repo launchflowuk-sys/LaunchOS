@@ -33,3 +33,15 @@ export {
   CreateContactInput, UpdateContactInput, DeleteContactInput,
 } from "./clients/contacts.js";
 export { upsertBillingProfile, getBillingProfile, UpsertBillingProfileInput } from "./billing/upsert-billing-profile.js";
+export { updateSite, UpdateSiteInput } from "./sites/update-site.js";
+export { listSites, getSite, ListSitesInput } from "./sites/list-sites.js";
+export type { SiteListRow } from "./sites/list-sites.js";
+export {
+  createDomain, updateDomain, deleteDomain, listDomains, getDomain,
+  CreateDomainInput, UpdateDomainInput, DeleteDomainInput, ListDomainsInput,
+} from "./domains/domains.js";
+export type { DomainListRow } from "./domains/domains.js";
+export {
+  createDnsRecord, updateDnsRecord, deleteDnsRecord, listDnsRecords,
+  CreateDnsRecordInput, UpdateDnsRecordInput, DeleteDnsRecordInput,
+} from "./domains/dns-records.js";

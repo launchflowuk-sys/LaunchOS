@@ -1,16 +1,40 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { z } from "zod";
+import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
-import { assertClientInOrganisation } from "../tenancy/assert-owned.js";
+import { emit } from "../events/emit.js";
+import { assertOwned } from "../tenancy/assert-owned.js";
 
-export const CreateSiteInput = z.object({ clientId: z.string().uuid(), name: z.string().min(1), primaryUrl: z.string().url() });
-export type CreateSiteInput = z.infer<typeof CreateSiteInput>;
+export const CreateSiteInput = z.object({
+  clientId: z.string().uuid(),
+  name: z.string().min(1).max(200),
+  primaryUrl: z.string().url(),
+  platform: z.enum(["wordpress", "static", "nextjs", "other"]).default("wordpress"),
+  hostingProvider: z.enum(["coolify", "other"]).default("coolify"),
+  hostingRef: z.string().max(200).optional(),
+  actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
+  actorId: z.string().optional(),
+});
+export type CreateSiteInput = z.input<typeof CreateSiteInput>;
 
 export async function createSite(db: Db, organisationId: string, input: CreateSiteInput) {
-  const v = CreateSiteInput.parse(input);
-  await assertClientInOrganisation(db, organisationId, v.clientId);
-  const [site] = await db.insert(schema.sites).values({ organisationId, ...v }).returning();
-  await recordAudit(db, organisationId, { actorKind: "system", action: "site.created", targetType: "site", targetId: site!.id, after: site });
-  return site!;
+  const { actorKind, actorId, ...fields } = CreateSiteInput.parse(input);
+  await assertOwned(db, organisationId, schema.clients, fields.clientId);
+
+  const site = await db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
+    const [row] = await tx.insert(schema.sites).values({ organisationId, ...fields }).returning();
+    await recordActivity(inner, organisationId, {
+      clientId: fields.clientId, siteId: row!.id, actorKind, actorId, kind: "site.created",
+      title: `Website added: ${row!.name}`, body: row!.primaryUrl, link: `/websites/${row!.id}`,
+    });
+    await recordAudit(inner, organisationId, {
+      actorKind, actorId, action: "site.created", targetType: "site", targetId: row!.id, after: row,
+    });
+    return row!;
+  });
+
+  await emit({ name: "site.created", organisationId, siteId: site.id });
+  return site;
 }
