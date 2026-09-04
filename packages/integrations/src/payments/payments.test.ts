@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MockPaymentsAdapter, createPaymentsAdapter } from "./index.js";
+import { MockPaymentsAdapter, createPaymentsAdapter, vatRateFromEnv } from "./index.js";
 
 const period = new Date("2026-09-01T00:00:00Z");
 
@@ -35,11 +35,65 @@ describe("MockPaymentsAdapter", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("never issues the same id twice, in this process or the next one", async () => {
+    const first = new MockPaymentsAdapter();
+    const second = new MockPaymentsAdapter();
+    const customer = await first.createCustomer({ name: "C", clientRef: "c" });
+    const ids = new Set<string>();
+    for (const payments of [first, second, first]) {
+      const { subscription } = await payments.createSubscription({
+        customerId: customer.id, amountPence: 10000, currency: "GBP", description: "P", periodStart: period,
+      });
+      ids.add(subscription.id);
+    }
+    // A counter would have handed `second` the same id as `first` — which is
+    // exactly what a dev-server restart looks like — and violated
+    // subscriptions_org_stripe_id.
+    expect(ids.size).toBe(3);
+  });
+
+  it("cancels a subscription it has never seen, so a restart cannot strand one", async () => {
+    const before = new MockPaymentsAdapter();
+    const customer = await before.createCustomer({ name: "C", clientRef: "c" });
+    const { subscription } = await before.createSubscription({
+      customerId: customer.id, amountPence: 10000, currency: "GBP", description: "P", periodStart: period,
+    });
+
+    // The database still holds the id; the process that issued it is gone.
+    const afterRestart = new MockPaymentsAdapter();
+    const cancelled = await afterRestart.cancelSubscription(subscription.id);
+    expect(cancelled.id).toBe(subscription.id);
+    expect(cancelled.status).toBe("cancelled");
+    expect((await afterRestart.getSubscription(subscription.id)).status).toBe("cancelled");
+  });
+
+  it("reads back an unknown id as active and refuses an id no mock could have issued", async () => {
+    const payments = new MockPaymentsAdapter();
+    const orphan = `mock_sub_${crypto.randomUUID()}`;
+    expect((await payments.getSubscription(orphan)).status).toBe("active");
+    await expect(payments.cancelSubscription("sub_live_123")).rejects.toThrow(/not a mock subscription id/);
+  });
+
   it("verifies a mock webhook body and rejects a bad signature", () => {
     const payments = new MockPaymentsAdapter({ vatRatePercent: 20 });
     const body = JSON.stringify({ id: "evt_1", type: "invoice.paid", data: { object: { id: "mock_in_1" } } });
     expect(payments.webhookVerify(body, "mock").type).toBe("invoice.paid");
     expect(() => payments.webhookVerify(body, "nope")).toThrow(/signature/i);
+  });
+});
+
+describe("vatRateFromEnv", () => {
+  it("treats a blank VAT_RATE as unset rather than as 0%", () => {
+    expect(vatRateFromEnv({ VAT_RATE: "" } as NodeJS.ProcessEnv)).toBe(20);
+    expect(vatRateFromEnv({ VAT_RATE: "  " } as NodeJS.ProcessEnv)).toBe(20);
+    expect(vatRateFromEnv({} as NodeJS.ProcessEnv)).toBe(20);
+  });
+
+  it("keeps a usable rate and rejects an out-of-range one", () => {
+    expect(vatRateFromEnv({ VAT_RATE: "5" } as NodeJS.ProcessEnv)).toBe(5);
+    expect(vatRateFromEnv({ VAT_RATE: "0" } as NodeJS.ProcessEnv)).toBe(0);
+    expect(vatRateFromEnv({ VAT_RATE: "nope" } as NodeJS.ProcessEnv)).toBe(20);
+    expect(vatRateFromEnv({ VAT_RATE: "250" } as NodeJS.ProcessEnv)).toBe(20);
   });
 });
 

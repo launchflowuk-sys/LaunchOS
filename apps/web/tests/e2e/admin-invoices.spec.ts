@@ -7,10 +7,12 @@ import { signIn } from "./sign-in";
 // that compile; every other assertion keeps the default.
 const COLD_COMPILE = 90_000;
 
-test("start a subscription, raise an invoice, mark it paid, then record a payment", async ({ page }) => {
-  // Six routes and five server actions, each compiled on first use, which does
-  // not fit Playwright's 30s per-test default on a cold dev server.
-  test.setTimeout(240_000);
+test("raise an invoice, send it through approvals, mark it paid, then record a payment", async ({ page }) => {
+  // Eight routes and seven server actions, each compiled on first use. A cold
+  // `next dev` spends most of the walk compiling, which does not fit
+  // Playwright's 30s per-test default — measured at ~5 minutes cold, well under
+  // a minute warm.
+  test.setTimeout(600_000);
 
   const stamp = Date.now();
   await signIn(page);
@@ -19,6 +21,7 @@ test("start a subscription, raise an invoice, mark it paid, then record a paymen
   await expect(page.getByRole("heading", { name: "Clients" })).toBeVisible({ timeout: COLD_COMPILE });
   await page.getByRole("link", { name: "Grays CabLine" }).click();
   await expect(page.getByRole("heading", { name: "Grays CabLine" })).toBeVisible({ timeout: COLD_COMPILE });
+  const clientUrl = page.url().split("?")[0]!;
 
   await page.getByRole("link", { name: "Contacts & Billing" }).click();
   await expect(page.getByRole("heading", { name: "Subscription" })).toBeVisible({ timeout: COLD_COMPILE });
@@ -34,13 +37,43 @@ test("start a subscription, raise an invoice, mark it paid, then record a paymen
 
   await page.getByRole("button", { name: "Raise invoice" }).click();
   await page.waitForURL(/\/invoices\/[0-9a-f-]{36}$/, { timeout: COLD_COMPILE });
+  const invoiceUrl = page.url();
 
   const number = (await page.getByRole("heading", { level: 1 }).innerText()).trim();
-  expect(number).toMatch(/^INV-/);
+  // `LF-<year>-<seq>` — see INVOICE_NUMBER_PREFIX in packages/core.
+  expect(number).toMatch(/^LF-\d{4}-\d{4}$/);
   // £99.00 subtotal plus 20% VAT.
   await expect(page.getByText("£118.80").first()).toBeVisible({ timeout: COLD_COMPILE });
   await expect(page.getByRole("button", { name: "Send…" })).toBeVisible();
 
+  // The approval gate: Send… must not email anybody by itself, and approving
+  // must actually send rather than only stamping the approval row.
+  await page.getByRole("button", { name: "Send…" }).click();
+  await expect(page.getByText("Send queued for approval")).toBeVisible({ timeout: COLD_COMPILE });
+  await expect(page.getByText("awaiting approval before it is emailed")).toBeVisible({ timeout: COLD_COMPILE });
+  await expect(page.getByRole("button", { name: "Send…" })).toBeHidden();
+
+  await page.getByRole("navigation").getByRole("link", { name: "Approvals" }).click();
+  await expect(page.getByRole("heading", { name: "Approvals" })).toBeVisible({ timeout: COLD_COMPILE });
+  const approval = page.getByRole("listitem").filter({ hasText: `Send invoice ${number}` }).first();
+  await expect(approval).toBeVisible({ timeout: COLD_COMPILE });
+  await approval.getByRole("form", { name: "Approve approval" }).getByRole("button", { name: "Approve" }).click();
+  await expect(approval.getByText("approved", { exact: true })).toBeVisible({ timeout: COLD_COMPILE });
+
+  await page.goto(invoiceUrl);
+  await expect(page.getByRole("heading", { name: number })).toBeVisible({ timeout: COLD_COMPILE });
+  // The status badge is the send having happened: `sendApprovedInvoice` only
+  // reaches `sent` after the email adapter has accepted the message.
+  await expect(page.locator("dt", { hasText: /^Status$/ }).locator("xpath=following-sibling::dd[1]"))
+    .toHaveText("sent");
+  await expect(page.getByText("awaiting approval before it is emailed")).toBeHidden();
+
+  // ...and the mock email adapter's send is visible in the client's activity.
+  await page.goto(clientUrl);
+  await expect(page.getByText(`Invoice ${number} emailed to info@grayscabline.co.uk`))
+    .toBeVisible({ timeout: COLD_COMPILE });
+
+  await page.goto(invoiceUrl);
   await page.getByRole("button", { name: "Mark paid" }).click();
   await expect(page.getByText("Invoice marked paid")).toBeVisible({ timeout: COLD_COMPILE });
   await expect(page.getByRole("button", { name: "Mark paid" })).toBeHidden();

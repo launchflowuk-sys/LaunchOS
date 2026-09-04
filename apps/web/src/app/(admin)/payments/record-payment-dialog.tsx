@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { recordManualPayment } from "./actions";
 
 type Option = { value: string; label: string };
+type InvoiceOption = Option & { clientId: string };
 
 const FIELD = "h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
 
@@ -21,10 +22,16 @@ export function RecordPaymentDialog({
   providers,
 }: {
   clients: Option[];
-  invoices: Option[];
+  invoices: InvoiceOption[];
   providers: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
+  // The invoice list is narrowed to the chosen client. Two clients can hold
+  // open invoices for the identical amount, and picking the adjacent row would
+  // otherwise settle the wrong client's invoice with money that never arrived
+  // from them — core refuses the mismatch, but the field should not offer it.
+  const [clientId, setClientId] = useState("");
+  const clientInvoices = invoices.filter((i) => i.clientId === clientId);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -40,13 +47,20 @@ export function RecordPaymentDialog({
             const result = await recordManualPayment(formData);
             if (result.status === "error") return void toast.error(result.message);
             toast.success("Payment recorded");
+            setClientId("");
             setOpen(false);
           }}
           className="space-y-3"
         >
           <label className="block text-xs text-neutral-500">
             Client
-            <select name="clientId" required defaultValue="" className={FIELD}>
+            <select
+              name="clientId"
+              required
+              value={clientId}
+              onChange={(event) => setClientId(event.target.value)}
+              className={FIELD}
+            >
               <option value="" disabled>
                 Choose a client
               </option>
@@ -59,9 +73,17 @@ export function RecordPaymentDialog({
           </label>
           <label className="block text-xs text-neutral-500">
             Invoice
-            <select name="invoiceId" defaultValue="" className={FIELD}>
-              <option value="">No invoice — on account</option>
-              {invoices.map((i) => (
+            {/* Remounted per client so a selection made for the previous one
+                cannot survive into the new list. */}
+            <select key={clientId} name="invoiceId" defaultValue="" disabled={clientId === ""} className={FIELD}>
+              <option value="">
+                {clientId === ""
+                  ? "Choose a client first"
+                  : clientInvoices.length === 0
+                    ? "No open invoices — on account"
+                    : "No invoice — on account"}
+              </option>
+              {clientInvoices.map((i) => (
                 <option key={i.value} value={i.value}>
                   {i.label}
                 </option>

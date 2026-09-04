@@ -52,10 +52,11 @@ export default async function PaymentsPage() {
         number: schema.invoices.number,
         totalPence: schema.invoices.totalPence,
         currency: schema.invoices.currency,
-        clientName: schema.clients.name,
+        clientId: schema.invoices.clientId,
       })
+      // No join: the dialog groups these under the client the user picks, so
+      // the client's name is never rendered against an invoice option.
       .from(schema.invoices)
-      .innerJoin(schema.clients, eq(schema.invoices.clientId, schema.clients.id))
       .where(and(
         eq(schema.invoices.organisationId, session.organisationId),
         inArray(schema.invoices.status, [...UNPAID]),
@@ -74,7 +75,8 @@ export default async function PaymentsPage() {
             clients={clients.map((c) => ({ value: c.id, label: c.name }))}
             invoices={openInvoices.map((i) => ({
               value: i.id,
-              label: `${i.number} — ${i.clientName} — ${formatPence(i.totalPence, i.currency)}`,
+              clientId: i.clientId,
+              label: `${i.number} — ${formatPence(i.totalPence, i.currency)}`,
             }))}
             providers={PAYMENT_PROVIDERS}
           />

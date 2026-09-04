@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
   type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription, type PaymentsWebhookEvent,
+  type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
+  type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
 export interface MockPaymentsOptions {
@@ -12,11 +14,19 @@ export interface MockPaymentsOptions {
 /**
  * In-memory Stripe stand-in. Ids are prefixed `mock_` so a mock id can never be
  * mistaken for a real Stripe id in the database or in a log line.
+ *
+ * The map is a cache, not the record of what exists — the database is. A mock
+ * that refuses to act on state it lost is not a usable stand-in for a durable
+ * provider: `next dev` re-evaluates modules on every edit, and a redeploy
+ * restarts the process, either of which would otherwise leave a subscription
+ * written days ago permanently uncancellable. So every read path synthesises a
+ * plausible record for an id it has never seen, and ids are UUID-based rather
+ * than counter-based so a restart can never re-issue one that is already in the
+ * database under `subscriptions_org_stripe_id`.
  */
 export class MockPaymentsAdapter implements PaymentsAdapter {
   readonly name = "mock" as const;
 
-  private seq = 0;
   private readonly customers = new Map<string, PaymentsCustomer>();
   private readonly subscriptions = new Map<string, PaymentsSubscription>();
   private readonly invoices = new Map<string, PaymentsInvoice>();
@@ -29,8 +39,35 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
   }
 
   private id(prefix: string): string {
-    this.seq += 1;
-    return `mock_${prefix}_${this.seq}`;
+    return `mock_${prefix}_${randomUUID()}`;
+  }
+
+  /** Whether this id could have been issued by a mock adapter at all. */
+  private static isMockId(prefix: string, id: string): boolean {
+    return id.startsWith(`mock_${prefix}_`);
+  }
+
+  /**
+   * The subscription this adapter would have issued for `id`, whether or not it
+   * still remembers issuing it. A never-seen id is reconstructed rather than
+   * rejected — see the class comment.
+   */
+  private recall(subscriptionId: string, status: PaymentsSubscriptionStatus): PaymentsSubscription {
+    const existing = this.subscriptions.get(subscriptionId);
+    if (existing) return { ...existing, status };
+    if (!MockPaymentsAdapter.isMockId("sub", subscriptionId)) {
+      throw new Error(`mock payments: ${subscriptionId} is not a mock subscription id`);
+    }
+    const now = new Date();
+    return {
+      id: subscriptionId,
+      customerId: this.id("cus"),
+      status,
+      currentPeriodStart: now,
+      currentPeriodEnd: addMonths(now, 1),
+      amountPence: 0,
+      currency: "GBP",
+    };
   }
 
   async createCustomer(input: CreateCustomerInput): Promise<PaymentsCustomer> {
@@ -58,11 +95,19 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
   }
 
   async cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription> {
-    const existing = this.subscriptions.get(subscriptionId);
-    if (!existing) throw new Error(`mock payments: unknown subscription ${subscriptionId}`);
-    const cancelled: PaymentsSubscription = { ...existing, status: "cancelled" };
+    const cancelled = this.recall(subscriptionId, "cancelled");
     this.subscriptions.set(subscriptionId, cancelled);
     return cancelled;
+  }
+
+  /**
+   * Reads a subscription back. Not on `PaymentsAdapter` — nothing in core needs
+   * it yet — but it is the other half of `cancelSubscription`'s tolerance, and
+   * tests use it to assert that a restart is survivable.
+   */
+  async getSubscription(subscriptionId: string): Promise<PaymentsSubscription> {
+    const existing = this.subscriptions.get(subscriptionId);
+    return existing ?? this.recall(subscriptionId, "active");
   }
 
   async listInvoices(customerId: string): Promise<PaymentsInvoice[]> {
@@ -78,8 +123,7 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
 
   /** Test affordance: bills the next period and returns the new invoice. */
   advancePeriod(subscriptionId: string): PaymentsInvoice {
-    const existing = this.subscriptions.get(subscriptionId);
-    if (!existing) throw new Error(`mock payments: unknown subscription ${subscriptionId}`);
+    const existing = this.recall(subscriptionId, "active");
     const rolled: PaymentsSubscription = {
       ...existing,
       currentPeriodStart: existing.currentPeriodEnd,

@@ -6,10 +6,23 @@ export * from "./types.js";
 export { MockPaymentsAdapter } from "./mock.js";
 export { StripePaymentsAdapter } from "./stripe.js";
 
-/** VAT rate as a whole-number percentage; UK standard rate when unset. */
+/** UK standard rate, used whenever `VAT_RATE` is unset or unusable. */
+const DEFAULT_VAT_RATE_PERCENT = 20;
+
+/**
+ * VAT rate as a whole-number percentage; UK standard rate when unset.
+ *
+ * The trim matters: `Number("")` and `Number(" ")` are `0`, which is finite and
+ * non-negative, so a `VAT_RATE=` line left blank used to mean 0% VAT on every
+ * invoice rather than the fallback. Blank is treated as unset here; callers
+ * that want a blank value to be a loud failure validate it first (see
+ * `apps/web/src/lib/env.ts` and `apps/worker/src/env.ts`).
+ */
 export function vatRateFromEnv(env: NodeJS.ProcessEnv): number {
-  const parsed = Number(env.VAT_RATE);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : 20;
+  const raw = env.VAT_RATE?.trim();
+  if (!raw) return DEFAULT_VAT_RATE_PERCENT;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : DEFAULT_VAT_RATE_PERCENT;
 }
 
 /**

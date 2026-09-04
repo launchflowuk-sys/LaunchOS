@@ -1,11 +1,11 @@
 "use server";
 
-import { recordAudit } from "@launchos/core";
-import { schema } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { createEmailAdapter } from "@launchos/channels";
+import { decideApproval, INVOICE_SEND_ACTION, recordAudit, sendApprovedInvoice } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { env } from "@/lib/env";
 import { sendJob } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 
@@ -16,6 +16,9 @@ const DecisionInput = z.object({
   approvalId: z.string().uuid(),
   note: z.string().trim().max(1000).optional(),
 });
+
+/** What a human-raised (run-less) approval carries instead of a tool call. */
+const NonAgentPayload = z.object({ action: z.string() });
 
 async function decide(formData: FormData, status: "approved" | "rejected"): Promise<ActionResult> {
   // Server Actions accept direct POSTs, so authorise here and scope every
@@ -31,21 +34,35 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
   }
   const { approvalId, note } = parsed.data;
 
-  const where = and(
-    eq(schema.approvals.id, approvalId),
-    eq(schema.approvals.organisationId, session.organisationId),
-    eq(schema.approvals.status, "pending"),
-  );
-
   try {
-    const [before] = await getDb().select().from(schema.approvals).where(where);
-    if (!before) return { status: "error", message: "That approval is not waiting for a decision." };
+    // One conditional UPDATE claims the approval. Everything below — the resume
+    // job, the invoice email, the audit row — happens only for the decision
+    // that won the claim, so a double click, or approve-then-reject, cannot
+    // queue two resumes or send the same invoice twice.
+    const decision = await decideApproval(getDb(), session.organisationId, {
+      approvalId,
+      decision: status,
+      decidedByUserId: session.userId,
+      ...(note ? { note } : {}),
+    });
+
+    if (decision.alreadyDecided) {
+      return {
+        status: "error",
+        message: decision.approval
+          ? "That approval has already been decided."
+          : "That approval is not waiting for a decision.",
+      };
+    }
+
+    const { before, after } = decision;
 
     if (before.runId) {
-      // The row is deliberately left `pending` here. `resumeAgent` refuses to
-      // resume an approval that is already decided, so pre-stamping it would
-      // strand the run: the kernel stamps `status`, `decided_by` and
-      // `decision_note` itself as the first thing it does on resume.
+      // The row is deliberately left `pending` by `decideApproval`.
+      // `resumeAgent` refuses to resume an approval that is already decided, so
+      // stamping the status here would strand the run: the kernel stamps
+      // `status`, `decided_by` and `decision_note` itself as the first thing it
+      // does on resume. `decided_at` is the claim marker instead.
       await sendJob(
         "agent.resume",
         {
@@ -66,22 +83,11 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         targetType: "approval",
         targetId: approvalId,
         before,
+        after,
       });
     } else {
-      // Nothing will resume an approval with no run behind it (a Plan 5
-      // invoice send, say), so the decision is recorded here.
-      const [after] = await getDb()
-        .update(schema.approvals)
-        .set({
-          status,
-          decidedBy: session.userId,
-          decidedAt: new Date(),
-          decisionNote: note ?? null,
-          updatedAt: new Date(),
-        })
-        .where(where)
-        .returning();
-
+      // Nothing resumes an approval with no run behind it, so `decideApproval`
+      // has already stamped the status and the decision is final here.
       await recordAudit(getDb(), session.organisationId, {
         actorKind: "user",
         actorId: session.userId,
@@ -91,6 +97,25 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         before,
         after,
       });
+
+      // A run-less approval is a person asking for an outward-facing action, so
+      // approving it has to *do* the thing — recording the decision alone would
+      // leave the invoice unsent with nothing to say so. Rejecting records the
+      // decision and stops. A throw from the send reaches the catch below and
+      // is shown to the approver: "no email address", "invoice is paid" and the
+      // like are answers they need, not noise to swallow.
+      const payload = NonAgentPayload.safeParse(before.payload);
+      if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
+        const { invoiceId } = await sendApprovedInvoice(
+          getDb(),
+          session.organisationId,
+          { approvalId, actorId: session.userId },
+          createEmailAdapter(process.env),
+          env.APP_URL,
+        );
+        revalidatePath("/invoices");
+        revalidatePath(`/invoices/${invoiceId}`);
+      }
     }
 
     revalidatePath("/approvals");

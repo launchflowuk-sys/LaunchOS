@@ -122,6 +122,11 @@ export {
   requestInvoiceSend, sendApprovedInvoice, INVOICE_SEND_ACTION,
   RequestInvoiceSendInput, SendApprovedInvoiceInput,
 } from "./billing/invoice-send.js";
+export {
+  findPendingInvoiceSendApproval, requestInvoiceSendOnce,
+} from "./billing/invoice-send-requests.js";
+export { decideApproval, DecideApprovalInput } from "./approvals/decide-approval.js";
+export type { ApprovalRow, DecideApprovalResult } from "./approvals/decide-approval.js";
 export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";
 export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";
