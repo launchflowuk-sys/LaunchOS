@@ -4,7 +4,8 @@ import type { PaymentsWebhookEvent } from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
-import { recordPayment } from "./payments.js";
+import { recordAudit } from "../audit/record-audit.js";
+import { reconcileInvoice } from "./payments.js";
 
 type LocalSubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled" | "paused";
 
@@ -54,14 +55,6 @@ export async function syncFromPaymentsEvent(
   organisationId: string,
   event: PaymentsWebhookEvent,
 ): Promise<SyncResult> {
-  // The provider retries webhooks; the unique (organisation_id, provider,
-  // provider_ref) index plus this pre-check make replays a no-op.
-  const [seen] = await db.select({ id: schema.payments.id }).from(schema.payments).where(and(
-    eq(schema.payments.organisationId, organisationId),
-    eq(schema.payments.providerRef, event.id),
-  ));
-  if (seen) return { handled: false, action: "duplicate" };
-
   const object = (event.data as { object?: unknown }).object;
 
   if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
@@ -74,27 +67,52 @@ export async function syncFromPaymentsEvent(
     if (!invoice) return { handled: false, action: "unknown_invoice" };
 
     const succeeded = event.type === "invoice.paid";
-    await recordPayment(db, organisationId, {
-      clientId: invoice.clientId,
-      invoiceId: invoice.id,
-      amountPence: (succeeded ? parsed.data.amount_paid : parsed.data.amount_due) ?? invoice.totalPence,
-      currency: parsed.data.currency.toUpperCase(),
-      provider: "stripe",
-      providerRef: event.id,
-      status: succeeded ? "succeeded" : "failed",
-      actorKind: "system",
-    });
+    const amountPence = (succeeded ? parsed.data.amount_paid : parsed.data.amount_due) ?? invoice.totalPence;
+    const currency = parsed.data.currency.toUpperCase();
 
-    if (!succeeded) {
-      await notifyOwner(db, organisationId, {
-        kind: "payment.failed",
-        title: `Payment failed for invoice ${invoice.number}`,
-        body: `Stripe reported a failed payment of £${(invoice.totalPence / 100).toFixed(2)}.`,
-        link: `/invoices/${invoice.id}`,
+    return db.transaction(async (tx) => {
+      const inner = tx as unknown as Db;
+      // The provider retries webhooks. The unique (organisation_id, provider,
+      // provider_ref) index is the single authority on "already processed":
+      // the insert either claims this event id or, on conflict, inserts
+      // nothing. A separate SELECT-then-INSERT check leaves a race window
+      // where two near-simultaneous deliveries of the same event can both
+      // pass the check; this does not, because the conflict is resolved by
+      // Postgres inside the insert itself.
+      const [payment] = await tx.insert(schema.payments).values({
+        organisationId,
+        clientId: invoice.clientId,
+        invoiceId: invoice.id,
+        amountPence,
+        currency,
+        provider: "stripe",
+        providerRef: event.id,
+        status: succeeded ? "succeeded" : "failed",
+        paidAt: succeeded ? new Date() : null,
+      })
+        .onConflictDoNothing({
+          target: [schema.payments.organisationId, schema.payments.provider, schema.payments.providerRef],
+        })
+        .returning();
+      if (!payment) return { handled: false, action: "duplicate" };
+
+      await recordAudit(inner, organisationId, {
+        actorKind: "system", action: "payment.recorded", targetType: "payment", targetId: payment.id, after: payment,
       });
-      return { handled: true, action: "payment.failed" };
-    }
-    return { handled: true, action: "invoice.paid" };
+
+      if (!succeeded) {
+        await notifyOwner(inner, organisationId, {
+          kind: "payment.failed",
+          title: `Payment failed for invoice ${invoice.number}`,
+          body: `Stripe reported a failed payment of £${(invoice.totalPence / 100).toFixed(2)}.`,
+          link: `/invoices/${invoice.id}`,
+        });
+        return { handled: true, action: "payment.failed" };
+      }
+
+      await reconcileInvoice(inner, organisationId, invoice.id);
+      return { handled: true, action: "invoice.paid" };
+    });
   }
 
   if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {

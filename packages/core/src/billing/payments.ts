@@ -20,29 +20,38 @@ export const RecordPaymentInput = z.object({
 });
 export type RecordPaymentInput = z.input<typeof RecordPaymentInput>;
 
+/**
+ * Insert, audit and reconciliation all land in one transaction: a payment row
+ * that exists but was never audited, or one that settled the invoice without
+ * itself being durable, would be a worse failure mode than the whole write
+ * not having happened yet — so a throw at any step rolls all three back.
+ */
 export async function recordPayment(db: Db, organisationId: string, input: RecordPaymentInput) {
   const v = RecordPaymentInput.parse(input);
   await assertOwned(db, organisationId, schema.clients, v.clientId);
   if (v.invoiceId) await assertOwned(db, organisationId, schema.invoices, v.invoiceId);
 
-  const [payment] = await db.insert(schema.payments).values({
-    organisationId,
-    clientId: v.clientId,
-    invoiceId: v.invoiceId ?? null,
-    amountPence: v.amountPence,
-    currency: v.currency,
-    provider: v.provider,
-    providerRef: v.providerRef ?? null,
-    status: v.status,
-    paidAt: v.paidAt ?? (v.status === "succeeded" ? new Date() : null),
-  }).returning();
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "payment.recorded",
-    targetType: "payment", targetId: payment!.id, after: payment,
-  });
+  return db.transaction(async (tx) => {
+    const inner = tx as unknown as Db;
+    const [payment] = await tx.insert(schema.payments).values({
+      organisationId,
+      clientId: v.clientId,
+      invoiceId: v.invoiceId ?? null,
+      amountPence: v.amountPence,
+      currency: v.currency,
+      provider: v.provider,
+      providerRef: v.providerRef ?? null,
+      status: v.status,
+      paidAt: v.paidAt ?? (v.status === "succeeded" ? new Date() : null),
+    }).returning();
+    await recordAudit(inner, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "payment.recorded",
+      targetType: "payment", targetId: payment!.id, after: payment,
+    });
 
-  if (v.invoiceId) await reconcileInvoice(db, organisationId, v.invoiceId, v.actorId);
-  return payment!;
+    if (v.invoiceId) await reconcileInvoice(inner, organisationId, v.invoiceId, v.actorId);
+    return payment!;
+  });
 }
 
 /**
