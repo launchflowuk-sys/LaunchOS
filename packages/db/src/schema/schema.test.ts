@@ -1,7 +1,9 @@
 import type { Db } from "@launchos/db";
+import { sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "../test/db.js";
 import { organisations, clients, sites, monitors, incidents, tickets, agentRuns, billingProfiles, activityEvents, notifications, domains, user } from "./index.js";
+import * as schema from "./index.js";
 
 describe("schema", () => {
   it("inserts an organisation → client → site → monitor → incident chain", async () => {
@@ -57,6 +59,47 @@ describe("plan 2 schema", () => {
         organisationId: org!.id, userId: await seedUserId(db), kind: "client.created", title: "New client",
       }).returning();
       expect(notification!.readAt).toBeNull();
+    });
+  });
+});
+
+describe("plan 4 schema", () => {
+  it("stores an email identity, a knowledge article and P4 support columns", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
+      const [client] = await db.insert(schema.clients).values({ organisationId: org!.id, name: "C", slug: `c-${crypto.randomUUID()}` }).returning();
+
+      const [identity] = await db.insert(schema.emailIdentities).values({
+        organisationId: org!.id, clientId: client!.id, address: `c-${crypto.randomUUID()}@support.test`, inboundSecret: "s",
+      }).returning();
+      expect(identity!.address).toContain("@support.test");
+
+      const [article] = await db.insert(schema.knowledgeArticles).values({
+        organisationId: org!.id, title: "DNS propagation", slug: `dns-${crypto.randomUUID()}`,
+        bodyMd: "Nameserver changes take up to 48 hours to propagate.", tags: ["dns"], published: true,
+      }).returning();
+      const hits = await db.execute(sql`
+        select id from knowledge_articles
+        where organisation_id = ${org!.id} and search @@ plainto_tsquery('english', 'propagate nameserver')
+      `);
+      expect(hits.map((r) => r.id)).toContain(article!.id);
+
+      const [conversation] = await db.insert(schema.conversations).values({
+        organisationId: org!.id, clientId: client!.id, subject: "Help", channel: "email",
+        externalThreadKey: "<a@b.test>", participantEmail: "sender@b.test",
+      }).returning();
+      const [message] = await db.insert(schema.messages).values({
+        organisationId: org!.id, conversationId: conversation!.id, direction: "inbound", authorKind: "client",
+        body: "hello", fromEmail: "sender@b.test", toEmail: identity!.address, subject: "Help",
+        rawHeaders: { "message-id": "<a@b.test>" }, attachments: [], status: "received",
+      }).returning();
+      expect(message!.status).toBe("received");
+
+      const [ticket] = await db.insert(schema.tickets).values({
+        organisationId: org!.id, conversationId: conversation!.id, clientId: client!.id, subject: "Help",
+        source: "email", slaDueAt: new Date(), triage: { category: "dns", severity: "high", summary: "s", suggestedFix: "f", confidence: 0.8 },
+      }).returning();
+      expect(ticket!.triage).toMatchObject({ category: "dns" });
     });
   });
 });

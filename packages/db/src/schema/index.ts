@@ -9,3 +9,5 @@ export * from "./activity.js";
 export * from "./support.js";
 export * from "./monitoring.js";
 export * from "./agents.js";
+export * from "./email.js";
+export * from "./knowledge.js";

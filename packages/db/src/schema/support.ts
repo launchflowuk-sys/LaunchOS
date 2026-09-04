@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 import { sites } from "./sites.js";
@@ -12,6 +12,10 @@ export const severityEnum = pgEnum("severity", ["low", "medium", "high", "critic
 export const ticketStatusEnum = pgEnum("ticket_status", ["open", "triaged", "in_progress", "waiting_client", "resolved", "closed"]);
 export const ticketSourceEnum = pgEnum("ticket_source", ["portal", "email", "agent", "monitor", "manual"]);
 export const ticketEventKindEnum = pgEnum("ticket_event_kind", ["created", "status_changed", "assigned", "note", "escalated", "agent_action"]);
+export const messageStatusEnum = pgEnum("message_status", ["queued", "sent", "failed", "received"]);
+
+export interface StoredAttachment { name: string; contentType: string; size: number; url: string }
+export interface TicketTriage { category: string; severity: string; summary: string; suggestedFix: string; confidence: number }
 
 export const conversations = pgTable("conversations", {
   ...tenantColumns(),
@@ -21,7 +25,15 @@ export const conversations = pgTable("conversations", {
   channel: channelEnum("channel").default("internal").notNull(),
   status: conversationStatusEnum("status").default("open").notNull(),
   lastMessageAt: timestamp("last_message_at", { withTimezone: true }),
-});
+  // No FK to tickets: tickets already references conversations, and a second
+  // FK the other way is a cycle Drizzle cannot order. Kept in sync by
+  // ingestInboundEmail and createTicket, which write both sides in one tx.
+  ticketId: uuid("ticket_id"),
+  externalThreadKey: text("external_thread_key"),
+  participantEmail: text("participant_email"),
+}, (t) => [
+  uniqueIndex("conversations_org_thread_key").on(t.organisationId, t.externalThreadKey),
+]);
 
 export const messages = pgTable("messages", {
   ...tenantColumns(),
@@ -33,6 +45,13 @@ export const messages = pgTable("messages", {
   bodyHtml: text("body_html"),
   externalId: text("external_id").unique(),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  fromEmail: text("from_email"),
+  toEmail: text("to_email"),
+  subject: text("subject"),
+  rawHeaders: jsonb("raw_headers").$type<Record<string, string>>().default({}).notNull(),
+  attachments: jsonb("attachments").$type<StoredAttachment[]>().default([]).notNull(),
+  // Null for internal notes: queued/sent/failed/received describe email only.
+  status: messageStatusEnum("status"),
 });
 
 export const tickets = pgTable("tickets", {
@@ -48,6 +67,10 @@ export const tickets = pgTable("tickets", {
   escalated: boolean("escalated").default(false).notNull(),
   escalationReason: text("escalation_reason"),
   source: ticketSourceEnum("source").default("manual").notNull(),
+  firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  slaDueAt: timestamp("sla_due_at", { withTimezone: true }),
+  triage: jsonb("triage").$type<TicketTriage | null>(),
 });
 
 export const ticketEvents = pgTable("ticket_events", {
