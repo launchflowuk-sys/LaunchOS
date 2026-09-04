@@ -12,6 +12,8 @@ Companion to `CLAUDE.md` and the spec in `docs/superpowers/specs/`. This page ex
 
 Both processes import the same `packages/*` and read the same `DATABASE_URL`. They scale independently on Coolify.
 
+`next dev` re-evaluates a module on every recompile, so `apps/web/src/lib/db.ts` and `apps/web/src/lib/queue.ts` cache their Postgres client and pg-boss instance on `globalThis` in development — without it each edit leaks a connection pool until Postgres runs out. Production keeps the plain module-scope cache.
+
 ## Layers and dependency direction
 
 ```

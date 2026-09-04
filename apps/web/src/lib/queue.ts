@@ -3,10 +3,20 @@ import PgBoss from "pg-boss";
 
 const QUEUE_DOMAIN_EVENT = "domain.event";
 
+/**
+ * `next dev` re-evaluates this module whenever something it imports is
+ * recompiled, so a module-scope cache would start a fresh pg-boss instance per
+ * edit and leak the previous one's Postgres connections until the server runs
+ * out. `globalThis` survives module re-evaluation, so development keeps exactly
+ * one instance per process; production never recompiles and behaves as before.
+ */
+const globalForQueue = globalThis as typeof globalThis & { __launchosBoss?: Promise<PgBoss> };
+
 let bossPromise: Promise<PgBoss> | undefined;
 let installed = false;
 
 function getBoss(url: string): Promise<PgBoss> {
+  if (process.env.NODE_ENV !== "production") bossPromise ??= globalForQueue.__launchosBoss;
   // Cached as a promise so two concurrent requests share one pg-boss instance.
   bossPromise ??= (async () => {
     const boss = new PgBoss({ connectionString: url, schema: "pgboss" });
@@ -15,6 +25,7 @@ function getBoss(url: string): Promise<PgBoss> {
     await boss.createQueue(QUEUE_DOMAIN_EVENT);
     return boss;
   })();
+  if (process.env.NODE_ENV !== "production") globalForQueue.__launchosBoss = bossPromise;
   return bossPromise;
 }
 
