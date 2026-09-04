@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -93,6 +93,20 @@ describe("buildClientReport", () => {
     });
   });
 
+  it("reports uptime as null, not zero, when there are no checks in the period", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `rep-${randomUUID()}` }).returning();
+      const [client] = await db.insert(schema.clients)
+        .values({ organisationId: org!.id, name: "No Checks Ltd", slug: `nc-${randomUUID()}` }).returning();
+      // No site, no monitor, no uptime_checks rows at all for this client.
+
+      const report = await buildClientReport(db, org!.id, client!.id, PERIOD);
+
+      expect(report.stats.uptimePercent).toBeNull();
+      expect(report.summaryMd).toContain("No uptime checks recorded for this period.");
+    });
+  });
+
   it("rebuilds the same period in place rather than duplicating it", async () => {
     await withTestDb(async (db) => {
       const { orgId, clientId } = await busyClient(db);
@@ -101,6 +115,29 @@ describe("buildClientReport", () => {
       expect(second.id).toBe(first.id);
       const rows = await db.select().from(schema.clientReports).where(eq(schema.clientReports.clientId, clientId));
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  it("records a client_report.built audit row for each write, but not for a blocked rebuild", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await busyClient(db);
+      const builtAudits = () => db.select().from(schema.auditLog).where(and(
+        eq(schema.auditLog.organisationId, orgId),
+        eq(schema.auditLog.action, "client_report.built"),
+      ));
+
+      const draft = await buildClientReport(db, orgId, clientId, PERIOD);
+      expect(await builtAudits()).toHaveLength(1);
+
+      // A second build of the still-draft report is a real write (upsert),
+      // so it is audited again.
+      await buildClientReport(db, orgId, clientId, PERIOD);
+      expect(await builtAudits()).toHaveLength(2);
+
+      // Once published, a rebuild is blocked entirely — no write, no audit.
+      await publishClientReport(db, orgId, { reportId: draft.id, actorId: "u1" });
+      await buildClientReport(db, orgId, clientId, PERIOD);
+      expect(await builtAudits()).toHaveLength(2);
     });
   });
 
