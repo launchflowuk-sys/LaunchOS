@@ -28,6 +28,12 @@
  * modules directly, and reaches the module that way rather than through here.
  */
 export async function register(): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  await import("./lib/env");
+  // The import must sit *inside* the runtime branch: the bundler evaluates
+  // `process.env.NEXT_RUNTIME` at compile time and drops the dead branch, so the
+  // Edge compilation never resolves `lib/env` (and the Node built-ins behind the
+  // integrations package). An early `return` above a top-level import does not
+  // have that effect — the import is still parsed and the Edge build fails.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation-node");
+  }
 }
