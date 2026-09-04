@@ -11,3 +11,14 @@ export { assertOwned, assertClientInOrganisation, assertSiteInOrganisation } fro
 export type { OwnedTable } from "./tenancy/assert-owned.js";
 export { emit, setEnqueue } from "./events/emit.js";
 export type { DomainEvent, EnqueueFn } from "./events/emit.js";
+export { recordActivity, RecordActivityInput } from "./activity/record-activity.js";
+export { listActivity, ListActivityInput } from "./activity/list-activity.js";
+export { notify, notifyOwner, NotifyInput, NotifyOwnerInput } from "./notifications/notify.js";
+export {
+  listNotifications,
+  countUnreadNotifications,
+  markNotificationRead,
+  markAllNotificationsRead,
+  ListNotificationsInput,
+  MarkReadInput,
+} from "./notifications/list-notifications.js";
