@@ -14,7 +14,7 @@ export interface ApprovalDescription {
 }
 
 export interface ToolDefinition<TInput extends z.ZodTypeAny = z.ZodTypeAny, TOutput = unknown> {
-  name: string;                 // "uptime.check_site"
+  name: string;                 // "uptime_check_site" — snake_case, no dots
   description: string;          // shown to the model
   input: TInput;                // Zod schema, converted to strict JSON Schema
   risk: ToolRisk;
@@ -63,8 +63,8 @@ export interface AgentRunResult {
 3. Call `LlmClient.complete({ system, messages, tools })`.
 4. Record an `llm` step with token usage.
 5. If `stop_reason` is `end_turn`, record the final text as the run summary and finish `completed`.
-6. If `stop_reason` is `refusal`, finish the run `failed` with `agent_runs.error = "refusal"`. The refused run is visible in Agent Runs and a human picks it up from there; the automatic escalation ticket arrives in Plan 2.
-7. If `stop_reason` is `tool_use`, for every tool_use block (in parallel):
+6. If `stop_reason` is `refusal`, finish the run `failed` with `agent_runs.error = "refusal"`. The refused run is visible in Agent Runs and a human picks it up from there. **No ticket is raised** — `run-loop.ts` only settles the run `failed`, so a refusal is seen when somebody looks at Agent Runs or the run's notification, not before. Raising one automatically is still outstanding.
+7. If `stop_reason` is `tool_use`, for every tool_use block, **in order, one at a time** (`handleToolUses` is a sequential `for` with `await`; the ordering is load-bearing, because parking returns at index `i` and records `uses.slice(i + 1)` as `remainingToolUseIds` so the resume knows what has not run yet):
    - Validate input with the tool's Zod schema. Invalid input becomes a `tool_result` with `is_error: true`.
    - Ask `PolicyGate.decide(tool, policy)`.
    - `execute`: run the tool, record `tool_call` and `tool_result` steps, collect the result block.
@@ -162,7 +162,7 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 
 ### hosting-guard-dog
 - Trigger: `event: incident.opened` (the deterministic monitor job opens incidents).
-- Tools: `uptime.check_site`, `hosting.get_resources`, `incidents.update`, `tickets.create`.
+- Tools: `uptime_check_site`, `hosting_get_resources`, `incidents_update`, `tickets_create`.
 - Output: incident summary in Markdown, an internal ticket, incident status `acknowledged`.
 
 ### support-triage
@@ -179,9 +179,10 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 | `tickets_assign` | safe | Assigns the least-loaded active member (`pickLeastLoadedStaff`). |
 | `tickets_escalate` | safe | Marks the ticket escalated and notifies the owner in-app. |
 | `messages_reply_to_client` | **requires_approval** | Writes the reply as a `queued` outbound message. |
-| `dns_update_record` | **requires_approval** | One record on a domain we manage; the zone is read from our own rows, never from the model. |
-| `cms_update_content` | **requires_approval** | One page on a client's CMS; the site ref likewise comes from our rows. |
+| `dns_update_record` | **requires_approval** | One record on a domain we manage; the zone is read from our own rows, never from the model. **Backed by `MockCloudflareDns` today** — see the note under this table. |
+| `cms_update_content` | **requires_approval** | One page on a client's CMS; the site ref likewise comes from our rows. **Backed by `MockCmsProvider` today** — see the note under this table. |
 
+- **The two fix tools are mocks until a real provider is configured.** No Cloudflare or CMS client is written yet: `createIntegrations` builds `MockCloudflareDns` and `MockCmsProvider`, which record the change and report success. Approving one writes the `dns_records` row, the `audit_log` entry and the run trace exactly as it will when the real client lands — but no zone and no page is touched. Both `describeApproval` implementations read the adapter name at describe time and say so on the approval card, so the correction is on the screen where the decision is made rather than only here.
 - Prompt: classify → search the knowledge base → decide fix vs escalate → draft the reply. It never invents detail, escalates below 0.4 confidence, and uses the `tickets` table's own category and severity enums.
 - Three guardrails live in the prompt rather than in code, because no schema can express them:
   - **Grounding.** An empty `knowledge_search` is not licence to answer from the model's own knowledge — it escalates or files a task instead, and names the article it relied on in the triage summary.
@@ -193,7 +194,7 @@ Every run produces a readable trace in the admin portal under Agent Runs: prompt
 ### ad-performance-sentinel
 - Trigger: `cron 0 7 * * *` Europe/London. Payload carries `now`; the tools read the run's clock through `ctx.now()`, so a test can pin the comparison windows.
 - Constructed with its own dependencies: `adPerformanceSentinel({ email, portalBaseUrl })`.
-- `maxTurns: 12`.
+- `maxTurns: 20`.
 - Tools (five, in the order the prompt uses them):
 
 | Tool | Risk | What it does |

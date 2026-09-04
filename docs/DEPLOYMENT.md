@@ -3,7 +3,8 @@
 ## Local
 
 ```bash
-cp .env.example .env      # fill BETTER_AUTH_SECRET, ANTHROPIC_API_KEY
+cp .env.example .env      # then fill BETTER_AUTH_SECRET (it ships blank) and ANTHROPIC_API_KEY
+openssl rand -base64 48   # the value for BETTER_AUTH_SECRET; the web app refuses to start without one
 pnpm install
 pnpm db:up                # postgres:17 on localhost:5432
 pnpm db:migrate
@@ -22,9 +23,42 @@ Three Coolify resources in one project, all on the same internal network:
 2. **web** — Docker build from `infra/Dockerfile.web`. Domain `os.launchflow.co.uk` (or chosen). Health check `GET /api/health`.
 3. **worker** — Docker build from `infra/Dockerfile.worker`. No public port. Health check is the process itself.
 
-Both app resources auto-deploy from `main` on GitHub push. Migrations run as the web container's entrypoint (`pnpm db:migrate && next start`) so the schema is always applied before serving. The worker waits for the web health check before starting.
+Both app resources auto-deploy from `main` on GitHub push. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *pre-deployment command*, before the new container starts serving. See "Migrations" below for why, and for the manual equivalent.
 
 Environment variables are set in Coolify, never committed. `NODE_ENV=production`, `APP_URL`, `BETTER_AUTH_URL` and `DATABASE_URL` point at the internal Postgres hostname.
+
+### Migrations
+
+`drizzle-kit migrate` runs **once per deploy, before the serving container starts**, as Coolify's pre-deployment command on the web resource:
+
+```
+pnpm --filter @launchos/db migrate
+```
+
+It used to be the web container's `CMD` (`pnpm db:migrate && next start`). Three reasons it is not any more, all of them things the entrypoint form gets wrong:
+
+- A failing migration became a **crash-loop outage of both portals** rather than a deferred schema change: `&&` short-circuits, the container exits, Coolify restarts it, and it fails identically forever.
+- Scaling web past one replica would run `drizzle-kit migrate` concurrently against one database with no advisory lock.
+- There was no way to apply a migration without restarting the app, and no way to restart the app without applying one.
+
+A pre-deployment command runs in a container built from the same image, so nothing else changes: the migrations and `drizzle-kit` are already in `infra/Dockerfile.web` (`COPY packages ./packages` plus the dev dependencies the build installs). If the Coolify version in use has no pre-deployment hook, the equivalent is a manual step before promoting the deploy:
+
+```bash
+docker exec <web-container> pnpm --filter @launchos/db migrate
+```
+
+**Before applying a migration that adds a constraint, check the rows it will refuse.** `0011_large_prima.sql` adds two unique indexes to tables that predate them. It is safe on a database at `main`'s state (0000–0002) — `billing_profiles` arrives in 0003 and `invoice_send` approvals can only be written by Plan 5 code — but the next constraint on a database that has been running Plan 5 is a different matter, and a migration that fails halfway through a deploy is the worst time to find out. The two pre-flight queries for 0011, recorded while the reasoning is fresh:
+
+```sql
+SELECT stripe_customer_id, count(*) FROM billing_profiles
+WHERE stripe_customer_id IS NOT NULL GROUP BY 1 HAVING count(*) > 1;
+
+SELECT organisation_id, payload->>'invoiceId', count(*) FROM approvals
+WHERE status='pending' AND kind='message_send' AND payload->>'action'='invoice_send'
+GROUP BY 1,2 HAVING count(*) > 1;
+```
+
+Both must return no rows. If either returns one, resolve the duplicates first — the migration cannot.
 
 ## Coolify setup (to run after first push)
 
@@ -42,30 +76,54 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Domain: `os.launchflow.co.uk` (or the chosen domain) — enable HTTPS/Let's Encrypt.
    - Health check path: `/api/health`
    - Auto-deploy: enable "auto deploy on push" for `main`.
-   - Env vars (set in Coolify's environment variables UI, never committed — same keys as `.env.example`):
-     - `NODE_ENV=production` — the switch every production guard is keyed on (mock adapters, `LLM=fake`). `infra/Dockerfile.web` sets it on the image too, so a variable lost in a redeploy does not silently disarm them.
-     - `DATABASE_URL` → internal Postgres connection string from step 2 (`postgres://<user>:<pass>@<internal-host>:5432/<db>`)
-     - `APP_URL` → `https://os.launchflow.co.uk` (match the domain above)
-     - `BETTER_AUTH_SECRET` → generate with `openssl rand -base64 32`
-     - `BETTER_AUTH_URL` → same as `APP_URL`
-     - `ANTHROPIC_API_KEY`
-     - `AGENT_MODEL` → `claude-opus-5`
-     - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk` in the app; the reconcile script refuses to run on that fallback unless you pass `--allow-default-domain`, because a mass rewrite onto a domain you do not own is the failure it exists to repair. Changing it later does **not** rewrite addresses already stored on existing clients, and migration `0007_backfill_support_email.sql` fills older rows in with the fallback domain because a migration cannot read env — so **after setting or changing this, run the reconcile script** (see step 6). Inbound routing matches on `email_identities.address` alone, so a client left on the wrong domain silently never receives mail.
-     - `OWNER_NOTIFY_EMAIL` → optional. In-app notifications always reach the owner's bell; set this to also email them. Leave unset to keep notifications in-app only.
-     - `INBOUND_EMAIL_PROVIDER` → `postmark`, `cloudflare` or `generic`; the payload shape the webhook expects when the URL carries no `?provider=`.
-     - `EMAIL_ADAPTER` → `smtp`. **The app refuses to start on `mock` under `NODE_ENV=production`** (see *Production refuses mock adapters* below); until the DNS records verify, set `ALLOW_MOCK_ADAPTERS=1` alongside it and remove that variable the moment they do.
-     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` — required once `EMAIL_ADAPTER=smtp`.
-     - `INBOUND_EMAIL_SECRET` → the shared secret the inbound provider sends back in `x-launchos-inbound-secret`.
-     - `STORAGE_DIR` → where inbound attachments are written; must be a persistent volume (see **Inbound email** below).
-     - `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`
-     - `CLOUDFLARE_API_TOKEN`
-     - `GOOGLE_ADS_DEVELOPER_TOKEN`
-     - `META_ADS_ACCESS_TOKEN`
-     - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`
-     - `UPTIME_PROBE=http` (mock is for local/test only, and is refused in production)
-     - `LLM=anthropic` (fake is for local/test only)
-     - `AGENT_POLICY=safe`
-     - `ALLOW_MOCK_ADAPTERS` → leave **unset**. Set it to `1` only for a staging resource, or for the window before the SPF and DKIM records verify. Any other value is still a refusal.
+   - Pre-deployment command: `pnpm --filter @launchos/db migrate` (see **Migrations** above — it is deliberately not in the container's entrypoint).
+   - Env vars: **the full list is the table below.** It is the variables the web process actually reads — `apps/web/src/lib/env.ts`'s schema, the adapter guard it calls (`packages/integrations/src/adapter-guard.ts`, `AdapterEnv`), and the modules that read `process.env` directly. Set them in Coolify's environment variables UI, never committed; the keys match `.env.example`. A variable the code does not read is marked as such rather than left to look load-bearing.
+
+   **Web — refuses to start without these**
+
+   | Variable | Value | Read by |
+   |---|---|---|
+   | `NODE_ENV` | `production` | every production guard is keyed on it (mock adapters, `LLM=fake`). `infra/Dockerfile.web` sets it on the image too, so a variable lost in a redeploy does not silently disarm them |
+   | `DATABASE_URL` | internal Postgres string from step 2 (`postgres://<user>:<pass>@<internal-host>:5432/<db>`) | `lib/db.ts`, `lib/queue.ts`, Better Auth. Validated at boot — a missing or non-URL value is a container that does not come up |
+   | `BETTER_AUTH_SECRET` | **generate with `openssl rand -base64 48`** | `lib/auth.ts`. Validated at boot: blank, under 32 characters, or any placeholder published in this repository (`change-me`, `change-me-now`, …) is a refusal. It signs every session cookie, so a published value is session forgery for any account, `owner` included |
+   | `APP_URL` | `https://os.launchflow.co.uk` (match the domain above) | portal links in client emails, the Stripe webhook endpoint shown on Settings → Billing. Defaults to `http://localhost:3000`, which in production is a link clients cannot follow |
+   | `BETTER_AUTH_URL` | same as `APP_URL` | Better Auth's own base URL; falls back to `APP_URL` when unset |
+
+   **Web — adapters (a mock here is refused in production; see *Production refuses mock adapters* below)**
+
+   | Variable | Value | Notes |
+   |---|---|---|
+   | `EMAIL_ADAPTER` | `smtp` | `mock`, including unset, is a refusal. Until the DNS records verify, set `ALLOW_MOCK_ADAPTERS=1` alongside it and remove that variable the moment they do |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | your relay | required once `EMAIL_ADAPTER=smtp`; `EMAIL_ADAPTER=smtp` with no `SMTP_HOST` is also a refusal, because the factory would throw rather than downgrade |
+   | `PAYMENTS_ADAPTER` | `stripe` | **this one was missing from this list and a web resource built to the letter of it would not boot.** `mock`, including unset, is a refusal |
+   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | from Stripe | `=stripe` with either one missing is *also* a refusal — the factory silently builds the mock, so the deployment would believe it is live. `POST /api/webhooks/stripe` lives in **this** process and reads `STRIPE_WEBHOOK_SECRET` here, not on the worker |
+   | `UPTIME_PROBE` | `http` | `mock` reports every site up, so no incident is ever opened |
+   | `ADS_ADAPTER` | `mock` | the only value that is not refused: `google` and `meta` are interface-only and still build the mock |
+   | `ALLOW_MOCK_ADAPTERS` | leave **unset** | set it to exactly `1` only for a staging resource, or for the window before SPF and DKIM verify. Any other value is still a refusal |
+
+   **Web — support intake and money**
+
+   | Variable | Value | Read by |
+   |---|---|---|
+   | `SUPPORT_EMAIL_DOMAIN` | e.g. `support.launchflow.co.uk` | `packages/core/src/config.ts`, Settings → Email. See the note under this table |
+   | `INBOUND_EMAIL_PROVIDER` | `postmark`, `cloudflare` or `generic` | the payload shape `POST /api/webhooks/email/inbound` expects when the URL carries no `?provider=` |
+   | `INBOUND_EMAIL_SECRET` | the shared secret the provider sends back in `x-launchos-inbound-secret` | without a match every delivery is a 401. **Do not leave it on `.env.example`'s `change-me`** — the value is compared, not validated, and a placeholder lets anyone POST the webhook and manufacture conversations and tickets against any client. Settings → Email reports only "Set" / "Not set", so a placeholder reads as configured |
+   | `STORAGE_DIR` | e.g. `/data/attachments` | where inbound attachments are written; **must be a persistent volume**, mounted at the same path on the worker (see **Storage**) |
+   | `OWNER_NOTIFY_EMAIL` | optional | in-app notifications always reach the owner's bell; set this to also email them |
+   | `VAT_RATE` | `20` | whole-number percentage. Unset falls back to 20; **set-but-empty is a refusal**, and a Coolify variable created and left blank is exactly how that happens — the alternative was every invoice going out at 0% with nothing to show for it |
+   | `PAYMENT_TERMS_DAYS` | `14` | invoice due date, `packages/integrations/src/payments/index.ts` |
+
+   **Web — displayed on Settings → Billing, never used**
+
+   `STRIPE_PUBLISHABLE_KEY`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`, `META_ADS_ACCESS_TOKEN`, `META_ADS_AD_ACCOUNT_ID` — rendered as "Set" / "Not set" so a live install can see which credentials it is still missing. The value is never displayed and no adapter reads it.
+
+   **Web — placeholders: nothing reads these, do not go and acquire them**
+
+   `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`. The hosting, DNS and CMS providers are interface-plus-mock with no real client written — `MockHostingProvider` takes a constructor overrides map and reads no environment at all — and the WhatsApp channel does not exist yet. They are named here only so this list and `.env.example` agree.
+
+   **Not on the web resource:** `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM`, `AGENT_POLICY` and `ALLOW_FAKE_LLM` are read by the **worker**, which is where agent runs happen — the web app only enqueues `agent.run`. Setting them here is harmless but nothing reads them; leaving them off the *worker* is what breaks agents.
+
+   About `SUPPORT_EMAIL_DOMAIN`: it is the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk` in the app; the reconcile script refuses to run on that fallback unless you pass `--allow-default-domain`, because a mass rewrite onto a domain you do not own is the failure it exists to repair. Changing it later does **not** rewrite addresses already stored on existing clients, and migration `0007_backfill_support_email.sql` fills older rows in with the fallback domain because a migration cannot read env — so **after setting or changing this, run the reconcile script** (see step 6). Inbound routing matches on `email_identities.address` alone, so a client left on the wrong domain silently never receives mail.
 
 4. **Worker resource (Docker build)**
    - New resource → Docker (build from Dockerfile) → same GitHub repo, branch `main`.
@@ -74,8 +132,32 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - No domain, no public port.
    - Health check: process-based (no HTTP endpoint); configure Coolify's restart policy to restart on exit.
    - Auto-deploy: enable "auto deploy on push" for `main`.
-   - Deploy after the web resource so migrations have already run once; set it to start after the web resource's health check passes.
-   - Env vars: `NODE_ENV=production`, `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, `PAYMENTS_ADAPTER` and the `STRIPE_*` pair, plus `EMAIL_ADAPTER=smtp`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker used to mean replies were marked `sent` and never left — the worker now refuses to start instead. Its first log line names the LLM, the model, the policy and every resolved adapter.
+   - Deploy after the migration step has run at least once (it is the web resource's pre-deployment command — see **Migrations**). Starting it after the web resource's health check passes is a reasonable ordering, but it is no longer what applies the schema.
+   - Env vars: **the full list is the table below** — the schema in `apps/worker/src/env.ts` plus the variables its factories read from `process.env` directly. It is deliberately the same shape as the web table above: anything in both must carry the same value in both.
+
+   | Variable | Value | Notes |
+   |---|---|---|
+   | `NODE_ENV` | `production` | **load-bearing, not decoration** — see the note below |
+   | `DATABASE_URL` | same as web | required; pg-boss and every service read it |
+   | `APP_URL` | same as web | the portal link the Ad Sentinel puts in client emails |
+   | `ANTHROPIC_API_KEY` | from Anthropic | required whenever `LLM=anthropic`; without it every agent run fails one at a time after its run row is already open |
+   | `AGENT_MODEL` | `claude-opus-5` | |
+   | `LLM` | `anthropic` | `fake` is a scripted stub; it is refused under `NODE_ENV=production` unless `ALLOW_FAKE_LLM=1` |
+   | `ALLOW_FAKE_LLM` | leave **unset** | the one way to run the fake client in production, and it has to be typed out on purpose |
+   | `AGENT_POLICY` | `safe` | `approval_all` queues even `safe` tools for a human |
+   | `EMAIL_ADAPTER` | `smtp` | the worker is what actually sends outbound mail; `mock` marks every reply, ad report and invoice email `sent` and delivers none |
+   | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | your relay | `SMTP_USER` / `SMTP_PASS` are read by the factory from `process.env`, not by the schema |
+   | `PAYMENTS_ADAPTER` | `stripe` | with `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`; either one missing is a refusal, not a downgrade |
+   | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | from Stripe | the webhook *route* is on web, but the guard here refuses a payments adapter it cannot build |
+   | `UPTIME_PROBE` | `http` | the monitor sweep runs here; `mock` reports every site up |
+   | `ADS_ADAPTER` | `mock` | as on web — `google` / `meta` are refused because they still build the mock |
+   | `SUPPORT_EMAIL_DOMAIN` | same as web | used when the worker mints or matches a support address |
+   | `STORAGE_DIR` | same path as web | inbound attachments; the **same persistent volume**, or the worker reads an empty directory |
+   | `OWNER_NOTIFY_EMAIL` | optional | send-failure and give-up notices are emailed here as well as belled |
+   | `VAT_RATE`, `PAYMENT_TERMS_DAYS` | `20`, `14` | keep identical to web, or an invoice is raised and rendered on different numbers |
+   | `ALLOW_MOCK_ADAPTERS` | leave **unset** | same rule, same spelling, same warning as web |
+
+   Not read by the worker: `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `INBOUND_EMAIL_SECRET`, `INBOUND_EMAIL_PROVIDER` (web only — sessions and the inbound webhook are its job), and every placeholder in the web list. Its first log line names the LLM, the model, the policy and every resolved adapter.
    - **`NODE_ENV=production` is load-bearing, not decoration.** Every refusal in `apps/worker/src/env.ts` — `LLM=fake` and every adapter rule — is keyed on it, and Node does not default it: a worker started without it passes all of them by not being production. Set it in Coolify's environment variables UI on this resource; `infra/Dockerfile.worker` sets it on the image as well, so the guards survive a variable that did not make it through a redeploy. If both are somehow missing, the worker's first lines are `NODE_ENV unset: production guards are OFF` followed by the adapter set it accepted — that warning means the deployment is unguarded, not that it is healthy.
    - Keep the worker at a **single replica**, for two reasons:
      - The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
@@ -215,6 +297,11 @@ Mount a persistent volume at `STORAGE_DIR` on the Coolify **web** resource, and 
 ### External blockers
 
 None of this works on our side alone. Support intake needs: an inbound provider account (Postmark or Cloudflare), DNS control of `SUPPORT_EMAIL_DOMAIN`, SMTP credentials for outbound, and `ANTHROPIC_API_KEY` for real Support Triage runs. Until each is in place the corresponding path uses its mock and the screens still work — the mail simply never leaves or arrives.
+
+**Mock-only by construction, so no credential will make these real yet:** ads (Google / Meta), hosting (Coolify), DNS (Cloudflare) and CMS. All four are an interface plus a mock with no real client written, which is why `resolveAdapters` marks them `hasRealImplementation: false` and production is not refused on them. Two consequences the UI cannot state on its own:
+
+- `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`, `CLOUDFLARE_API_TOKEN`, `GOOGLE_ADS_DEVELOPER_TOKEN`, `GOOGLE_ADS_CUSTOMER_ID`, `META_ADS_ACCESS_TOKEN`, `META_ADS_AD_ACCOUNT_ID` and `TWILIO_*` are **placeholders**. Nothing reads them. Do not go and buy them yet.
+- `dns_update_record` and `cms_update_content` are approval-gated tools backed by those mocks. Their approval cards now say so — each card reads the provider name off the adapter it was built with at describe time, and prints a line naming the mock and stating that nothing reaches Cloudflare or the CMS until a real provider is configured — so nobody approves one expecting a zone to change. The row, the audit entry and the run trace are all written exactly as they will be when the real client lands.
 
 ## Branch flow
 

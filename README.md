@@ -32,7 +32,8 @@ The full scope for Plans 3 to 5 is `docs/superpowers/specs/2026-09-04-agency-os-
 ## Quick start
 
 ```bash
-cp .env.example .env      # set BETTER_AUTH_SECRET and, optionally, SEED_OWNER_PASSWORD
+cp .env.example .env
+openssl rand -base64 48   # paste into BETTER_AUTH_SECRET in .env — it ships blank
 pnpm install
 pnpm db:up                # local Postgres 17 via docker compose
 pnpm db:migrate
@@ -40,6 +41,8 @@ pnpm db:seed              # organisation, owner, demo clients, sites, monitors, 
 pnpm dev                  # http://localhost:3000
 pnpm dev:worker           # second terminal
 ```
+
+`BETTER_AUTH_SECRET` is the one variable `.env.example` cannot supply: it signs every session cookie, and a value published in this repository is not a secret. The web app refuses to start on a blank one, on one under 32 characters, and on any placeholder shipped here — in every environment, not only production. On Windows, `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"` does the same job as `openssl rand -base64 48`.
 
 Sign in at `http://localhost:3000/sign-in` with the seeded owner email and `SEED_OWNER_PASSWORD` (default `change-me-now`). There is no sign-up page. The same page signs in the seeded client user (`SEED_CLIENT_EMAIL`, default `portal@grayscabline.example`, password `SEED_CLIENT_PASSWORD`, default `change-me-client`) and routes it to `/portal`.
 
@@ -62,6 +65,8 @@ pnpm test                                  # vitest across the workspace (needs 
 pnpm --filter @launchos/web build
 pnpm --filter @launchos/web e2e            # Playwright; needs pnpm dev, a seeded database and the worker below
 ```
+
+`pnpm test` is vitest over `src/**/*.test.ts` only. The Playwright specs live outside that pattern (`apps/web/tests/e2e/*.spec.ts`) and are **not** part of it, so a green `pnpm test` is not "the tests" — run the e2e line above as well before calling a branch verified. Vitest also passes a package with no discovered test files rather than failing it, so a suite that stops being matched goes quiet rather than red.
 
 The end-to-end specs drive real jobs, so the worker has to be up. Start it with the fake model so agent runs are deterministic, need no API key and cost nothing:
 

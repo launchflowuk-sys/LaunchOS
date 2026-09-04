@@ -17,6 +17,12 @@ export function cmsUpdateContent(cms: CmsProvider) {
     risk: "requires_approval",
     // The site and client come from our rows; the replacement content is the
     // thing being released, so the approver reads it in full before deciding.
+    //
+    // And the card says what approving will actually do. No real CMS client is
+    // written yet — `createIntegrations` hands this factory a `MockCmsProvider`,
+    // which records the change and reports success — so "goes live immediately"
+    // was a promise about a future deployment. The adapter is read here, at
+    // describe time, so the wording corrects itself when a real one lands.
     describeApproval: async (input, ctx) => {
       const [site] = await ctx.db
         .select({
@@ -35,17 +41,24 @@ export function cmsUpdateContent(cms: CmsProvider) {
           details: { path: input.path, newContentMd: input.contentMd },
         };
       }
+      const isMock = cms.name.startsWith("mock");
+      const effect = isMock
+        ? `The CMS adapter wired into this deployment is the mock (\`${cms.name}\`): approving records the change in LaunchOS and audits it, but **the page is not touched** until a real CMS provider is configured.`
+        : "It replaces the whole page and goes live immediately.";
       return {
         title: `Replace the content at ${input.path} on ${site.name}`,
         summary:
           `Approving overwrites the page at ${site.primaryUrl}${input.path} on ${site.name} ` +
-          `(${site.clientName}, ${site.platform}) with the ${input.contentMd.length}-character draft below. ` +
-          `It replaces the whole page and goes live immediately.`,
+          `(${site.clientName}, ${site.platform}) with the ${input.contentMd.length}-character draft below. ${effect}`,
         details: {
           client: site.clientName,
           site: site.name,
           page: `${site.primaryUrl}${input.path}`,
           platform: site.platform,
+          // The platform recorded on the site row, and the adapter that will
+          // actually be called. They differ while the adapter is a mock.
+          adapter: cms.name,
+          appliesToLiveSite: !isMock,
           newContentMd: input.contentMd,
         },
       };

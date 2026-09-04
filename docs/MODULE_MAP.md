@@ -36,6 +36,14 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Every module in the spec
 | `/api/search` | Global search | 2 | clients, sites, domains, tickets | — |
 | `/api/webhooks/email/inbound` | Inbound email | 4 | `email_identities` (to resolve the organisation), `organisations` | none — validates the shared secret, normalises by provider, writes attachments to `STORAGE_DIR` and enqueues `inbound.message` |
 | `/api/attachments/[org]/[file]` | Attachment download | 4 | files under `STORAGE_DIR` | — (admin session required; refuses any organisation but the caller's) |
+| `/agents/runs/[id]` | Agent run trace | 1 | one `agent_runs` row with its `agent_steps`, the approvals it raised and token usage | — (read-only; decisions happen on `/approvals`) |
+| `/clients/[id]/invoices` | Client invoices tab | 5 | that client's invoices | — (an invoice is raised on `/invoices`) |
+| `/clients/[id]/reports` | Client reports tab | 5 | that client's monthly reports | — (publishing happens on `/reports`) |
+| `/api/health` | Health check | 1 | — | — (`{"ok":true}`; Coolify's health check path for the web resource) |
+| `/api/auth/[...all]` | Better Auth | 1 | Better Auth's own tables | sign-in, sign-out, password change. Self-registration is disabled (`emailAndPassword.disableSignUp`) |
+| `/api/webhooks/stripe` | Stripe webhook | 5 | invoices, payments | applies a signature-verified Stripe event. It verifies against `STRIPE_WEBHOOK_SECRET` and fails closed — a 503 unless the real adapter is configured, so it can never accept a mock-signed event |
+
+Two routes sit outside both groups, because they run before the shell is chosen: `/sign-in` (the one sign-in page for staff and clients alike — there is no sign-up) and `/after-sign-in`, which reads the session Better Auth just set and sends an admin to `/` and a client user to `/portal`.
 
 ## Core services `packages/core/src`
 
@@ -52,7 +60,7 @@ The Plan 2 folders and what each exports. Every function has the shape `(db, org
 | `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword`, `reissueOneTimePassword`, `recordOwnPasswordChange` |
 | `search` | `search` — one query across clients, sites, domains and tickets |
 | `email` | `ensureEmailIdentity`, `supportAddress` — the routable inbox behind `clients.support_email` |
-| `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `sendQueuedMessage`, `slaDueAt`. `replyAsClient` — the portal reply path — is in flight and not yet exported from `packages/core/src/index.ts`; check `git ls-files packages/core/src/support` before importing it |
+| `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `replyAsClient`, `sendQueuedMessage`, `slaDueAt`. `replyAsClient` is the portal reply path: it writes a client's portal reply the way `ingestInboundEmail` writes their email — `direction: "inbound"`, `author_kind: "client"` — and reopens the case |
 | `knowledge` | `createKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `listKnowledgeArticles`, `searchKnowledge` |
 | `client-users` | `createClientUser`, `listClientUsers`, `setClientUserStatus` |
 | `approvals` | `decideApproval` |
@@ -67,8 +75,9 @@ Supporting folders from Plan 1 and Plan 3: `tenancy` (`assertOwned` and friends)
 | `packages/core` | Domain services, one folder per domain, all `(db, organisationId, input)` |
 | `packages/agents` | The kernel (`run-agent`, `resume-agent`, the shared `run-loop`, policy gate, recorder), the tools and the three agents |
 | `packages/channels` | Comms adapters: the `EmailAdapter` interface with mock and SMTP implementations, the inbound normalisers (`normalizePostmark` / `normalizeCloudflare` / `normalizeGeneric`) and attachment storage |
-| `packages/integrations` | External providers — Coolify, Cloudflare DNS, Google Ads, Meta Ads, Stripe, the uptime probe — each an interface plus a mock, with the real client chosen by env |
-| `packages/ui`, `packages/config` | Shared components and shared tsconfig / eslint / prettier |
+| `packages/integrations` | External providers — Coolify, Cloudflare DNS, Google Ads, Meta Ads, Stripe, the uptime probe — each an interface plus a mock. A real client is written for **Stripe and the HTTP uptime probe only**, and env chooses it; ads, hosting, DNS and CMS are mock-only so far, which `resolveAdapters` records as `hasRealImplementation: false` |
+| `packages/config` | Shared tsconfig / eslint / prettier |
+| `packages/ui` | **Reserved, not built.** A `README.md` and nothing else — no `package.json`, so pnpm does not treat it as a workspace member. Shared components live in `apps/web/src/components` until there is a second consumer |
 
 ## Client portal `apps/web/src/app/(portal)`
 

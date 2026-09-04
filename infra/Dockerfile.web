@@ -14,4 +14,16 @@ RUN pnpm --filter @launchos/web build
 # Coolify resource is missing the variable.
 ENV NODE_ENV=production
 EXPOSE 3000
-CMD ["sh", "-c", "pnpm --filter @launchos/db migrate && pnpm --filter @launchos/web start"]
+# Serving only. Migrations are a one-shot step run *before* this container
+# starts — Coolify's pre-deployment command, the `migrate` service in
+# `docker-compose.coolify.yml`, or `docker exec … pnpm --filter @launchos/db
+# migrate` by hand (docs/DEPLOYMENT.md, "Migrations").
+#
+# They used to be part of this CMD (`migrate && start`). Three things that got
+# wrong: a failing migration became a crash-loop outage of both portals rather
+# than a deferred schema change, because `&&` short-circuits and Coolify
+# restarts; a second web replica would have run `drizzle-kit migrate`
+# concurrently against one database with no advisory lock; and no migration
+# could be applied without restarting the app. The image still carries the
+# migrations and drizzle-kit, so the one-shot step runs from this same image.
+CMD ["pnpm", "--filter", "@launchos/web", "start"]

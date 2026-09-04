@@ -1,4 +1,4 @@
-# Reference compose file for the LaunchOS production topology on Coolify.
+# Reference compose file for the LaunchOS production topology.
 #
 # Coolify itself is set up as three separate resources (one managed Postgres
 # resource plus two Docker-build resources — see docs/DEPLOYMENT.md, "Coolify
@@ -6,6 +6,71 @@
 # same topology in compose form for local smoke-testing of the built images
 # together, or as a reference if a docker-compose-based Coolify resource is
 # used instead.
+#
+# ---------------------------------------------------------------------------
+# THIS FILE IS A SMOKE TEST, NOT A PRODUCTION DEPLOYMENT.
+#
+# It runs `NODE_ENV=production` images, and both processes refuse to start in
+# production on a mock adapter. To make `docker compose up` actually come up
+# without SMTP, Stripe and an Anthropic key, it defaults `ALLOW_MOCK_ADAPTERS=1`
+# and `LLM=fake` + `ALLOW_FAKE_LLM=1` — the two opt-outs that say "the mocks
+# were meant". They are what makes this file honest about being a smoke test:
+# with them set, no mail leaves, no incident is ever opened, invoices are raised
+# against a fake ledger and the agents answer from a scripted stub.
+#
+# A real deployment is the three Coolify resources in docs/DEPLOYMENT.md and
+# must carry NEITHER opt-out. Override any of them from the shell or from an
+# `.env` file beside this one (compose reads `infra/.env`, not the repo root):
+#
+#   EMAIL_ADAPTER=smtp SMTP_HOST=… ALLOW_MOCK_ADAPTERS= docker compose -f infra/docker-compose.coolify.yml up
+#
+# BETTER_AUTH_SECRET has no default on purpose: `${VAR:?…}` makes compose stop
+# with the message below rather than start a web container that signs every
+# session cookie with an empty string. Generate one with
+# `openssl rand -base64 48`.
+# ---------------------------------------------------------------------------
+
+# Everything both application services need, so the two lists cannot drift.
+# Anything added to apps/web/src/lib/env.ts or apps/worker/src/env.ts belongs
+# here as well — see the env tables in docs/DEPLOYMENT.md steps 3 and 4.
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET — generate one with `openssl rand -base64 48`}
+  BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+  # Adapters. Each default is a mock, which is why ALLOW_MOCK_ADAPTERS is set
+  # below; override the pair to test a real one.
+  EMAIL_ADAPTER: ${EMAIL_ADAPTER:-mock}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  MAIL_FROM: ${MAIL_FROM:-LaunchFlow Support <support@launchflow.example>}
+  PAYMENTS_ADAPTER: ${PAYMENTS_ADAPTER:-mock}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  ADS_ADAPTER: ${ADS_ADAPTER:-mock}
+  UPTIME_PROBE: ${UPTIME_PROBE:-mock}
+  ALLOW_MOCK_ADAPTERS: ${ALLOW_MOCK_ADAPTERS-1}
+  # Support intake. STORAGE_DIR is the shared volume mounted below: web writes
+  # inbound attachments, worker reads them, and both must see the same files.
+  SUPPORT_EMAIL_DOMAIN: ${SUPPORT_EMAIL_DOMAIN:-support.launchflow.example}
+  INBOUND_EMAIL_PROVIDER: ${INBOUND_EMAIL_PROVIDER:-generic}
+  INBOUND_EMAIL_SECRET: ${INBOUND_EMAIL_SECRET:-}
+  OWNER_NOTIFY_EMAIL: ${OWNER_NOTIFY_EMAIL:-}
+  STORAGE_DIR: /data/attachments
+  # Money. Identical in both processes, or an invoice is raised and rendered on
+  # different numbers.
+  VAT_RATE: ${VAT_RATE:-20}
+  PAYMENT_TERMS_DAYS: ${PAYMENT_TERMS_DAYS:-14}
+  # Agents. Read by the worker; harmless on web, which only enqueues runs.
+  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+  AGENT_MODEL: ${AGENT_MODEL:-claude-opus-5}
+  AGENT_POLICY: ${AGENT_POLICY:-safe}
+  LLM: ${LLM:-fake}
+  ALLOW_FAKE_LLM: ${ALLOW_FAKE_LLM-1}
+
 services:
   postgres:
     image: postgres:17-alpine
@@ -22,6 +87,23 @@ services:
       timeout: 3s
       retries: 10
 
+  # The one-shot schema step, from the web image. It is deliberately not part of
+  # the web container's entrypoint: a failing migration should be a job that
+  # exits non-zero, not a crash-loop of the thing that serves both portals.
+  # In Coolify this is the web resource's pre-deployment command instead.
+  migrate:
+    build:
+      context: ..
+      dockerfile: infra/Dockerfile.web
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
+    command: ["pnpm", "--filter", "@launchos/db", "migrate"]
+
   web:
     build:
       context: ..
@@ -30,17 +112,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
-      APP_URL: ${APP_URL}
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      AGENT_MODEL: ${AGENT_MODEL}
-      LLM: ${LLM}
-      AGENT_POLICY: ${AGENT_POLICY}
-      UPTIME_PROBE: ${UPTIME_PROBE}
+      <<: *app-env
+    volumes:
+      - launchos_attachments:/data/attachments
     ports:
       - "3000:3000"
     healthcheck:
@@ -54,19 +131,20 @@ services:
       context: ..
       dockerfile: infra/Dockerfile.worker
     restart: unless-stopped
+    # Single replica, always: the monitor sweep is not safe to run concurrently
+    # and `sendQueuedMessage`'s claim is a five-minute lease, not a lock.
     depends_on:
       postgres:
         condition: service_healthy
-      web:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
-      NODE_ENV: production
-      DATABASE_URL: postgres://launchos:launchos@postgres:5432/launchos
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      AGENT_MODEL: ${AGENT_MODEL}
-      LLM: ${LLM}
-      AGENT_POLICY: ${AGENT_POLICY}
-      UPTIME_PROBE: ${UPTIME_PROBE}
+      <<: *app-env
+    volumes:
+      # The same volume, at the same path: the worker reads the attachments the
+      # web app wrote. Two per-container copies would lose every one on redeploy.
+      - launchos_attachments:/data/attachments
 
 volumes:
   launchos_pgdata:
+  launchos_attachments:

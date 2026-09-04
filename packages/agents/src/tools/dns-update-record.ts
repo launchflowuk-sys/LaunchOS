@@ -19,6 +19,14 @@ export function dnsUpdateRecord(dns: DnsProvider) {
     risk: "requires_approval",
     // The zone and the client come from our rows; the record itself is what the
     // approver is being asked to release, so it is spelled out in full.
+    //
+    // The card also has to say what the approval will actually do. The real
+    // Cloudflare client is not written yet — `createIntegrations` hands this
+    // factory a `MockCloudflareDns`, which records the change and reports
+    // success — so a card reading "Live DNS changes take effect immediately"
+    // told the approver something that will be true later and is not true now.
+    // The adapter is read here, at describe time, rather than hard-coded, so
+    // the sentence turns itself off the day a real provider is configured.
     describeApproval: async (input, ctx) => {
       const [domain] = await ctx.db
         .select({ name: schema.domains.name, clientName: schema.clients.name, provider: schema.domains.dnsProvider })
@@ -32,15 +40,24 @@ export function dnsUpdateRecord(dns: DnsProvider) {
         };
       }
       const record = `${input.name}.${domain.name}`;
+      const isMock = dns.name.startsWith("mock");
+      const effect = isMock
+        ? `The DNS adapter wired into this deployment is the mock (\`${dns.name}\`): approving records the change in LaunchOS and audits it, but **no zone is touched** until a real DNS provider is configured.`
+        : "Live DNS changes take effect immediately.";
       return {
         title: `Set the ${input.type} record ${record} to ${input.value}`,
         summary:
           `Approving writes a ${input.type} record on ${domain.name} (${domain.clientName}, via ${domain.provider}): ` +
-          `${record} → ${input.value}, TTL ${input.ttl}s. Live DNS changes take effect immediately.`,
+          `${record} → ${input.value}, TTL ${input.ttl}s. ${effect}`,
         details: {
           client: domain.clientName,
           zone: domain.name,
           provider: domain.provider,
+          // What the domain row says the zone is hosted on, and what will
+          // actually be called. They differ while the adapter is a mock, and
+          // the approver should see both rather than infer one from the other.
+          adapter: dns.name,
+          appliesToLiveZone: !isMock,
           type: input.type,
           record,
           value: input.value,

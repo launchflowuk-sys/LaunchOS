@@ -24,7 +24,7 @@ packages/agents        kernel, tools, agent definitions
 packages/core          domain services, one folder per domain
         │
 packages/db            Drizzle schema, migrations, client
-packages/channels      email / in-app / whatsapp adapters   (leaf, used by core + agents)
+packages/channels      email adapters + attachment storage  (leaf, used by core + agents)
 packages/integrations  coolify / cloudflare / google-ads / meta-ads adapters (leaf, mock-first)
 ```
 
@@ -153,7 +153,7 @@ See `docs/AGENT_FRAMEWORK.md`.
 
 ## Integrations
 
-Each integration in `packages/integrations` exports an interface and two implementations: `Mock*` and the real client. `createIntegrations(env)` picks the real one only when its env vars are present. Agents and core only ever see the interface.
+Each integration in `packages/integrations` exports an interface and a `Mock*` implementation. **Two of them have a real client written today** — `payments` (Stripe) and `uptime` (HTTP) — and for those `createIntegrations(env)` picks the real one only when its env vars are present. The other four are interface-plus-mock with nothing behind them yet: `createAdsAdapter` always returns the mock, and hosting, DNS and CMS have no selecting env var at all. `resolveAdapters` marks that difference as `hasRealImplementation`, which is exactly why production is not refused on them (see below). Agents and core only ever see the interface, so a real client lands without touching a caller.
 
 **Production refuses a mock.** Selection is spread across four factories — `createEmailAdapter` (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapter` and the `UPTIME_PROBE` branch in `createIntegrations` — so `packages/integrations/src/adapter-guard.ts` is the one place that *names* the outcome of all of them. `apps/worker/src/env.ts` and `apps/web/src/lib/env.ts` both call `productionAdapterIssues` before anything connects, and under `NODE_ENV=production` a mock is a refusal unless `ALLOW_MOCK_ADAPTERS=1` says it was meant.
 

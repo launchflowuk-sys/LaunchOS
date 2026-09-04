@@ -1,4 +1,5 @@
 import { VAT_RATE_DEFAULT_PERCENT } from "@launchos/core";
+import { isPublishedDefaultPassword } from "@launchos/db/passwords";
 import { describeAdapters, productionAdapterIssues } from "@launchos/integrations";
 import { z } from "zod";
 
@@ -34,11 +35,105 @@ const VatRatePercent = z
   .transform(Number)
   .pipe(z.number().min(0).max(100));
 
+/**
+ * The floor for `BETTER_AUTH_SECRET`, in characters.
+ *
+ * `openssl rand -base64 48` is 64 characters; 32 is the shortest value that
+ * still carries enough entropy to be worth signing a session cookie with, and
+ * is short enough that a hand-typed passphrase can clear it.
+ */
+export const MIN_AUTH_SECRET_LENGTH = 32;
+
+/** How to produce a real one, said the same way everywhere it is asked for. */
+const GENERATE_SECRET = "generate one with `openssl rand -base64 48`";
+
+/**
+ * Placeholder secrets this repository has published, checked by value.
+ *
+ * The same idea as `PUBLISHED_DEFAULT_PASSWORDS` in `packages/db/src/passwords.ts`,
+ * for the same reason: a value printed in a public repository is not a secret,
+ * and `cp .env.example .env` is exactly how one reaches a live deployment. The
+ * published *passwords* are folded in through `isPublishedDefaultPassword` so
+ * the two lists cannot drift — a placeholder added there is refused here too.
+ *
+ * `change-me` is under the length floor anyway, so this list only bites on a
+ * padded placeholder. It exists because the next placeholder somebody invents
+ * may not be short, and because the refusal it produces names the real problem
+ * ("published in this repository") rather than a length.
+ */
+const PUBLISHED_DEFAULT_SECRETS: readonly string[] = [
+  "change-me",
+  "changeme",
+  "change_me",
+  "change-me-please",
+  "please-change-me",
+  "secret",
+  "better-auth-secret",
+  "dev-secret",
+  "development",
+];
+
+/** Whether a value is one of the placeholders this repository ships. */
+export function isPublishedDefaultSecret(value: string): boolean {
+  const trimmed = value.trim();
+  return PUBLISHED_DEFAULT_SECRETS.includes(trimmed.toLowerCase()) || isPublishedDefaultPassword(trimmed);
+}
+
+/** A Postgres connection string. Reused by the guard below rather than by a field. */
+const DatabaseUrl = z.string().url();
+
 export const Env = z.object({
   VAT_RATE: VatRatePercent.optional(),
   APP_URL: z.string().url().default("http://localhost:3000"),
+  /**
+   * Declared so this schema is the whole list of what the web process needs,
+   * which is what `docs/DEPLOYMENT.md`'s web env list is written from. Both are
+   * validated in `startupSecretIssues` rather than by a field, so the refusal
+   * can name the fix ("generate one with …") and so the `next build` exemption
+   * applies to them — a build has neither a database nor a session to sign.
+   */
+  DATABASE_URL: z.string().optional(),
+  BETTER_AUTH_SECRET: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
+
+/**
+ * The two secrets the process cannot run without, and the placeholder refusal.
+ *
+ * `docs/superpowers/specs/2026-09-03-agency-os-design.md:105` asks for exactly
+ * this — "the process refuses to start without `DATABASE_URL` and
+ * `BETTER_AUTH_SECRET`" — and until this existed neither was checked at boot.
+ * `lib/auth.ts` tests `BETTER_AUTH_SECRET` for presence only, lazily, inside
+ * `buildAuth()`: a container missing it started, passed `GET /api/health`, and
+ * failed with a 500 on the first sign-in. A container carrying the published
+ * `change-me` did not even fail — it signed every session cookie, `owner`
+ * included, with a value anyone can read out of this repository.
+ *
+ * Exported so the rules can be tested without mutating `process.env`.
+ */
+export function startupSecretIssues(source: NodeJS.ProcessEnv): string[] {
+  const issues: string[] = [];
+
+  const databaseUrl = source.DATABASE_URL?.trim() ?? "";
+  if (databaseUrl.length === 0) {
+    issues.push("DATABASE_URL: not set — the web app, pg-boss and Better Auth all read it, e.g. postgres://user:pass@host:5432/launchos");
+  } else if (!DatabaseUrl.safeParse(databaseUrl).success) {
+    issues.push(`DATABASE_URL: not a connection URL (${databaseUrl.split("@").at(-1)}) — expected postgres://user:pass@host:5432/database`);
+  }
+
+  const secret = source.BETTER_AUTH_SECRET?.trim() ?? "";
+  if (secret.length === 0) {
+    issues.push(`BETTER_AUTH_SECRET: not set — every session cookie is signed with it, so ${GENERATE_SECRET}`);
+  } else if (isPublishedDefaultSecret(secret)) {
+    issues.push(
+      `BETTER_AUTH_SECRET: a placeholder published in this repository — every session cookie, the owner's included, would be signed with a value anyone can read, so ${GENERATE_SECRET}`,
+    );
+  } else if (secret.length < MIN_AUTH_SECRET_LENGTH) {
+    issues.push(`BETTER_AUTH_SECRET: ${secret.length} characters; the minimum is ${MIN_AUTH_SECRET_LENGTH} — ${GENERATE_SECRET}`);
+  }
+
+  return issues;
+}
 
 /**
  * `next build` sets `NODE_ENV=production` and `NEXT_PHASE=phase-production-build`
@@ -78,6 +173,13 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
   if (!result.success) {
     const detail = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Invalid environment: ${detail}`);
+  }
+  // The build exemption covers these too: `infra/Dockerfile.web` runs
+  // `next build` long before a database or a session secret exists, and a build
+  // signs nothing. `next start` is where a real cookie could be issued.
+  const secretIssues = isBuild(source) ? [] : startupSecretIssues(source);
+  if (secretIssues.length > 0) {
+    throw new Error(`Invalid environment:\n- ${secretIssues.join("\n- ")}`);
   }
   const adapterIssues = isBuild(source) ? [] : productionAdapterIssues(source);
   if (adapterIssues.length > 0) {
