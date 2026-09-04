@@ -65,3 +65,7 @@ export { listTasks, TaskFilters } from "./tasks/list-tasks.js";
 export type { TaskListRow } from "./tasks/list-tasks.js";
 export { getTask } from "./tasks/get-task.js";
 export { updateTaskStatus, UpdateTaskStatusInput, FINISHED_STATUSES } from "./tasks/update-task-status.js";
+export { findOwnerUserId, pickLeastLoadedStaff } from "./tasks/assignee.js";
+export { assignTask, AssignTaskInput } from "./tasks/assign-task.js";
+export { commentOnTask, CommentOnTaskInput } from "./tasks/comment-on-task.js";
+export { setTaskVisibility, toggleChecklistItem, SetTaskVisibilityInput, ToggleChecklistItemInput } from "./tasks/toggle-checklist-item.js";
