@@ -71,7 +71,40 @@ Retry limit 5 with exponential backoff, then dead-letter. Every cron sweep isola
 
 ## Events
 
-Domain events are plain function calls into `packages/core/src/events/emit.ts` (`emit`/`setEnqueue`), which only carries the event to whichever `EnqueueFn` the running process registered — `core` stays unaware of pg-boss or agents. The actual event-name-to-job routing table lives in one place, `apps/worker/src/jobs/dispatch-event.ts`, so it can be unit tested with a fake `boss.send`. Example: `ticket.created` → `agent.run { agentKey: "support-triage" }` (the enablement check itself happens inside `handleAgentRun`, not the routing table). Other mappings: `client.created` → `tasks.generate-onboarding` + `ensureEmailIdentity`; `email.received` → `inbound.message`; `message.queued` → `outbound.message`; `approval.decided` → `agent.resume`; `payments.webhook` → `payments.webhook` (kept in the routing table for symmetry — in practice the Stripe route enqueues this job directly rather than through `emit`).
+Domain events are plain function calls into `packages/core/src/events/emit.ts` (`emit`/`setEnqueue`), which only carries the event to whichever `EnqueueFn` the running process registered — `core` stays unaware of pg-boss or agents. Until a process calls `setEnqueue`, `emit` is a silent no-op: that is why every web entry point that emits (a server action, the inbound webhook) calls `installWebEnqueue()` first, and why the seed can call `ingestInboundEmail` without dispatching anything.
+
+The event-name-to-job routing table lives in one place, `apps/worker/src/jobs/dispatch-event.ts`, so it can be unit tested with a fake `boss.send`:
+
+| Event | Job |
+|---|---|
+| `incident.opened` | `agent.run { agentKey: "hosting-guard-dog" }` |
+| `ticket.created` | `agent.run { agentKey: "support-triage" }` |
+| `email.received` | `inbound.message` |
+| `message.queued` | `outbound.message` |
+| `approval.decided` | `agent.resume` |
+| `client.created` | `tasks.generate-onboarding`, plus `ensureEmailIdentity` |
+| `payments.webhook` | `payments.webhook` |
+
+The enablement check happens inside `handleAgentRun`, not in the routing table. `payments.webhook` is kept here for symmetry — in practice the Stripe route enqueues that job directly, as the approvals screen enqueues `agent.resume` directly so it can attach the deciding user's id, which the `approval.decided` event does not carry.
+
+`apps/web/src/lib/queue.ts` implements the web half. It short-circuits the three events whose target queue it already knows — `email.received` → `inbound.message`, `message.queued` → `outbound.message`, `approval.decided` → `agent.resume`, each with the same singleton key the worker uses — and puts everything else onto the generic `domain.event` queue for `dispatchEvent` to route. The duplication is deliberate: nothing may import from `apps/*` into `apps/*`. It also means **the two files have to be kept in step**; a singleton key that differs between them would let the same work be queued twice.
+
+## Webhooks
+
+Route handlers under `apps/web/src/app/api/webhooks/` are the only unauthenticated entry points. They validate, normalise and enqueue; they never write a business record, so a slow database cannot spend the provider's timeout budget.
+
+**`POST /api/webhooks/email/inbound`** — inbound support mail.
+
+1. Compares the `x-launchos-inbound-secret` header against `INBOUND_EMAIL_SECRET` with `timingSafeEqual`, rejecting a length mismatch before comparing so the length is not leaked. No match is a 401 and nothing else runs.
+2. Caps the body (20MB) and rejects a payload it cannot parse.
+3. Normalises by provider — `?provider=postmark|cloudflare|generic`, falling back to `INBOUND_EMAIL_PROVIDER`. A payload that does not fit the provider's shape is a **422**, not a 500: a malformed message is the provider's problem and must not be retried forever.
+4. Resolves the organisation by matching a recipient against `email_identities.address`. With no match, the oldest active organisation owns the mail and the ingest files it under that organisation's `unmatched` holding client.
+5. Writes attachments to `STORAGE_DIR` under generated names (the provider's filename is reduced to its basename first), so the queue payload stays small.
+6. Emits `email.received` and returns **202**.
+
+Everything after that is the worker: `handleInboundMessage` calls `ingestInboundEmail`, which threads the message, opens or reuses a case and emits `ticket.created`. Attachments are served back by `GET /api/attachments/[org]/[file]`, which requires an admin session and refuses any organisation but the caller's.
+
+**`POST /api/webhooks/stripe`** — verifies the Stripe signature, resolves tenancy from the customer id and enqueues `payments.webhook` directly. It refuses with 503 unless the real Stripe adapter is configured, so it can never accept a mock-signed event.
 
 ## Auth and tenancy
 

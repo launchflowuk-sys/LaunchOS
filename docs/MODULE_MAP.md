@@ -8,6 +8,8 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 |---|---|---|---|---|
 | `/` | Dashboard | 1 | open incidents, pending approvals, open tickets | — |
 | `/clients`, `/clients/[id]` | Clients | 2 | clients, contacts, billing profile, sites, domains, activity events | create/update/archive client, contacts, billing profile, sites, domains |
+| `/clients/[id]/support` | Client support tab | 4 | that client's conversations and cases | — (replies happen on the thread) |
+| `/clients/[id]/portal-users` | Client portal users tab | 4 | `client_users` joined to `user` | invite a portal user (one-time password shown once), suspend / reactivate |
 | `/websites`, `/websites/[id]` | Websites | 2 | sites, domains, monitors, incidents | — (a site is created on the client page) |
 | `/domains`, `/domains/[id]` | Domains | 2 | domains, dns records, sites | attach/detach a domain to a site, edit domain, dns record CRUD (a domain is created on the client page) |
 | `/tasks`, `/tasks/[id]` | Tasks | 3 | tasks, clients, members, comments | create, status, assign, comment, checklist, visibility |
@@ -21,10 +23,13 @@ Routes match `NAV_GROUPS` in `apps/web/src/lib/nav.ts`. Modules whose plan has n
 | `/payments`, `/invoices`, `/ads` | Money | 5 | — | — |
 | `/approvals` | Approvals | 1 (decision), 4 (resume) | approvals with their agent run | approve/reject, queueing `agent.resume` so the kernel runs the tool and stamps the row |
 | `/settings/agents` | Agents | 1 | agent_enablement | toggle |
-| `/knowledge` | Knowledge Base | 4 | — | — |
+| `/knowledge`, `/knowledge/new`, `/knowledge/[id]` | Knowledge Base | 4 | knowledge_articles, full-text search over them | create, edit, publish/unpublish, delete |
+| `/settings/email` | Email | 4 | `email_identities` per client, plus the configured domain, provider, adapter and `MAIL_FROM`. A secret is rendered as "Set" / "Not set", never its value | send a test email through the configured adapter |
 | `/team` | Team | 2 | organisation members + users | create member (one-time password), deactivate |
 | `/settings/organisation` | Organisation | 2 | organisation, SUPPORT_EMAIL_DOMAIN | — |
 | `/api/search` | Global search | 2 | clients, sites, domains, tickets | — |
+| `/api/webhooks/email/inbound` | Inbound email | 4 | `email_identities` (to resolve the organisation), `organisations` | none — validates the shared secret, normalises by provider, writes attachments to `STORAGE_DIR` and enqueues `inbound.message` |
+| `/api/attachments/[org]/[file]` | Attachment download | 4 | files under `STORAGE_DIR` | — (admin session required; refuses any organisation but the caller's) |
 
 ## Core services `packages/core/src`
 
@@ -40,20 +45,41 @@ The Plan 2 folders and what each exports. Every function has the shape `(db, org
 | `domains` | `createDomain`, `updateDomain`, `deleteDomain`, `listDomains`, `getDomain`, `createDnsRecord`, `updateDnsRecord`, `deleteDnsRecord`, `listDnsRecords` |
 | `team` | `createMember`, `listMembers`, `countActiveOwners`, `deactivateMember`, `generateOneTimePassword` |
 | `search` | `search` — one query across clients, sites, domains and tickets |
+| `email` | `ensureEmailIdentity`, `supportAddress` — the routable inbox behind `clients.support_email` |
+| `support` | `createTicket`, `ingestInboundEmail`, `updateTicket`, `assignTicket`, `escalateTicket`, `replyToConversation`, `replyAsClient`, `sendQueuedMessage`, `slaDueAt` |
+| `knowledge` | `createKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `listKnowledgeArticles`, `searchKnowledge` |
+| `client-users` | `createClientUser`, `listClientUsers`, `setClientUserStatus` |
+| `approvals` | `decideApproval` |
 
-Supporting folders from Plan 1 and Plan 3: `tenancy` (`assertOwned` and friends), `audit` (`recordAudit`), `events` (`emit`, `setEnqueue`), `config` (`supportEmailDomain`, `supportEmailFor`), `monitoring`, `incidents`, `support`, `packages`, `tasks`.
+Supporting folders from Plan 1 and Plan 3: `tenancy` (`assertOwned` and friends), `audit` (`recordAudit`), `events` (`emit`, `setEnqueue`), `config` (`supportEmailDomain`, `supportEmailFor`), `queue` (queue names and policies, applied by both processes), `monitoring`, `incidents`, `packages`, `tasks`. Plan 5 adds `billing`, `ads` and `reports`.
+
+## Packages
+
+| Package | What is in it |
+|---|---|
+| `packages/db` | Drizzle schema, migrations, the client, and the idempotent dev seed |
+| `packages/core` | Domain services, one folder per domain, all `(db, organisationId, input)` |
+| `packages/agents` | The kernel (`run-agent`, `resume-agent`, the shared `run-loop`, policy gate, recorder), the tools and the three agents |
+| `packages/channels` | Comms adapters: the `EmailAdapter` interface with mock and SMTP implementations, the inbound normalisers (`normalizePostmark` / `normalizeCloudflare` / `normalizeGeneric`) and attachment storage |
+| `packages/integrations` | External providers — Coolify, Cloudflare DNS, Google Ads, Meta Ads, Stripe, the uptime probe — each an interface plus a mock, with the real client chosen by env |
+| `packages/ui`, `packages/config` | Shared components and shared tsconfig / eslint / prettier |
 
 ## Client portal `apps/web/src/app/(portal)`
 
 | Route | Module | Plan | Scope |
 |---|---|---|---|
-| `/portal` | Home | 4 | site status summary, open tickets |
-| `/portal/sites` | My Sites | 4 | sites, domains, uptime last 30 days |
-| `/portal/support`, `/portal/support/[ticketId]` | Support | 4 | own tickets and messages; create ticket; reply |
-| `/portal/ads` | Ad Reports | 5 | approved/sent reports only |
-| `/portal/account` | Account | 4 | profile, password, contacts |
+| `/portal` | Home | 4 | their own sites' status, open cases, latest activity |
+| `/portal/sites` | Websites | 4 | their sites with the current uptime state |
+| `/portal/domains` | Domains | 4 | their domains and expiry |
+| `/portal/tasks` | Progress | 4 | their tasks marked `client_visible` |
+| `/portal/support` | Support | 4 | their own `client_visible` cases only |
+| `/portal/support/new` | New request | 4 | raises a case on their client; severity cannot be set to `critical` |
+| `/portal/support/[id]` | Case thread | 4 | one case of theirs; internal notes are filtered out; a reply is written `internal: true` so we never email them their own words |
+| `/portal/invoices`, `/portal/invoices/[id]` | Invoices | 5 | their invoices, excluding drafts |
+| `/portal/reports`, `/portal/reports/[id]` | Reports | 5 | published reports only |
+| `/portal/account` | Account | 4 | their profile and a password change |
 
-Every portal query includes `clientId` from the session.
+Every portal query takes `clientId` from the session (`apps/web/src/lib/portal-session.ts`); there is no path from the URL into it. Another client's id is a 404, not somebody else's data, and an `(admin)` route requested from a portal session bounces back to `/portal`. `/after-sign-in` is what decides between the two shells after Better Auth sets the cookie.
 
 ## Later
 

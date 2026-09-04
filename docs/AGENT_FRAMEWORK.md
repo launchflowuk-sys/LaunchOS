@@ -71,7 +71,34 @@ export interface AgentRunResult {
    - `queue_approval`: call the tool's `describeApproval` if it has one, insert `approvals` with the tool name, the input and that description, record an `approval_requested` step, park the run as `awaiting_approval`, and stop the loop. The pending assistant message and tool_use id are stored in `agent_runs.metadata.pending` so the run can resume.
 8. Append all tool results as one user message and loop until `maxTurns`.
 
-Resume (`agent.resume` job): loads the parked run, executes the approved tool (or substitutes a rejection tool_result), and continues the loop from step 3. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent.
+Steps 3 to 8 live in `run-loop.ts`, not in `run-agent.ts`. Both `runAgent` and `resumeAgent` call it, so a first run and a resumed one cannot drift apart in how they handle tool results, parking or the turn limit.
+
+## Resume (`resume-agent.ts`, the `agent.resume` job)
+
+Parking writes the whole loop state onto the run:
+
+```ts
+agent_runs.metadata.pending = {
+  messages,              // the conversation so far, including the parked assistant turn
+  completedResults,      // tool_results for the calls in this batch that already ran
+  awaitingToolUseId,     // the tool_use block a human is looking at
+  remainingToolUseIds,   // the rest of the batch, which never ran
+}
+```
+
+`resumeAgent(def, { runId, approvalId, decision, note, decidedByUserId, … })` then:
+
+1. Loads the run and the approval, both scoped to the organisation. The approval must belong to this run, must still be `pending`, and its `payload.toolUseId` must equal `awaitingToolUseId` — that binding is what stops a stale "approved" row being replayed against a later parked call. Anything inconsistent throws rather than guessing.
+2. Reopens the recorder. `RunRecorder.reopen` continues the existing `seq` rather than restarting at 0, which the `agent_steps_run_seq` unique index would reject.
+3. Stamps the approval with the decision, `decided_at`, `decided_by` and the note.
+4. **Approved:** executes the tool directly — the policy gate is not consulted a second time, because the human *is* the gate. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent. A tool that throws becomes an `is_error` tool_result rather than losing the run.
+   **Rejected:** substitutes `rejected by human: <note>` as an `is_error` tool_result and records a `note` step.
+5. Marks every `remainingToolUseIds` entry `skipped pending approval`, in the trace as well as to the model.
+6. Re-enters the shared `runLoop` with `[...pending.messages, { role: "user", content: results }]`.
+
+If a resume dies partway, the run is left `running`; a later attempt finishes it `failed` and notifies the owner, because an approved outward action silently vanishing is the one failure nothing else surfaces. The status predicate matters: a run still sitting in `awaiting_approval` is legitimately parked for some *other* approval and is never touched.
+
+The `/approvals` screen does not decide the row itself. It records `approval.approved_queued` in `audit_log` and enqueues `agent.resume` with the signed-in user's id; `resumeAgent` refuses an already-decided approval, so stamping it in the web process would strand the run. `opts.decidedByUserId` reaches the tool as `ctx.approvedByUserId`, so a tool that records who acted names the approver rather than the agent.
 
 ## Describing an approval
 

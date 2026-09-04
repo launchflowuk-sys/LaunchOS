@@ -52,8 +52,11 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
      - `AGENT_MODEL` → `claude-opus-5`
      - `SUPPORT_EMAIL_DOMAIN` → the domain every client support address is minted under (`<client-slug>@<domain>`), e.g. `support.launchflow.co.uk`. Its MX records must point at the inbound mail provider. Unset falls back to `support.launchflow.co.uk`. Changing it later does **not** rewrite addresses already stored on existing clients, and migration `0007_backfill_support_email.sql` fills older rows in with the fallback domain because a migration cannot read env — so **after setting or changing this, run `pnpm db:reconcile-support-emails`** (see step 6). Inbound routing matches on the address alone, so a client left on the wrong domain silently never receives mail.
      - `OWNER_NOTIFY_EMAIL` → optional. In-app notifications always reach the owner's bell; set this to also email them. Leave unset to keep notifications in-app only.
-     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`
-     - `INBOUND_EMAIL_SECRET`
+     - `INBOUND_EMAIL_PROVIDER` → `postmark`, `cloudflare` or `generic`; the payload shape the webhook expects when the URL carries no `?provider=`.
+     - `EMAIL_ADAPTER` → `mock` until the DNS records verify, then `smtp`.
+     - `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` — required once `EMAIL_ADAPTER=smtp`.
+     - `INBOUND_EMAIL_SECRET` → the shared secret the inbound provider sends back in `x-launchos-inbound-secret`.
+     - `STORAGE_DIR` → where inbound attachments are written; must be a persistent volume (see **Inbound email** below).
      - `COOLIFY_API_URL`, `COOLIFY_API_TOKEN`
      - `CLOUDFLARE_API_TOKEN`
      - `GOOGLE_ADS_DEVELOPER_TOKEN`
@@ -71,7 +74,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - Health check: process-based (no HTTP endpoint); configure Coolify's restart policy to restart on exit.
    - Auto-deploy: enable "auto deploy on push" for `main`.
    - Deploy after the web resource so migrations have already run once; set it to start after the web resource's health check passes.
-   - Env vars: `DATABASE_URL` (same as web), `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`.
+   - Env vars: `DATABASE_URL` (same as web), `APP_URL`, `ANTHROPIC_API_KEY`, `AGENT_MODEL`, `LLM=anthropic`, `AGENT_POLICY=safe`, `UPTIME_PROBE=http`, plus `EMAIL_ADAPTER`, `SMTP_*`, `MAIL_FROM` and `STORAGE_DIR`. The worker is what actually sends outbound mail and reads inbound attachments, so leaving these off the worker means replies queue and never leave.
    - Keep the worker at a **single replica**. The monitor sweep is not safe to run concurrently: two workers would double-count consecutive failures and open duplicate incidents.
 
 5. **First owner account** — sign-up is disabled in the app (`emailAndPassword.disableSignUp`), so seeding is the only way to create the first account. Run the seed once, inside the running web container:
@@ -92,6 +95,49 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    It rewrites every `clients.support_email` to `<client-slug>@$SUPPORT_EMAIL_DOMAIN`, which fixes the two things a migration cannot: rows that migration 0007 backfilled on the hardcoded fallback domain, and the collision that `<slug>` being unique only *per organisation* while `support_email` is unique *globally* creates once a second organisation exists (the oldest organisation keeps `<slug>@<domain>`, later ones get `<slug>-<org-slug>@<domain>`). Each change is written to `audit_log`. It is idempotent and a no-op when everything already matches. Locally the same commands are `pnpm db:reconcile-support-emails -- --dry-run` and `pnpm db:reconcile-support-emails`.
 
 7. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
+
+## Inbound email
+
+Every client has a support address `<client-slug>@$SUPPORT_EMAIL_DOMAIN`. Mail sent to it reaches `POST /api/webhooks/email/inbound`, which validates the shared secret, normalises the payload, writes attachments to `STORAGE_DIR` and enqueues. It performs **no** business writes, so a slow database cannot time the provider out.
+
+### DNS for `SUPPORT_EMAIL_DOMAIN`
+
+Four record sets on the domain, all before anything will route:
+
+| Record | Value |
+|---|---|
+| `MX` | the inbound host your provider gives you, at the provider's stated priority |
+| `TXT` (SPF) | `v=spf1 include:<provider-spf-host> ~all` — one SPF record only; a second is a permanent failure |
+| `CNAME` or `TXT` (DKIM) | the selector record the provider issues, copied verbatim |
+| `TXT` `_dmarc` | `v=DMARC1; p=none; rua=mailto:you@launchflow.co.uk` to start — tighten to `quarantine` then `reject` only once the reports are clean |
+
+### Postmark
+
+1. Create a server, then enable its inbound stream.
+2. Set the inbound webhook to `https://<app-domain>/api/webhooks/email/inbound?provider=postmark`.
+3. Add a custom header on that webhook named `x-launchos-inbound-secret` with the `INBOUND_EMAIL_SECRET` value. Without it every delivery is a 401.
+4. Point the domain's MX at Postmark's inbound host.
+5. Verify the sending signature (the SPF and DKIM records above) in Postmark's sender signatures screen before switching `EMAIL_ADAPTER` to `smtp`.
+
+### Cloudflare Email Routing
+
+1. Enable Email Routing on the zone; Cloudflare adds the MX records for you.
+2. Add a catch-all rule that sends to a Worker.
+3. The Worker reads the message and POSTs the `normalizeCloudflare` shape — `{ to, from, subject, text, html, headers }`, with the `headers` object carrying at least `message-id` — to `https://<app-domain>/api/webhooks/email/inbound?provider=cloudflare`, with the same `x-launchos-inbound-secret` header.
+
+Cloudflare Email Routing does not forward attachments in this shape. Attachments arrive on the Postmark and generic paths only; a client who emails a screenshot through the Cloudflare path will have their message threaded correctly but the file will not be stored.
+
+### Outbound
+
+Set `EMAIL_ADAPTER=smtp`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM` to a verified sender on the same domain the SPF and DKIM records were published for. Leave `EMAIL_ADAPTER=mock` until those records verify — the mock records the send in `messages` without delivering it, so nothing is lost and nothing goes out misaligned.
+
+### Storage
+
+Mount a persistent volume at `STORAGE_DIR` on the Coolify **web** resource, and give the worker the same path. Without it, every inbound attachment is written to the container's ephemeral filesystem and disappears on the next redeploy, leaving download links pointing at nothing.
+
+### External blockers
+
+None of this works on our side alone. Support intake needs: an inbound provider account (Postmark or Cloudflare), DNS control of `SUPPORT_EMAIL_DOMAIN`, SMTP credentials for outbound, and `ANTHROPIC_API_KEY` for real Support Triage runs. Until each is in place the corresponding path uses its mock and the screens still work — the mail simply never leaves or arrives.
 
 ## Branch flow
 
