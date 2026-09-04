@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 
 export type AgentRunTrigger = "cron" | "event" | "manual" | "resume";
 export type AgentStepKind = "llm" | "tool_call" | "tool_result" | "approval_requested" | "note";
@@ -32,6 +32,32 @@ export class RunRecorder {
   ): Promise<RunRecorder> {
     const [run] = await db.insert(schema.agentRuns).values({ organisationId, agentKey, trigger, input }).returning();
     return new RunRecorder(db, organisationId, run!.id);
+  }
+
+  /**
+   * Continues an existing run after an approval decision. `seq` picks up from
+   * the highest step already recorded so the (run_id, seq) unique index holds
+   * and the trace in the admin portal reads as one story.
+   */
+  static async reopen(db: Db, organisationId: string, runId: string): Promise<RunRecorder> {
+    const [run] = await db
+      .select({ id: schema.agentRuns.id, status: schema.agentRuns.status })
+      .from(schema.agentRuns)
+      .where(and(eq(schema.agentRuns.id, runId), eq(schema.agentRuns.organisationId, organisationId)));
+    if (!run) throw new Error(`agent run ${runId} not found in organisation`);
+    if (run.status !== "awaiting_approval") throw new Error(`agent run ${runId} is ${run.status}, expected awaiting_approval`);
+
+    const [last] = await db
+      .select({ seq: schema.agentSteps.seq })
+      .from(schema.agentSteps)
+      .where(eq(schema.agentSteps.runId, runId))
+      .orderBy(desc(schema.agentSteps.seq))
+      .limit(1);
+
+    await db.update(schema.agentRuns).set({ status: "running", updatedAt: new Date() }).where(eq(schema.agentRuns.id, runId));
+    const recorder = new RunRecorder(db, organisationId, runId);
+    recorder.seq = last?.seq ?? 0;
+    return recorder;
   }
 
   async step(kind: AgentStepKind, data: RecordStepInput) {
