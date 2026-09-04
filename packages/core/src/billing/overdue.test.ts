@@ -77,4 +77,48 @@ describe("findOverdueInvoices", () => {
       expect(await findOverdueInvoices(db, org!.id, { now: new Date("2026-09-04T00:00:00Z") })).toHaveLength(0);
     });
   });
+
+  it("continues past one invoice's failure so the rest of the sweep still lands, but reports it", async () => {
+    await withTestDb(async (db) => {
+      const [orgA] = await db.insert(schema.organisations).values({ name: "A", slug: `od3a-${randomUUID()}` }).returning();
+      const [orgB] = await db.insert(schema.organisations).values({ name: "B", slug: `od3b-${randomUUID()}` }).returning();
+      const [ownerUser] = await db.insert(schema.user)
+        .values({ id: randomUUID(), name: "Owner", email: `owner-${randomUUID()}@example.test`, emailVerified: true }).returning();
+      await db.insert(schema.organisationMembers)
+        .values({ organisationId: orgA!.id, userId: ownerUser!.id, role: "owner", status: "active" });
+
+      const [goodClient] = await db.insert(schema.clients)
+        .values({ organisationId: orgA!.id, name: "Good Co", slug: `good-${randomUUID()}` }).returning();
+      // A client that belongs to a different organisation than the invoice
+      // pointing at it — an integrity gap `createTicketInTx`'s
+      // `assertClientInOrganisation` catches and throws on. The sweep must
+      // survive that rather than let it take down the whole run.
+      const [strayClient] = await db.insert(schema.clients)
+        .values({ organisationId: orgB!.id, name: "Stray Co", slug: `stray-${randomUUID()}` }).returning();
+
+      const base = {
+        organisationId: orgA!.id,
+        issuedAt: new Date("2026-08-01T00:00:00Z"), dueAt: new Date("2026-08-15T00:00:00Z"),
+        subtotalPence: 100, vatPence: 20, totalPence: 120, status: "sent" as const,
+      };
+      const [goodInvoice] = await db.insert(schema.invoices)
+        .values({ ...base, clientId: goodClient!.id, number: "LF-2026-8001" }).returning();
+      const [badInvoice] = await db.insert(schema.invoices)
+        .values({ ...base, clientId: strayClient!.id, number: "LF-2026-8002" }).returning();
+
+      const now = new Date("2026-09-04T00:00:00Z");
+      await expect(findOverdueInvoices(db, orgA!.id, { now })).rejects.toThrow(/1 of 2/);
+
+      const [goodAfter] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, goodInvoice!.id));
+      expect(goodAfter!.status).toBe("overdue");
+
+      // The failed invoice's claim was rolled back with the rest of its
+      // transaction — it stays `sent`, not stuck half-flipped.
+      const [badAfter] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, badInvoice!.id));
+      expect(badAfter!.status).toBe("sent");
+
+      const tickets = await db.select().from(schema.tickets).where(eq(schema.tickets.organisationId, orgA!.id));
+      expect(tickets).toHaveLength(1);
+    });
+  });
 });

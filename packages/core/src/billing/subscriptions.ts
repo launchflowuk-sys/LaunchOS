@@ -104,21 +104,28 @@ export async function cancelSubscription(
   const v = CancelSubscriptionInput.parse(input);
   await assertOwned(db, organisationId, schema.subscriptions, v.subscriptionId);
   const [before] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, v.subscriptionId));
+  // The provider round trip happens before the transaction, same as
+  // createSubscription: an HTTP call must never hold a database transaction
+  // open.
   if (before!.stripeSubscriptionId) await payments.cancelSubscription(before!.stripeSubscriptionId);
 
-  const [after] = await db.update(schema.subscriptions)
-    .set({ status: "cancelled", updatedAt: new Date() })
-    .where(eq(schema.subscriptions.id, v.subscriptionId))
-    .returning();
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "subscription.cancelled",
-    targetType: "subscription", targetId: v.subscriptionId, before, after,
+  const after = await db.transaction(async (tx) => {
+    const [row] = await tx.update(schema.subscriptions)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(eq(schema.subscriptions.id, v.subscriptionId))
+      .returning();
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "subscription.cancelled",
+      targetType: "subscription", targetId: v.subscriptionId, before, after: row,
+    });
+    return row!;
   });
+
   await recordActivity(db, organisationId, {
-    clientId: after!.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "subscription.cancelled",
-    title: "Subscription cancelled", link: `/clients/${after!.clientId}/billing`,
+    clientId: after.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "subscription.cancelled",
+    title: "Subscription cancelled", link: `/clients/${after.clientId}/billing`,
   });
-  return after!;
+  return after;
 }
 
 export async function activeSubscriptionForClient(db: Db, organisationId: string, clientId: string) {

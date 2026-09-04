@@ -85,6 +85,35 @@ const InvoiceActionInput = z.object({
   actorId: z.string().optional(),
 });
 
+/**
+ * The update and its audit row commit as one transaction — a status change
+ * with no audit trail is worse than no status change at all. Callers that
+ * have already asserted ownership and fetched the current row (`voidInvoice`)
+ * pass it as `before` directly, rather than this function re-asserting and
+ * re-querying what the caller already has.
+ */
+async function applyTransition(
+  db: Db,
+  organisationId: string,
+  invoiceId: string,
+  before: typeof schema.invoices.$inferSelect,
+  action: string,
+  patch: Partial<typeof schema.invoices.$inferInsert>,
+  actorKind: ActorKind,
+  actorId: string | undefined,
+) {
+  return db.transaction(async (tx) => {
+    const [after] = await tx.update(schema.invoices)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(schema.invoices.id, invoiceId))
+      .returning();
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind, actorId, action, targetType: "invoice", targetId: invoiceId, before, after,
+    });
+    return after!;
+  });
+}
+
 async function transition(
   db: Db,
   organisationId: string,
@@ -96,14 +125,7 @@ async function transition(
 ) {
   await assertOwned(db, organisationId, schema.invoices, invoiceId);
   const [before] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, invoiceId));
-  const [after] = await db.update(schema.invoices)
-    .set({ ...patch, updatedAt: new Date() })
-    .where(eq(schema.invoices.id, invoiceId))
-    .returning();
-  await recordAudit(db, organisationId, {
-    actorKind, actorId, action, targetType: "invoice", targetId: invoiceId, before, after,
-  });
-  return after!;
+  return applyTransition(db, organisationId, invoiceId, before!, action, patch, actorKind, actorId);
 }
 
 export async function markInvoiceSent(db: Db, organisationId: string, input: z.input<typeof InvoiceActionInput>) {
@@ -129,5 +151,5 @@ export async function voidInvoice(db: Db, organisationId: string, input: z.input
   // Voiding a settled invoice would silently unbalance the ledger; a refund is
   // recorded as a payment instead.
   if (existing!.status === "paid") throw new Error(`invoice ${existing!.number} is paid and cannot be voided`);
-  return transition(db, organisationId, v.invoiceId, "invoice.voided", { status: "void" }, v.actorKind, v.actorId);
+  return applyTransition(db, organisationId, v.invoiceId, existing!, "invoice.voided", { status: "void" }, v.actorKind, v.actorId);
 }
