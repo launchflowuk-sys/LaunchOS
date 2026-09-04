@@ -2,11 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { SelectField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
-import { createContactAction, createDomainAction, createSiteAction, saveBillingAction } from "../actions";
+import {
+  archiveClientAction, createContactAction, createDomainAction, createSiteAction, deleteContactAction, saveBillingAction,
+} from "../actions";
 import {
   BillingSchema, NewContactSchema, NewDomainSchema, NewSiteSchema,
   type BillingValues, type NewContactValues, type NewDomainValues, type NewSiteValues,
@@ -34,8 +37,13 @@ export function AddContactForm({ clientId }: { clientId: string }) {
       <TextField name="name" label="Contact name" register={register} error={errors.name} required />
       <TextField name="email" label="Contact email" type="email" register={register} error={errors.email} />
       <TextField name="phone" label="Contact phone" register={register} error={errors.phone} />
-      <div className="flex items-end">
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+      <div className="flex items-end gap-3">
+        <label className="flex h-9 items-center gap-2 whitespace-nowrap text-sm text-neutral-700">
+          {/* Core demotes any existing primary contact when this one is saved. */}
+          <input type="checkbox" className="size-4 rounded border-neutral-300" {...register("isPrimary")} />
+          Primary contact
+        </label>
+        <Button type="submit" disabled={isSubmitting}>
           Add contact
         </Button>
       </div>
@@ -157,5 +165,56 @@ export function BillingForm({ clientId, defaults }: { clientId: string; defaults
         </Button>
       </div>
     </form>
+  );
+}
+
+/**
+ * Archive and Remove are buttons rather than `<form action>` submits so the
+ * action can return a failure the person actually sees, instead of it landing
+ * on the error boundary.
+ */
+export function ArchiveClientButton({ clientId, disabled }: { clientId: string; disabled: boolean }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      disabled={disabled || busy}
+      onClick={async () => {
+        setBusy(true);
+        const result = await archiveClientAction({ clientId });
+        setBusy(false);
+        if (result.status === "error") return void toast.error(result.message);
+        toast.success("Client archived");
+        router.refresh();
+      }}
+    >
+      Archive
+    </Button>
+  );
+}
+
+export function RemoveContactButton({ clientId, contactId }: { clientId: string; contactId: string }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  return (
+    <button
+      type="button"
+      disabled={busy}
+      className="text-xs text-neutral-500 hover:text-red-600 disabled:opacity-50"
+      onClick={async () => {
+        setBusy(true);
+        const result = await deleteContactAction({ clientId, contactId });
+        setBusy(false);
+        if (result.status === "error") return void toast.error(result.message);
+        toast.success("Contact removed");
+        router.refresh();
+      }}
+    >
+      Remove
+    </button>
   );
 }

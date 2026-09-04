@@ -4,7 +4,6 @@ import {
   archiveClient, createClient, createContact, createDomain, createSite, deleteContact, upsertBillingProfile,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { installWebEnqueue } from "@/lib/queue";
@@ -14,13 +13,9 @@ import {
   type ActionResult, type BillingValues, type NewClientValues, type NewContactValues, type NewDomainValues, type NewSiteValues,
 } from "./schemas";
 
-function messageFor(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong";
-}
-
-/** Turns a service throw into a message the dialog can show, never a 500 page. */
+/** Turns a service throw into a message the caller can show, never a 500 page. */
 function failed(error: unknown): ActionResult {
-  return { status: "error", message: messageFor(error) };
+  return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
 }
 
 export async function createClientAction(values: NewClientValues): Promise<ActionResult> {
@@ -45,26 +40,28 @@ export async function createClientAction(values: NewClientValues): Promise<Actio
 }
 
 const ArchiveInput = z.object({ clientId: z.string().uuid() });
+export type ArchiveClientValues = z.input<typeof ArchiveInput>;
 
 /**
- * A plain `<form action>` submit, so it cannot return an ActionResult the way
- * the dialogs do. A failure is therefore carried back on the URL and rendered
- * as a banner rather than swallowed or thrown into a 500 page. `redirect`
- * signals by throwing, so it must run outside the try block.
+ * Called from a button, not a `<form action>`, so the caller can show the
+ * failure. Validation uses safeParse for the same reason the writes are
+ * wrapped: a malformed id is a message, never Next's error page.
  */
-export async function archiveClientAction(formData: FormData): Promise<void> {
+export async function archiveClientAction(values: ArchiveClientValues): Promise<ActionResult> {
   const session = await requireAdmin();
-  const { clientId } = ArchiveInput.parse({ clientId: formData.get("clientId") });
+  const parsed = ArchiveInput.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That client could not be identified" };
 
-  let failure: string | null = null;
   try {
-    await archiveClient(getDb(), session.organisationId, { clientId, actorKind: "user", actorId: session.userId });
+    const client = await archiveClient(getDb(), session.organisationId, {
+      clientId: parsed.data.clientId, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath("/clients");
+    revalidatePath(`/clients/${parsed.data.clientId}`);
+    return { status: "ok", id: client.id };
   } catch (error) {
-    failure = messageFor(error);
+    return failed(error);
   }
-  revalidatePath("/clients");
-  revalidatePath(`/clients/${clientId}`);
-  if (failure) redirect(`/clients/${clientId}?error=${encodeURIComponent(failure)}`);
 }
 
 export async function createContactAction(values: NewContactValues): Promise<ActionResult> {
@@ -82,23 +79,23 @@ export async function createContactAction(values: NewContactValues): Promise<Act
   }
 }
 
-const DeleteContactFormInput = z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() });
+const DeleteContactInput = z.object({ contactId: z.string().uuid(), clientId: z.string().uuid() });
+export type DeleteContactValues = z.input<typeof DeleteContactInput>;
 
-export async function deleteContactAction(formData: FormData): Promise<void> {
+export async function deleteContactAction(values: DeleteContactValues): Promise<ActionResult> {
   const session = await requireAdmin();
-  const { contactId, clientId } = DeleteContactFormInput.parse({
-    contactId: formData.get("contactId"),
-    clientId: formData.get("clientId"),
-  });
+  const parsed = DeleteContactInput.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That contact could not be identified" };
 
-  let failure: string | null = null;
   try {
-    await deleteContact(getDb(), session.organisationId, { contactId, actorKind: "user", actorId: session.userId });
+    await deleteContact(getDb(), session.organisationId, {
+      contactId: parsed.data.contactId, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath(`/clients/${parsed.data.clientId}`);
+    return { status: "ok", id: parsed.data.contactId };
   } catch (error) {
-    failure = messageFor(error);
+    return failed(error);
   }
-  revalidatePath(`/clients/${clientId}`);
-  if (failure) redirect(`/clients/${clientId}?tab=contacts&error=${encodeURIComponent(failure)}`);
 }
 
 export async function saveBillingAction(values: BillingValues): Promise<ActionResult> {

@@ -3,13 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
-import { archiveClientAction, deleteContactAction } from "../actions";
-import { AddContactForm, AddDomainForm, AddSiteForm, BillingForm } from "./forms";
+import {
+  AddContactForm, AddDomainForm, AddSiteForm, ArchiveClientButton, BillingForm, RemoveContactButton,
+} from "./forms";
 import { CLIENT_TABS, ClientTabs, type ClientTabKey } from "./tabs";
 
 export const dynamic = "force-dynamic";
@@ -25,30 +25,14 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
   const requested = typeof query.tab === "string" ? query.tab : "overview";
   const tab: ClientTabKey = CLIENT_TABS.some((t) => t.key === requested) ? (requested as ClientTabKey) : "overview";
-  // The two plain-form actions (archive, remove contact) cannot return a value,
-  // so a failure is carried back on the URL and rendered here.
-  const error = typeof query.error === "string" ? query.error : null;
 
   return (
     <>
       <PageHeader
         title={client.name}
         description={`${client.supportEmail ?? "no support address"} · ${[client.city, client.postcode].filter(Boolean).join(" ") || "no address"}`}
-        actions={
-          <form action={archiveClientAction}>
-            <input type="hidden" name="clientId" value={client.id} />
-            <Button type="submit" variant="outline" disabled={client.status === "archived"}>
-              Archive
-            </Button>
-          </form>
-        }
+        actions={<ArchiveClientButton clientId={client.id} disabled={client.status === "archived"} />}
       />
-
-      {error ? (
-        <p role="alert" className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </p>
-      ) : null}
 
       <ClientTabs clientId={client.id} active={tab} />
 
@@ -133,13 +117,7 @@ async function ContactsTab({ clientId }: { clientId: string }) {
                     <TableCell className="text-neutral-600">{contact.phone ?? "—"}</TableCell>
                     <TableCell className="text-neutral-600">{contact.role ?? "—"}</TableCell>
                     <TableCell className="text-right">
-                      <form action={deleteContactAction}>
-                        <input type="hidden" name="contactId" value={contact.id} />
-                        <input type="hidden" name="clientId" value={clientId} />
-                        <button type="submit" className="text-xs text-neutral-500 hover:text-red-600">
-                          Remove
-                        </button>
-                      </form>
+                      <RemoveContactButton clientId={clientId} contactId={contact.id} />
                     </TableCell>
                   </TableRow>
                 ))}
