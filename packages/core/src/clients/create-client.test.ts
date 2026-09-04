@@ -65,4 +65,20 @@ describe("createClient", () => {
       expect(archived.status).toBe("archived");
     });
   });
+
+  it("keeps support emails globally unique across organisations", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db);
+      const orgB = await makeOrg(db);
+
+      const a = await createClient(db, orgA.id, { name: "Acme Ltd" });
+      const b = await createClient(db, orgB.id, { name: "Acme Ltd" });
+
+      expect(a.slug).toBe("acme-ltd");
+      expect(b.slug).toBe("acme-ltd-2");
+      expect(a.supportEmail).toBe("acme-ltd@support.launchflow.test");
+      expect(b.supportEmail).toBe("acme-ltd-2@support.launchflow.test");
+      expect(a.supportEmail).not.toBe(b.supportEmail);
+    });
+  });
 });

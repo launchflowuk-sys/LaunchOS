@@ -28,7 +28,10 @@ export function installWebEnqueue(): void {
   installed = true;
   setEnqueue(async (event: DomainEvent) => {
     const url = process.env.DATABASE_URL;
-    if (!url) return;
+    if (!url) {
+      console.error("DATABASE_URL not set; dropping domain event", event);
+      return;
+    }
     const boss = await getBoss(url);
     await boss.send(QUEUE_DOMAIN_EVENT, event);
   });
