@@ -1,19 +1,31 @@
 /**
  * Development seed: one organisation, the owner account, two real clients with
- * a site and an uptime monitor each, and the Hosting Guard-Dog agent enabled.
+ * a site and an uptime monitor each, the Hosting Guard-Dog and Ad Performance
+ * Sentinel agents enabled, a portal login, and enough billing, ads and
+ * reporting data for every screen to have something on it.
  *
- * Idempotent: every step looks the row up (by slug / email / name / target)
- * before inserting, so `pnpm db:seed` can be run repeatedly.
+ * Idempotent: every step looks the row up (by slug / email / name / target /
+ * calendar month) before inserting, so `pnpm db:seed` can be run repeatedly.
  *
- * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now").
+ * The owner password comes from SEED_OWNER_PASSWORD (default "change-me-now")
+ * and the portal login's from SEED_CLIENT_PASSWORD (default the owner's).
  * Never commit a real password here. Under NODE_ENV=production the seed refuses
  * to run unless SEED_OWNER_PASSWORD is set, so the default can never reach a
  * live database.
+ *
+ * This file imports `@launchos/core` and `@launchos/integrations`, which are
+ * dev dependencies of `packages/db`. The seed is a dev script, so this does not
+ * invert the shipped `core → db` dependency direction.
  */
 import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import {
+  buildClientReport, createAdAccount, createInvoiceFromSubscription, createSubscription,
+  ingestDailyMetrics, markInvoiceSent, monthPeriod, publishClientReport, recordPayment,
+} from "@launchos/core";
+import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, gte, lt } from "drizzle-orm";
 import { createDb } from "./client.js";
 import * as schema from "./schema/index.js";
 
@@ -23,6 +35,21 @@ const OWNER_EMAIL = "shujaat@nexusedu.co.uk";
 const OWNER_NAME = "Shoji";
 const ORGANISATION = { slug: "launchflow", name: "LaunchFlow" } as const;
 const AGENT_KEY = "hosting-guard-dog";
+const SENTINEL_AGENT_KEY = "ad-performance-sentinel";
+
+const OWNER_PASSWORD = process.env.SEED_OWNER_PASSWORD ?? "change-me-now";
+const CLIENT_USER = {
+  email: process.env.SEED_CLIENT_EMAIL ?? "portal@grayscabline.co.uk",
+  name: "Grays CabLine portal",
+  password: process.env.SEED_CLIENT_PASSWORD ?? OWNER_PASSWORD,
+} as const;
+
+const AD_ACCOUNT = { platform: "google" as const, externalId: "123-456-7890", name: "Grays CabLine — Search" };
+const SNAPSHOT_DAYS = 30;
+const ROAS_DROP_DAYS = 7;
+const VAT_RATE_PERCENT = 20;
+
+const isoDay = (value: Date) => value.toISOString().slice(0, 10);
 // Better Auth namespaces credential accounts as "local:<providerId>"
 // (createLocalAccountIssuer in @better-auth/core/db, not publicly exported).
 const CREDENTIAL_PROVIDER = "credential";
@@ -129,7 +156,7 @@ async function main() {
     const organisation = await seedOrganisation(db);
     const user = await seedOwner(db);
     const membership = await seedMembership(db, organisation.id, user.id);
-    const enablement = await seedAgentEnablement(db, organisation.id);
+    const enablement = await seedAgentEnablement(db, organisation.id, AGENT_KEY);
     const staff = await seedStaffMember(db, organisation.id);
     const packagesBySlug = await seedPackages(db, organisation.id);
     const templateCount = await seedTaskTemplates(db, organisation.id, packagesBySlug);
@@ -142,8 +169,10 @@ async function main() {
     console.log("packages      ", [...packagesBySlug.keys()].join(", "));
     console.log("templates     ", `${templateCount} created`);
 
+    const seededClients: { id: string; name: string; email: string }[] = [];
     for (const spec of SEED_CLIENTS) {
       const client = await seedClient(db, organisation.id, spec);
+      seededClients.push({ id: client.id, name: client.name, email: client.email ?? spec.email });
       const site = await seedSite(db, organisation.id, client.id, spec);
       const monitor = await seedMonitor(db, organisation.id, site.id, spec.url);
       const billing = await seedBillingProfile(db, organisation.id, client.id, spec.name);
@@ -161,6 +190,16 @@ async function main() {
       console.log("  package     ", withPackage.packageId);
       console.log("  tasks       ", `${taskCount} onboarding tasks created`);
     }
+
+    const clientUser = await seedClientUser(db, organisation.id, seededClients[0]!.id);
+    console.log("client user   ", clientUser.id, `${CLIENT_USER.email} client_admin`);
+
+    const billing = await seedBillingAndAds(db, organisation.id, seededClients);
+    console.log(
+      "billing/ads   ",
+      `${billing.subscriptions} subscriptions, ${billing.invoices} invoices, ` +
+        `${billing.snapshots} ad snapshots, ${billing.reports} published reports`,
+    );
   } finally {
     await db.$client.end();
   }
@@ -271,7 +310,7 @@ async function seedOwner(db: Db) {
     .from(schema.account)
     .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
   if (!credential) {
-    const password = await hashPassword(process.env.SEED_OWNER_PASSWORD ?? "change-me-now");
+    const password = await hashPassword(OWNER_PASSWORD);
     await db.insert(schema.account).values({
       id: randomUUID(),
       accountId: user.id,
@@ -297,11 +336,11 @@ async function seedMembership(db: Db, organisationId: string, userId: string) {
   return created!;
 }
 
-async function seedAgentEnablement(db: Db, organisationId: string) {
+async function seedAgentEnablement(db: Db, organisationId: string, agentKey: string) {
   const [existing] = await db
     .select()
     .from(schema.agentEnablement)
-    .where(and(eq(schema.agentEnablement.organisationId, organisationId), eq(schema.agentEnablement.agentKey, AGENT_KEY)));
+    .where(and(eq(schema.agentEnablement.organisationId, organisationId), eq(schema.agentEnablement.agentKey, agentKey)));
   if (existing?.enabled) return existing;
   if (existing) {
     const [updated] = await db
@@ -313,7 +352,7 @@ async function seedAgentEnablement(db: Db, organisationId: string) {
   }
   const [created] = await db
     .insert(schema.agentEnablement)
-    .values({ organisationId, agentKey: AGENT_KEY, enabled: true })
+    .values({ organisationId, agentKey, enabled: true })
     .returning();
   return created!;
 }
@@ -423,6 +462,154 @@ async function seedStaffMember(db: Db, organisationId: string) {
     .values({ organisationId, userId: user.id, role: "staff", status: "invited", displayName: STAFF.name, title: STAFF.title })
     .returning();
   return created!;
+}
+
+/**
+ * A portal login for Grays CabLine. The password is a known env value rather
+ * than the one-time password `createClientUser` generates, because a developer
+ * has to be able to sign in to the portal after a fresh seed. Under
+ * NODE_ENV=production it inherits the SEED_OWNER_PASSWORD guard in `main`.
+ */
+async function seedClientUser(db: Db, organisationId: string, clientId: string) {
+  const [existingUser] = await db.select().from(schema.user).where(eq(schema.user.email, CLIENT_USER.email));
+  const user =
+    existingUser ??
+    (await db
+      .insert(schema.user)
+      .values({ id: randomUUID(), name: CLIENT_USER.name, email: CLIENT_USER.email, emailVerified: true })
+      .returning())[0]!;
+
+  const [credential] = await db
+    .select()
+    .from(schema.account)
+    .where(and(eq(schema.account.userId, user.id), eq(schema.account.providerId, CREDENTIAL_PROVIDER)));
+  if (!credential) {
+    await db.insert(schema.account).values({
+      id: randomUUID(),
+      accountId: user.id,
+      providerId: CREDENTIAL_PROVIDER,
+      issuer: CREDENTIAL_ISSUER,
+      userId: user.id,
+      password: await hashPassword(CLIENT_USER.password),
+    });
+  }
+
+  const [existingLink] = await db
+    .select()
+    .from(schema.clientUsers)
+    .where(and(eq(schema.clientUsers.clientId, clientId), eq(schema.clientUsers.userId, user.id)));
+  if (!existingLink) {
+    await db.insert(schema.clientUsers).values({ organisationId, clientId, userId: user.id, role: "client_admin" });
+  }
+  return user;
+}
+
+/**
+ * Returns the invoice this subscription already has for `issuedAt`'s calendar
+ * month, otherwise raises one. The calendar month is the natural key: the
+ * seed raises at most one invoice per subscription per month, so a re-run
+ * finds the existing row instead of allocating a second invoice number.
+ */
+async function ensureInvoice(db: Db, organisationId: string, subscriptionId: string, issuedAt: Date) {
+  const monthStart = new Date(Date.UTC(issuedAt.getUTCFullYear(), issuedAt.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(issuedAt.getUTCFullYear(), issuedAt.getUTCMonth() + 1, 1));
+  const [existing] = await db.select().from(schema.invoices).where(and(
+    eq(schema.invoices.organisationId, organisationId),
+    eq(schema.invoices.subscriptionId, subscriptionId),
+    gte(schema.invoices.issuedAt, monthStart),
+    lt(schema.invoices.issuedAt, monthEnd),
+  ));
+  if (existing) return existing;
+  return createInvoiceFromSubscription(db, organisationId, {
+    subscriptionId, issuedAt, vatRatePercent: VAT_RATE_PERCENT, actorKind: "system",
+  });
+}
+
+/**
+ * Billing, ads and reporting demo data. Idempotent like the rest of the seed:
+ * every step looks the row up by a natural key before creating anything, so a
+ * second `pnpm db:seed` leaves the counts exactly where the first run left them.
+ */
+async function seedBillingAndAds(
+  db: Db,
+  organisationId: string,
+  clients: { id: string; name: string; email: string }[],
+) {
+  const [pkg] = await db.select().from(schema.packages)
+    .where(and(eq(schema.packages.organisationId, organisationId), eq(schema.packages.active, true)))
+    .orderBy(asc(schema.packages.monthlyPricePence))
+    .limit(1);
+  if (!pkg) throw new Error("seed: no packages found — the package seed step must run before this one");
+
+  const payments = new MockPaymentsAdapter({ vatRatePercent: VAT_RATE_PERCENT });
+  const now = new Date();
+  const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const lastMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+
+  let subscriptionCount = 0;
+  let invoiceCount = 0;
+  for (const client of clients) {
+    await seedBillingProfile(db, organisationId, client.id, client.name);
+
+    const [existing] = await db.select().from(schema.subscriptions).where(and(
+      eq(schema.subscriptions.organisationId, organisationId),
+      eq(schema.subscriptions.clientId, client.id),
+    ));
+    const subscription = existing ?? (await createSubscription(
+      db,
+      organisationId,
+      { clientId: client.id, packageId: pkg.id, periodStart, actorKind: "system" },
+      payments,
+    )).subscription;
+    subscriptionCount += 1;
+
+    // Two invoices: last month settled, this month still due.
+    const paid = await ensureInvoice(db, organisationId, subscription.id, lastMonth);
+    if (paid.status !== "paid") {
+      if (paid.status === "draft") {
+        await markInvoiceSent(db, organisationId, { invoiceId: paid.id, actorKind: "system" });
+      }
+      await recordPayment(db, organisationId, {
+        clientId: client.id, invoiceId: paid.id, amountPence: paid.totalPence,
+        provider: "bank", providerRef: `seed-${paid.number}`, status: "succeeded", actorKind: "system",
+      });
+    }
+
+    const due = await ensureInvoice(db, organisationId, subscription.id, periodStart);
+    if (due.status === "draft") await markInvoiceSent(db, organisationId, { invoiceId: due.id, actorKind: "system" });
+    invoiceCount += 2;
+  }
+
+  // One ad account for Grays CabLine with 30 days of deterministic metrics,
+  // the last 7 of which show the ROAS slide the Sentinel is meant to catch.
+  const grays = clients[0]!;
+  const [account] = await db.select().from(schema.adAccounts).where(and(
+    eq(schema.adAccounts.organisationId, organisationId),
+    eq(schema.adAccounts.platform, AD_ACCOUNT.platform),
+    eq(schema.adAccounts.externalId, AD_ACCOUNT.externalId),
+  ));
+  if (!account) await createAdAccount(db, organisationId, { clientId: grays.id, ...AD_ACCOUNT });
+
+  const dropFrom = isoDay(new Date(now.getTime() - ROAS_DROP_DAYS * 86_400_000));
+  const ads = new MockAdsAdapter({ dropFrom });
+  let snapshots = 0;
+  for (let offset = SNAPSHOT_DAYS; offset >= 1; offset--) {
+    const date = isoDay(new Date(now.getTime() - offset * 86_400_000));
+    // Upserts on (ad_account_id, date), so a re-run rewrites the same 30 rows.
+    const result = await ingestDailyMetrics(db, organisationId, { date }, ads);
+    snapshots += result.snapshots;
+  }
+
+  // One published report for last month so the portal has something to show.
+  const report = await buildClientReport(db, organisationId, grays.id, monthPeriod(now));
+  if (report.status === "draft") {
+    await publishClientReport(db, organisationId, { reportId: report.id, actorId: "seed" });
+  }
+
+  // The Sentinel is enabled so the 07:00 cron has something to dispatch.
+  await seedAgentEnablement(db, organisationId, SENTINEL_AGENT_KEY);
+
+  return { subscriptions: subscriptionCount, invoices: invoiceCount, snapshots, reports: 1 };
 }
 
 async function seedMonitor(db: Db, organisationId: string, siteId: string, target: string) {

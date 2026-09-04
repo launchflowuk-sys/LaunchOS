@@ -7,6 +7,8 @@ const NAV = [
   { label: "Domains", href: "/portal/domains" },
   { label: "Progress", href: "/portal/tasks" },
   { label: "Support", href: "/portal/support" },
+  { label: "Invoices", href: "/portal/invoices" },
+  { label: "Reports", href: "/portal/reports" },
   { label: "Account", href: "/portal/account" },
 ] as const;
 
@@ -15,8 +17,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * The portal shell: the same white/light surface as the admin app but a single
- * top bar instead of the grouped sidebar. A client sees six screens, so a
- * sidebar would be mostly empty space.
+ * top bar instead of the grouped sidebar. A client sees a handful of screens,
+ * so a sidebar would be mostly empty space.
  *
  * It lives at `(portal)/portal/layout.tsx` rather than `(portal)/layout.tsx`
  * because Next types a layout by its own route: at the group root it would be
