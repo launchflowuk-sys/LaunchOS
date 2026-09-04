@@ -70,7 +70,7 @@ export default async function BillingSettingsPage() {
           <p className="text-sm text-neutral-900">
             VAT rate {vatRate}% <span className="font-mono text-xs text-neutral-500">(VAT_RATE)</span>
           </p>
-          <p className="mt-1 text-xs text-neutral-400">Applied to every invoice raised from a subscription.</p>
+          <p className="mt-1 text-xs text-neutral-400">Applied only while the organisation has a VAT number (Settings → Organisation); an unregistered supplier raises zero-rated invoices.</p>
         </section>
 
         <section className={CARD}>
