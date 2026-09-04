@@ -12,6 +12,11 @@ import { handleInboundMessage, type InboundMessageJob } from "./jobs/inbound-mes
 import { handleOutboundMessage, type OutboundMessageJob } from "./jobs/outbound-message.js";
 import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type GenerateOnboardingJob } from "./jobs/task-generation.js";
 import { dispatchEvent } from "./jobs/dispatch-event.js";
+import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-webhook.js";
+import { runAdsIngest } from "./jobs/ads-ingest.js";
+import { buildSentinelJobs } from "./jobs/ads-sentinel.js";
+import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
+import { runMonthlyReports } from "./jobs/reports-monthly.js";
 
 async function main() {
   const db = createDb(env.DATABASE_URL);
@@ -25,7 +30,7 @@ async function main() {
   const registry = agentRegistry({
     integrations,
     email: emailAdapter,
-    portalBaseUrl: process.env.APP_URL ?? "http://localhost:3000",
+    portalBaseUrl: env.APP_URL,
   });
 
   // One mapping for both entry points: events emitted inside the worker, and
@@ -71,9 +76,51 @@ async function main() {
   await boss.work(QUEUE.tasksCheckOverdue, async () => {
     console.info(await runOverdueSweep(db, new Date()), "overdue task sweep");
   });
+
+  await boss.work<PaymentsWebhookJob>(QUEUE.paymentsWebhook, async ([job]) => {
+    const result = await handlePaymentsWebhook(db, job!.data);
+    console.info({ event: job!.data.providerEvent.type, ...result }, "payments webhook");
+  });
+
+  await boss.work(QUEUE.adsIngest, async () => {
+    const now = new Date();
+    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
+      console.info(await runAdsIngest(db, org.id, integrations.ads, { now }), "ads ingest");
+    }
+  });
+
+  await boss.work(QUEUE.invoicesOverdue, async () => {
+    const now = new Date();
+    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
+      console.info(await runInvoiceOverdueSweep(db, org.id, { now }), "overdue invoice sweep");
+    }
+  });
+
+  await boss.work(QUEUE.reportsMonthly, async () => {
+    const now = new Date();
+    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
+      console.info(await runMonthlyReports(db, org.id, { now }), "monthly reports");
+    }
+  });
+
+  await boss.work(QUEUE.adsSentinel, async () => {
+    const now = new Date();
+    const jobs = await buildSentinelJobs(db, now);
+    for (const job of jobs) {
+      await boss.send(QUEUE.agentRun, job, {
+        singletonKey: `ad-sentinel:${job.organisationId}:${now.toISOString().slice(0, 10)}`,
+      });
+    }
+    console.info({ dispatched: jobs.length }, "ad sentinel fan-out");
+  });
+
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.reportsMonthly, "0 5 1 * *", {}, { tz: "Europe/London" });
   console.info("worker started");
 }
 main().catch((e) => { console.error(e); process.exit(1); });

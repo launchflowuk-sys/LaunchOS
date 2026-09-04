@@ -49,16 +49,20 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 | `agent.resume` | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
 | `inbound.message` | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
 | `outbound.message` | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
-| `ads.ingest` | cron daily | worker | `{ organisationId }` |
+| `ads.ingest` | cron daily 06:30 Europe/London | worker | `{}` — sweeps every organisation, ingesting yesterday's ad metrics |
 | `tasks.generate-onboarding` | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
 | `tasks.generate-recurring` | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
 | `tasks.check-overdue` | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
+| `payments.webhook` | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
+| `ads.sentinel` | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
+| `invoices.check-overdue` | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
+| `reports.monthly` | cron 05:00 Europe/London on the 1st | worker | `{}` — drafts last month's report for every active client in every organisation |
 
 Every job carries a `singletonKey` derived from its natural key so duplicates collapse. Retry limit 5 with exponential backoff, then dead-letter.
 
 ## Events
 
-Domain events are plain function calls into `packages/core/src/events/emit.ts` (`emit`/`setEnqueue`), which only carries the event to whichever `EnqueueFn` the running process registered — `core` stays unaware of pg-boss or agents. The actual event-name-to-job routing table lives in one place, `apps/worker/src/jobs/dispatch-event.ts`, so it can be unit tested with a fake `boss.send`. Example: `ticket.created` → `agent.run { agentKey: "support-triage" }` (the enablement check itself happens inside `handleAgentRun`, not the routing table). Other mappings: `client.created` → `tasks.generate-onboarding` + `ensureEmailIdentity`; `email.received` → `inbound.message`; `message.queued` → `outbound.message`; `approval.decided` → `agent.resume`.
+Domain events are plain function calls into `packages/core/src/events/emit.ts` (`emit`/`setEnqueue`), which only carries the event to whichever `EnqueueFn` the running process registered — `core` stays unaware of pg-boss or agents. The actual event-name-to-job routing table lives in one place, `apps/worker/src/jobs/dispatch-event.ts`, so it can be unit tested with a fake `boss.send`. Example: `ticket.created` → `agent.run { agentKey: "support-triage" }` (the enablement check itself happens inside `handleAgentRun`, not the routing table). Other mappings: `client.created` → `tasks.generate-onboarding` + `ensureEmailIdentity`; `email.received` → `inbound.message`; `message.queued` → `outbound.message`; `approval.decided` → `agent.resume`; `payments.webhook` → `payments.webhook` (kept in the routing table for symmetry — in practice the Stripe route enqueues this job directly rather than through `emit`).
 
 ## Auth and tenancy
 

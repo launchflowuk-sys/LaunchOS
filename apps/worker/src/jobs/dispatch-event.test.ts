@@ -129,4 +129,20 @@ describe("dispatchEvent", () => {
       );
     });
   });
+
+  it("routes payments.webhook to payments.webhook keyed by the provider event id", async () => {
+    await withTestDb(async (db) => {
+      const boss = fakeBoss();
+      const organisationId = randomUUID();
+      const providerEvent = { id: "evt_1", type: "invoice.paid", data: {} };
+
+      await dispatchEvent({ db, boss }, { name: "payments.webhook", organisationId, providerEvent });
+
+      expect(boss.send).toHaveBeenCalledWith(
+        "payments.webhook",
+        { organisationId, providerEvent },
+        { singletonKey: `stripe:${providerEvent.id}` },
+      );
+    });
+  });
 });

@@ -20,6 +20,10 @@ export const Env = z.object({
   MAIL_FROM: z.string().optional(),
   OWNER_NOTIFY_EMAIL: z.string().email().optional(),
   STORAGE_DIR: z.string().default("./storage"),
+  APP_URL: z.string().url().default("http://localhost:3000"),
+  PAYMENTS_ADAPTER: z.enum(["mock", "stripe"]).default("mock"),
+  ADS_ADAPTER: z.enum(["mock", "google", "meta"]).default("mock"),
+  VAT_RATE: z.coerce.number().min(0).max(100).default(20),
 });
 export type Env = z.infer<typeof Env>;
 

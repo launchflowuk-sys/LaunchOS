@@ -10,6 +10,11 @@ export const QUEUE = {
   tasksGenerateOnboarding: "tasks.generate-onboarding",
   tasksGenerateRecurring: "tasks.generate-recurring",
   tasksCheckOverdue: "tasks.check-overdue",
+  paymentsWebhook: "payments.webhook",
+  adsIngest: "ads.ingest",
+  adsSentinel: "ads.sentinel",
+  invoicesOverdue: "invoices.check-overdue",
+  reportsMonthly: "reports.monthly",
 } as const;
 
 export async function createBoss(connectionString: string) {
