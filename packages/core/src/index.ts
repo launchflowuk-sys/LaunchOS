@@ -58,3 +58,9 @@ export { getPackage, listPackages, ListPackagesInput } from "./packages/list-pac
 export { createTaskTemplate, CreateTaskTemplateInput, TaskTemplateFields } from "./packages/create-task-template.js";
 export { deleteTaskTemplate, updateTaskTemplate, DeleteTaskTemplateInput, UpdateTaskTemplateInput } from "./packages/update-task-template.js";
 export { listTaskTemplates, ListTaskTemplatesInput } from "./packages/list-task-templates.js";
+export { addDays, dueWithinPeriod, londonDateKey, periodBounds } from "./tasks/dates.js";
+export type { Period } from "./tasks/dates.js";
+export { createTask, CreateTaskInput } from "./tasks/create-task.js";
+export { listTasks, TaskFilters } from "./tasks/list-tasks.js";
+export type { TaskListRow } from "./tasks/list-tasks.js";
+export { getTask } from "./tasks/get-task.js";
