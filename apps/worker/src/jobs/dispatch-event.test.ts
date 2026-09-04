@@ -141,7 +141,7 @@ describe("dispatchEvent", () => {
       expect(boss.send).toHaveBeenCalledWith(
         "payments.webhook",
         { organisationId, providerEvent },
-        { singletonKey: `stripe:${providerEvent.id}` },
+        { singletonKey: `stripe:${providerEvent.id}`, singletonSeconds: 86_400 },
       );
     });
   });

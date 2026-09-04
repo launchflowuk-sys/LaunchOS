@@ -42,23 +42,32 @@ export async function createTicket(db: Db, organisationId: string, input: Create
 
 ## Queues (pg-boss)
 
-| Queue | Producer | Consumer | Payload |
-|---|---|---|---|
-| `monitor.check` | cron every minute | worker | `{ organisationId }` fan-out to per-monitor checks |
-| `agent.run` | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
-| `agent.resume` | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
-| `inbound.message` | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
-| `outbound.message` | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
-| `ads.ingest` | cron daily 06:30 Europe/London | worker | `{}` — sweeps every organisation, ingesting yesterday's ad metrics |
-| `tasks.generate-onboarding` | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
-| `tasks.generate-recurring` | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
-| `tasks.check-overdue` | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
-| `payments.webhook` | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
-| `ads.sentinel` | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
-| `invoices.check-overdue` | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
-| `reports.monthly` | cron 05:00 Europe/London on the 1st | worker | `{}` — drafts last month's report for every active client in every organisation |
+| Queue | Policy | Producer | Consumer | Payload |
+|---|---|---|---|---|
+| `monitor.check` | standard | cron every minute | worker | `{}` — sweeps every organisation, per-monitor checks inside |
+| `agent.run` | stately | events, cron, admin "run now" | worker | `{ agentKey, organisationId, trigger, payload }` |
+| `agent.resume` | stately | `approval.decided` event | worker | `{ organisationId, runId, approvalId, decision, note?, decidedByUserId? }` |
+| `inbound.message` | stately | `email.received` event (webhook route handler enqueues) | worker | `{ organisationId, inbound }` — normalised inbound email + provider |
+| `outbound.message` | stately | `message.queued` event (core / approval) | worker | `{ organisationId, messageId }` |
+| `domain.event` | standard | any web server action that emits a domain event | worker | the `DomainEvent` itself — no `singletonKey`, hence `standard` |
+| `ads.ingest` | standard | cron daily 06:30 Europe/London | worker | `{}` — sweeps every organisation, ingesting yesterday's ad metrics |
+| `tasks.generate-onboarding` | stately | `client.created` event, routed only by the worker's `dispatchEvent` (web emits the event but never enqueues this job directly — see Events below) | worker | `{ organisationId, clientId }` |
+| `tasks.generate-recurring` | standard | cron daily 06:00 Europe/London | worker | `{}` — sweeps every active organisation |
+| `tasks.check-overdue` | standard | cron daily 08:00 Europe/London | worker | `{}` — sweeps every active organisation |
+| `payments.webhook` | stately | Stripe webhook route (`apps/web/src/app/api/webhooks/stripe`) enqueues directly via `sendJob` after verifying the signature and resolving tenancy | worker | `{ organisationId, providerEvent }` |
+| `ads.sentinel` | standard | cron daily 07:00 Europe/London | worker | `{}` — fans out to one `agent.run { agentKey: "ad-performance-sentinel" }` per organisation with the Sentinel enabled |
+| `invoices.check-overdue` | standard | cron daily 07:30 Europe/London | worker | `{}` — sweeps every organisation, flagging invoices past due and raising a billing ticket each |
+| `reports.monthly` | standard | cron 07:45 Europe/London on the 1st — deliberately after `ads.ingest` (06:30) so the final day of the month's ad spend is in, and after `invoices.check-overdue` (07:30) | worker | `{}` — drafts last month's report for every active client in every organisation |
 
-Every job carries a `singletonKey` derived from its natural key so duplicates collapse. Retry limit 5 with exponential backoff, then dead-letter.
+Queue names and policies are defined once, in `packages/core/src/queue/queues.ts`, and applied by both processes through `ensureQueues` — pg-boss's `create_queue` ignores conflicts, so whichever process booted first would otherwise fix a queue's policy for good.
+
+**What deduplication actually guarantees.** A `singletonKey` on `send` is inert on its own: pg-boss enforces dedupe only through partial unique indexes, and none of them apply under the default `standard` policy. So:
+
+- Queues whose every send carries a key are created `stately`: at most one job per `(queue, singletonKey)` in each of the `created`, `retry` and `active` states. A duplicate send collapses **while the first job is still in flight** — it is not "exactly once for all time": once a job completes, the same key can be sent again.
+- Two sends need a guarantee that outlives completion, because a duplicate costs Opus tokens or reaches a client: the Sentinel fan-out (`ad-sentinel:<org>:<date>`) and the Stripe webhook (`stripe:<eventId>`). Both pass `singletonSeconds` (one day, `dailyDedupe`), which is the only thing that makes pg-boss's `singleton_on` index apply.
+- Everything stronger is enforced at the domain layer, not the queue: the unique `(organisation_id, provider, provider_ref)` index behind `syncFromPaymentsEvent`, `resumeAgent` refusing an already-decided approval, the idempotent report upsert.
+
+Retry limit 5 with exponential backoff, then dead-letter. Every cron sweep isolates each organisation (and each client/invoice/ad account inside it) behind its own try/catch, logs the failure with the id, finishes the rest of the list, and re-throws once at the end so the job is still marked failed — one bad row can never cost the other organisations their sweep.
 
 ## Events
 

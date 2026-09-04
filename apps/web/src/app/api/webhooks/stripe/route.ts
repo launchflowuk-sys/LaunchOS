@@ -1,5 +1,6 @@
 import { findOrganisationByStripeCustomer } from "@launchos/core";
-import { createPaymentsAdapter } from "@launchos/integrations";
+import { QUEUE, dailyDedupe } from "@launchos/core/queue";
+import { createPaymentsAdapter, type PaymentsAdapter } from "@launchos/integrations";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -15,14 +16,78 @@ export const dynamic = "force-dynamic";
  */
 const CustomerRef = z.object({ object: z.object({ customer: z.string() }).passthrough() });
 
+// Stripe events are kilobytes. This is an unauthenticated endpoint, so the
+// body is capped before it is buffered into a string — otherwise a single
+// large POST is a free way to spend the container's memory, signature or no
+// signature.
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * `next dev` re-evaluates this module on recompile, and `StripePaymentsAdapter`
+ * constructs a `Stripe` client with its own HTTP agent and connection pool, so
+ * building one per request (Stripe retries hard on failure) would discard
+ * hundreds of clients and sockets. Cached the way `getDb()` caches its pool.
+ */
+const globalForPayments = globalThis as typeof globalThis & { __launchosPayments?: PaymentsAdapter };
+let cachedAdapter: PaymentsAdapter | undefined;
+let warnedNotConfigured = false;
+
+function paymentsAdapter(): PaymentsAdapter {
+  const existing = cachedAdapter
+    ?? (process.env.NODE_ENV === "production" ? undefined : globalForPayments.__launchosPayments);
+  if (existing) {
+    cachedAdapter = existing;
+    return existing;
+  }
+  cachedAdapter = createPaymentsAdapter(process.env);
+  if (process.env.NODE_ENV !== "production") globalForPayments.__launchosPayments = cachedAdapter;
+  return cachedAdapter;
+}
+
+/**
+ * Fails closed. `createPaymentsAdapter` falls back to the mock adapter when
+ * Stripe is not fully configured — a sane default for outbound calls, and a
+ * hole behind a public endpoint: the mock accepts the literal signature
+ * `"mock"`, so an unconfigured deploy would let anyone forge `invoice.paid`
+ * and mark real invoices paid. The mock is never reachable from this route.
+ */
+function isConfigured(payments: PaymentsAdapter): boolean {
+  return payments.name === "stripe" && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
+}
+
 export async function POST(request: Request) {
+  const payments = paymentsAdapter();
+  if (!isConfigured(payments)) {
+    if (!warnedNotConfigured) {
+      warnedNotConfigured = true;
+      console.warn(
+        "stripe webhook refused: payments adapter is not Stripe. Set PAYMENTS_ADAPTER=stripe, STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET to enable this endpoint.",
+      );
+    }
+    return NextResponse.json({ error: "not configured" }, { status: 503 });
+  }
+
   const signature = request.headers.get("stripe-signature");
   if (!signature) return NextResponse.json({ error: "missing stripe-signature" }, { status: 400 });
 
-  const rawBody = await request.text();
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (Number.isFinite(contentLength) && contentLength > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "payload too large" }, { status: 413 });
+  }
+
+  let rawBody: string;
+  try {
+    rawBody = await request.text();
+  } catch {
+    return NextResponse.json({ error: "invalid request body" }, { status: 400 });
+  }
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "payload too large" }, { status: 413 });
+  }
+
   let providerEvent;
   try {
-    providerEvent = createPaymentsAdapter(process.env).webhookVerify(rawBody, signature);
+    providerEvent = payments.webhookVerify(rawBody, signature);
   } catch {
     // Never echo the verification error: it would tell an attacker how close
     // their forgery got.
@@ -40,10 +105,13 @@ export async function POST(request: Request) {
   const owner = await findOrganisationByStripeCustomer(getDb(), parsed.data.object.customer);
   if (!owner) return NextResponse.json({ ok: true, ignored: "unknown customer" });
 
+  // The key is paired with a dedupe window: the queue policy alone only
+  // collapses a duplicate still in flight, and Stripe redelivers an event for
+  // days (packages/core/src/queue/queues.ts).
   await sendJob(
-    "payments.webhook",
+    QUEUE.paymentsWebhook,
     { organisationId: owner.organisationId, providerEvent },
-    { singletonKey: `stripe:${providerEvent.id}` },
+    dailyDedupe(`stripe:${providerEvent.id}`),
   );
   return NextResponse.json({ ok: true });
 }

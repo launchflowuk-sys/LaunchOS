@@ -1,7 +1,6 @@
 import { setEnqueue, type DomainEvent } from "@launchos/core";
+import { QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
-
-const QUEUE_DOMAIN_EVENT = "domain.event";
 
 /**
  * `next dev` re-evaluates this module whenever something it imports is
@@ -14,10 +13,6 @@ const globalForQueue = globalThis as typeof globalThis & { __launchosBoss?: Prom
 
 let bossPromise: Promise<PgBoss> | undefined;
 let installed = false;
-// Queues this process has already asked pg-boss to create. createQueue is
-// idempotent, so re-calling it is only ever a wasted round trip, not a bug —
-// this cache just avoids paying that cost on every send.
-const createdQueues = new Set<string>();
 
 function getBoss(url: string): Promise<PgBoss> {
   if (process.env.NODE_ENV !== "production") bossPromise ??= globalForQueue.__launchosBoss;
@@ -26,8 +21,12 @@ function getBoss(url: string): Promise<PgBoss> {
     const boss = new PgBoss({ connectionString: url, schema: "pgboss" });
     boss.on("error", (e) => console.error("pg-boss error (web)", e));
     await boss.start();
-    await boss.createQueue(QUEUE_DOMAIN_EVENT);
-    createdQueues.add(QUEUE_DOMAIN_EVENT);
+    // Same topology as the worker, from the same table (@launchos/core). Both
+    // processes must create queues with the same policy: pg-boss's create_queue
+    // ignores conflicts, so a queue this process created with the default
+    // policy would keep it forever and silently disable the dedupe the send
+    // sites below rely on.
+    await ensureQueues(boss);
     return boss;
   })();
   if (process.env.NODE_ENV !== "production") globalForQueue.__launchosBoss = bossPromise;
@@ -35,23 +34,18 @@ function getBoss(url: string): Promise<PgBoss> {
 }
 
 /**
- * Sends a job straight onto a named pg-boss queue from the web process,
- * creating the queue first if this process has not seen it yet (safe even if
- * the worker already created it — createQueue is idempotent). Used for jobs
- * the web app addresses by queue name directly, bypassing the generic
- * domain.event bus below.
+ * Sends a job straight onto a named pg-boss queue from the web process. Used
+ * for jobs the web app addresses by queue name directly, bypassing the generic
+ * domain.event bus below. The name is a `QueueName`, so a queue this process
+ * sends to is always one `ensureQueues` created with its intended policy.
  */
-export async function sendJob(name: string, data: object, opts?: PgBoss.SendOptions): Promise<void> {
+export async function sendJob(name: QueueName, data: object, opts?: PgBoss.SendOptions): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     console.error(`DATABASE_URL not set; dropping job "${name}"`, data);
     return;
   }
   const boss = await getBoss(url);
-  if (!createdQueues.has(name)) {
-    await boss.createQueue(name);
-    createdQueues.add(name);
-  }
   if (opts) await boss.send(name, data, opts);
   else await boss.send(name, data);
 }
@@ -74,24 +68,32 @@ export function installWebEnqueue(): void {
     // the only place those event names map to a specific job queue, so a
     // consumer added there later fires for every client, not just the ones
     // created from the worker process.
+    //
+    // What the singletonKey below buys: these queues are created with pg-boss's
+    // `stately` policy, so a second send with the same key collapses while the
+    // first job is still queued, retrying or running. It is not a permanent
+    // "exactly once" — once a job has completed, the same key can be sent
+    // again. Anything stronger is enforced at the domain layer (a redelivered
+    // message is matched on its provider Message-ID; `resumeAgent` refuses an
+    // approval that has already been decided).
     switch (event.name) {
       case "email.received":
         await sendJob(
-          "inbound.message",
+          QUEUE.inboundMessage,
           { organisationId: event.organisationId, inbound: event.inbound },
           { singletonKey: `inbound:${event.inbound.messageId}` },
         );
         return;
       case "message.queued":
         await sendJob(
-          "outbound.message",
+          QUEUE.outboundMessage,
           { organisationId: event.organisationId, messageId: event.messageId },
           { singletonKey: `outbound:${event.messageId}` },
         );
         return;
       case "approval.decided":
         await sendJob(
-          "agent.resume",
+          QUEUE.agentResume,
           {
             organisationId: event.organisationId,
             runId: event.runId,
@@ -109,7 +111,9 @@ export function installWebEnqueue(): void {
           return;
         }
         const boss = await getBoss(url);
-        await boss.send(QUEUE_DOMAIN_EVENT, event);
+        // No singletonKey: domain.event carries every event kind, and its queue
+        // is deliberately left on the `standard` policy for that reason.
+        await boss.send(QUEUE.domainEvent, event);
       }
     }
   });

@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { DomainEvent } from "@launchos/core";
+import { QUEUE_SPECS } from "@launchos/core/queue";
 
 const send = vi.fn(async () => "job-id");
 const createQueue = vi.fn(async () => undefined);
+const updateQueue = vi.fn(async () => undefined);
 const start = vi.fn(async () => undefined);
 
 vi.mock("pg-boss", () => ({
-  default: vi.fn().mockImplementation(() => ({ on: vi.fn(), start, createQueue, send })),
+  default: vi.fn().mockImplementation(() => ({ on: vi.fn(), start, createQueue, updateQueue, send })),
 }));
 
 let captured: ((event: DomainEvent) => Promise<void>) | undefined;
@@ -23,6 +25,18 @@ describe("installWebEnqueue", () => {
     send.mockClear();
     process.env.DATABASE_URL = "postgres://test/db";
     installWebEnqueue();
+  });
+
+  it("creates every queue with the shared policy, so the web process cannot fix a queue on the wrong one", async () => {
+    // pg-boss's create_queue is ON CONFLICT DO NOTHING, so whichever process
+    // boots first would otherwise decide the policy for good — hence the
+    // update as well, and hence the shared table in @launchos/core/queue.
+    await captured!({ name: "client.created", organisationId: "org-1", clientId: "client-1" });
+
+    for (const spec of QUEUE_SPECS) {
+      expect(createQueue).toHaveBeenCalledWith(spec.name, { name: spec.name, policy: spec.policy });
+      expect(updateQueue).toHaveBeenCalledWith(spec.name, { name: spec.name, policy: spec.policy });
+    }
   });
 
   it("routes email.received onto inbound.message keyed by the inbound message id", async () => {

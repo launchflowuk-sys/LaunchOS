@@ -1,10 +1,11 @@
-import { createDb, schema } from "@launchos/db";
+import { createDb, schema, type Db } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, FakeLlmClient, agentRegistry } from "@launchos/agents";
 import { createEmailAdapter } from "@launchos/channels";
 import { createIntegrations } from "@launchos/integrations";
 import { env } from "./env.js";
-import { QUEUE, createBoss } from "./boss.js";
+import { QUEUE, createBoss, dailyDedupe } from "./boss.js";
+import { sweep, throwOnSweepFailure } from "./jobs/sweep.js";
 import { runMonitorSweep } from "./jobs/monitor-check.js";
 import { handleAgentRun, type AgentRunJob } from "./jobs/agent-run.js";
 import { handleAgentResume, type AgentResumeJob } from "./jobs/agent-resume.js";
@@ -17,6 +18,23 @@ import { runAdsIngest } from "./jobs/ads-ingest.js";
 import { buildSentinelJobs } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
+
+/**
+ * Every cron sweep runs per organisation behind `sweep`, so one organisation
+ * whose data throws cannot abort the loop before the rest are touched. The
+ * summary is logged, then the collected failures are re-thrown once so
+ * pg-boss still marks the job failed and retries it.
+ */
+async function sweepOrganisations(
+  db: Db,
+  label: string,
+  run: (organisationId: string) => Promise<unknown>,
+): Promise<void> {
+  const orgs = await db.select({ id: schema.organisations.id }).from(schema.organisations);
+  const summary = await sweep(orgs, { label, id: (org) => org.id }, (org) => run(org.id));
+  console.info({ processed: summary.processed, failed: summary.failed }, label);
+  throwOnSweepFailure(label, summary);
+}
 
 async function main() {
   const db = createDb(env.DATABASE_URL);
@@ -46,11 +64,10 @@ async function main() {
   });
 
   await boss.work(QUEUE.monitorCheck, async () => {
-    const orgs = await db.select({ id: schema.organisations.id }).from(schema.organisations);
-    for (const org of orgs) {
-      const r = await runMonitorSweep(db, org.id, integrations.uptime);
-      console.info({ org: org.id, ...r }, "monitor sweep");
-    }
+    await sweepOrganisations(db, "monitor sweep", async (organisationId) => {
+      const r = await runMonitorSweep(db, organisationId, integrations.uptime);
+      console.info({ org: organisationId, ...r }, "monitor sweep");
+    });
   });
   await boss.work<AgentRunJob>(QUEUE.agentRun, async ([job]) => {
     const result = await handleAgentRun({ db, registry, llm, policy: env.AGENT_POLICY, logger: console }, job!.data);
@@ -84,34 +101,39 @@ async function main() {
 
   await boss.work(QUEUE.adsIngest, async () => {
     const now = new Date();
-    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
-      console.info(await runAdsIngest(db, org.id, integrations.ads, { now }), "ads ingest");
-    }
+    await sweepOrganisations(db, "ads ingest", async (organisationId) => {
+      console.info(await runAdsIngest(db, organisationId, integrations.ads, { now }), "ads ingest");
+    });
   });
 
   await boss.work(QUEUE.invoicesOverdue, async () => {
     const now = new Date();
-    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
-      console.info(await runInvoiceOverdueSweep(db, org.id, { now }), "overdue invoice sweep");
-    }
+    await sweepOrganisations(db, "overdue invoice sweep", async (organisationId) => {
+      console.info(await runInvoiceOverdueSweep(db, organisationId, { now }), "overdue invoice sweep");
+    });
   });
 
   await boss.work(QUEUE.reportsMonthly, async () => {
     const now = new Date();
-    for (const org of await db.select({ id: schema.organisations.id }).from(schema.organisations)) {
-      console.info(await runMonthlyReports(db, org.id, { now }), "monthly reports");
-    }
+    await sweepOrganisations(db, "monthly reports", async (organisationId) => {
+      console.info(await runMonthlyReports(db, organisationId, { now }), "monthly reports");
+    });
   });
 
   await boss.work(QUEUE.adsSentinel, async () => {
     const now = new Date();
+    const day = now.toISOString().slice(0, 10);
     const jobs = await buildSentinelJobs(db, now);
-    for (const job of jobs) {
-      await boss.send(QUEUE.agentRun, job, {
-        singletonKey: `ad-sentinel:${job.organisationId}:${now.toISOString().slice(0, 10)}`,
-      });
-    }
-    console.info({ dispatched: jobs.length }, "ad sentinel fan-out");
+    // One failed enqueue must not cost the remaining organisations their run,
+    // and the daily dedupe window means a retry of this fan-out cannot start a
+    // second Opus-priced Sentinel run for an organisation already dispatched.
+    const summary = await sweep(
+      jobs,
+      { label: "ad sentinel fan-out", id: (job) => job.organisationId },
+      (job) => boss.send(QUEUE.agentRun, job, dailyDedupe(`ad-sentinel:${job.organisationId}:${day}`)),
+    );
+    console.info({ dispatched: summary.processed, failed: summary.failed }, "ad sentinel fan-out");
+    throwOnSweepFailure("ad sentinel fan-out", summary);
   });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
@@ -120,7 +142,10 @@ async function main() {
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
-  await boss.schedule(QUEUE.reportsMonthly, "0 5 1 * *", {}, { tz: "Europe/London" });
+  // After ads.ingest (06:30) has landed the final day of the month's metrics
+  // and after invoices.check-overdue (07:30), so the drafted report reports a
+  // full month of ad spend and current invoice statuses.
+  await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
   console.info("worker started");
 }
 main().catch((e) => { console.error(e); process.exit(1); });
