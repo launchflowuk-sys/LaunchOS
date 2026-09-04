@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useRef, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -34,13 +34,21 @@ export function PortalForm({
   ariaLabel?: string | undefined;
   success?: string | undefined;
 }) {
+  const form = useRef<HTMLFormElement>(null);
   const [state, formAction, pending] = useActionState<ActionResult | null, FormData>(
-    async (_previous, formData) => action(formData),
+    async (_previous, formData) => {
+      const result = await action(formData);
+      // The inputs are uncontrolled, so without this a successful submit leaves
+      // what was just sent sitting in the box underneath the copy of it now in
+      // the thread — and a second click posts it again.
+      if (result.status === "ok") form.current?.reset();
+      return result;
+    },
     null,
   );
 
   return (
-    <form action={formAction} className={className} aria-label={ariaLabel}>
+    <form ref={form} action={formAction} className={className} aria-label={ariaLabel}>
       {children}
 
       {state?.status === "error" ? (

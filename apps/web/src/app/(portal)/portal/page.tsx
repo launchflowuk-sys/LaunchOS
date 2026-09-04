@@ -46,6 +46,7 @@ export default async function PortalHomePage() {
         and(
           eq(schema.tickets.organisationId, scope.organisationId),
           eq(schema.tickets.clientId, scope.clientId),
+          eq(schema.tickets.clientVisible, true),
           notInArray(schema.tickets.status, [...CLOSED_TICKET_STATUSES]),
         ),
       ),
@@ -61,10 +62,14 @@ export default async function PortalHomePage() {
         lastMessageAt: schema.conversations.lastMessageAt,
       })
       .from(schema.conversations)
+      // Inner join, not left: a conversation with no client-visible ticket
+      // behind it is internal, and this card deep-links straight into a thread.
+      .innerJoin(schema.tickets, eq(schema.conversations.ticketId, schema.tickets.id))
       .where(
         and(
           eq(schema.conversations.organisationId, scope.organisationId),
           eq(schema.conversations.clientId, scope.clientId),
+          eq(schema.tickets.clientVisible, true),
         ),
       )
       .orderBy(desc(schema.conversations.lastMessageAt), desc(schema.conversations.createdAt))

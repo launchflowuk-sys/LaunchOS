@@ -12,6 +12,10 @@ export { organisationStatusEnum, organisations };
 export const memberRoleEnum = pgEnum("member_role", ["owner", "staff"]);
 export const memberStatusEnum = pgEnum("member_status", ["active", "invited", "suspended"]);
 export const clientUserRoleEnum = pgEnum("client_user_role", ["client_admin", "client_member"]);
+// Portal access has to be revocable without deleting the `user` row, which
+// would cascade away the audit trail's actor. `organisation_members` already
+// carries the same idea for staff.
+export const clientUserStatusEnum = pgEnum("client_user_status", ["active", "suspended"]);
 
 export const organisationMembers = pgTable("organisation_members", {
   ...tenantColumns(),
@@ -30,4 +34,5 @@ export const clientUsers = pgTable("client_users", {
   clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   role: clientUserRoleEnum("role").default("client_member").notNull(),
+  status: clientUserStatusEnum("status").default("active").notNull(),
 }, (t) => [uniqueIndex("client_users_client_user").on(t.clientId, t.userId)]);

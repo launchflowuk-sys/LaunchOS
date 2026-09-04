@@ -1,12 +1,15 @@
 import { getClient, listClientUsers } from "@launchos/core";
 import { notFound } from "next/navigation";
+import { ActionForm } from "@/components/action-form";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { ClientTabs } from "../tabs";
+import { setPortalUserStatusAction } from "./actions";
 import { InvitePortalUserForm } from "./invite-form";
 
 export const dynamic = "force-dynamic";
@@ -47,7 +50,9 @@ export default async function ClientPortalUsersPage({ params }: PageProps<"/clie
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead>Added</TableHead>
+                <TableHead className="text-right">Access</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -58,7 +63,25 @@ export default async function ClientPortalUsersPage({ params }: PageProps<"/clie
                   <TableCell>
                     <StatusBadge value={ROLE_LABELS[user.role] ?? user.role} tone="info" />
                   </TableCell>
+                  <TableCell>
+                    <StatusBadge value={user.status} />
+                  </TableCell>
                   <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(user.createdAt)}</TableCell>
+                  <TableCell className="text-right">
+                    <ActionForm
+                      action={setPortalUserStatusAction}
+                      className="inline-flex"
+                      ariaLabel={`Portal access for ${user.email}`}
+                      success={user.status === "active" ? "Portal access suspended." : "Portal access restored."}
+                    >
+                      <input type="hidden" name="clientId" value={client.id} />
+                      <input type="hidden" name="clientUserId" value={user.id} />
+                      <input type="hidden" name="status" value={user.status === "active" ? "suspended" : "active"} />
+                      <Button type="submit" size="sm" variant={user.status === "active" ? "destructive" : "outline"}>
+                        {user.status === "active" ? "Suspend" : "Reactivate"}
+                      </Button>
+                    </ActionForm>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -68,7 +91,8 @@ export default async function ClientPortalUsersPage({ params }: PageProps<"/clie
 
       <p className="mt-4 text-xs text-neutral-400">
         A one-time password is generated when the account is created and shown once. It is never stored in plain text,
-        so a lost one has to be reset rather than looked up.
+        so a lost one has to be reset rather than looked up. Suspending an account removes portal access on their next
+        request and can be undone; the sign-in itself is kept so the audit trail still names who did what.
       </p>
     </>
   );

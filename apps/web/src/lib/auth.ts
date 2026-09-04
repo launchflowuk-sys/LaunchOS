@@ -16,7 +16,10 @@ function buildAuth() {
         verification: schema.verification,
       },
     }),
-    emailAndPassword: { enabled: true, disableSignUp: true },
+    // The 12 is the floor for everyone, staff and clients alike. Better Auth's
+    // own default is 8, and the portal's change-password form is a browser
+    // control anyone can POST past — this is the line that actually enforces it.
+    emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: 12 },
     secret,
     baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? "http://localhost:3000",
   });

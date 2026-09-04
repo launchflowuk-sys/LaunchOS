@@ -42,6 +42,9 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
         // The scope that matters: another client's ticket id is a 404 here,
         // not a thread the wrong person gets to read.
         eq(schema.tickets.clientId, session.clientId),
+        // And their own client's internal cases are a 404 too, so the list
+        // filter cannot be walked around by typing the id.
+        eq(schema.tickets.clientVisible, true),
       ),
     );
   if (!ticket) notFound();

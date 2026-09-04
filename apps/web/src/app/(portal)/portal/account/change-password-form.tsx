@@ -5,8 +5,10 @@ import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth-client";
 
 /**
- * Better Auth enforces its own minimum on the server; this is the same number
- * so the client is told before the round trip rather than after it.
+ * The same number Better Auth is configured with server-side
+ * (`minPasswordLength` in `lib/auth.ts`), repeated here only so the client is
+ * told before the round trip rather than after it. The server is what enforces
+ * it: this check and the `minLength` attribute are both bypassable.
  */
 const MIN_PASSWORD_LENGTH = 12;
 

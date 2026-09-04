@@ -9,7 +9,12 @@ import { assertOwned } from "../tenancy/assert-owned.js";
 export const CreateSiteInput = z.object({
   clientId: z.string().uuid(),
   name: z.string().min(1).max(200),
-  primaryUrl: z.string().url(),
+  // `.url()` is `new URL()`, which happily accepts `javascript:` and `data:`.
+  // The value is rendered as an href in both portals, so the scheme is pinned.
+  primaryUrl: z
+    .string()
+    .url()
+    .refine((u) => /^https?:$/.test(new URL(u).protocol), "primaryUrl must be an http(s) URL"),
   platform: z.enum(["wordpress", "static", "nextjs", "other"]).default("wordpress"),
   hostingProvider: z.enum(["coolify", "other"]).default("coolify"),
   hostingRef: z.string().max(200).optional(),

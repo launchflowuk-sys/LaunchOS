@@ -20,6 +20,7 @@ export { updateTicket, UpdateTicketInput, TicketTriageSchema } from "./support/u
 export { assignTicket, AssignTicketInput } from "./support/assign-ticket.js";
 export { escalateTicket, EscalateTicketInput } from "./support/escalate-ticket.js";
 export { replyToConversation, ReplyToConversationInput } from "./support/reply-to-conversation.js";
+export { replyAsClient, ReplyAsClientInput } from "./support/reply-as-client.js";
 export { sendQueuedMessage, SendQueuedMessageInput, MAX_SEND_ATTEMPTS, CLAIM_TTL_MINUTES } from "./support/send-queued-message.js";
 export {
   assertOwned, assertClientInOrganisation, assertSiteInOrganisation, assertOrgMember,
@@ -92,6 +93,7 @@ export { searchKnowledge, KNOWLEDGE_SEARCH_LIMIT } from "./knowledge/search-know
 export type { KnowledgeHit } from "./knowledge/search-knowledge.js";
 export { createClientUser, CreateClientUserInput } from "./client-users/create-client-user.js";
 export { listClientUsers } from "./client-users/list-client-users.js";
+export { setClientUserStatus, SetClientUserStatusInput } from "./client-users/set-client-user-status.js";
 export type { ClientUserRow } from "./client-users/list-client-users.js";
 export {
   createSubscription, cancelSubscription, activeSubscriptionForClient,

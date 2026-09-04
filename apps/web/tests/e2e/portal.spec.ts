@@ -1,7 +1,8 @@
-import { createClientUser, createTicket, replyToConversation } from "@launchos/core";
+import { createClientUser, createTicket, replyToConversation, updateTicket } from "@launchos/core";
 import { createDb, schema } from "@launchos/db";
 import { expect, test, type Page } from "@playwright/test";
 import { and, eq } from "drizzle-orm";
+import { signIn } from "./sign-in";
 
 /**
  * Plan 4 Task 13 acceptance for the client portal.
@@ -27,6 +28,7 @@ const PORTAL_EMAIL = `portal.${STAMP}@grayscabline.example`;
 const PORTAL_NAME = "Portal Tester";
 const OWN_TICKET_SUBJECT = `Seeded ticket ${STAMP}`;
 const OTHER_TICKET_SUBJECT = `Other client ticket ${STAMP}`;
+const INTERNAL_TICKET_SUBJECT = `Internal collections case ${STAMP}`;
 const INTERNAL_NOTE = `Internal staff note ${STAMP} — must never reach the portal`;
 const NEW_TICKET_SUBJECT = `Portal raised ${STAMP}`;
 const NEW_TICKET_BODY = `The contact form stopped emailing us on ${STAMP}.`;
@@ -39,6 +41,7 @@ let portalUserId: string;
 let portalPassword: string;
 let ownTicketId: string;
 let otherTicketId: string;
+let internalTicketId: string;
 /** Every conversation this spec created, torn down in `afterAll`. */
 const conversationIds: string[] = [];
 
@@ -80,13 +83,15 @@ test.beforeAll(async () => {
   portalUserId = created.user.id;
   portalPassword = created.oneTimePassword;
 
+  // Client-originated, so it is `client_visible` and belongs in their portal.
   const own = await createTicket(db, organisationId, {
     clientId,
     subject: OWN_TICKET_SUBJECT,
-    body: "Raised by staff before the portal user signed in.",
+    body: "Raised before the portal user signed in.",
     severity: "medium",
-    source: "manual",
-    actorKind: "user",
+    source: "portal",
+    actorKind: "client",
+    actorId: "e2e-client",
   });
   ownTicketId = own.ticket.id;
   conversationIds.push(own.conversation.id);
@@ -101,13 +106,30 @@ test.beforeAll(async () => {
     internal: true,
   });
 
+  // Raised by us, about them: the overdue sweep and the agents' `tickets_create`
+  // both look like this. It is the client's own ticket by `client_id` and must
+  // still never appear in their portal.
+  const internal = await createTicket(db, organisationId, {
+    clientId,
+    subject: INTERNAL_TICKET_SUBJECT,
+    body: "Chase Grays CabLine and record the payment once it lands.",
+    severity: "high",
+    source: "monitor",
+    actorKind: "system",
+  });
+  internalTicketId = internal.ticket.id;
+  conversationIds.push(internal.conversation.id);
+
+  // Client-visible too, so the only thing keeping it out of this portal is the
+  // tenancy scope rather than the visibility filter.
   const other = await createTicket(db, organisationId, {
     clientId: otherClientId,
     subject: OTHER_TICKET_SUBJECT,
     body: "Belongs to a different client entirely.",
     severity: "medium",
-    source: "manual",
-    actorKind: "user",
+    source: "portal",
+    actorKind: "client",
+    actorId: "e2e-other-client",
   });
   otherTicketId = other.ticket.id;
   conversationIds.push(other.conversation.id);
@@ -116,7 +138,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   // Tickets cascade their events; conversations cascade their messages. The
   // ticket rows go first because `conversations.ticket_id` has no FK to lean on.
-  for (const ticketId of [ownTicketId, otherTicketId]) {
+  for (const ticketId of [ownTicketId, internalTicketId, otherTicketId]) {
     if (ticketId) await db.delete(schema.tickets).where(eq(schema.tickets.id, ticketId));
   }
   for (const conversationId of conversationIds) {
@@ -146,6 +168,8 @@ test.describe("client portal", () => {
     // Their own ticket is listed; the other client's is not.
     await expect(page.getByRole("link", { name: OWN_TICKET_SUBJECT })).toBeVisible();
     await expect(page.getByText(OTHER_TICKET_SUBJECT)).toHaveCount(0);
+    // Their own client's internal case is not theirs to read either.
+    await expect(page.getByText(INTERNAL_TICKET_SUBJECT)).toHaveCount(0);
 
     // The internal staff note never reaches the portal thread.
     await page.getByRole("link", { name: OWN_TICKET_SUBJECT }).click();
@@ -185,6 +209,58 @@ test.describe("client portal", () => {
     await expect(page.getByText(OTHER_TICKET_SUBJECT)).toHaveCount(0);
   });
 
+  test("an internal ticket for this client is not listed and 404s on its detail URL", async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await signInAsPortalUser(page);
+
+    const response = await page.goto(`/portal/support/${internalTicketId}`);
+    expect(response?.status()).toBe(404);
+    await expect(page.getByText(INTERNAL_TICKET_SUBJECT)).toHaveCount(0);
+  });
+
+  test("a client reply reopens a resolved ticket and shows in the thread", async ({ page }) => {
+    test.setTimeout(300_000);
+
+    await updateTicket(db, organisationId, { ticketId: ownTicketId, status: "resolved", actorKind: "user" });
+
+    await signInAsPortalUser(page);
+    await page.goto(`/portal/support/${ownTicketId}`);
+    await expect(page.getByRole("heading", { name: OWN_TICKET_SUBJECT })).toBeVisible({ timeout: COLD_COMPILE });
+
+    const reply = `It is still happening (${STAMP}).`;
+    await page.getByLabel("Add a reply").fill(reply);
+    await page.getByRole("button", { name: "Send reply" }).click();
+    await expect(page.getByText(reply)).toBeVisible({ timeout: COLD_COMPILE });
+    // The box is cleared, so a second click cannot post the same words twice.
+    await expect(page.getByLabel("Add a reply")).toHaveValue("");
+
+    const [ticket] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ownTicketId));
+    expect(ticket!.status).toBe("open");
+    const [message] = await db
+      .select()
+      .from(schema.messages)
+      .where(and(eq(schema.messages.conversationId, ticket!.conversationId!), eq(schema.messages.body, reply)));
+    expect(message!.direction).toBe("inbound");
+    expect(message!.authorKind).toBe("client");
+  });
+
+  test("a staff session is kept out of the portal", async ({ page }) => {
+    test.setTimeout(180_000);
+
+    await signIn(page);
+
+    // requireClient checks for a staff session first and bounces to the admin
+    // shell rather than rendering the portal against a client_users row that
+    // does not exist.
+    await page.goto("/portal");
+    await page.waitForURL("/", { timeout: COLD_COMPILE });
+
+    // /after-sign-in applies the same precedence.
+    await page.goto("/after-sign-in");
+    await page.waitForURL("/", { timeout: COLD_COMPILE });
+  });
+
   test("the portal screens are scoped to the signed-in client", async ({ page }) => {
     test.setTimeout(300_000);
 
@@ -192,12 +268,14 @@ test.describe("client portal", () => {
 
     await page.getByRole("navigation").getByRole("link", { name: "Websites" }).click();
     await expect(page.getByRole("heading", { name: "Websites" })).toBeVisible({ timeout: COLD_COMPILE });
-    await expect(page.getByRole("cell", { name: "Grays CabLine" })).toBeVisible();
+    // The row assertions get the same budget as the heading: under load this
+    // machine has been observed serving the shell well before the table.
+    await expect(page.getByRole("cell", { name: "Grays CabLine" })).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByText("Mobile PC Doctor")).toHaveCount(0);
 
     await page.getByRole("navigation").getByRole("link", { name: "Domains" }).click();
     await expect(page.getByRole("heading", { name: "Domains" })).toBeVisible({ timeout: COLD_COMPILE });
-    await expect(page.getByRole("cell", { name: "grayscabline.co.uk" })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "grayscabline.co.uk" })).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByText("mobilepcdoctor.co.uk")).toHaveCount(0);
 
     await page.getByRole("navigation").getByRole("link", { name: "Progress" }).click();
@@ -205,7 +283,12 @@ test.describe("client portal", () => {
 
     await page.getByRole("navigation").getByRole("link", { name: "Account" }).click();
     await expect(page.getByRole("heading", { name: "Account" })).toBeVisible({ timeout: COLD_COMPILE });
-    await expect(page.getByText(PORTAL_EMAIL)).toBeVisible();
+    // Scoped to the page body: the header carries the same address and its own
+    // Sign out button, so an unscoped locator matches twice.
+    await expect(page.getByRole("main").getByText(PORTAL_EMAIL)).toBeVisible();
     await expect(page.getByRole("button", { name: "Change password" })).toBeVisible();
+    await expect(page.getByRole("main").getByRole("button", { name: "Sign out" })).toBeVisible();
+    // …and the shell offers the same way out from every screen.
+    await expect(page.getByRole("banner").getByRole("button", { name: "Sign out" })).toBeVisible();
   });
 });

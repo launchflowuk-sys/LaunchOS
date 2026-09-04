@@ -49,6 +49,9 @@ const TONE_BY_VALUE: Record<string, Tone> = {
   active: "success",
   paused: "warn",
   archived: "neutral",
+  // portal + team account status
+  suspended: "danger",
+  invited: "info",
   // invoices
   draft: "neutral",
   sent: "info",

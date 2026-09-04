@@ -15,6 +15,12 @@ export default async function PortalSupportPage() {
 
   // Both halves of the scope are on `tickets`; the conversation is joined only
   // for its `last_message_at`, which moves when either side writes.
+  //
+  // `client_visible` is the third filter and it is not optional: tickets are
+  // not all client-facing. The overdue sweep opens one per unpaid invoice, and
+  // an agent's `tickets_create` is documented as internal — both would show
+  // the client an alarming subject line over a thread that renders empty,
+  // because their bodies are internal notes.
   const rows = await getDb()
     .select({
       id: schema.tickets.id,
@@ -31,6 +37,7 @@ export default async function PortalSupportPage() {
       and(
         eq(schema.tickets.organisationId, session.organisationId),
         eq(schema.tickets.clientId, session.clientId),
+        eq(schema.tickets.clientVisible, true),
       ),
     )
     .orderBy(desc(schema.tickets.createdAt));

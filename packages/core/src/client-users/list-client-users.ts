@@ -8,6 +8,7 @@ export type ClientUserRow = {
   email: string;
   name: string;
   role: "client_admin" | "client_member";
+  status: "active" | "suspended";
   createdAt: Date;
 };
 
@@ -24,6 +25,7 @@ export async function listClientUsers(db: Db, organisationId: string, clientId: 
       email: schema.user.email,
       name: schema.user.name,
       role: schema.clientUsers.role,
+      status: schema.clientUsers.status,
       createdAt: schema.clientUsers.createdAt,
     })
     .from(schema.clientUsers)

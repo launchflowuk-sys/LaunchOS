@@ -1,6 +1,6 @@
 "use server";
 
-import { createTicket, replyToConversation } from "@launchos/core";
+import { createTicket, replyAsClient } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -55,10 +55,10 @@ export async function createPortalTicket(formData: FormData): Promise<ActionResu
 /**
  * Append a client reply to their own ticket's thread.
  *
- * `replyToConversation` files a `client` reply as an internal message on the
- * thread for staff to read; it is deliberately never emailed back out to the
- * client who just wrote it. `internal: true` is passed as well so the intent is
- * explicit at the call site rather than only inside the service.
+ * `replyAsClient` writes it the way an emailed reply is written — `inbound`,
+ * `author_kind: client` — so the Inbox shows "needs reply", a resolved or
+ * waiting_client case reopens, and somebody is actually told. Nothing is
+ * emailed back out to the client who just wrote it.
  */
 export async function replyToPortalThread(formData: FormData): Promise<ActionResult> {
   const session = await requireClient();
@@ -82,16 +82,18 @@ export async function replyToPortalThread(formData: FormData): Promise<ActionRes
           eq(schema.tickets.id, ticketId),
           eq(schema.tickets.organisationId, session.organisationId),
           eq(schema.tickets.clientId, session.clientId),
+          // A client cannot write into an internal case they were never
+          // shown, even by posting its id straight at this action.
+          eq(schema.tickets.clientVisible, true),
         ),
       );
     if (!ticket?.conversationId) return { status: "error", message: "That request could not be found." };
 
-    await replyToConversation(getDb(), session.organisationId, {
+    await replyAsClient(getDb(), session.organisationId, {
       conversationId: ticket.conversationId,
       body,
-      actorKind: "client",
       actorId: session.userId,
-      internal: true,
+      clientId: session.clientId,
     });
   } catch (error) {
     console.error("portal reply failed", error);
@@ -100,5 +102,6 @@ export async function replyToPortalThread(formData: FormData): Promise<ActionRes
 
   revalidatePath(`/portal/support/${ticketId}`);
   revalidatePath("/portal/support");
+  revalidatePath("/portal");
   return { status: "ok", id: ticketId };
 }

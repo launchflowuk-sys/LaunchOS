@@ -1,5 +1,6 @@
 import { listContacts } from "@launchos/core";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { SignOutButton } from "@/components/portal/sign-out-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
@@ -21,6 +22,9 @@ export default async function PortalAccountPage() {
           <p className="font-medium text-neutral-900">{session.name}</p>
           <p className="mt-1 text-neutral-600">{session.email}</p>
           <p className="mt-1 text-xs text-neutral-500">{session.clientName}</p>
+          <div className="mt-4">
+            <SignOutButton />
+          </div>
         </div>
       </section>
 

@@ -11,15 +11,14 @@ export type ThreadMessage = {
 /**
  * Whether a message may be shown to the client who owns the thread.
  *
- * A plain `direction !== "internal"` filter is not enough, and gets it wrong in
- * both directions. `createTicket` writes the opening body as `internal`, and
- * `replyToConversation` forces every client reply to `internal` so the client's
- * own words are never emailed back out to them — so that filter would hide the
- * client's whole side of their own conversation. What must stay hidden is an
- * internal note written by us: staff, an agent or the system.
+ * One clause, and it has to stay one clause: `internal` means "written by us,
+ * about them" and must never render here, whoever the author says they were.
+ * The client's own words — the opening body of a portal-raised ticket, every
+ * reply, every inbound email — are written `inbound` by `createTicket` and
+ * `replyAsClient`, so nothing of theirs is hidden by it.
  */
-export function isVisibleToClient(message: Pick<ThreadMessage, "direction" | "authorKind">): boolean {
-  return message.direction !== "internal" || message.authorKind === "client";
+export function isVisibleToClient(message: Pick<ThreadMessage, "direction">): boolean {
+  return message.direction !== "internal";
 }
 
 const AUTHOR_LABEL: Record<ThreadMessage["authorKind"], string> = {

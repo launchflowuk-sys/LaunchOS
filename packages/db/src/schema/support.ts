@@ -72,6 +72,13 @@ export const tickets = pgTable("tickets", {
   escalated: boolean("escalated").default(false).notNull(),
   escalationReason: text("escalation_reason"),
   source: ticketSourceEnum("source").default("manual").notNull(),
+  // Whether the client may see this ticket in their portal. Default false:
+  // an internal ticket (the overdue sweep, an agent's `tickets_create`, a
+  // staff-raised case) is agency work, and the client's own thread would
+  // render empty because its opening body is an internal note. Set true by
+  // `createTicket` for the two sources the client originated — portal and
+  // email — and toggled by staff to share one deliberately.
+  clientVisible: boolean("client_visible").default(false).notNull(),
   firstResponseAt: timestamp("first_response_at", { withTimezone: true }),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
   slaDueAt: timestamp("sla_due_at", { withTimezone: true }),

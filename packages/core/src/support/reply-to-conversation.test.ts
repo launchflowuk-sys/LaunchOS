@@ -83,6 +83,8 @@ describe("replyToConversation + sendQueuedMessage", () => {
     });
   });
 
+  // The portal itself goes through `replyAsClient` now; this is the backstop
+  // for any other caller that hands this function `actorKind: "client"`.
   it("keeps a client's own reply inside the thread even when internal is false", async () => {
     await withTestDb(async (db) => {
       const { organisationId, ingested } = await seedThread(db);
@@ -96,7 +98,7 @@ describe("replyToConversation + sendQueuedMessage", () => {
       expect(reply.status).toBeNull();
       expect(reply.toEmail).toBeNull();
 
-      // A client writing in the portal is not the agency's first response.
+      // A client writing is not the agency's first response.
       const [ticket] = await db.select().from(schema.tickets).where(eq(schema.tickets.id, ingested.ticket.id));
       expect(ticket!.firstResponseAt).toBeNull();
     });

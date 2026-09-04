@@ -24,6 +24,20 @@ export const CreateTicketInput = z.object({
 export type CreateTicketInput = z.input<typeof CreateTicketInput>;
 
 /**
+ * The two sources the client themselves originated. A ticket from either is
+ * theirs to read in the portal; anything else is agency work until a human
+ * shares it.
+ */
+const CLIENT_ORIGINATED: readonly CreateTicketInput["source"][] = ["portal", "email"];
+
+/** The channel a conversation was opened on, derived from the ticket source. */
+function channelFor(source: CreateTicketInput["source"]): "portal" | "email" | "internal" {
+  if (source === "portal") return "portal";
+  if (source === "email") return "email";
+  return "internal";
+}
+
+/**
  * The whole of ticket creation, minus the transaction and the emit, so a
  * caller that is already inside a transaction (`ingestInboundEmail`) can make
  * the conversation, the message and the ticket atomically. Callers that use
@@ -42,7 +56,7 @@ export async function createTicketInTx(tx: Db, organisationId: string, input: Cr
     : (
         await tx.insert(schema.conversations).values({
           organisationId, clientId: v.clientId, siteId: v.siteId ?? null, subject: v.subject,
-          channel: "internal", lastMessageAt: new Date(),
+          channel: channelFor(v.source), lastMessageAt: new Date(),
         }).returning()
       )[0];
   if (!conversation) throw new Error(`conversation ${v.conversationId} not found in organisation`);
@@ -55,9 +69,15 @@ export async function createTicketInTx(tx: Db, organisationId: string, input: Cr
 
   // The opening message is the ticket body only when we made the conversation.
   // An email thread already carries the client's own words.
+  //
+  // The client's own words are `inbound`, exactly as they are when they arrive
+  // by email; a ticket we raised about them opens with an `internal` note.
+  // `direction` is what the portal filters on, so this is the line that decides
+  // whether the opening body is readable by the client.
   if (!v.conversationId) {
     await tx.insert(schema.messages).values({
-      organisationId, conversationId: conversation.id, direction: "internal",
+      organisationId, conversationId: conversation.id,
+      direction: v.actorKind === "client" ? "inbound" : "internal",
       authorKind: v.actorKind, authorId: v.actorId ?? null, body: v.body,
     });
   }
@@ -65,6 +85,7 @@ export async function createTicketInTx(tx: Db, organisationId: string, input: Cr
   const [ticket] = await tx.insert(schema.tickets).values({
     organisationId, conversationId: conversation.id, clientId: v.clientId, siteId: v.siteId ?? null,
     subject: v.subject, severity: v.severity, category: v.category ?? null, source: v.source,
+    clientVisible: CLIENT_ORIGINATED.includes(v.source),
     slaDueAt: slaDueAt(v.severity, new Date()),
   }).returning();
 

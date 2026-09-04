@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
@@ -34,9 +34,11 @@ export async function replyToConversation(db: Db, organisationId: string, input:
     .where(and(eq(schema.conversations.id, v.conversationId), eq(schema.conversations.organisationId, organisationId)));
   if (!conversation) throw new Error(`conversation ${v.conversationId} not found in organisation`);
 
-  // A client replying in the portal is writing into the thread, not sending
-  // mail as the agency. Their own words never leave LaunchOS as an outbound
-  // email, whatever the caller passed for `internal`.
+  // A client replying is not the agency sending mail, so their words never
+  // leave LaunchOS as an outbound email whatever the caller passed. The portal
+  // does not come through here at all — `replyAsClient` writes an `inbound`
+  // row that reopens the case and tells somebody. This is the backstop for any
+  // other caller that hands us `actorKind: "client"`.
   const internal = v.internal || v.actorKind === "client";
   const outbound = !internal;
   const [identity] = await db
@@ -46,10 +48,17 @@ export async function replyToConversation(db: Db, organisationId: string, input:
   if (outbound && !conversation.participantEmail) throw new Error("conversation has no participant email to reply to");
   if (outbound && !identity) throw new Error("client has no support email identity; run ensureEmailIdentity");
 
+  // Only mail carries a Message-ID to thread against. A client's portal reply
+  // is `inbound` too (see reply-as-client.ts) but has no external id, so it
+  // must not shadow the last real email and strip the In-Reply-To header.
   const [lastInbound] = await db
     .select({ externalId: schema.messages.externalId })
     .from(schema.messages)
-    .where(and(eq(schema.messages.conversationId, conversation.id), eq(schema.messages.direction, "inbound")))
+    .where(and(
+      eq(schema.messages.conversationId, conversation.id),
+      eq(schema.messages.direction, "inbound"),
+      isNotNull(schema.messages.externalId),
+    ))
     .orderBy(desc(schema.messages.createdAt))
     .limit(1);
 
