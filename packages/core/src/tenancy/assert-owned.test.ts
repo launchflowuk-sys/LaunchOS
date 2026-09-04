@@ -5,7 +5,9 @@ import { eq } from "drizzle-orm";
 import { createClient } from "../clients/create-client.js";
 import { createSite } from "../sites/create-site.js";
 import { createTicket } from "../support/create-ticket.js";
-import { assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteInOrganisation } from "./assert-owned.js";
+import {
+  assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteBelongsToClient, assertSiteInOrganisation,
+} from "./assert-owned.js";
 
 async function makeOrg(db: Db, name: string) {
   const [org] = await db.insert(schema.organisations).values({ name, slug: `test-${crypto.randomUUID()}` }).returning();
@@ -115,6 +117,33 @@ describe("assertOwned", () => {
       await expect(assertSiteInOrganisation(db, orgB.id, site.id)).rejects.toThrow(
         `site ${site.id} not found in organisation`,
       );
+    });
+  });
+});
+
+describe("assertSiteBelongsToClient", () => {
+  it("accepts a site owned by the given client and rejects one owned by another client in the same org", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db, "A");
+      const clientA = await createClient(db, org.id, { name: "Client A" });
+      const clientB = await createClient(db, org.id, { name: "Client B" });
+      const siteA = await createSite(db, org.id, { clientId: clientA.id, name: "S", primaryUrl: "https://a.test" });
+
+      await expect(assertSiteBelongsToClient(db, org.id, siteA.id, clientA.id)).resolves.toBeUndefined();
+      await expect(assertSiteBelongsToClient(db, org.id, siteA.id, clientB.id)).rejects.toThrow(
+        `site ${siteA.id} belongs to another client`,
+      );
+    });
+  });
+
+  it("is a no-op when the site is not in this organisation, leaving assertSiteInOrganisation to reject it first", async () => {
+    await withTestDb(async (db) => {
+      const orgA = await makeOrg(db, "A");
+      const orgB = await makeOrg(db, "B");
+      const clientA = await createClient(db, orgA.id, { name: "Client A" });
+      const siteA = await createSite(db, orgA.id, { clientId: clientA.id, name: "S", primaryUrl: "https://a.test" });
+
+      await expect(assertSiteBelongsToClient(db, orgB.id, siteA.id, "any-client-id")).resolves.toBeUndefined();
     });
   });
 });

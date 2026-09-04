@@ -31,4 +31,33 @@ describe("task dates", () => {
     // 23:30 UTC on 30 June is 00:30 BST on 1 July.
     expect(londonDateKey(new Date("2026-06-30T23:30:00.000Z"))).toBe("2026-07-01");
   });
+
+  it("rolls a December monthly period into January of the next year", () => {
+    const now = new Date("2026-12-14T12:00:00.000Z");
+    const p = periodBounds("monthly", now);
+    expect(p.key).toBe("2026-12");
+    expect(p.start.toISOString()).toBe("2026-12-01T00:00:00.000Z");
+    expect(p.end.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+  });
+
+  it("rolls a Q4 quarterly period into Q1 of the next year", () => {
+    const now = new Date("2026-12-14T12:00:00.000Z");
+    const p = periodBounds("quarterly", now);
+    expect(p.key).toBe("2026-Q4");
+    expect(p.start.toISOString()).toBe("2026-10-01T00:00:00.000Z");
+    expect(p.end.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+  });
+
+  it("spans the full 29 days of a leap February (2028) and centres accordingly", () => {
+    const now = new Date("2028-02-29T12:00:00.000Z");
+    const p = periodBounds("monthly", now);
+    expect(p.key).toBe("2028-02");
+    expect(p.start.toISOString()).toBe("2028-02-01T00:00:00.000Z");
+    // March 1st, not the non-leap-year 28-day end — confirms the span is
+    // derived from real calendar length, not a hardcoded day count.
+    expect(p.end.toISOString()).toBe("2028-03-01T00:00:00.000Z");
+    // The midpoint of a 29-day period is day 14.5: Feb 15th at noon. A
+    // non-leap February's midpoint would land a half-day earlier.
+    expect(dueWithinPeriod(p, 1, 1).toISOString()).toBe("2028-02-15T12:00:00.000Z");
+  });
 });

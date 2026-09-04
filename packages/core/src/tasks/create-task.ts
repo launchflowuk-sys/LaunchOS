@@ -4,7 +4,9 @@ import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
-import { assertClientInOrganisation, assertSiteInOrganisation } from "../tenancy/assert-owned.js";
+import {
+  assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteBelongsToClient, assertSiteInOrganisation,
+} from "../tenancy/assert-owned.js";
 
 export const CreateTaskInput = z.object({
   clientId: z.string().uuid(),
@@ -30,7 +32,20 @@ export type CreateTaskInput = z.input<typeof CreateTaskInput>;
 export async function createTask(db: Db, organisationId: string, input: CreateTaskInput) {
   const v = CreateTaskInput.parse(input);
   await assertClientInOrganisation(db, organisationId, v.clientId);
-  if (v.siteId) await assertSiteInOrganisation(db, organisationId, v.siteId);
+  if (v.siteId) {
+    await assertSiteInOrganisation(db, organisationId, v.siteId);
+    await assertSiteBelongsToClient(db, organisationId, v.siteId, v.clientId);
+  }
+  if (v.ticketId) await assertOwned(db, organisationId, schema.tickets, v.ticketId);
+  if (v.assigneeUserId) {
+    // Consistent with assignTask: fold the tenancy error into a message that
+    // names the actual constraint, not the generic "not found" wording.
+    try {
+      await assertOrgMember(db, organisationId, v.assigneeUserId);
+    } catch {
+      throw new Error(`user ${v.assigneeUserId} is not an active member of this organisation`);
+    }
+  }
 
   // One transaction: a task without its audit row or timeline entry is a task
   // nobody can explain later.

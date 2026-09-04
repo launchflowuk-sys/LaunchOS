@@ -34,7 +34,7 @@ describe("assignment", () => {
 
       expect((await assignTask(db, organisationId, { taskId: task.id, assigneeUserId: staffId })).assigneeUserId).toBe(staffId);
       expect((await assignTask(db, organisationId, { taskId: task.id, assigneeUserId: null })).assigneeUserId).toBeNull();
-      await expect(assignTask(db, organisationId, { taskId: task.id, assigneeUserId: other.ownerUserId })).rejects.toThrow(/not an active member/);
+      await expect(assignTask(db, organisationId, { taskId: task.id, assigneeUserId: other.ownerUserId })).rejects.toThrow(/not found in organisation/);
     });
   });
 });

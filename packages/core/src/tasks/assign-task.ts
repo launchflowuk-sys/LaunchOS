@@ -21,38 +21,39 @@ export async function assignTask(db: Db, organisationId: string, input: AssignTa
   const [before] = await db.select().from(schema.tasks).where(where);
   if (!before) throw new Error(`task ${v.taskId} not found in organisation`);
 
-  if (v.assigneeUserId) {
-    try {
-      await assertOrgMember(db, organisationId, v.assigneeUserId);
-    } catch {
-      throw new Error(`user ${v.assigneeUserId} is not an active member of this organisation`);
-    }
-  }
+  // Let assertOrgMember's own error surface as-is — a caller diagnosing a
+  // failed assignment needs to see a real DB error, not a member-not-found
+  // message manufactured from an unrelated failure.
+  if (v.assigneeUserId) await assertOrgMember(db, organisationId, v.assigneeUserId);
 
-  const [after] = await db.update(schema.tasks)
-    .set({ assigneeUserId: v.assigneeUserId, updatedAt: new Date() })
-    .where(where).returning();
+  const after = await db.transaction(async (tx) => {
+    const [row] = await tx.update(schema.tasks)
+      .set({ assigneeUserId: v.assigneeUserId, updatedAt: new Date() })
+      .where(where).returning();
 
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "task.assigned",
-    targetType: "task", targetId: v.taskId, before, after,
-  });
-  await recordActivity(db, organisationId, {
-    clientId: after!.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "task.assigned",
-    title: v.assigneeUserId ? `${after!.title} assigned` : `${after!.title} unassigned`,
-    link: `/tasks/${v.taskId}`,
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "task.assigned",
+      targetType: "task", targetId: v.taskId, before, after: row,
+    });
+    await recordActivity(tx as unknown as Db, organisationId, {
+      clientId: row!.clientId, actorKind: v.actorKind, actorId: v.actorId, kind: "task.assigned",
+      title: v.assigneeUserId ? `${row!.title} assigned` : `${row!.title} unassigned`,
+      link: `/tasks/${v.taskId}`,
+    });
+    return row!;
   });
 
   // Let the new owner of the work know without waiting for them to notice it
   // in a list. Unassigning is quiet — nobody needs a "you no longer own this".
+  // Sent after commit so a failed notification never rolls back the assignment.
   if (v.assigneeUserId) {
     await notify(db, organisationId, {
       userId: v.assigneeUserId,
       kind: "task.assigned",
-      title: `Assigned: ${after!.title}`,
+      title: `Assigned: ${after.title}`,
       link: `/tasks/${v.taskId}`,
     });
   }
 
-  return after!;
+  return after;
 }

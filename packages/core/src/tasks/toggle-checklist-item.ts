@@ -20,8 +20,18 @@ export async function toggleChecklistItem(db: Db, organisationId: string, input:
 
   // New array, new items — the loaded row is never mutated.
   const checklist = before.checklist.map((item, i) => (i === v.index ? { ...item, done: v.done } : item));
-  const [after] = await db.update(schema.tasks).set({ checklist, updatedAt: new Date() }).where(where).returning();
-  return after!;
+
+  return db.transaction(async (tx) => {
+    const [after] = await tx.update(schema.tasks).set({ checklist, updatedAt: new Date() }).where(where).returning();
+    // No actor travels through this input (see ToggleChecklistItemInput) —
+    // "system" matches the default other task writes fall back to when the
+    // caller doesn't carry one.
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind: "system", action: "task.checklist_toggled",
+      targetType: "task", targetId: v.taskId, before, after,
+    });
+    return after!;
+  });
 }
 
 export const SetTaskVisibilityInput = z.object({
@@ -38,11 +48,14 @@ export async function setTaskVisibility(db: Db, organisationId: string, input: S
   const where = and(eq(schema.tasks.id, v.taskId), eq(schema.tasks.organisationId, organisationId));
   const [before] = await db.select().from(schema.tasks).where(where);
   if (!before) throw new Error(`task ${v.taskId} not found in organisation`);
-  const [after] = await db.update(schema.tasks)
-    .set({ clientVisible: v.clientVisible, updatedAt: new Date() }).where(where).returning();
-  await recordAudit(db, organisationId, {
-    actorKind: v.actorKind, actorId: v.actorId, action: "task.visibility_changed",
-    targetType: "task", targetId: v.taskId, before, after,
+
+  return db.transaction(async (tx) => {
+    const [after] = await tx.update(schema.tasks)
+      .set({ clientVisible: v.clientVisible, updatedAt: new Date() }).where(where).returning();
+    await recordAudit(tx as unknown as Db, organisationId, {
+      actorKind: v.actorKind, actorId: v.actorId, action: "task.visibility_changed",
+      targetType: "task", targetId: v.taskId, before, after,
+    });
+    return after!;
   });
-  return after!;
 }

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
+import { createClient } from "../clients/create-client.js";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
+import { createSite } from "../sites/create-site.js";
+import { createTicket } from "../support/create-ticket.js";
 import { seedOrgWithClient } from "./test-fixtures.js";
 import { createTask } from "./create-task.js";
 import { getTask } from "./get-task.js";
@@ -47,6 +50,49 @@ describe("createTask", () => {
         createTask(db, b.organisationId, { clientId: a.clientId, title: "X", kind: "other", phase: "support" }),
       ).rejects.toThrow(/not found in organisation/);
       expect(await getTask(db, b.organisationId, a.clientId)).toBeNull();
+    });
+  });
+
+  it("refuses a ticket id from another organisation", async () => {
+    await withTestDb(async (db) => {
+      const a = await seedOrgWithClient(db);
+      const b = await seedOrgWithClient(db);
+      const { ticket } = await createTicket(db, a.organisationId, {
+        clientId: a.clientId, subject: "A's ticket", body: "hello", source: "agent",
+      });
+
+      await expect(
+        createTask(db, b.organisationId, {
+          clientId: b.clientId, title: "Hijack ticket", kind: "other", phase: "support", ticketId: ticket.id,
+        }),
+      ).rejects.toThrow(/not found in organisation/);
+    });
+  });
+
+  it("refuses a site that belongs to another client in the same organisation", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId: clientA } = await seedOrgWithClient(db);
+      const siteA = await createSite(db, organisationId, { clientId: clientA, name: "A's site", primaryUrl: "https://a.test" });
+      const clientB = await createClient(db, organisationId, { name: "Second Client" });
+
+      await expect(
+        createTask(db, organisationId, {
+          clientId: clientB.id, title: "Wrong client's site", kind: "other", phase: "support", siteId: siteA.id,
+        }),
+      ).rejects.toThrow(`site ${siteA.id} belongs to another client`);
+    });
+  });
+
+  it("refuses an assignee who is not an active member of the organisation", async () => {
+    await withTestDb(async (db) => {
+      const a = await seedOrgWithClient(db);
+      const b = await seedOrgWithClient(db);
+
+      await expect(
+        createTask(db, a.organisationId, {
+          clientId: a.clientId, title: "Assign to outsider", kind: "other", phase: "support", assigneeUserId: b.ownerUserId,
+        }),
+      ).rejects.toThrow(`user ${b.ownerUserId} is not an active member of this organisation`);
     });
   });
 });
