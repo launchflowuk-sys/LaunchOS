@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { SubscriptionsSection } from "./billing/subscriptions-section";
 import {
   AddContactForm, AddDomainForm, AddSiteForm, ArchiveClientButton, BillingForm, RemoveContactButton,
 } from "./forms";
@@ -39,9 +40,6 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
       {tab === "overview" ? <OverviewTab clientId={client.id} /> : null}
       {tab === "contacts" ? <ContactsTab clientId={client.id} /> : null}
       {tab === "sites" ? <SitesTab clientId={client.id} /> : null}
-      {tab === "portal" ? (
-        <EmptyState>Portal users arrive in Plan 4, together with the client portal itself.</EmptyState>
-      ) : null}
     </>
   );
 }
@@ -147,6 +145,8 @@ async function ContactsTab({ clientId }: { clientId: string }) {
           </p>
         </div>
       </section>
+
+      <SubscriptionsSection clientId={clientId} />
     </div>
   );
 }

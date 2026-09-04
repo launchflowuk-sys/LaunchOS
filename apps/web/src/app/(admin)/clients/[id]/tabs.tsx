@@ -2,33 +2,38 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 /** Sections the client detail page renders itself, chosen with `?tab=`. */
-export type ClientTabKey = "overview" | "contacts" | "sites" | "portal";
+export type ClientTabKey = "overview" | "contacts" | "sites";
 
 /**
- * Tasks is a route of its own (`/clients/[id]/tasks`) rather than a `?tab=`
- * section: it owns phase progress, task generation and per-task forms, which
- * would push the detail page well past the file-size rule.
+ * Tasks, Support and Portal users are routes of their own rather than `?tab=`
+ * sections: each owns its own queries, forms and server actions, which would
+ * push the detail page well past the file-size rule.
  */
-export type ClientTabActive = ClientTabKey | "tasks";
+export type ClientTabRoute = "tasks" | "support" | "portal-users";
+export type ClientTabActive = ClientTabKey | ClientTabRoute;
+
+const ROUTES: readonly ClientTabRoute[] = ["tasks", "support", "portal-users"];
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "contacts", label: "Contacts & Billing" },
   { key: "sites", label: "Sites & Domains" },
   { key: "tasks", label: "Tasks" },
-  { key: "portal", label: "Portal users" },
+  { key: "support", label: "Support" },
+  { key: "portal-users", label: "Portal users" },
 ] as const satisfies readonly { key: ClientTabActive; label: string }[];
 
-/** The `?tab=` keys the detail page accepts — every tab except Tasks. */
-export const CLIENT_TABS = TABS.filter((tab) => tab.key !== "tasks");
+/** The `?tab=` keys the detail page accepts — every tab that is not its own route. */
+export const CLIENT_TABS = TABS.filter((tab) => !ROUTES.includes(tab.key as ClientTabRoute));
 
 function hrefFor(clientId: string, key: ClientTabActive): string {
-  return key === "tasks" ? `/clients/${clientId}/tasks` : `/clients/${clientId}?tab=${key}`;
+  return ROUTES.includes(key as ClientTabRoute)
+    ? `/clients/${clientId}/${key}`
+    : `/clients/${clientId}?tab=${key}`;
 }
 
-// Support, Invoices and Reports tabs arrive with Plans 4 and 5.
+// Invoices and Reports arrive with Plan 5.
 const LATER_TABS = [
-  { label: "Support", plan: 4 },
   { label: "Invoices", plan: 5 },
   { label: "Reports", plan: 5 },
 ] as const;

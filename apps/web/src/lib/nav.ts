@@ -20,16 +20,16 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Support",
     items: [
-      { label: "Inbox", href: "/inbox", plan: 4 },
-      { label: "Open Cases", href: "/tickets" },
+      { label: "Inbox", href: "/inbox" },
+      { label: "Open Cases", href: "/cases" },
       { label: "Incidents", href: "/incidents" },
     ],
   },
   {
     label: "Money",
     items: [
-      { label: "Payments", href: "/payments", plan: 5 },
-      { label: "Invoices", href: "/invoices", plan: 5 },
+      { label: "Payments", href: "/payments" },
+      { label: "Invoices", href: "/invoices" },
       { label: "Ads", href: "/ads", plan: 5 },
     ],
   },
@@ -38,7 +38,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { label: "Approvals", href: "/approvals" },
       { label: "Agents", href: "/settings/agents" },
-      { label: "Knowledge Base", href: "/knowledge", plan: 4 },
+      { label: "Email", href: "/settings/email" },
+      { label: "Knowledge Base", href: "/knowledge" },
     ],
   },
   {
