@@ -2,6 +2,11 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* Tailwind 4 preflight resets headings and lists, so `prose` is inert without
+   this plugin. The Markdown previews (Knowledge Base editor, incident and task
+   notes) rely on it. */
+@plugin "@tailwindcss/typography";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {

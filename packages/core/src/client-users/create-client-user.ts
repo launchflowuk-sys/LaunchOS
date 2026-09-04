@@ -13,6 +13,11 @@ export const CreateClientUserInput = z.object({
   email: z.string().email(),
   name: z.string().min(1).max(120),
   role: z.enum(["client_admin", "client_member"]).default("client_member"),
+  // The admin granting the access. Optional so callers outside a request (the
+  // seed, a future agent tool) still work, but the web action always passes it
+  // — "a user granted portal access" is not an answer once staff share the
+  // admin. Same role `invitedBy` plays in `team/create-member.ts`.
+  actorId: z.string().optional(),
 });
 export type CreateClientUserInput = z.input<typeof CreateClientUserInput>;
 
@@ -91,11 +96,11 @@ export async function createClientUser(db: Db, organisationId: string, input: Cr
       .returning();
 
     await recordAudit(inner, organisationId, {
-      actorKind: "user", action: "client_user.created", targetType: "client_user", targetId: clientUser!.id,
+      actorKind: "user", actorId: v.actorId, action: "client_user.created", targetType: "client_user", targetId: clientUser!.id,
       after: { clientId: v.clientId, userId: user.id, email, role: v.role },
     });
     await recordActivity(inner, organisationId, {
-      clientId: v.clientId, actorKind: "user", kind: "portal.user_invited",
+      clientId: v.clientId, actorKind: "user", actorId: v.actorId, kind: "portal.user_invited",
       title: `Portal access granted to ${email}`, link: `/clients/${v.clientId}/portal-users`,
     });
 

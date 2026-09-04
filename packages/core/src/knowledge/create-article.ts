@@ -10,6 +10,9 @@ export const CreateKnowledgeArticleInput = z.object({
   bodyMd: z.string().min(1),
   tags: z.array(z.string().min(1)).default([]),
   published: z.boolean().default(false),
+  // The admin who wrote it, forwarded to the audit row. Optional so non-request
+  // callers (seed, agent tools) still work; the web action always passes it.
+  actorId: z.string().optional(),
 });
 export type CreateKnowledgeArticleInput = z.input<typeof CreateKnowledgeArticleInput>;
 
@@ -38,7 +41,7 @@ async function uniqueSlug(db: Db, organisationId: string, base: string): Promise
 }
 
 export async function createKnowledgeArticle(db: Db, organisationId: string, input: CreateKnowledgeArticleInput) {
-  const v = CreateKnowledgeArticleInput.parse(input);
+  const { actorId, ...v } = CreateKnowledgeArticleInput.parse(input);
   // Uniqueness is only checked, not reserved, so this stays outside the
   // transaction — same shape as `uniqueClientSlug` ahead of `createClient`'s
   // transaction.
@@ -51,7 +54,7 @@ export async function createKnowledgeArticle(db: Db, organisationId: string, inp
       .values({ organisationId, title: v.title, slug, bodyMd: v.bodyMd, tags: v.tags, published: v.published })
       .returning();
     await recordAudit(inner, organisationId, {
-      actorKind: "user", action: "knowledge_article.created", targetType: "knowledge_article", targetId: created!.id, after: created,
+      actorKind: "user", actorId, action: "knowledge_article.created", targetType: "knowledge_article", targetId: created!.id, after: created,
     });
     return created!;
   });

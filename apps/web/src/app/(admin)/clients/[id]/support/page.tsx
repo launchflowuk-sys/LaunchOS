@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { z } from "zod";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,10 +19,15 @@ const FINISHED: ("resolved" | "closed")[] = ["resolved", "closed"];
 
 const RECENT_CONVERSATIONS = 5;
 
+const Uuid = z.string().uuid();
+
 export default async function ClientSupportPage({ params }: PageProps<"/clients/[id]/support">) {
   const session = await requireAdmin();
   const { id } = await params;
   const db = getDb();
+
+  // A non-uuid path segment is a 404, not a Postgres uuid cast error.
+  if (!Uuid.safeParse(id).success) notFound();
 
   // `getClient` is the org-scoped read `assertOwned` would perform, and it also
   // yields the name the header needs: a client of another organisation is a

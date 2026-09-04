@@ -42,8 +42,19 @@ function parse(formData: FormData): { ok: true; value: ArticleValues } | { ok: f
   };
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong";
+/**
+ * Core and driver error text is internals — constraint names, column names,
+ * raw ids — and these messages end up in an alert box and in the address bar.
+ * Map the two cases the admin can act on; log the rest server-side.
+ */
+function messageOf(error: unknown, fallback: string): string {
+  const raw = error instanceof Error ? error.message : "";
+  if (/not found in organisation/i.test(raw)) return "That article no longer exists.";
+  if (/could not find a free slug/i.test(raw)) {
+    return "Too many articles already share that title. Give this one a more specific title.";
+  }
+  console.error("knowledge action failed", error);
+  return fallback;
 }
 
 /**
@@ -59,10 +70,13 @@ export async function createArticleAction(formData: FormData): Promise<void> {
 
   let articleId: string;
   try {
-    const article = await createKnowledgeArticle(getDb(), session.organisationId, fields.value);
+    const article = await createKnowledgeArticle(getDb(), session.organisationId, {
+      ...fields.value,
+      actorId: session.userId,
+    });
     articleId = article.id;
   } catch (error) {
-    redirect(`/knowledge/new?error=${encodeURIComponent(messageOf(error))}`);
+    redirect(`/knowledge/new?error=${encodeURIComponent(messageOf(error, "Could not create the article."))}`);
   }
 
   revalidatePath("/knowledge");
@@ -83,12 +97,13 @@ export async function updateArticleAction(formData: FormData): Promise<ActionRes
     await updateKnowledgeArticle(getDb(), session.organisationId, {
       articleId: target.data.articleId,
       ...fields.value,
+      actorId: session.userId,
     });
     revalidatePath("/knowledge");
     revalidatePath(`/knowledge/${target.data.articleId}`);
     return { status: "ok" };
   } catch (error) {
-    return { status: "error", message: messageOf(error) };
+    return { status: "error", message: messageOf(error, "Could not save the article.") };
   }
 }
 
@@ -102,9 +117,14 @@ export async function deleteArticleAction(formData: FormData): Promise<void> {
   if (!target.success) redirect("/knowledge?error=That+article+could+not+be+identified");
 
   try {
-    await deleteKnowledgeArticle(getDb(), session.organisationId, { articleId: target.data.articleId });
+    await deleteKnowledgeArticle(getDb(), session.organisationId, {
+      articleId: target.data.articleId,
+      actorId: session.userId,
+    });
   } catch (error) {
-    redirect(`/knowledge/${target.data.articleId}?error=${encodeURIComponent(messageOf(error))}`);
+    redirect(
+      `/knowledge/${target.data.articleId}?error=${encodeURIComponent(messageOf(error, "Could not delete the article."))}`,
+    );
   }
 
   revalidatePath("/knowledge");

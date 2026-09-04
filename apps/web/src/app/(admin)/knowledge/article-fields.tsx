@@ -65,12 +65,20 @@ export function ArticleFields({ defaults }: { defaults: ArticleDefaults }) {
   );
 }
 
-/** Shown when a server action bounced back to the form with `?error=`. */
+/**
+ * Shown when a server action bounced back to the form with `?error=`. React
+ * escapes the value, so there is no injection — but anyone can hand-craft the
+ * query string, so the text is capped rather than rendering an arbitrary
+ * paragraph of attacker-chosen prose inside a trusted admin alert.
+ */
+const MAX_ERROR_LENGTH = 120;
+
 export function FormError({ message }: { message?: string | undefined }) {
   if (!message) return null;
+  const text = message.length > MAX_ERROR_LENGTH ? `${message.slice(0, MAX_ERROR_LENGTH)}…` : message;
   return (
     <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-      {message}
+      {text}
     </p>
   );
 }

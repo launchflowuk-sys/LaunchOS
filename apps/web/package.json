@@ -43,6 +43,7 @@
     "@launchos/config": "workspace:*",
     "@playwright/test": "^1.57.0",
     "@tailwindcss/postcss": "^4",
+    "@tailwindcss/typography": "^0.5.20",
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
