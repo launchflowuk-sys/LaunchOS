@@ -76,6 +76,9 @@ describe("sendAdReport", () => {
       expect(sent.status).toBe("sent");
       expect(adapter.sent).toHaveLength(1);
       expect(adapter.sent[0]!.to).toBe("client@test.example");
+      expect(adapter.sent[0]!.html).toContain("Your Search advertising summary");
+      expect(adapter.sent[0]!.html).toContain(`${PORTAL}/portal/reports`);
+      expect(adapter.sent[0]!.text).toContain(`${PORTAL}/portal/reports`);
 
       const second = await sendAdReport(db, orgId, { adReportId: report.id, actorId: "u1" }, adapter, PORTAL, ENV);
       expect(second).toMatchObject({ status: "sent", alreadySent: true });

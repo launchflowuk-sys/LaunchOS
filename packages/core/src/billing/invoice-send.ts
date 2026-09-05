@@ -1,11 +1,11 @@
-import type { EmailAdapter } from "@launchos/channels";
+import { renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
-import { supportEmailFor } from "../config.js";
+import { brandEmailContext, supportEmailFor } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 import { isSendableStatus, sendTargetStatus } from "./invoices.js";
@@ -123,16 +123,36 @@ export async function sendApprovedInvoice(
   }
 
   const { invoice, clientName, to } = claim;
-  const link = `${portalBaseUrl}/portal/invoices/${invoice.id}`;
+  const link = `${portalBaseUrl.replace(/\/$/, "")}/portal/invoices/${invoice.id}`;
   const amount = `£${(invoice.totalPence / 100).toFixed(2)}`;
+  const due = invoice.dueAt.toISOString().slice(0, 10);
   const from = env.MAIL_FROM ?? supportEmailFor("invoices", env);
+  const brand = brandEmailContext(env);
+  // The client name is typed by a person and the amount is formatted from the
+  // record, so both go through the template's escaping rather than into markup
+  // here. Nothing about the branded shell changes what the send guarantees:
+  // the claim above is still what makes this at most one email per approval.
+  const { text, html } = renderBrandedEmail({
+    preheader: `${amount}, due ${due}.`,
+    heading: `Invoice ${invoice.number}`,
+    paragraphs: [
+      `Hello ${clientName},`,
+      `Invoice ${invoice.number} for ${amount} is ready. It is due on ${due}.`,
+    ],
+    cta: { label: "View invoice", url: link },
+    footerNote: "You can view, print and save this invoice as a PDF from the portal.",
+    logoUrl: brand.logoUrl,
+    appUrl: brand.appUrl,
+    supportEmail: brand.supportEmail,
+  });
 
   try {
     await email.send({
       to,
       from,
       subject: `Invoice ${invoice.number} from LaunchFlow`,
-      text: `Hello ${clientName},\n\nInvoice ${invoice.number} for ${amount} is ready. You can view and print it here:\n${link}\n\nIt is due on ${invoice.dueAt.toISOString().slice(0, 10)}.\n\nThank you,\nLaunchFlow`,
+      text,
+      html,
     });
   } catch (error) {
     await recordSendFailure(db, organisationId, invoice, v.approvalId, to, error).catch((bookkeeping: unknown) => {

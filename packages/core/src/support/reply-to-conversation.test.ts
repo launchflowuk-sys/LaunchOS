@@ -314,6 +314,11 @@ describe("replyToConversation + sendQueuedMessage", () => {
       expect(adapter.sent).toHaveLength(1);
       expect(adapter.sent[0]!.inReplyTo).toBe("<in-1@client.test>");
       expect(adapter.sent[0]!.replyTo).toBe(identity.address);
+      // Both halves go out, and the HTML one is headed by the case subject
+      // rather than the message's own "Re: ...".
+      expect(adapter.sent[0]!.html).toContain("Site is down");
+      expect(adapter.sent[0]!.html).toContain("We have restarted the container.");
+      expect(adapter.sent[0]!.text).toContain("We have restarted the container.");
 
       // A retried job must not send twice.
       await sendQueuedMessage(db, org!.id, { messageId: queued.id }, adapter, ENV);

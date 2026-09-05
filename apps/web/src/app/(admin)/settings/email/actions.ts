@@ -1,7 +1,7 @@
 "use server";
 
-import { createEmailAdapter } from "@launchos/channels";
-import { recordAudit } from "@launchos/core";
+import { createEmailAdapter, renderBrandedEmail } from "@launchos/channels";
+import { brandEmailContext, recordAudit } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
@@ -17,11 +17,30 @@ export async function sendTestEmail() {
   if (!to) throw new Error("OWNER_NOTIFY_EMAIL is not set");
 
   const adapter = createEmailAdapter(process.env);
+  const brand = brandEmailContext(process.env);
+  // The compact internal variant: this is a message to ourselves, and dressing
+  // it like a client email would make the two hard to tell apart in one inbox.
+  // It still wears the shell, because that is the point of the test — it is
+  // what proves the branded layout renders in the owner's real mail client.
+  const { text, html } = renderBrandedEmail({
+    variant: "internal",
+    preheader: `Sent with the ${adapter.name} adapter.`,
+    heading: "LaunchOS test email",
+    paragraphs: [
+      `Sent from LaunchOS Settings → Email at ${new Date().toISOString()} using the ${adapter.name} adapter.`,
+      "If this arrived, outbound email works and the branded layout renders in your client.",
+    ],
+    cta: { label: "Open LaunchOS", url: `${brand.appUrl}/settings/email` },
+    logoUrl: brand.logoUrl,
+    appUrl: brand.appUrl,
+    supportEmail: brand.supportEmail,
+  });
   const result = await adapter.send({
     to,
     from: process.env.MAIL_FROM ?? to,
     subject: "LaunchOS test email",
-    text: `Sent from LaunchOS Settings → Email at ${new Date().toISOString()} using the ${adapter.name} adapter.`,
+    text,
+    html,
   });
 
   await recordAudit(getDb(), session.organisationId, {

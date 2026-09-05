@@ -1,5 +1,16 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
-export { supportEmailDomain, supportEmailFor, DEFAULT_SUPPORT_EMAIL_DOMAIN } from "./config.js";
+export {
+  supportEmailDomain,
+  supportEmailFor,
+  DEFAULT_SUPPORT_EMAIL_DOMAIN,
+  appUrl,
+  brandLogoUrl,
+  brandSupportAddress,
+  brandEmailContext,
+  BRAND_LOGO_PATH,
+  LOCAL_APP_URL,
+  type BrandEmailContext,
+} from "./config.js";
 export { truncate, MAX_ADDRESS_CHARS, MAX_ERROR_CHARS } from "./text.js";
 export { updateOrganisation, UpdateOrganisationInput } from "./organisations/update-organisation.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";

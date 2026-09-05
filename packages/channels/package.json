@@ -5,13 +5,26 @@
   "type": "module",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src scripts",
+    "samples": "tsx scripts/render-samples.ts"
   },
-  "dependencies": { "nodemailer": "^7.0.9", "zod": "^4.4.3" },
-  "devDependencies": { "@launchos/config": "workspace:*", "@types/node": "^24", "@types/nodemailer": "^7", "typescript": "^5", "vitest": "^3" }
+  "dependencies": {
+    "nodemailer": "^7.0.9",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@launchos/config": "workspace:*",
+    "@types/node": "^24",
+    "@types/nodemailer": "^7",
+    "typescript": "^5",
+    "vitest": "^3",
+    "tsx": "^4"
+  }
 }

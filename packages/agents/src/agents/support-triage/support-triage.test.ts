@@ -180,7 +180,12 @@ describe("support-triage", () => {
       expect(sent.status).toBe("sent");
       expect(adapter.sent).toHaveLength(1);
       expect(adapter.sent[0]!.to).toBe("jo@grayscabline.co.uk");
-      expect(adapter.sent[0]!.text).toBe(draft);
+      // The reply goes out in the branded shell, so `text` is the plain-text
+      // alternative around the draft rather than the draft alone, and there is
+      // an HTML half carrying the case subject as its heading.
+      expect(adapter.sent[0]!.text).toContain(draft);
+      expect(adapter.sent[0]!.html).toContain("Website not loading since the nameserver change");
+      expect(adapter.sent[0]!.html).toContain("Powered by LaunchFlow");
     });
   });
 

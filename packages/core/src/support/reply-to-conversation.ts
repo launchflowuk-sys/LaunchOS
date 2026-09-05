@@ -33,7 +33,20 @@ export type ReplyToConversationInput = z.input<typeof ReplyToConversationInput>;
  */
 const AWAITING_CLIENT_FROM: readonly string[] = ["open", "triaged", "in_progress"];
 
-/** What the courtesy email says. Never the reply itself — that stays behind the login. */
+/**
+ * What the courtesy email says. Never the reply itself — that stays behind the
+ * login.
+ *
+ * This is the *stored* body, and it is the record of what the client was told,
+ * so the portal link stays appended to it below. The branded HTML that actually
+ * goes out is rendered at send time by `sendQueuedMessage`, which is the only
+ * place in LaunchOS that talks to a mail server: it reads `metadata.kind` to
+ * recognise this row, gives it its own heading and a "Read the reply" button,
+ * and drops the appended URL from the visible paragraphs so the same link is
+ * not shown twice. Change the shape of the link here and
+ * `paragraphsFromBody(body, caseUrl)` there stops matching it — the email still
+ * sends, it just carries the address as text under the button.
+ */
 const NOTICE_BODY = "LaunchFlow has replied to your support case. Sign in to the portal to read it.";
 
 /**

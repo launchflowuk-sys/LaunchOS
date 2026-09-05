@@ -1,12 +1,14 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { EmailAdapter } from "@launchos/channels";
+import { paragraphsFromBody, renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { brandEmailContext } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
+import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -68,6 +70,80 @@ async function claim(db: Db, organisationId: string, messageId: string): Promise
   return row;
 }
 
+interface ConversationContext {
+  clientId: string;
+  subject: string;
+  ticketId: string | null;
+}
+
+/**
+ * What the thread this message belongs to is about, and whether it has a case
+ * behind it. One read serves both the branded email (heading and "View your
+ * case" button) and the give-up announcement below, which needs the client id.
+ */
+async function conversationContext(
+  db: Db,
+  organisationId: string,
+  conversationId: string,
+): Promise<ConversationContext | undefined> {
+  const [row] = await db
+    .select({
+      clientId: schema.conversations.clientId,
+      subject: schema.conversations.subject,
+      ticketId: schema.conversations.ticketId,
+    })
+    .from(schema.conversations)
+    .where(and(eq(schema.conversations.id, conversationId), eq(schema.conversations.organisationId, organisationId)));
+  return row;
+}
+
+/** The line a phone shows beside the subject: the opening of the reply itself. */
+function preheaderFrom(body: string): string {
+  const first = body.split(/\r?\n/).find((line) => line.trim().length > 0) ?? "";
+  return first.trim().slice(0, 140);
+}
+
+/**
+ * The branded shell around one queued message.
+ *
+ * Both kinds of outbound mail come through here, because both are `messages`
+ * rows and this is the only place in LaunchOS that hands one to a mail server:
+ *
+ * - **A staff or agent reply.** Heading is the case subject (the conversation's,
+ *   not the message's `Re: ...`), body is the reply, and the button goes to the
+ *   case in the portal when there is a ticket behind the thread.
+ * - **The courtesy notice** `replyToConversation` queues when a portal reply
+ *   lands — `metadata.kind` marks it. It says "there is something waiting",
+ *   never the answer, so it gets its own heading and its own button label. Its
+ *   stored body ends with the portal URL on a line of its own (that body is the
+ *   record of what the client was told); `paragraphsFromBody` drops that line
+ *   here so the branded version does not show the same link twice, once as text
+ *   and once as a button.
+ *
+ * The footer address is the client's own support identity rather than the
+ * generic one: a reply to it threads back onto this case.
+ */
+function brandedMessageEmail(
+  message: Message,
+  context: ConversationContext | undefined,
+  env: NodeJS.ProcessEnv,
+): { text: string; html: string } {
+  const brand = brandEmailContext(env);
+  const isNotice = message.metadata["kind"] === PORTAL_REPLY_NOTICE_KIND;
+  const caseUrl = context?.ticketId ? `${brand.appUrl}/portal/support/${context.ticketId}` : undefined;
+
+  return renderBrandedEmail({
+    preheader: isNotice ? "There is a reply waiting in your portal." : preheaderFrom(message.body),
+    heading: context?.subject ?? message.subject ?? "Your support case",
+    paragraphs: paragraphsFromBody(message.body, caseUrl),
+    ...(caseUrl ? { cta: { label: isNotice ? "Read the reply" : "View your case", url: caseUrl } } : {}),
+    ...(isNotice ? {} : { footerNote: "Reply to this email and your answer lands on the same case." }),
+    logoUrl: brand.logoUrl,
+    appUrl: brand.appUrl,
+    supportEmail: message.fromEmail ?? brand.supportEmail,
+  });
+}
+
 /** Set once a give-up has been announced, so the announcement cannot be doubled. */
 const SEND_FAILURE_NOTIFIED = "sendFailureNotifiedAt";
 
@@ -95,15 +171,7 @@ const SEND_FAILURE_NOTIFIED = "sendFailureNotifiedAt";
  * column and needs the same bound.
  */
 async function announceSendFailure(db: Db, organisationId: string, message: Message, lastError: string) {
-  const [conversation] = await db
-    .select({ clientId: schema.conversations.clientId })
-    .from(schema.conversations)
-    .where(
-      and(
-        eq(schema.conversations.id, message.conversationId),
-        eq(schema.conversations.organisationId, organisationId),
-      ),
-    );
+  const conversation = await conversationContext(db, organisationId, message.conversationId);
   const to = truncate(message.toEmail ?? "the client", MAX_ADDRESS_CHARS);
   const link = `/inbox/${message.conversationId}`;
   const title = `A reply to ${to} was never sent`;
@@ -151,6 +219,10 @@ export async function sendQueuedMessage(
   if (!claimed) return message;
 
   const inReplyTo = claimed.rawHeaders["in-reply-to"];
+  // Read outside the try: a thread that has lost its conversation row is a
+  // broken message, not a send failure, and must not burn a send attempt.
+  const context = await conversationContext(db, organisationId, claimed.conversationId);
+  const { text, html } = brandedMessageEmail(claimed, context, env);
   try {
     const result = await adapter.send({
       to: claimed.toEmail!,
@@ -159,7 +231,11 @@ export async function sendQueuedMessage(
       from: env.MAIL_FROM ?? claimed.fromEmail!,
       replyTo: claimed.fromEmail!,
       subject: claimed.subject ?? "(no subject)",
-      text: claimed.body,
+      // Both halves, always. A mail client that will not render HTML, a screen
+      // reader in plain mode and a spam filter all read the text alternative,
+      // and an HTML-only message scores worse with the last of those.
+      text,
+      html,
       inReplyTo,
       references: inReplyTo ? [inReplyTo] : undefined,
     });

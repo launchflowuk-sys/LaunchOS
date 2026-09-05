@@ -1,11 +1,11 @@
-import type { EmailAdapter } from "@launchos/channels";
+import { renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
-import { supportEmailFor } from "../config.js";
+import { brandEmailContext, supportEmailFor } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 
@@ -162,14 +162,31 @@ export async function sendAdReport(
   if (claim.alreadySent) return { ...claim.report, alreadySent: true as const };
 
   const { report, recipient } = claim;
-  const link = `${portalBaseUrl}/portal/reports`;
+  const link = `${portalBaseUrl.replace(/\/$/, "")}/portal/reports`;
   const from = env.MAIL_FROM ?? supportEmailFor("reports", env);
+  const brand = brandEmailContext(env);
+  // The account and client names come off records somebody typed; the summary
+  // itself — the one piece of model output in this flow — stays in the portal
+  // and never reaches the email. Both names are escaped by the template anyway.
+  const { text, html } = renderBrandedEmail({
+    preheader: `${report.periodStart} to ${report.periodEnd}.`,
+    heading: `Your ${recipient.accountName} advertising summary`,
+    paragraphs: [
+      `Hello ${recipient.clientName},`,
+      `Your advertising summary for ${report.periodStart} to ${report.periodEnd} is ready in your portal.`,
+    ],
+    cta: { label: "View the report", url: link },
+    logoUrl: brand.logoUrl,
+    appUrl: brand.appUrl,
+    supportEmail: brand.supportEmail,
+  });
   try {
     await email.send({
       to: recipient.clientEmail,
       from,
       subject: `Your ${recipient.accountName} advertising summary`,
-      text: `Hello ${recipient.clientName},\n\nYour advertising summary for ${report.periodStart} to ${report.periodEnd} is ready in your portal:\n${link}\n\nLaunchFlow`,
+      text,
+      html,
     });
   } catch (error) {
     await recordSendFailure(db, organisationId, report, recipient, error).catch((bookkeeping: unknown) => {

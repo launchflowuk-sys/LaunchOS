@@ -3,7 +3,11 @@ import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
 import type { EmailAdapter } from "@launchos/channels";
 import { and, eq } from "drizzle-orm";
+import { MockEmailAdapter } from "@launchos/channels";
+import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
+
+const BRAND_ENV = { APP_URL: "https://os.launchflow.test", SUPPORT_EMAIL_DOMAIN: "support.test" };
 
 /** An adapter that refuses every send, the way a relay rejecting with 4xx does. */
 const refusing: EmailAdapter = {
@@ -14,7 +18,7 @@ const refusing: EmailAdapter = {
 };
 
 /** An organisation with an owner (so `notifyOwner` has somewhere to go), a client and a thread. */
-async function thread(db: Db, overrides: { toEmail?: string } = {}) {
+async function thread(db: Db, overrides: { toEmail?: string; withTicket?: boolean; body?: string; metadata?: Record<string, unknown> } = {}) {
   const [org] = await db.insert(schema.organisations)
     .values({ name: "T", slug: `send-${crypto.randomUUID()}` }).returning();
   const userId = crypto.randomUUID();
@@ -24,18 +28,30 @@ async function thread(db: Db, overrides: { toEmail?: string } = {}) {
     .values({ organisationId: org!.id, name: "Grays CabLine", slug: `c-${crypto.randomUUID()}` }).returning();
   const [conversation] = await db.insert(schema.conversations)
     .values({ organisationId: org!.id, clientId: client!.id, subject: "Hosting" }).returning();
+  let ticketId: string | null = null;
+  if (overrides.withTicket) {
+    const [ticket] = await db.insert(schema.tickets).values({
+      organisationId: org!.id, clientId: client!.id, conversationId: conversation!.id,
+      subject: "Hosting", clientVisible: true,
+    }).returning();
+    ticketId = ticket!.id;
+    await db.update(schema.conversations)
+      .set({ ticketId })
+      .where(eq(schema.conversations.id, conversation!.id));
+  }
   const [message] = await db.insert(schema.messages).values({
     organisationId: org!.id,
     conversationId: conversation!.id,
     direction: "outbound",
     authorKind: "user",
-    body: "Thanks — looking into it now.",
+    body: overrides.body ?? "Thanks — looking into it now.",
     fromEmail: "support@launchflow.test",
     toEmail: overrides.toEmail ?? "jo@client.test",
     subject: "Re: Hosting",
     status: "queued",
+    ...(overrides.metadata ? { metadata: overrides.metadata } : {}),
   }).returning();
-  return { organisationId: org!.id, userId, clientId: client!.id, conversationId: conversation!.id, messageId: message!.id };
+  return { organisationId: org!.id, userId, clientId: client!.id, conversationId: conversation!.id, messageId: message!.id, ticketId };
 }
 
 /** Drives the send until the attempts are spent, the way pg-boss retries would. */
@@ -155,6 +171,78 @@ describe("sendQueuedMessage give-up", () => {
         ));
       expect(notification).toBeDefined();
       expect(notification!.title.length).toBeLessThanOrEqual(200);
+    });
+  });
+});
+
+describe("sendQueuedMessage branded email", () => {
+  it("sends both halves, headed by the case subject, with a button to the case", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db, { withTicket: true });
+      const adapter = new MockEmailAdapter();
+
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, BRAND_ENV);
+
+      const [sent] = adapter.sent;
+      // The heading is the conversation's subject, not the message's "Re: ...".
+      expect(sent!.html).toContain("Hosting");
+      expect(sent!.html).toContain("Thanks");
+      expect(sent!.html).toContain("View your case");
+      expect(sent!.html).toContain(`https://os.launchflow.test/portal/support/${where.ticketId}`);
+      expect(sent!.html).toContain("Powered by LaunchFlow");
+      // The client's own support identity is the address in the footer, so a
+      // reply to it threads back onto this case.
+      expect(sent!.html).toContain("support@launchflow.test");
+      expect(sent!.text).toContain("Thanks");
+      expect(sent!.text).toContain(`https://os.launchflow.test/portal/support/${where.ticketId}`);
+    });
+  });
+
+  it("escapes a reply body, so nothing a client wrote can become markup", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db, { body: '<script>alert("x")</script> & co' });
+      const adapter = new MockEmailAdapter();
+
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, BRAND_ENV);
+
+      expect(adapter.sent[0]!.html).not.toContain("<script>");
+      expect(adapter.sent[0]!.html).toContain("&lt;script&gt;");
+    });
+  });
+
+  it("gives the courtesy notice its own heading and shows its link once, as a button", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db, { withTicket: true, metadata: { kind: PORTAL_REPLY_NOTICE_KIND, round: 1 } });
+      // The body replyToConversation composes: the notice text, then the portal
+      // URL on a line of its own, because that row is also the record of what
+      // the client was told.
+      const caseUrl = `https://os.launchflow.test/portal/support/${where.ticketId}`;
+      await db.update(schema.messages)
+        .set({ body: `LaunchFlow has replied to your support case. Sign in to the portal to read it.
+
+${caseUrl}` })
+        .where(eq(schema.messages.id, where.messageId));
+
+      const adapter = new MockEmailAdapter();
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, BRAND_ENV);
+
+      const html = adapter.sent[0]!.html!;
+      expect(html).toContain("Read the reply");
+      expect(html).toContain("Sign in to the portal to read it.");
+      // Once, as the button's href — not a second time as a paragraph of text.
+      expect(html.split(caseUrl).length - 1).toBe(1);
+    });
+  });
+
+  it("sends without a button when the thread has no case behind it", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db);
+      const adapter = new MockEmailAdapter();
+
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, BRAND_ENV);
+
+      expect(adapter.sent[0]!.html).not.toContain("View your case");
+      expect(adapter.sent[0]!.html).toContain("Hosting");
     });
   });
 });

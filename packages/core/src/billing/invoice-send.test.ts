@@ -92,6 +92,13 @@ describe("sendApprovedInvoice", () => {
 
       expect(result).toEqual({ invoiceId: invoice.id, to: "client@example.test", alreadySent: false });
       expect(email.sent).toHaveLength(1);
+      // The branded shell: the invoice number is the heading, the button points
+      // at the portal copy, and the plain-text alternative carries both.
+      expect(email.sent[0]!.html).toContain(`Invoice ${invoice.number}`);
+      expect(email.sent[0]!.html).toContain(`https://portal.test/portal/invoices/${invoice.id}`);
+      expect(email.sent[0]!.html).toContain("Powered by LaunchFlow");
+      expect(email.sent[0]!.text).toContain(`Invoice ${invoice.number}`);
+      expect(email.sent[0]!.text).toContain(`https://portal.test/portal/invoices/${invoice.id}`);
       const after = await reload(db, invoice.id);
       expect(after.status).toBe("sent");
       expect(after.metadata["sentApprovalId"]).toBe(approval.id);
