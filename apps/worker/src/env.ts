@@ -28,6 +28,7 @@ const EnvShape = z.object({
   EMAIL_ADAPTER: z.enum(["mock", "smtp"]).default("mock"),
   SUPPORT_EMAIL_DOMAIN: z.string().min(3).optional(),
   MAIL_FROM: z.string().optional(),
+  INBOUND_EMAIL_ENABLED: z.string().optional(),
   OWNER_NOTIFY_EMAIL: z.string().email().optional(),
   STORAGE_DIR: z.string().default("./storage"),
   APP_URL: z.string().url().default(LOCAL_APP_URL),

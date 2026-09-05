@@ -7,7 +7,9 @@ import { MockEmailAdapter } from "@launchos/channels";
 import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
 
-const BRAND_ENV = { APP_URL: "https://os.launchflow.test", SUPPORT_EMAIL_DOMAIN: "support.test" };
+const BRAND_ENV = { APP_URL: "https://os.launchflow.test", SUPPORT_EMAIL_DOMAIN: "support.test", INBOUND_EMAIL_ENABLED: "1" };
+/** The same deployment before an inbound provider exists: replies must not be invited to a bouncing address. */
+const NO_INBOUND_ENV = { APP_URL: "https://os.launchflow.test", SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "support@launchflow.co.test" };
 
 /** An adapter that refuses every send, the way a relay rejecting with 4xx does. */
 const refusing: EmailAdapter = {
@@ -195,6 +197,34 @@ describe("sendQueuedMessage branded email", () => {
       expect(sent!.html).toContain("support@launchflow.test");
       expect(sent!.text).toContain("Thanks");
       expect(sent!.text).toContain(`https://os.launchflow.test/portal/support/${where.ticketId}`);
+    });
+  });
+
+  it("sends the client to the portal, not to a bouncing address, while inbound email is off", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db, { withTicket: true });
+      const adapter = new MockEmailAdapter();
+
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, NO_INBOUND_ENV);
+
+      const [sent] = adapter.sent;
+      expect(sent!.replyTo).toBe("support@launchflow.co.test");
+      expect(sent!.html).toContain("sign in to your portal");
+      expect(sent!.html).not.toContain("Reply to this email");
+      expect(sent!.html).toContain("support@launchflow.co.test");
+      expect(sent!.html).not.toContain("support@launchflow.test");
+    });
+  });
+
+  it("invites an email reply, to the case's own address, once inbound email is on", async () => {
+    await withTestDb(async (db) => {
+      const where = await thread(db, { withTicket: true });
+      const adapter = new MockEmailAdapter();
+
+      await sendQueuedMessage(db, where.organisationId, { messageId: where.messageId }, adapter, BRAND_ENV);
+
+      expect(adapter.sent[0]!.replyTo).toBe("support@launchflow.test");
+      expect(adapter.sent[0]!.html).toContain("Reply to this email");
     });
   });
 

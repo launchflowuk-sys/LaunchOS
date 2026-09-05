@@ -118,6 +118,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    |---|---|---|
    | `SUPPORT_EMAIL_DOMAIN` | e.g. `support.launchflow.co.uk` | `packages/core/src/config.ts`, Settings → Email. See the note under this table |
    | `INBOUND_EMAIL_PROVIDER` | `postmark`, `cloudflare` or `generic` | the payload shape `POST /api/webhooks/email/inbound` expects when the URL carries no `?provider=` |
+   | `INBOUND_EMAIL_ENABLED` | leave **unset** until inbound is live, then `1` | while unset, support emails tell the client to reply in the portal and carry `MAIL_FROM` as Reply-To, because the per-client support addresses bounce until an inbound provider and the MX record exist. Set it to exactly `1` (both resources) the day they do, and replies start threading back onto the case by email |
    | `STORAGE_DIR` | e.g. `/data/attachments` | where inbound attachments are written; **must be a persistent volume**, mounted at the same path on the worker (see **Storage**) |
    | `OWNER_NOTIFY_EMAIL` | optional | in-app notifications always reach the owner's bell; set this to also email them |
    | `VAT_RATE` | `20` | whole-number percentage. Unset falls back to 20; **set-but-empty is a refusal**, and a Coolify variable created and left blank is exactly how that happens — the alternative was every invoice going out at 0% with nothing to show for it |

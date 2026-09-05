@@ -68,6 +68,34 @@ export function brandSupportAddress(env: NodeJS.ProcessEnv = process.env): strin
   return supportEmailFor("hello", env);
 }
 
+/**
+ * Whether a client can answer a support email by replying to it.
+ *
+ * Only true when the operator has said so with `INBOUND_EMAIL_ENABLED=1`, which
+ * they should do once an inbound provider is live and the MX record for
+ * `SUPPORT_EMAIL_DOMAIN` points at it. Until then every per-client support
+ * address bounces, so an outbound reply must not invite a reply to it: the
+ * Reply-To falls back to the mailbox we actually send from, and the footer
+ * sends the client to the portal, where their answer lands on the case.
+ */
+export function inboundEmailEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.INBOUND_EMAIL_ENABLED?.trim() === "1";
+}
+
+/**
+ * The address a client should write to when inbound routing is off: the
+ * verified sender, which is a real mailbox somebody reads. Falls back to the
+ * brand support address so the footer is never empty.
+ */
+export function replyMailbox(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env.MAIL_FROM?.trim();
+  if (!raw) return brandSupportAddress(env);
+  // `MAIL_FROM` may carry a display name (`LaunchFlow <support@...>`); the footer
+  // and the Reply-To header both want the bare address.
+  const angled = /<([^>]+)>/.exec(raw);
+  return angled?.[1]?.trim() || raw;
+}
+
 /** Everything `renderBrandedEmail` needs about this deployment, in one call. */
 export interface BrandEmailContext {
   logoUrl: string;

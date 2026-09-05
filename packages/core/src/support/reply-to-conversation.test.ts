@@ -14,7 +14,7 @@ import { replyToConversation } from "./reply-to-conversation.js";
 import { MAX_SEND_ATTEMPTS, sendQueuedMessage } from "./send-queued-message.js";
 import { updateTicket } from "./update-ticket.js";
 
-const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "LaunchFlow <support@launchflow.test>" };
+const ENV = { SUPPORT_EMAIL_DOMAIN: "support.test", MAIL_FROM: "LaunchFlow <support@launchflow.test>", INBOUND_EMAIL_ENABLED: "1" };  // this thread arrived by email, so replies may go back by email
 
 /** Stands in for an SMTP server that is refusing connections. */
 class FailingEmailAdapter implements EmailAdapter {

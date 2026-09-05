@@ -136,6 +136,7 @@ export const Env = z.object({
   DATABASE_URL: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().optional(),
   INBOUND_EMAIL_SECRET: z.string().optional(),
+  INBOUND_EMAIL_ENABLED: z.string().optional(),
   /**
    * Adapter selection, declared so this schema stays the whole list of what
    * the web process reads and so it matches `apps/worker/src/env.ts` key for

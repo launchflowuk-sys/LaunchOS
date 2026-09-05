@@ -5,7 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
-import { brandEmailContext } from "../config.js";
+import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
@@ -129,6 +129,7 @@ function brandedMessageEmail(
   env: NodeJS.ProcessEnv,
 ): { text: string; html: string } {
   const brand = brandEmailContext(env);
+  const inbound = inboundEmailEnabled(env);
   const isNotice = message.metadata["kind"] === PORTAL_REPLY_NOTICE_KIND;
   const caseUrl = context?.ticketId ? `${brand.appUrl}/portal/support/${context.ticketId}` : undefined;
 
@@ -137,10 +138,19 @@ function brandedMessageEmail(
     heading: context?.subject ?? message.subject ?? "Your support case",
     paragraphs: paragraphsFromBody(message.body, caseUrl),
     ...(caseUrl ? { cta: { label: isNotice ? "Read the reply" : "View your case", url: caseUrl } } : {}),
-    ...(isNotice ? {} : { footerNote: "Reply to this email and your answer lands on the same case." }),
+    ...(isNotice
+      ? {}
+      : {
+          footerNote: inbound
+            ? "Reply to this email and your answer lands on the same case."
+            : "To reply, sign in to your portal so your answer stays on this case.",
+        }),
     logoUrl: brand.logoUrl,
     appUrl: brand.appUrl,
-    supportEmail: message.fromEmail ?? brand.supportEmail,
+    // With inbound routing on, the client's own support identity: a reply to it
+    // threads back onto this case. With it off, that address bounces, so the
+    // footer shows the mailbox we really send from instead.
+    supportEmail: inbound ? (message.fromEmail ?? brand.supportEmail) : replyMailbox(env),
   });
 }
 
@@ -226,10 +236,12 @@ export async function sendQueuedMessage(
   try {
     const result = await adapter.send({
       to: claimed.toEmail!,
-      // The envelope sender is the verified MAIL_FROM; the client's own support
-      // address is the Reply-To so their answer threads back to them.
+      // The envelope sender is the verified MAIL_FROM. The client's own support
+      // address is the Reply-To so their answer threads back to them — but only
+      // once inbound routing is live; before that it would bounce, so replies
+      // go to the mailbox we send from.
       from: env.MAIL_FROM ?? claimed.fromEmail!,
-      replyTo: claimed.fromEmail!,
+      replyTo: inboundEmailEnabled(env) ? claimed.fromEmail! : replyMailbox(env),
       subject: claimed.subject ?? "(no subject)",
       // Both halves, always. A mail client that will not render HTML, a screen
       // reader in plain mode and a spam filter all read the text alternative,
