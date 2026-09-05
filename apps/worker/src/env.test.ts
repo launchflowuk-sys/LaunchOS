@@ -167,9 +167,11 @@ describe("worker env", () => {
       // each, are the four adapters production tolerates on their mocks — the
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
-      expect(warnings).toHaveLength(4);
+      // hosting, dns, cms, ads and, since the Meta social publisher landed, social.
+      expect(warnings).toHaveLength(5);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
       expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
+      expect(warnings.join(" ")).toMatch(/social adapter is the MOCK/);
       expect(warnings.join(" ")).not.toMatch(/NODE_ENV/);
       // Cached, so a second call neither re-parses nor re-logs.
       loadEnv({} as NodeJS.ProcessEnv, logger);
