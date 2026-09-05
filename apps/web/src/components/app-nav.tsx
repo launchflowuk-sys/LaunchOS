@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { BrandTile } from "@/components/brand-mark";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { CATEGORY_DOT } from "@/lib/categories";
 import { APPROVALS_HREF, NAV_GROUPS } from "@/lib/nav";
@@ -69,12 +70,22 @@ function NavList({ pendingApprovals, onNavigate = NOOP }: { pendingApprovals: nu
                   onClick={onNavigate}
                   aria-current={isCurrent ? "page" : undefined}
                   className={cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    "relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                     isCurrent
                       ? "bg-sidebar-active font-medium text-sidebar-accent-foreground"
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
                   )}
                 >
+                  {/* The logo's cyan is what says "you are here". The active
+                      pill alone is only 1.38:1 against the rail; the marker is
+                      8.48:1, so the current item is findable at a glance rather
+                      than by comparing two dark blues. */}
+                  {isCurrent ? (
+                    <span
+                      aria-hidden
+                      className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-brand-cyan"
+                    />
+                  ) : null}
                   <Icon aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
                   {badge > 0 ? (
@@ -129,8 +140,8 @@ function Identity({ email, role, onNavigate = NOOP }: { email: string; role: str
 function Brand() {
   return (
     <div className="border-b border-sidebar-border px-5 py-4">
-      <p className="text-sm font-semibold tracking-tight text-sidebar-accent-foreground">LaunchOS</p>
-      <p className="mt-0.5 text-meta text-sidebar-muted">Admin portal</p>
+      <BrandTile />
+      <p className="mt-2 text-meta text-sidebar-muted">Admin portal</p>
     </div>
   );
 }
@@ -173,9 +184,10 @@ export function AppNavSheet({ email, role, pendingApprovals }: NavProps) {
         className="flex w-72 flex-col gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground sm:max-w-72"
       >
         <SheetHeader className="border-b border-sidebar-border px-5 py-4">
-          <SheetTitle className="text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
-            LaunchOS
-          </SheetTitle>
+          {/* Radix needs a title and a description on the dialog; the wordmark
+              is the visible one, so the title stays for screen readers only. */}
+          <SheetTitle className="sr-only">LaunchOS</SheetTitle>
+          <BrandTile />
           <SheetDescription className="text-meta text-sidebar-muted">Admin portal</SheetDescription>
         </SheetHeader>
         <NavList pendingApprovals={pendingApprovals} onNavigate={() => setOpen(false)} />

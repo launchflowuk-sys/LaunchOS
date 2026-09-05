@@ -1,4 +1,4 @@
-import { Rocket } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { PortalTabs, type PortalTab } from "@/components/portal/portal-tabs";
 import { SignOutButton } from "@/components/portal/sign-out-button";
 import { requireClient } from "@/lib/portal-session";
@@ -41,15 +41,13 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
     <div className="flex min-h-screen flex-1 flex-col bg-background print:bg-white">
       <header className="sticky top-0 z-30 border-b bg-card print:hidden">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
-          {/* The navy tile is the one piece of LaunchFlow branding above the
-              fold; the name that matters on this surface is the client's. */}
-          <span
-            aria-hidden
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar text-sidebar-accent-foreground"
-          >
-            <Rocket strokeWidth={1.75} className="size-4" />
-          </span>
-          <div className="min-w-0">
+          {/* The wordmark is the one piece of LaunchFlow branding above the
+              fold; the name that matters on this surface is the client's, so
+              the logo shrinks to 96px and takes the second line's job with it.
+              The bar is `bg-card` (white), which is the only ground this asset
+              can sit on directly — see `BrandMark`. */}
+          <BrandMark width={96} className="shrink-0" />
+          <div className="min-w-0 border-l pl-3">
             <p className="truncate text-base font-semibold tracking-tight">{session.clientName}</p>
             <p className="text-meta text-muted-foreground">Your LaunchFlow portal</p>
           </div>

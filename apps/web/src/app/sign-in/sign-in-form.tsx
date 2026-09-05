@@ -1,8 +1,8 @@
 "use client";
 
-import { Rocket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { BrandTile } from "@/components/brand-mark";
 import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,14 +48,19 @@ export function SignInForm({ notice }: { notice: string | null }) {
     <main className="flex min-h-screen flex-1 items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <span
-            aria-hidden
-            className="flex size-11 items-center justify-center rounded-xl bg-sidebar text-sidebar-accent-foreground"
-          >
-            <Rocket strokeWidth={1.75} className="size-5" />
-          </span>
-          <h1 className="mt-3 text-title font-semibold">LaunchOS</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          {/* The wordmark *is* the heading here: the glyph-and-"LaunchOS" pair
+              it replaces said nothing a client arriving from an invoice email
+              would recognise. `h1` keeps the page's one heading, and the image's
+              alt text is what it says.
+
+              On the chip rather than bare on the ground: the asset carries its
+              own near-white background, which against `--background` reads as a
+              stray pale rectangle. Bordered like the form card below it, it
+              reads as a deliberate lockup instead. */}
+          <h1 className="flex justify-center">
+            <BrandTile width={148} className="rounded-xl border px-5 py-3.5 shadow-sm" priority />
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground">
             Sign in to your account.
           </p>
         </div>

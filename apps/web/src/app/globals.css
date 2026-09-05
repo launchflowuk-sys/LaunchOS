@@ -39,6 +39,9 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-soft: var(--primary-soft);
+  /* The logo's cyan. A highlight, never a text or button colour: it is 2.14:1
+     on white, so it marks and accents rather than carries meaning on its own. */
+  --color-brand-cyan: var(--brand-cyan);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -119,9 +122,22 @@
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.21 0.02 262);
 
-  --primary: oklch(0.52 0.19 275);
+  /* The LaunchFlow blue, taken from the logo rather than guessed. "Launch" and
+     the swoosh run #1090E0 -> #10C0E0, which is oklch hue 245 -> 216; the
+     action colour is that first hue, darkened until white text on it clears AA.
+     Verified, not eyeballed: #0A71B1 against white is 5.23:1 (AA needs 4.5),
+     and it is inside the sRGB gamut — the obvious brighter reading of the logo,
+     oklch(0.55 0.16 235), is not, and a browser clipping it lands on 4.51:1
+     with no headroom at all. `--primary-soft` is the same hue as a tint, kept
+     light enough that `--primary` text on it is 4.60:1 (the active portal tab
+     and the account avatar are exactly that pairing). */
+  --primary: oklch(0.53 0.13 245);
   --primary-foreground: oklch(1 0 0);
-  --primary-soft: oklch(0.95 0.03 275);
+  --primary-soft: oklch(0.955 0.022 245);
+  /* #18C2E2 — the swoosh's cyan. Highlights, the active rail marker and focus
+     on the navy rail (8.48:1 there). Never focus on the workspace: it is
+     2.14:1 on white, which is why `--ring` stays `--primary`. */
+  --brand-cyan: oklch(0.75 0.13 216);
 
   --secondary: oklch(0.97 0.005 262);
   --secondary-foreground: oklch(0.21 0.02 262);
@@ -138,17 +154,23 @@
   --ring: var(--primary);
   --radius: 0.75rem;
 
-  --sidebar: oklch(0.235 0.035 262);
+  /* The rail is the logo's own navy (#101020 reads as oklch 0.18 0.03 283),
+     lifted just enough that the border, hover and active pill can all sit above
+     it and still be told apart. */
+  --sidebar: oklch(0.2 0.03 265);
   --sidebar-foreground: oklch(0.86 0.02 262);
   /* Group labels and the identity block sit below the item text on the rail. */
   --sidebar-muted: oklch(0.66 0.02 262);
-  --sidebar-active: oklch(0.32 0.05 268);
-  --sidebar-border: oklch(0.31 0.03 262);
-  --sidebar-accent: oklch(0.29 0.04 264);
+  /* The active pill: a lighter navy, pulled towards the brand hue. White on it
+     is 13.13:1, and it is 1.38:1 against the rail — a surface, not a shout;
+     the cyan marker beside it is what carries "you are here". */
+  --sidebar-active: oklch(0.31 0.05 250);
+  --sidebar-border: oklch(0.28 0.03 258);
+  --sidebar-accent: oklch(0.26 0.04 255);
   --sidebar-accent-foreground: oklch(0.97 0.01 262);
-  --sidebar-primary: oklch(0.62 0.17 275);
-  --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-ring: oklch(0.62 0.17 275);
+  --sidebar-primary: var(--brand-cyan);
+  --sidebar-primary-foreground: oklch(0.2 0.03 265);
+  --sidebar-ring: var(--brand-cyan);
 
   --success-fg: oklch(0.42 0.13 155);
   --success-bg: oklch(0.95 0.05 155);

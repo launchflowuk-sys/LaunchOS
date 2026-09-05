@@ -1,8 +1,14 @@
 # LaunchOS — design system
 
-Committed world: **the agency control room**. A confident, colourful-where-it-counts SaaS product: dark navy rail on the left, calm cool-white workspace, one strong indigo for actions, and a fixed vocabulary of state colours so "needs you" is never mistaken for "fine". Operate mode throughout. Familiar SaaS conventions on purpose; personality lives in precision and colour discipline, not decoration.
+Committed world: **the agency control room**. A confident, colourful-where-it-counts SaaS product: dark navy rail on the left, calm cool-white workspace, one strong LaunchFlow blue for actions, and a fixed vocabulary of state colours so "needs you" is never mistaken for "fine". Operate mode throughout. Familiar SaaS conventions on purpose; personality lives in precision and colour discipline, not decoration.
 
-The previous look (default shadcn greys, serif fallback font, bare tables) is the anti-reference.
+The previous look (default shadcn greys, serif fallback font, bare tables) is the anti-reference. So is the indigo the palette was guessed at before the logo was sampled.
+
+## Brand
+
+The logo is `docs/Logo.webp`; the app serves PNG copies from `apps/web/public/brand/` (`launchflow-logo.png` 300×72, `launchflow-logo@600.png` 600×144). Sampled from it: "Launch" and the swoosh run sky blue `#1090E0` → cyan `#10C0E0`, "Flow" is near-navy `#101020`. Every colour below that is not a state or a category is derived from those three.
+
+The wordmark appears in exactly three places — the admin rail header, the portal top bar, `/sign-in` — through one component, `src/components/brand-mark.tsx`, at ~120px wide (96px in the portal bar, 160px on `/sign-in`), always `next/image` on the 600px source. **The asset is not transparent**: it carries an opaque near-white ground, so it sits on white or off-white surfaces only. On the navy rail it goes inside `BrandTile`, a white chip. Nowhere else in the product carries a logo; the footers still say "Powered by LaunchFlow" in text.
 
 ## Tokens
 
@@ -15,12 +21,16 @@ Declared in `src/app/globals.css` as CSS variables, exposed to Tailwind through 
 | `--foreground` | `oklch(0.21 0.02 262)` | ink |
 | `--muted-foreground` | `oklch(0.49 0.02 262)` | secondary text (4.5:1 on white) |
 | `--border` | `oklch(0.905 0.01 255)` | hairlines |
-| `--primary` | `oklch(0.52 0.19 275)` | the one action colour (indigo); `--primary-foreground` white |
-| `--primary-soft` | `oklch(0.95 0.03 275)` | selected rows, active nav on light, soft buttons |
-| `--sidebar` | `oklch(0.235 0.035 262)` | navy rail; `--sidebar-foreground` `oklch(0.86 0.02 262)` |
-| `--sidebar-active` | `oklch(0.32 0.05 268)` | active item pill on the rail |
-| `--ring` | `--primary` | focus |
+| `--primary` | `oklch(0.53 0.13 245)` = `#0A71B1` | the one action colour — the logo's sky-blue hue, darkened until white on it is **5.23:1**; `--primary-foreground` white |
+| `--primary-soft` | `oklch(0.955 0.022 245)` = `#E4F2FE` | selected rows, active nav on light, soft buttons. `--primary` text on it is **4.60:1** |
+| `--brand-cyan` | `oklch(0.75 0.13 216)` = `#18C2E2` | the swoosh's cyan. Highlights, the active rail marker, focus **on the rail** (8.48:1 there) |
+| `--sidebar` | `oklch(0.2 0.03 265)` | the logo navy as a rail; `--sidebar-foreground` `oklch(0.86 0.02 262)` (11.85:1), `--sidebar-muted` `oklch(0.66 0.02 262)` (5.83:1) |
+| `--sidebar-active` | `oklch(0.31 0.05 250)` | active item pill on the rail (white on it 13.13:1) |
+| `--sidebar-ring` / `--sidebar-primary` | `--brand-cyan` | focus and the active marker on the rail |
+| `--ring` | `--primary` | focus **on the workspace**. Never `--brand-cyan`: it is 2.14:1 on white |
 | `--radius` | `0.75rem` | cards; controls use `--radius-md` (0.5rem); pills full |
+
+Every value above is inside the sRGB gamut and every ratio is calculated, not estimated. The obvious brighter reading of the logo — `oklch(0.55 0.16 235)` — is **not** in gamut; a browser clipping it lands on `#007CC0`, which is 4.51:1 against white, i.e. AA with 0.01 of headroom. Hence 0.53 / 0.13 / hue 245.
 
 Semantic (each a `-bg`, `-fg`, `-border` trio, all AA on white):
 
@@ -49,8 +59,9 @@ Fixed rem scale, ratio ≈1.2: 12 (meta) · 13 (table body, labels) · 14 (body)
 
 ## Layout
 
+- Admin rail header: the wordmark on its white chip, "Admin portal" beneath it. The current nav item carries a 2px cyan marker on its left edge as well as the active pill — the pill alone is 1.38:1 against the rail, which is a surface, not a signal.
 - Admin: rail 256px (`lg+`), collapses to a sheet under `lg` opened by a menu icon in a sticky top bar. Workspace `max-w-6xl`, padding `px-4 py-5` on mobile, `px-8 py-8` on desktop. Every flex/grid child that can hold a table gets `min-w-0`.
-- Portal: sticky top bar with client name and a horizontally scrolling tab row (never wrapping to three lines), `max-w-5xl`, `px-4` mobile.
+- Portal: sticky top bar with the wordmark, a rule, the client name, and a horizontally scrolling tab row (never wrapping to three lines), `max-w-5xl`, `px-4` mobile.
 - Page header: title, one-line description, actions on the right; under `sm` the actions row wraps below and primary action becomes full width.
 - Toolbar (filters/search): a wrapping row of controls with labels above; under `sm` each control is full width.
 - Sections are separated by space and headings, not nested cards. A card marks a surface (table, form, thread), not a paragraph.
@@ -58,6 +69,7 @@ Fixed rem scale, ratio ≈1.2: 12 (meta) · 13 (table body, labels) · 14 (body)
 ## Components (single source: `src/components`)
 
 - **Button** (`ui/button`): `primary` (indigo), `secondary` (white, border), `ghost`, `destructive` (solid danger — the one decisive destructive action on a screen: archive this client, void this invoice), `destructive-quiet` (bordered, danger ink — the same action repeated once per row of a list: remove a contact, deactivate a member, suspend portal access), `success` (approve actions), sizes `sm | md | lg | icon`; every variant has hover, focus ring, disabled and loading (spinner replaces icon, label stays).
+- **BrandMark / BrandTile** (`brand-mark.tsx`): the wordmark, and the wordmark on a white chip for dark surfaces. The only two ways a logo enters a screen.
 - **StatusBadge**: pill with a leading dot, colour from the semantic map; value text humanised. Same component in admin and portal.
 - **PageHeader** with category accent dot; **EmptyState** with a lucide icon, one sentence, optional primary action.
 - **DataList**: the one way to show rows. Renders a real `<table>` inside `overflow-x-auto rounded-xl border bg-card` at `md+`; under `md` renders stacked row cards from the same column definitions (primary column as card title, status pill top-right, remaining columns as label/value pairs, row action as a full-width link). Nothing may overflow the viewport.
@@ -76,4 +88,4 @@ Pending approval (warning pill + count badge in the rail), overdue (danger), una
 
 ## Never
 
-Gradient text, eyebrows above headings, nested cards, coloured left borders thicker than 1px, emoji as icons, serif anywhere, tables that scroll the page body sideways, three-row wrapped navs.
+Gradient text, eyebrows above headings, nested cards, coloured left borders thicker than 1px, emoji as icons, serif anywhere, tables that scroll the page body sideways, three-row wrapped navs, the logo on a coloured or dark ground without its white chip, `--brand-cyan` as a text or button colour.
