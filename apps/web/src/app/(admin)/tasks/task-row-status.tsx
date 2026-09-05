@@ -1,6 +1,8 @@
 "use client";
 
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { updateTaskStatusAction } from "./actions";
 
 /**
@@ -11,6 +13,11 @@ import { updateTaskStatusAction } from "./actions";
  * The statuses arrive as a prop rather than from `schema.taskStatusEnum`:
  * `@launchos/db` pulls in the postgres driver, which cannot be bundled for the
  * browser, and this is a client component.
+ *
+ * The row is a grid, not a flex row: `DataList` stretches every button inside a
+ * row action to full width on a phone, which in a flex row would push the
+ * select off the card. In a grid the button fills an `auto` track, so it stays
+ * its own size and the select keeps the rest.
  */
 export function TaskStatusForm({
   taskId,
@@ -29,27 +36,19 @@ export function TaskStatusForm({
         const result = await updateTaskStatusAction(formData);
         if (result.status === "error") toast.error(result.message);
       }}
-      className="flex items-center gap-1"
+      className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
     >
       <input type="hidden" name="taskId" value={taskId} />
-      <select
-        name="status"
-        defaultValue={status}
-        aria-label="Status"
-        className="h-8 rounded-md border border-neutral-300 bg-white px-1.5 text-xs text-neutral-900"
-      >
+      <NativeSelect name="status" defaultValue={status} aria-label="Status" className="sm:w-36">
         {statuses.map((v) => (
           <option key={v} value={v}>
             {v.replaceAll("_", " ")}
           </option>
         ))}
-      </select>
-      <button
-        type="submit"
-        className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100"
-      >
+      </NativeSelect>
+      <Button type="submit" size="sm" variant="secondary">
         Move
-      </button>
+      </Button>
     </form>
   );
 }

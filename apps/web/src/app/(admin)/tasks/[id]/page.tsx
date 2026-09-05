@@ -1,12 +1,17 @@
 import { getClient, getTask, listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
+import { Check } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { ActionForm } from "@/components/action-form";
+import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -19,9 +24,6 @@ export const dynamic = "force-dynamic";
 // plain array: importing @launchos/db from a client component would pull the
 // postgres driver into the browser bundle.
 const STATUSES = schema.taskStatusEnum.enumValues;
-
-const CARD = "rounded-lg border border-neutral-200 bg-white p-4";
-const HEADING = "mb-2 text-sm font-semibold text-neutral-900";
 
 export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]">) {
   const session = await requireAdmin();
@@ -42,130 +44,125 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
       <PageHeader
         title={task.title}
         description={`${task.phase} · ${task.kind.replaceAll("_", " ")} · ${client?.name ?? "Unknown client"}`}
-        actions={<TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />}
+        category="delivery"
+        actions={
+          <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
+            <StatusBadge value={task.status} />
+            <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />
+          </div>
+        }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <section className={CARD}>
-            <h2 className={HEADING}>Description</h2>
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <Section title="Description">
             {task.descriptionMd ? (
-              <div className="prose prose-sm max-w-none text-neutral-700">
+              <div className="prose prose-sm max-w-none rounded-xl border bg-card p-4">
                 <Markdown>{task.descriptionMd}</Markdown>
               </div>
             ) : (
-              <p className="text-sm text-neutral-400">No description.</p>
+              <p className="text-sm text-muted-foreground">No description.</p>
             )}
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Checklist</h2>
+          <Section title="Checklist">
             {task.checklist.length === 0 ? (
-              <p className="text-sm text-neutral-400">No checklist on this task.</p>
+              <p className="text-sm text-muted-foreground">No checklist on this task.</p>
             ) : (
-              <ul className="space-y-1.5">
+              <ul className="grid gap-2 rounded-xl border bg-card p-4">
                 {task.checklist.map((item, index) => (
-                  <li key={`${index}-${item.label}`} className="flex items-center gap-2">
-                    <ActionForm action={toggleChecklistAction}>
+                  <li key={`${index}-${item.label}`} className="flex items-center gap-3">
+                    <ActionForm action={toggleChecklistAction} className="flex">
                       <input type="hidden" name="taskId" value={task.id} />
                       <input type="hidden" name="index" value={index} />
                       <input type="hidden" name="done" value={item.done ? "false" : "true"} />
                       <button
                         type="submit"
                         aria-label={item.done ? `Undo ${item.label}` : `Complete ${item.label}`}
-                        className="flex h-5 w-5 items-center justify-center rounded border border-neutral-300 text-xs text-neutral-700 hover:bg-neutral-100"
+                        className={
+                          item.done
+                            ? "flex size-5 items-center justify-center rounded-[4px] border border-primary bg-primary text-primary-foreground transition-colors"
+                            : "flex size-5 items-center justify-center rounded-[4px] border border-input transition-colors hover:bg-muted"
+                        }
                       >
-                        {item.done ? "x" : ""}
+                        {item.done ? <Check aria-hidden strokeWidth={2.5} className="size-3.5" /> : null}
                       </button>
                     </ActionForm>
-                    <span className={item.done ? "text-sm text-neutral-400 line-through" : "text-sm text-neutral-800"}>
+                    <span className={item.done ? "text-sm text-muted-foreground line-through" : "text-sm"}>
                       {item.label}
                     </span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Comments</h2>
-            <ul className="mb-3 space-y-3">
+          <Section title="Comments">
+            <ul className="mb-4 grid gap-3">
               {comments.map((comment) => (
-                <li key={comment.id} className="rounded-md bg-neutral-50 p-3">
-                  <p className="text-xs text-neutral-500">
+                <li key={comment.id} className="rounded-xl border bg-card p-4">
+                  <p className="text-meta text-muted-foreground">
                     {comment.authorKind} · {formatDateTime(comment.createdAt)}
                   </p>
-                  <div className="prose prose-sm mt-1 max-w-none text-neutral-800">
+                  <div className="prose prose-sm mt-1 max-w-none">
                     <Markdown>{comment.bodyMd}</Markdown>
                   </div>
                 </li>
               ))}
-              {comments.length === 0 ? <li className="text-sm text-neutral-400">No comments yet.</li> : null}
+              {comments.length === 0 ? <li className="text-sm text-muted-foreground">No comments yet.</li> : null}
             </ul>
             <ActionForm
               action={commentOnTaskAction}
               ariaLabel="Add comment"
               success="Comment added"
               resetOnSuccess
-              className="space-y-2"
+              className="grid gap-2"
             >
               <input type="hidden" name="taskId" value={task.id} />
-              <textarea
-                name="bodyMd"
-                rows={3}
-                required
-                aria-label="Comment"
-                placeholder="Add a comment"
-                className="w-full rounded-md border border-neutral-300 p-2 text-sm"
-              />
-              <Button type="submit" variant="secondary">
-                Add comment
-              </Button>
+              <Textarea name="bodyMd" rows={3} required aria-label="Comment" placeholder="Add a comment" />
+              <div className="flex justify-end">
+                <Button type="submit" variant="secondary" className="max-sm:w-full">
+                  Add comment
+                </Button>
+              </div>
             </ActionForm>
-          </section>
+          </Section>
         </div>
 
-        <aside className="space-y-4">
-          <section className={`${CARD} space-y-2 text-sm`}>
-            <h2 className="text-sm font-semibold text-neutral-900">Details</h2>
-            <p className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Status</span>
-              <StatusBadge value={task.status} />
-            </p>
-            <p className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Priority</span>
-              <StatusBadge value={task.priority} />
-            </p>
-            <p className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Due</span>
-              <span className="text-neutral-800">{formatDateTime(task.dueAt)}</span>
-            </p>
-            <p className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Completed</span>
-              <span className="text-neutral-800">{formatDateTime(task.completedAt)}</span>
-            </p>
-            <p className="flex items-center justify-between gap-2">
-              <span className="text-neutral-500">Client</span>
-              <Link href={`/clients/${task.clientId}/tasks`} className="text-neutral-900 hover:underline">
-                {client?.name ?? "—"}
-              </Link>
-            </p>
-          </section>
+        <div className="min-w-0">
+          <Section title="Details">
+            <div className="rounded-xl border bg-card p-4">
+              <KeyValue
+                items={[
+                  { label: "Priority", value: <StatusBadge value={task.priority} /> },
+                  { label: "Due", value: formatDateTime(task.dueAt) },
+                  { label: "Completed", value: formatDateTime(task.completedAt) },
+                  {
+                    label: "Client",
+                    value: (
+                      <Link href={`/clients/${task.clientId}/tasks`} className="hover:underline">
+                        {client?.name ?? "—"}
+                      </Link>
+                    ),
+                  },
+                ]}
+              />
+            </div>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Assignee</h2>
+          <Section title="Assignee">
             <ActionForm
               action={assignTaskAction}
               ariaLabel="Assignee"
               success="Assignee saved"
-              className="flex items-center gap-2"
+              className="flex items-end gap-2"
             >
               <input type="hidden" name="taskId" value={task.id} />
-              <select
+              <NativeSelect
                 name="assigneeUserId"
                 defaultValue={task.assigneeUserId ?? ""}
                 aria-label="Assignee"
-                className="h-9 min-w-0 flex-1 rounded-md border border-neutral-300 bg-white px-2 text-sm"
+                className="min-w-0 flex-1"
               >
                 <option value="">Unassigned</option>
                 {members.map((member) => (
@@ -173,27 +170,26 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
                     {member.displayName ?? member.name ?? member.email}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <Button type="submit" variant="secondary">
                 Save
               </Button>
             </ActionForm>
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Client portal</h2>
-            <p className="mb-2 text-sm text-neutral-600">
+          <Section title="Client portal">
+            <p className="mb-3 text-sm text-muted-foreground">
               {task.clientVisible ? "Visible to the client." : "Hidden from the client."}
             </p>
             <ActionForm action={setTaskVisibilityAction} ariaLabel="Client portal visibility">
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="clientVisible" value={task.clientVisible ? "false" : "true"} />
-              <Button type="submit" variant="secondary">
+              <Button type="submit" variant="secondary" className="max-sm:w-full">
                 {task.clientVisible ? "Hide from client" : "Show to client"}
               </Button>
             </ActionForm>
-          </section>
-        </aside>
+          </Section>
+        </div>
       </div>
     </>
   );

@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 /**
  * A small trend line, drawn as inline SVG on purpose: no chart library, no
  * client JavaScript, and it renders identically in the printable invoice and
@@ -8,13 +10,15 @@ export function Sparkline({
   label,
   width = 280,
   height = 48,
+  className,
 }: {
   values: number[];
   label: string;
   width?: number;
   height?: number;
+  className?: string;
 }) {
-  if (values.length < 2) return <span className="text-xs text-neutral-400">Not enough data</span>;
+  if (values.length < 2) return <span className="text-meta text-muted-foreground">Not enough data</span>;
 
   const max = Math.max(...values);
   const min = Math.min(...values);
@@ -36,7 +40,9 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       role="img"
       aria-label={label}
-      className="text-neutral-900"
+      // `h-auto max-w-full` keeps it inside a 375px column: the width attribute
+      // is the drawing box, not a floor.
+      className={cn("h-auto max-w-full text-foreground", className)}
     >
       <polyline
         points={points}

@@ -1,9 +1,11 @@
-import { listClients, listMembers, listTasks, type TaskFilters } from "@launchos/core";
+import { listClients, listMembers, listTasks, type TaskFilters, type TaskListRow } from "@launchos/core";
 import { schema } from "@launchos/db";
+import { ListChecks } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -27,6 +29,43 @@ const one = (v: string | string[] | undefined): string | undefined => {
   const raw = Array.isArray(v) ? v[0] : v;
   return raw && raw.length > 0 ? raw : undefined;
 };
+
+const COLUMNS: readonly DataListColumn<TaskListRow>[] = [
+  {
+    key: "title",
+    header: "Task",
+    primary: true,
+    className: "min-w-52",
+    cell: (task) => (
+      <>
+        <Link href={`/tasks/${task.id}`} className="hover:underline">
+          {task.title}
+        </Link>
+        <span className="block text-meta font-normal text-muted-foreground">{task.kind.replaceAll("_", " ")}</span>
+      </>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: (task) => (
+      <Link href={`/clients/${task.clientId}`} className="hover:underline">
+        {task.clientName}
+      </Link>
+    ),
+  },
+  { key: "phase", header: "Phase", hideOnMobile: true, cell: (task) => <StatusBadge value={task.phase} /> },
+  { key: "priority", header: "Priority", cell: (task) => <StatusBadge value={task.priority} /> },
+  { key: "due", header: "Due", className: "whitespace-nowrap", cell: (task) => formatDateTime(task.dueAt) },
+  { key: "assignee", header: "Assignee", cell: (task) => task.assigneeName ?? "Unassigned" },
+  { key: "status", header: "Status", status: true, cell: (task) => <StatusBadge value={task.status} /> },
+  {
+    key: "move",
+    header: "Change status",
+    action: true,
+    cell: (task) => <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />,
+  },
+];
 
 export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
   const session = await requireAdmin();
@@ -74,14 +113,14 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
       <PageHeader
         title="Tasks"
         description="Onboarding, recurring service work and support tasks across every client."
+        category="delivery"
         actions={
           <>
-            <Link
-              href={{ pathname: "/tasks", query: { ...sp, view: other } }}
-              className="rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100"
-            >
-              {other === "board" ? "Board view" : "List view"}
-            </Link>
+            <Button asChild variant="secondary">
+              <Link href={{ pathname: "/tasks", query: { ...sp, view: other } }}>
+                {other === "board" ? "Board view" : "List view"}
+              </Link>
+            </Button>
             <NewTaskDialog
               clients={clientOptions}
               members={memberOptions}
@@ -100,55 +139,13 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
       />
 
       {tasks.length === 0 ? (
-        <EmptyState>
+        <EmptyState icon={ListChecks}>
           No tasks match these filters. Create one, or give a client a package so onboarding generates its list.
         </EmptyState>
       ) : view === "board" ? (
         <TaskBoard tasks={tasks} statuses={STATUSES} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Task</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Phase</TableHead>
-                <TableHead>Priority</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Assignee</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {tasks.map((task) => (
-                <TableRow key={task.id}>
-                  <TableCell>
-                    <Link href={`/tasks/${task.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {task.title}
-                    </Link>
-                    <span className="ml-2 text-xs text-neutral-400">{task.kind.replaceAll("_", " ")}</span>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/clients/${task.clientId}`} className="hover:underline">
-                      {task.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={task.phase} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={task.priority} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(task.dueAt)}</TableCell>
-                  <TableCell className="text-neutral-600">{task.assigneeName ?? "Unassigned"}</TableCell>
-                  <TableCell>
-                    <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataList rows={tasks} columns={COLUMNS} getRowKey={(task) => task.id} caption="Tasks" />
       )}
     </>
   );

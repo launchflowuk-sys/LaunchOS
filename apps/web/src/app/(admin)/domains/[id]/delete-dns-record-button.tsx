@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { deleteDnsRecordAction } from "../actions";
 
 /**
@@ -15,9 +16,11 @@ export function DeleteDnsRecordButton({ recordId, domainId }: { recordId: string
   const [isPending, startTransition] = useTransition();
 
   return (
-    <button
+    <Button
       type="button"
-      disabled={isPending}
+      size="sm"
+      variant="destructive"
+      loading={isPending}
       onClick={() => {
         startTransition(async () => {
           const result = await deleteDnsRecordAction({ recordId, domainId });
@@ -26,9 +29,8 @@ export function DeleteDnsRecordButton({ recordId, domainId }: { recordId: string
           router.refresh();
         });
       }}
-      className="text-xs text-neutral-500 hover:text-red-600 disabled:opacity-50"
     >
       Remove
-    </button>
+    </Button>
   );
 }

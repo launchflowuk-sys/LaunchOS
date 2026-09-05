@@ -1,9 +1,13 @@
 import { getClient, getDomain, listDnsRecords, listSites } from "@launchos/core";
+import { TableProperties } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -12,6 +16,23 @@ import { AddDnsRecordForm } from "./dns-form";
 import { DeleteDnsRecordButton } from "./delete-dns-record-button";
 
 export const dynamic = "force-dynamic";
+
+type DnsRecord = Awaited<ReturnType<typeof listDnsRecords>>[number];
+
+function dnsColumns(domainId: string): readonly DataListColumn<DnsRecord>[] {
+  return [
+    { key: "type", header: "Type", primary: true, cell: (record) => record.type },
+    { key: "name", header: "Name", cell: (record) => <span className="break-all">{record.name}</span> },
+    { key: "value", header: "Value", className: "break-all", cell: (record) => record.value },
+    { key: "ttl", header: "TTL", numeric: true, cell: (record) => record.ttl },
+    {
+      key: "remove",
+      header: "Remove",
+      action: true,
+      cell: (record) => <DeleteDnsRecordButton recordId={record.id} domainId={domainId} />,
+    },
+  ];
+}
 
 export default async function DomainDetailPage({ params }: PageProps<"/domains/[id]">) {
   const { id } = await params;
@@ -35,80 +56,57 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
         // the prop type is `string` (not `string | undefined`); spread it in only
         // when there is a client to describe.
         {...(client ? { description: `${client.name} · ${domain.registrar ?? "registrar unknown"}` } : {})}
+        category="delivery"
         actions={
-          client ? (
-            <Link href={`/clients/${client.id}`} className="text-sm text-neutral-700 underline">
-              {client.name}
-            </Link>
-          ) : null
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+            <StatusBadge value={domain.status} />
+            {client ? (
+              <Button asChild variant="secondary">
+                <Link href={`/clients/${client.id}`}>{client.name}</Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
-      <dl className="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Status</dt>
-          <dd className="mt-1">
-            <StatusBadge value={domain.status} />
-          </dd>
+      <Section title="Registration">
+        <div className="rounded-xl border bg-card p-4">
+          <KeyValue
+            columns={2}
+            items={[
+              { label: "DNS provider", value: domain.dnsProvider },
+              { label: "Registrar", value: domain.registrar ?? "—" },
+              { label: "Expires", value: formatDateTime(domain.expiresAt) },
+              {
+                label: "Nameservers",
+                value: domain.nameservers.length > 0 ? domain.nameservers.join(", ") : "—",
+              },
+            ]}
+          />
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">DNS provider</dt>
-          <dd className="mt-1 text-neutral-700">{domain.dnsProvider}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Expires</dt>
-          <dd className="mt-1 text-neutral-700">{formatDateTime(domain.expiresAt)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Nameservers</dt>
-          <dd className="mt-1 text-neutral-700">{domain.nameservers.length > 0 ? domain.nameservers.join(", ") : "—"}</dd>
-        </div>
-      </dl>
+      </Section>
 
-      <section className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-neutral-900">Website</h2>
-        <AttachSiteForm domainId={domain.id} siteId={domain.siteId} sites={sites} />
-      </section>
+      <Section title="Website" description="Which of this client's websites the domain points at.">
+        <div className="rounded-xl border bg-card p-4">
+          <AttachSiteForm domainId={domain.id} siteId={domain.siteId} sites={sites} />
+        </div>
+      </Section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-900">DNS records</h2>
-        <div className="mb-4 rounded-lg border border-neutral-200 bg-white p-4">
+      <Section
+        title="DNS records"
+        description="This records what DNS should say. Pushing changes to a provider is an approval-gated agent action."
+      >
+        <div className="mb-4 rounded-xl border bg-card p-4">
           <AddDnsRecordForm domainId={domain.id} />
-          <p className="mt-3 text-xs text-neutral-400">
-            This records what DNS should say. Pushing changes to a provider is an approval-gated agent action from Plan 4.
-          </p>
         </div>
-        {records.length === 0 ? (
-          <EmptyState>No DNS records recorded for this domain.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead className="text-right">TTL</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {records.map((record) => (
-                  <TableRow key={record.id}>
-                    <TableCell className="font-medium text-neutral-900">{record.type}</TableCell>
-                    <TableCell className="text-neutral-600">{record.name}</TableCell>
-                    <TableCell className="max-w-md truncate text-neutral-600">{record.value}</TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-600">{record.ttl}</TableCell>
-                    <TableCell className="text-right">
-                      <DeleteDnsRecordButton recordId={record.id} domainId={domain.id} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </section>
+        <DataList
+          rows={records}
+          columns={dnsColumns(domain.id)}
+          getRowKey={(record) => record.id}
+          caption="DNS records"
+          empty={<EmptyState icon={TableProperties}>No DNS records recorded for this domain.</EmptyState>}
+        />
+      </Section>
     </>
   );
 }

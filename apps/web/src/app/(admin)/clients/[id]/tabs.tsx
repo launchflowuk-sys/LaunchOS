@@ -34,24 +34,32 @@ function hrefFor(clientId: string, key: ClientTabActive): string {
     : `/clients/${clientId}?tab=${key}`;
 }
 
+/**
+ * Links rather than a Radix `Tabs` list: each tab is a real navigation with its
+ * own URL, and half of them are routes of their own. Eight labels never fit one
+ * phone width, so the row scrolls sideways inside itself instead of wrapping to
+ * three lines.
+ */
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTabActive }) {
   return (
-    <div className="mb-6 flex flex-wrap gap-1 border-b border-neutral-200">
-      {TABS.map((tab) => (
-        <Link
-          key={tab.key}
-          href={hrefFor(clientId, tab.key)}
-          aria-current={tab.key === active ? "page" : undefined}
-          className={cn(
-            "-mb-px border-b-2 px-3 py-2 text-sm",
-            tab.key === active
-              ? "border-neutral-900 font-medium text-neutral-900"
-              : "border-transparent text-neutral-500 hover:text-neutral-900",
-          )}
-        >
-          {tab.label}
-        </Link>
-      ))}
+    <div className="mb-6 border-b">
+      <div className="scrollbar-none -mb-px flex gap-1 overflow-x-auto">
+        {TABS.map((tab) => (
+          <Link
+            key={tab.key}
+            href={hrefFor(clientId, tab.key)}
+            aria-current={tab.key === active ? "page" : undefined}
+            className={cn(
+              "shrink-0 border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors",
+              tab.key === active
+                ? "border-primary font-medium text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {tab.label}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,13 @@
 import { listClients, listPackages } from "@launchos/core";
+import { Building2 } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { NewClientDialog } from "./new-client-dialog";
@@ -10,6 +15,33 @@ import { NewClientDialog } from "./new-client-dialog";
 export const dynamic = "force-dynamic";
 
 const STATUSES = ["all", "active", "paused", "archived"] as const;
+
+type ClientRow = Awaited<ReturnType<typeof listClients>>[number];
+
+const COLUMNS: readonly DataListColumn<ClientRow>[] = [
+  {
+    key: "name",
+    header: "Client",
+    primary: true,
+    cell: (row) => (
+      <>
+        <Link href={`/clients/${row.id}`} className="hover:underline">
+          {row.name}
+        </Link>
+        <span className="block text-meta font-normal text-muted-foreground">{row.email ?? row.slug}</span>
+      </>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "supportEmail",
+    header: "Support address",
+    className: "break-all",
+    cell: (row) => row.supportEmail ?? "—",
+  },
+  { key: "sites", header: "Websites", numeric: true, cell: (row) => row.siteCount },
+  { key: "domains", header: "Domains", numeric: true, cell: (row) => row.domainCount },
+];
 
 export default async function ClientsPage({ searchParams }: PageProps<"/clients">) {
   const session = await requireAdmin();
@@ -31,79 +63,43 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
       <PageHeader
         title="Clients"
         description="Every client, their support address, websites and domains."
+        category="delivery"
         actions={<NewClientDialog packages={packages.map((pkg) => ({ value: pkg.id, label: pkg.name }))} />}
       />
 
-      <form className="mb-4 flex flex-wrap items-end gap-2" action="/clients">
-        <div className="space-y-1.5">
-          <label htmlFor="q" className="block text-xs font-medium text-neutral-500">
-            Search
-          </label>
-          <input
-            id="q"
-            name="q"
-            defaultValue={query ?? ""}
-            placeholder="Name, slug or email"
-            className="h-9 w-64 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="status" className="block text-xs font-medium text-neutral-500">
-            Status
-          </label>
-          <select
-            id="status"
-            name="status"
-            defaultValue={status}
-            className="h-9 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-          >
-            {STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {value === "all" ? "All" : value}
-              </option>
-            ))}
-          </select>
-        </div>
-        <button type="submit" className="h-9 rounded-md border border-neutral-300 px-3 text-sm text-neutral-700 hover:bg-neutral-100">
-          Apply
-        </button>
+      <form action="/clients">
+        <FilterBar>
+          <ToolbarField label="Search" htmlFor="q" className="sm:w-64">
+            <Input id="q" name="q" defaultValue={query ?? ""} placeholder="Name, slug or email" />
+          </ToolbarField>
+          <ToolbarField label="Status" htmlFor="status" className="sm:w-40">
+            <NativeSelect id="status" name="status" defaultValue={status}>
+              {STATUSES.map((value) => (
+                <option key={value} value={value}>
+                  {value === "all" ? "All" : value}
+                </option>
+              ))}
+            </NativeSelect>
+          </ToolbarField>
+          <ToolbarActions>
+            <Button type="submit" variant="secondary">
+              Apply
+            </Button>
+          </ToolbarActions>
+        </FilterBar>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>No clients match. Use “New client” to add the first one.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Support address</TableHead>
-                <TableHead className="text-right">Websites</TableHead>
-                <TableHead className="text-right">Domains</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link href={`/clients/${row.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {row.name}
-                    </Link>
-                    <span className="block text-xs text-neutral-400">{row.email ?? row.slug}</span>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{row.supportEmail ?? "—"}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{row.siteCount}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{row.domainCount}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Clients"
+        empty={
+          <EmptyState icon={Building2}>
+            No clients match. Use &ldquo;New client&rdquo; to add the first one.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

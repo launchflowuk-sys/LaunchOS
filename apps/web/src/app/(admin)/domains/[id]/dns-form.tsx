@@ -27,7 +27,7 @@ export function AddDnsRecordForm({ domainId }: { domainId: string }) {
 
   return (
     <form
-      className="grid gap-3 sm:grid-cols-5"
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
       onSubmit={handleSubmit(async (values) => {
         const result = await createDnsRecordAction(values);
         if (result.status === "error") return void toast.error(result.message);
@@ -45,7 +45,7 @@ export function AddDnsRecordForm({ domainId }: { domainId: string }) {
           narrow it back so it satisfies form-fields.tsx's FieldError prop. */}
       <TextField name="ttl" label="TTL" type="number" register={register} error={errors.ttl as FieldError | undefined} />
       <div className="flex items-end">
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" loading={isSubmitting} variant="secondary" className="w-full">
           Add record
         </Button>
       </div>

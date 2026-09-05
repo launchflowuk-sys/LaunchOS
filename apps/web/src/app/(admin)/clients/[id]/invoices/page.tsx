@@ -1,11 +1,12 @@
 import { getClient } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
+import { Receipt } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDate, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -14,6 +15,39 @@ import { RaiseInvoiceButton } from "../billing/raise-invoice-button";
 import { ClientTabs } from "../tabs";
 
 export const dynamic = "force-dynamic";
+
+type InvoiceRow = {
+  id: string;
+  number: string;
+  status: string;
+  issuedAt: Date | null;
+  dueAt: Date | null;
+  totalPence: number;
+  currency: string;
+};
+
+const COLUMNS: readonly DataListColumn<InvoiceRow>[] = [
+  {
+    key: "number",
+    header: "Number",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/invoices/${row.id}`} className="hover:underline">
+        {row.number}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "issued", header: "Issued", cell: (row) => formatDate(row.issuedAt), className: "whitespace-nowrap" },
+  { key: "due", header: "Due", cell: (row) => formatDate(row.dueAt), className: "whitespace-nowrap" },
+  {
+    key: "total",
+    header: "Total",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: (row) => formatPence(row.totalPence, row.currency),
+  },
+];
 
 export default async function ClientInvoicesPage({ params }: PageProps<"/clients/[id]/invoices">) {
   const session = await requireAdmin();
@@ -43,47 +77,19 @@ export default async function ClientInvoicesPage({ params }: PageProps<"/clients
       <PageHeader
         title={client.name}
         description="Every invoice raised for this client."
+        category="delivery"
         actions={<RaiseInvoiceButton clientId={client.id} />}
       />
 
       <ClientTabs clientId={client.id} active="invoices" />
 
-      {invoices.length === 0 ? (
-        <EmptyState>No invoices for this client yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Issued</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>
-                    <Link href={`/invoices/${invoice.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {invoice.number}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={invoice.status} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.issuedAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.dueAt)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(invoice.totalPence, invoice.currency)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={invoices}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Invoices"
+        empty={<EmptyState icon={Receipt}>No invoices for this client yet. Raise one from the header.</EmptyState>}
+      />
     </>
   );
 }

@@ -22,9 +22,13 @@ test("tasks: create from the dialog, filter, move on the board, and count on the
   try {
     await signIn(page);
 
-    await expect(page.getByText("Overdue tasks")).toBeVisible();
-    await expect(page.getByText("Due this week")).toBeVisible();
-    await expect(page.getByText("Onboarding in progress")).toBeVisible();
+    // The dashboard now names "Overdue tasks" three times — the stat card, the
+    // section heading below it and that list's screen-reader caption — so the
+    // assertion takes the first match. The intent is unchanged: the dashboard
+    // shows these three counts.
+    await expect(page.getByText("Overdue tasks").first()).toBeVisible();
+    await expect(page.getByText("Due this week").first()).toBeVisible();
+    await expect(page.getByText("Onboarding in progress").first()).toBeVisible();
 
     await page.getByRole("navigation").getByRole("link", { name: "Tasks" }).click();
     await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible({ timeout: 60_000 });

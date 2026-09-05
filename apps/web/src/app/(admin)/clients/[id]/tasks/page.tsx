@@ -1,13 +1,15 @@
 import { FINISHED_STATUSES, getClient, listMembers, listTasks, type TaskListRow } from "@launchos/core";
 import { schema } from "@launchos/db";
+import { ListChecks } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { ProgressBar } from "@/components/progress-bar";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -42,6 +44,50 @@ function progressOf(tasks: TaskListRow[], phase: string) {
   return { done: rows.filter((task) => FINISHED.has(task.status)).length, total: rows.length };
 }
 
+type Row = TaskListRow & { assignee: string };
+
+function columns(statuses: readonly string[]): readonly DataListColumn<Row>[] {
+  return [
+    {
+      key: "title",
+      header: "Task",
+      primary: true,
+      className: "min-w-52",
+      cell: (task) => (
+        <>
+          <Link href={`/tasks/${task.id}`} className="hover:underline">
+            {task.title}
+          </Link>
+          <span className="block text-meta font-normal text-muted-foreground">{task.kind.replaceAll("_", " ")}</span>
+        </>
+      ),
+    },
+    { key: "priority", header: "Priority", cell: (task) => <StatusBadge value={task.priority} /> },
+    { key: "due", header: "Due", className: "whitespace-nowrap", cell: (task) => formatDateTime(task.dueAt) },
+    { key: "assignee", header: "Assignee", cell: (task) => task.assignee },
+    {
+      key: "visibility",
+      header: "Client sees",
+      cell: (task) => (
+        <ActionForm action={setTaskVisibilityAction} ariaLabel={`Client visibility: ${task.title}`}>
+          <input type="hidden" name="taskId" value={task.id} />
+          <input type="hidden" name="clientVisible" value={task.clientVisible ? "false" : "true"} />
+          <Button type="submit" size="sm" variant="secondary">
+            {task.clientVisible ? "Visible" : "Hidden"}
+          </Button>
+        </ActionForm>
+      ),
+    },
+    { key: "status", header: "Status", status: true, cell: (task) => <StatusBadge value={task.status} /> },
+    {
+      key: "move",
+      header: "Change status",
+      action: true,
+      cell: (task) => <TaskStatusForm taskId={task.id} status={task.status} statuses={statuses} />,
+    },
+  ];
+}
+
 export default async function ClientTasksPage({ params }: PageProps<"/clients/[id]/tasks">) {
   const session = await requireAdmin();
   const id = uuidOr404((await params).id);
@@ -62,114 +108,77 @@ export default async function ClientTasksPage({ params }: PageProps<"/clients/[i
     label: member.displayName ?? member.name ?? member.email,
   }));
   const memberLabels = new Map(memberOptions.map((member) => [member.value, member.label]));
-  const assigneeOf = (task: TaskListRow) =>
-    (task.assigneeUserId ? memberLabels.get(task.assigneeUserId) : null) ?? task.assigneeName ?? "Unassigned";
+  const rows: Row[] = tasks.map((task) => ({
+    ...task,
+    assignee: (task.assigneeUserId ? memberLabels.get(task.assigneeUserId) : null) ?? task.assigneeName ?? "Unassigned",
+  }));
 
   const onboarding = progressOf(tasks, "onboarding");
   const recurring = progressOf(tasks, "recurring");
+  const COLUMNS = columns(STATUSES);
 
   return (
     <>
-      <PageHeader title={client.name} description="Onboarding, recurring service work and support for this client." />
+      <PageHeader
+        title={client.name}
+        description="Onboarding, recurring service work and support for this client."
+        category="delivery"
+        actions={
+          <>
+            <ActionForm
+              action={regenerateOnboardingAction}
+              ariaLabel="Generate onboarding tasks"
+              success="Onboarding tasks generated"
+              className="max-sm:w-full"
+            >
+              <input type="hidden" name="clientId" value={client.id} />
+              <Button type="submit" variant="secondary" className="max-sm:w-full">
+                Generate onboarding tasks
+              </Button>
+            </ActionForm>
+            <NewTaskDialog
+              clients={[{ value: client.id, label: client.name }]}
+              members={memberOptions}
+              phases={PHASES}
+              kinds={KINDS}
+              priorities={PRIORITIES}
+              defaultClientId={client.id}
+            />
+          </>
+        }
+      />
 
       <ClientTabs clientId={client.id} active="tasks" />
 
-      <div className="space-y-4">
-        <section className="grid gap-4 rounded-lg border border-neutral-200 bg-white p-4 sm:grid-cols-2">
+      <Section title="Progress">
+        <div className="grid gap-5 rounded-xl border bg-card p-4 sm:grid-cols-2">
           <ProgressBar label="Onboarding" done={onboarding.done} total={onboarding.total} />
           <ProgressBar label="Recurring service work" done={recurring.done} total={recurring.total} />
-          <p className="text-xs text-neutral-500 sm:col-span-2">
+          <p className="text-meta text-muted-foreground sm:col-span-2">
             Onboarded {formatDateTime(client.onboardedAt)} · Handed over {formatDateTime(client.handoverAt)}
           </p>
-        </section>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <NewTaskDialog
-            clients={[{ value: client.id, label: client.name }]}
-            members={memberOptions}
-            phases={PHASES}
-            kinds={KINDS}
-            priorities={PRIORITIES}
-            defaultClientId={client.id}
-          />
-          <ActionForm
-            action={regenerateOnboardingAction}
-            ariaLabel="Generate onboarding tasks"
-            success="Onboarding tasks generated"
-          >
-            <input type="hidden" name="clientId" value={client.id} />
-            <Button type="submit" variant="secondary">
-              Generate onboarding tasks
-            </Button>
-          </ActionForm>
         </div>
+      </Section>
 
-        {tasks.length === 0 ? (
-          <EmptyState>
-            No tasks yet. Give this client a package, add onboarding templates in Settings, then use “Generate
-            onboarding tasks”.
+      {rows.length === 0 ? (
+        <Section>
+          <EmptyState icon={ListChecks}>
+            No tasks yet. Give this client a package, add onboarding templates in Settings, then use &ldquo;Generate
+            onboarding tasks&rdquo;.
           </EmptyState>
-        ) : (
-          GROUPS.filter((group) => tasks.some((task) => task.phase === group.phase)).map((group) => (
-            <section key={group.phase}>
-              <h2 className="mb-2 text-sm font-semibold text-neutral-900">{group.heading}</h2>
-              <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Task</TableHead>
-                      <TableHead>Kind</TableHead>
-                      <TableHead>Due</TableHead>
-                      <TableHead>Assignee</TableHead>
-                      <TableHead>Client sees</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {tasks
-                      .filter((task) => task.phase === group.phase)
-                      .map((task) => (
-                        <TableRow key={task.id}>
-                          <TableCell>
-                            <Link href={`/tasks/${task.id}`} className="font-medium text-neutral-900 hover:underline">
-                              {task.title}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <StatusBadge value={task.kind} />
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-neutral-600">
-                            {formatDateTime(task.dueAt)}
-                          </TableCell>
-                          <TableCell className="text-neutral-600">{assigneeOf(task)}</TableCell>
-                          <TableCell>
-                            <ActionForm action={setTaskVisibilityAction} ariaLabel={`Client visibility: ${task.title}`}>
-                              <input type="hidden" name="taskId" value={task.id} />
-                              <input
-                                type="hidden"
-                                name="clientVisible"
-                                value={task.clientVisible ? "false" : "true"}
-                              />
-                              <button
-                                type="submit"
-                                className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 hover:bg-neutral-100"
-                              >
-                                {task.clientVisible ? "Visible" : "Hidden"}
-                              </button>
-                            </ActionForm>
-                          </TableCell>
-                          <TableCell>
-                            <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </section>
-          ))
-        )}
-      </div>
+        </Section>
+      ) : (
+        GROUPS.filter((group) => rows.some((task) => task.phase === group.phase)).map((group) => (
+          <Section key={group.phase} title={group.heading}>
+            <DataList
+              rows={rows.filter((task) => task.phase === group.phase)}
+              columns={COLUMNS}
+              getRowKey={(task) => task.id}
+              caption={group.heading}
+            />
+          </Section>
+        ))
+      )}
     </>
   );
 }

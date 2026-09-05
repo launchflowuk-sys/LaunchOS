@@ -2,12 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { createClientAction } from "./actions";
 import { NewClientSchema, type NewClientValues } from "./schemas";
 
@@ -19,6 +21,7 @@ import { NewClientSchema, type NewClientValues } from "./schemas";
 export function NewClientDialog({ packages }: { packages: { value: string; label: string }[] }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const packageId = useId();
   const {
     register,
     handleSubmit,
@@ -63,29 +66,25 @@ export function NewClientDialog({ packages }: { packages: { value: string; label
             <TextField name="websiteUrl" label="Website" placeholder="https://" register={register} error={errors.websiteUrl} />
             <TextField name="industry" label="Industry" register={register} error={errors.industry} />
           </div>
-          <label className="block text-xs font-medium text-neutral-500">
-            Package
-            <select
-              {...register("packageId")}
-              defaultValue=""
-              className="mt-1.5 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900"
-            >
+          <div className="space-y-1.5">
+            <Label htmlFor={packageId}>Package</Label>
+            <NativeSelect id={packageId} defaultValue="" {...register("packageId")}>
               <option value="">No package</option>
               {packages.map((pkg) => (
                 <option key={pkg.value} value={pkg.value}>
                   {pkg.label}
                 </option>
               ))}
-            </select>
-          </label>
-          <div className="flex justify-end gap-2 pt-2">
+            </NativeSelect>
+          </div>
+          <DialogFooter>
             <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Creating…" : "Create client"}
+            <Button type="submit" loading={isSubmitting}>
+              Create client
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>

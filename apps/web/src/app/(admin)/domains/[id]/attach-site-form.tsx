@@ -1,9 +1,11 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { attachDomainToSiteAction } from "../actions";
 
 type SiteOption = { id: string; name: string };
@@ -23,12 +25,13 @@ export function AttachSiteForm({
   sites: SiteOption[];
 }) {
   const router = useRouter();
+  const fieldId = useId();
   const [value, setValue] = useState(siteId ?? "");
   const [isPending, startTransition] = useTransition();
 
   return (
     <form
-      className="flex flex-wrap items-end gap-2"
+      className="flex flex-col gap-3 sm:flex-row sm:items-end"
       onSubmit={(event) => {
         event.preventDefault();
         startTransition(async () => {
@@ -39,16 +42,13 @@ export function AttachSiteForm({
         });
       }}
     >
-      <div className="space-y-1.5">
-        <label htmlFor="siteId" className="block text-sm font-medium text-neutral-700">
-          Points at
-        </label>
-        <select
-          id="siteId"
+      <div className="min-w-0 space-y-1.5 sm:w-72">
+        <Label htmlFor={fieldId}>Points at</Label>
+        <NativeSelect
+          id={fieldId}
           name="siteId"
           value={value}
           onChange={(event) => setValue(event.target.value)}
-          className="h-9 w-64 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
         >
           <option value="">Not assigned</option>
           {sites.map((site) => (
@@ -56,9 +56,9 @@ export function AttachSiteForm({
               {site.name}
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
-      <Button type="submit" variant="secondary" disabled={isPending}>
+      <Button type="submit" variant="secondary" loading={isPending} className="max-sm:w-full">
         Save
       </Button>
     </form>

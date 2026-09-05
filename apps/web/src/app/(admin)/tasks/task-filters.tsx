@@ -1,9 +1,10 @@
 import { schema } from "@launchos/db";
+import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 type Option = { value: string; label: string };
-
-const CONTROL = "h-9 rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
 
 /**
  * A plain GET form — no client JavaScript, so the filters live in the URL and
@@ -43,36 +44,33 @@ export function TaskFilterBar({
   ];
 
   return (
-    <form
-      method="get"
-      aria-label="Task filters"
-      className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3"
-    >
-      <input type="hidden" name="view" value={current.view ?? "list"} />
-      {selects.map((s) => (
-        <label key={s.name} className="flex flex-col gap-1 text-xs text-neutral-500">
-          {s.label}
-          <select name={s.name} defaultValue={current[s.name] ?? ""} className={`${CONTROL} min-w-40`}>
-            <option value="">Any</option>
-            {s.options.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
-      <label className="flex flex-col gap-1 text-xs text-neutral-500">
-        Due from
-        <input type="date" name="dueFrom" defaultValue={current.dueFrom ?? ""} className={CONTROL} />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-neutral-500">
-        Due to
-        <input type="date" name="dueTo" defaultValue={current.dueTo ?? ""} className={CONTROL} />
-      </label>
-      <Button type="submit" variant="secondary">
-        Apply
-      </Button>
+    <form method="get" aria-label="Task filters">
+      <FilterBar>
+        <input type="hidden" name="view" value={current.view ?? "list"} />
+        {selects.map((s) => (
+          <ToolbarField key={s.name} label={s.label} htmlFor={`filter-${s.name}`} className="sm:w-40">
+            <NativeSelect id={`filter-${s.name}`} name={s.name} defaultValue={current[s.name] ?? ""}>
+              <option value="">Any</option>
+              {s.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </NativeSelect>
+          </ToolbarField>
+        ))}
+        <ToolbarField label="Due from" htmlFor="filter-dueFrom" className="sm:w-40">
+          <Input id="filter-dueFrom" type="date" name="dueFrom" defaultValue={current.dueFrom ?? ""} />
+        </ToolbarField>
+        <ToolbarField label="Due to" htmlFor="filter-dueTo" className="sm:w-40">
+          <Input id="filter-dueTo" type="date" name="dueTo" defaultValue={current.dueTo ?? ""} />
+        </ToolbarField>
+        <ToolbarActions>
+          <Button type="submit" variant="secondary">
+            Apply
+          </Button>
+        </ToolbarActions>
+      </FilterBar>
     </form>
   );
 }

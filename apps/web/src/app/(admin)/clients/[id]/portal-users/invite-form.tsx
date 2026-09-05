@@ -1,13 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useId } from "react";
+import { InlineAlert } from "@/components/inline-alert";
 import { OneTimePasswordDialog } from "@/components/one-time-password-dialog";
 import { Button } from "@/components/ui/button";
-import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { invitePortalUserAction, type InviteState } from "./actions";
-
-const CONTROL =
-  "h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none";
 
 /**
  * Same shape as the Team screen's one-time-password dialog: the password lives
@@ -28,6 +29,9 @@ export function InvitePortalUserForm({ clientId }: { clientId: string }) {
  */
 function InvitePortalUserBody({ clientId, onClose }: { clientId: string; onClose: () => void }) {
   const [state, action, pending] = useActionState<InviteState, FormData>(invitePortalUserAction, null);
+  const nameId = useId();
+  const emailId = useId();
+  const roleId = useId();
 
   return (
     <>
@@ -37,62 +41,52 @@ function InvitePortalUserBody({ clientId, onClose }: { clientId: string; onClose
 
       {state?.ok ? (
         <div className="space-y-4">
-          <p className="text-sm text-neutral-600">
-            <span className="font-medium text-neutral-900">{state.email}</span> can now sign in to the portal with this
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{state.email}</span> can now sign in to the portal with this
             one-time password. It is shown once and cannot be retrieved again — send it to them now and ask them to
             change it under Account.
           </p>
           <p
             data-testid="one-time-password"
-            className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center font-mono text-base tracking-widest text-neutral-900"
+            className="rounded-md border bg-muted px-3 py-2 text-center font-mono text-base tracking-widest"
           >
             {state.oneTimePassword}
           </p>
-          <div className="flex justify-end">
+          <DialogFooter>
             <Button type="button" onClick={onClose}>
               Done
             </Button>
-          </div>
+          </DialogFooter>
         </div>
       ) : (
         <form action={action} className="space-y-3">
           <input type="hidden" name="clientId" value={clientId} />
           <div className="space-y-1.5">
-            <label htmlFor="portal-user-name" className="block text-sm font-medium text-neutral-700">
-              Full name
-            </label>
-            <input id="portal-user-name" name="name" required maxLength={120} className={CONTROL} />
+            <Label htmlFor={nameId}>Full name</Label>
+            <Input id={nameId} name="name" required maxLength={120} />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="portal-user-email" className="block text-sm font-medium text-neutral-700">
-              Email address
-            </label>
-            <input id="portal-user-email" name="email" type="email" required className={CONTROL} />
+            <Label htmlFor={emailId}>Email address</Label>
+            <Input id={emailId} name="email" type="email" required />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="portal-user-role" className="block text-sm font-medium text-neutral-700">
-              Role
-            </label>
-            <select id="portal-user-role" name="role" defaultValue="client_member" className={CONTROL}>
+            <Label htmlFor={roleId}>Role</Label>
+            <NativeSelect id={roleId} name="role" defaultValue="client_member">
               <option value="client_member">Member</option>
               <option value="client_admin">Admin</option>
-            </select>
+            </NativeSelect>
           </div>
 
-          {state?.ok === false ? (
-            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              {state.error}
-            </p>
-          ) : null}
+          {state?.ok === false ? <InlineAlert tone="danger">{state.error}</InlineAlert> : null}
 
-          <div className="flex justify-end gap-2 pt-2">
+          <DialogFooter>
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Creating…" : "Create portal user"}
+            <Button type="submit" loading={pending}>
+              Create portal user
             </Button>
-          </div>
+          </DialogFooter>
         </form>
       )}
     </>

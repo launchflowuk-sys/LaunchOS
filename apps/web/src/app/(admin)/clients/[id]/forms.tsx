@@ -2,11 +2,12 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { SelectField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import {
   archiveClientAction, createContactAction, createDomainAction, createSiteAction, deleteContactAction, saveBillingAction,
 } from "../actions";
@@ -17,6 +18,7 @@ import {
 
 export function AddContactForm({ clientId }: { clientId: string }) {
   const router = useRouter();
+  const primaryId = useId();
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm<NewContactValues>({
     resolver: zodResolver(NewContactSchema),
     defaultValues: { clientId, name: "", isPrimary: false },
@@ -24,7 +26,7 @@ export function AddContactForm({ clientId }: { clientId: string }) {
 
   return (
     <form
-      className="grid gap-3 sm:grid-cols-4"
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={handleSubmit(async (values) => {
         const result = await createContactAction(values);
         if (result.status === "error") return void toast.error(result.message);
@@ -37,13 +39,20 @@ export function AddContactForm({ clientId }: { clientId: string }) {
       <TextField name="name" label="Contact name" register={register} error={errors.name} required />
       <TextField name="email" label="Contact email" type="email" register={register} error={errors.email} />
       <TextField name="phone" label="Contact phone" register={register} error={errors.phone} />
-      <div className="flex items-end gap-3">
-        <label className="flex h-9 items-center gap-2 whitespace-nowrap text-sm text-neutral-700">
-          {/* Core demotes any existing primary contact when this one is saved. */}
-          <input type="checkbox" className="size-4 rounded border-neutral-300" {...register("isPrimary")} />
+      <div className="flex flex-wrap items-end gap-3">
+        <Label htmlFor={primaryId} className="h-9 gap-2 whitespace-nowrap">
+          {/* Core demotes any existing primary contact when this one is saved.
+              A native checkbox, not the Radix one: react-hook-form's `register`
+              needs a real input to read. */}
+          <input
+            id={primaryId}
+            type="checkbox"
+            className="size-4 rounded-[4px] border border-input accent-primary"
+            {...register("isPrimary")}
+          />
           Primary contact
-        </label>
-        <Button type="submit" disabled={isSubmitting}>
+        </Label>
+        <Button type="submit" loading={isSubmitting} variant="secondary">
           Add contact
         </Button>
       </div>
@@ -60,7 +69,7 @@ export function AddDomainForm({ clientId }: { clientId: string }) {
 
   return (
     <form
-      className="grid gap-3 sm:grid-cols-4"
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={handleSubmit(async (values) => {
         const result = await createDomainAction(values);
         if (result.status === "error") return void toast.error(result.message);
@@ -84,7 +93,7 @@ export function AddDomainForm({ clientId }: { clientId: string }) {
         ]}
       />
       <div className="flex items-end">
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" loading={isSubmitting} variant="secondary" className="w-full">
           Add domain
         </Button>
       </div>
@@ -101,7 +110,7 @@ export function AddSiteForm({ clientId }: { clientId: string }) {
 
   return (
     <form
-      className="grid gap-3 sm:grid-cols-4"
+      className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       onSubmit={handleSubmit(async (values) => {
         const result = await createSiteAction(values);
         if (result.status === "error") return void toast.error(result.message);
@@ -126,7 +135,7 @@ export function AddSiteForm({ clientId }: { clientId: string }) {
         ]}
       />
       <div className="flex items-end">
-        <Button type="submit" disabled={isSubmitting} className="w-full">
+        <Button type="submit" loading={isSubmitting} variant="secondary" className="w-full">
           Add website
         </Button>
       </div>
@@ -160,7 +169,7 @@ export function BillingForm({ clientId, defaults }: { clientId: string; defaults
       <TextField name="paymentTermsDays" label="Payment terms (days)" type="number" register={register} error={errors.paymentTermsDays} />
       <TextField name="preferredMethod" label="Preferred method" register={register} error={errors.preferredMethod} />
       <div className="flex items-end">
-        <Button type="submit" disabled={isSubmitting}>
+        <Button type="submit" loading={isSubmitting} variant="secondary" className="max-sm:w-full">
           Save billing details
         </Button>
       </div>
@@ -180,8 +189,9 @@ export function ArchiveClientButton({ clientId, disabled }: { clientId: string; 
   return (
     <Button
       type="button"
-      variant="secondary"
-      disabled={disabled || busy}
+      variant="destructive"
+      disabled={disabled}
+      loading={busy}
       onClick={async () => {
         setBusy(true);
         const result = await archiveClientAction({ clientId });
@@ -201,10 +211,11 @@ export function RemoveContactButton({ clientId, contactId }: { clientId: string;
   const [busy, setBusy] = useState(false);
 
   return (
-    <button
+    <Button
       type="button"
-      disabled={busy}
-      className="text-xs text-neutral-500 hover:text-red-600 disabled:opacity-50"
+      size="sm"
+      variant="destructive"
+      loading={busy}
       onClick={async () => {
         setBusy(true);
         const result = await deleteContactAction({ clientId, contactId });
@@ -215,6 +226,6 @@ export function RemoveContactButton({ clientId, contactId }: { clientId: string;
       }}
     >
       Remove
-    </button>
+    </Button>
   );
 }

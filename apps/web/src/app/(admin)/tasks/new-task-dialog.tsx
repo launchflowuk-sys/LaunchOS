@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,11 +11,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Textarea } from "@/components/ui/textarea";
 import { createTaskAction } from "./actions";
 
 type Option = { value: string; label: string };
-
-const FIELD = "h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
 
 /**
  * The enum values arrive as props rather than from `schema.*Enum`:
@@ -38,6 +40,16 @@ export function NewTaskDialog({
   defaultClientId?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const ids = {
+    client: useId(),
+    title: useId(),
+    phase: useId(),
+    kind: useId(),
+    priority: useId(),
+    due: useId(),
+    assignee: useId(),
+    description: useId(),
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -57,9 +69,9 @@ export function NewTaskDialog({
           }}
           className="space-y-3"
         >
-          <label className="block text-xs text-neutral-500">
-            Client
-            <select name="clientId" required defaultValue={defaultClientId ?? ""} className={FIELD}>
+          <div className="space-y-1.5">
+            <Label htmlFor={ids.client}>Client</Label>
+            <NativeSelect id={ids.client} name="clientId" required defaultValue={defaultClientId ?? ""}>
               <option value="" disabled>
                 Choose a client
               </option>
@@ -68,66 +80,74 @@ export function NewTaskDialog({
                   {c.label}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="block text-xs text-neutral-500">
-            Title
-            <input name="title" required maxLength={200} className={FIELD} placeholder="Write October blog post" />
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            <label className="block text-xs text-neutral-500">
-              Phase
-              <select name="phase" defaultValue="support" className={FIELD}>
+            </NativeSelect>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor={ids.title}>Title</Label>
+            <Input id={ids.title} name="title" required maxLength={200} placeholder="Write October blog post" />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.phase}>Phase</Label>
+              <NativeSelect id={ids.phase} name="phase" defaultValue="support">
                 {phases.map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="block text-xs text-neutral-500">
-              Kind
-              <select name="kind" defaultValue="other" className={FIELD}>
+              </NativeSelect>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.kind}>Kind</Label>
+              <NativeSelect id={ids.kind} name="kind" defaultValue="other">
                 {kinds.map((v) => (
                   <option key={v} value={v}>
                     {v.replaceAll("_", " ")}
                   </option>
                 ))}
-              </select>
-            </label>
-            <label className="block text-xs text-neutral-500">
-              Priority
-              <select name="priority" defaultValue="medium" className={FIELD}>
+              </NativeSelect>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.priority}>Priority</Label>
+              <NativeSelect id={ids.priority} name="priority" defaultValue="medium">
                 {priorities.map((v) => (
                   <option key={v} value={v}>
                     {v}
                   </option>
                 ))}
-              </select>
-            </label>
+              </NativeSelect>
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block text-xs text-neutral-500">
-              Due date
-              <input type="date" name="dueAt" className={FIELD} />
-            </label>
-            <label className="block text-xs text-neutral-500">
-              Assignee
-              <select name="assigneeUserId" defaultValue="" className={FIELD}>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.due}>Due date</Label>
+              <Input id={ids.due} type="date" name="dueAt" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={ids.assignee}>Assignee</Label>
+              <NativeSelect id={ids.assignee} name="assigneeUserId" defaultValue="">
                 <option value="">Unassigned</option>
                 {members.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
                 ))}
-              </select>
-            </label>
+              </NativeSelect>
+            </div>
           </div>
-          <label className="block text-xs text-neutral-500">
-            Description
-            <textarea name="descriptionMd" rows={4} className="w-full rounded-md border border-neutral-300 bg-white p-2 text-sm" />
-          </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor={ids.description}>Description</Label>
+            <Textarea id={ids.description} name="descriptionMd" rows={4} />
+          </div>
+
           <DialogFooter>
+            <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
             <Button type="submit">Create task</Button>
           </DialogFooter>
         </form>

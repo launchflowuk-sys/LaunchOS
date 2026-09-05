@@ -1,10 +1,12 @@
 import { getClient, listClientUsers } from "@launchos/core";
+import { UserPlus } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -16,6 +18,46 @@ import { InvitePortalUserForm } from "./invite-form";
 export const dynamic = "force-dynamic";
 
 const ROLE_LABELS: Record<string, string> = { client_admin: "Admin", client_member: "Member" };
+
+type PortalUserRow = Awaited<ReturnType<typeof listClientUsers>>[number] & { clientId: string };
+
+const COLUMNS: readonly DataListColumn<PortalUserRow>[] = [
+  { key: "name", header: "Name", primary: true, cell: (row) => row.name },
+  { key: "email", header: "Email", cell: (row) => <span className="break-all">{row.email}</span> },
+  {
+    key: "role",
+    header: "Role",
+    cell: (row) => <StatusBadge value={ROLE_LABELS[row.role] ?? row.role} tone="info" />,
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "added",
+    header: "Added",
+    hideOnMobile: true,
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.createdAt),
+  },
+  {
+    key: "access",
+    header: "Access",
+    action: true,
+    cell: (row) => (
+      <ActionForm
+        action={setPortalUserStatusAction}
+        className="inline-flex max-sm:w-full"
+        ariaLabel={`Portal access for ${row.email}`}
+        success={row.status === "active" ? "Portal access suspended." : "Portal access restored."}
+      >
+        <input type="hidden" name="clientId" value={row.clientId} />
+        <input type="hidden" name="clientUserId" value={row.id} />
+        <input type="hidden" name="status" value={row.status === "active" ? "suspended" : "active"} />
+        <Button type="submit" size="sm" variant={row.status === "active" ? "destructive" : "secondary"}>
+          {row.status === "active" ? "Suspend" : "Reactivate"}
+        </Button>
+      </ActionForm>
+    ),
+  },
+];
 
 export default async function ClientPortalUsersPage({ params }: PageProps<"/clients/[id]/portal-users">) {
   const session = await requireAdmin();
@@ -34,67 +76,31 @@ export default async function ClientPortalUsersPage({ params }: PageProps<"/clie
       <PageHeader
         title={client.name}
         description="Who at this client can sign in to the portal. Sign-up is disabled: accounts are created here."
+        category="delivery"
         actions={<InvitePortalUserForm clientId={client.id} />}
       />
 
       <ClientTabs clientId={client.id} active="portal-users" />
 
-      <h2 className="mb-3 text-sm font-semibold text-neutral-900">Portal users</h2>
+      <Section title="Portal users">
+        <DataList
+          rows={users.map((user) => ({ ...user, clientId: client.id }))}
+          columns={COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Portal users"
+          empty={
+            <EmptyState icon={UserPlus}>
+              No portal users yet. Invite one so this client can see their own sites, tasks and tickets.
+            </EmptyState>
+          }
+        />
 
-      {users.length === 0 ? (
-        <EmptyState>No portal users yet. Invite one so this client can see their own sites, tasks and tickets.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Added</TableHead>
-                <TableHead className="text-right">Access</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium text-neutral-900">{user.name}</TableCell>
-                  <TableCell className="text-neutral-600">{user.email}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={ROLE_LABELS[user.role] ?? user.role} tone="info" />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={user.status} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(user.createdAt)}</TableCell>
-                  <TableCell className="text-right">
-                    <ActionForm
-                      action={setPortalUserStatusAction}
-                      className="inline-flex"
-                      ariaLabel={`Portal access for ${user.email}`}
-                      success={user.status === "active" ? "Portal access suspended." : "Portal access restored."}
-                    >
-                      <input type="hidden" name="clientId" value={client.id} />
-                      <input type="hidden" name="clientUserId" value={user.id} />
-                      <input type="hidden" name="status" value={user.status === "active" ? "suspended" : "active"} />
-                      <Button type="submit" size="sm" variant={user.status === "active" ? "destructive" : "secondary"}>
-                        {user.status === "active" ? "Suspend" : "Reactivate"}
-                      </Button>
-                    </ActionForm>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      <p className="mt-4 text-xs text-neutral-400">
-        A one-time password is generated when the account is created and shown once. It is never stored in plain text,
-        so a lost one has to be reset rather than looked up. Suspending an account removes portal access on their next
-        request and can be undone; the sign-in itself is kept so the audit trail still names who did what.
-      </p>
+        <p className="mt-4 text-meta text-muted-foreground">
+          A one-time password is generated when the account is created and shown once. It is never stored in plain text,
+          so a lost one has to be reset rather than looked up. Suspending an account removes portal access on their next
+          request and can be undone; the sign-in itself is kept so the audit trail still names who did what.
+        </p>
+      </Section>
     </>
   );
 }

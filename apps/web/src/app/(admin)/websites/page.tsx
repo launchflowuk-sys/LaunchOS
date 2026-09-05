@@ -1,12 +1,57 @@
 import { listSites } from "@launchos/core";
+import { Globe } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+type SiteRow = Awaited<ReturnType<typeof listSites>>[number];
+
+const COLUMNS: readonly DataListColumn<SiteRow>[] = [
+  {
+    key: "name",
+    header: "Website",
+    primary: true,
+    cell: (row) => (
+      <>
+        <Link href={`/websites/${row.id}`} className="hover:underline">
+          {row.name}
+        </Link>
+        <span className="block text-meta font-normal break-all text-muted-foreground">{row.primaryUrl}</span>
+      </>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: (row) => (
+      <Link href={`/clients/${row.clientId}`} className="hover:underline">
+        {row.clientName}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "platform", header: "Platform", hideOnMobile: true, cell: (row) => row.platform },
+  { key: "domains", header: "Domains", numeric: true, cell: (row) => row.domainCount },
+  {
+    key: "incidents",
+    header: "Open incidents",
+    numeric: true,
+    cell: (row) =>
+      row.openIncidentCount > 0 ? (
+        <span className="font-medium text-danger-fg">{row.openIncidentCount}</span>
+      ) : (
+        row.openIncidentCount
+      ),
+  },
+];
 
 export default async function WebsitesPage({ searchParams }: PageProps<"/websites">) {
   const session = await requireAdmin();
@@ -16,62 +61,32 @@ export default async function WebsitesPage({ searchParams }: PageProps<"/website
 
   return (
     <>
-      <PageHeader title="Websites" description="Every site we build, host or look after." />
+      <PageHeader title="Websites" description="Every site we build, host or look after." category="delivery" />
 
-      <form className="mb-4" action="/websites">
-        <label htmlFor="q" className="sr-only">
-          Search websites
-        </label>
-        <input
-          id="q"
-          name="q"
-          defaultValue={query ?? ""}
-          placeholder="Name or URL"
-          className="h-9 w-72 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-        />
+      <form action="/websites">
+        <FilterBar>
+          <ToolbarField label="Search websites" htmlFor="q" className="sm:w-72">
+            <Input id="q" name="q" defaultValue={query ?? ""} placeholder="Name or URL" />
+          </ToolbarField>
+          <ToolbarActions>
+            <Button type="submit" variant="secondary">
+              Apply
+            </Button>
+          </ToolbarActions>
+        </FilterBar>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>No websites yet. Add one from a client&rsquo;s &ldquo;Sites &amp; Domains&rdquo; tab.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Website</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead className="text-right">Domains</TableHead>
-                <TableHead className="text-right">Open incidents</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link href={`/websites/${row.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {row.name}
-                    </Link>
-                    <span className="block text-xs text-neutral-400">{row.primaryUrl}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/clients/${row.clientId}`} className="text-neutral-700 hover:underline">
-                      {row.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{row.platform}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{row.domainCount}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{row.openIncidentCount}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Websites"
+        empty={
+          <EmptyState icon={Globe}>
+            No websites yet. Add one from a client&rsquo;s &ldquo;Sites &amp; Domains&rdquo; tab.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

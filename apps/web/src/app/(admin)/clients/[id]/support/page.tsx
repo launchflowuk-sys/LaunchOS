@@ -1,12 +1,15 @@
 import { getClient } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
+import { AtSign, LifeBuoy, MessagesSquare } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -21,6 +24,42 @@ const FINISHED: ("resolved" | "closed")[] = ["resolved", "closed"];
 const RECENT_CONVERSATIONS = 5;
 
 const Uuid = z.string().uuid();
+
+type TicketRow = {
+  id: string;
+  subject: string;
+  severity: string;
+  status: string;
+  slaDueAt: Date | null;
+  assigneeName: string | null;
+};
+
+const TICKET_COLUMNS: readonly DataListColumn<TicketRow>[] = [
+  {
+    key: "subject",
+    header: "Case",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/cases/${row.id}`} className="hover:underline">
+        {row.subject}
+      </Link>
+    ),
+  },
+  { key: "severity", header: "Severity", cell: (row) => <StatusBadge value={row.severity} /> },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "sla",
+    header: "SLA due",
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.slaDueAt),
+  },
+  {
+    key: "assignee",
+    header: "Assignee",
+    cell: (row) =>
+      row.assigneeName ?? <StatusBadge value="unassigned" tone="warn" label="unassigned" />,
+  },
+];
 
 export default async function ClientSupportPage({ params }: PageProps<"/clients/[id]/support">) {
   const session = await requireAdmin();
@@ -95,98 +134,70 @@ export default async function ClientSupportPage({ params }: PageProps<"/clients/
 
   return (
     <>
-      <PageHeader title={client.name} description="Where this client's email lands, and what is still open." />
+      <PageHeader
+        title={client.name}
+        description="Where this client's email lands, and what is still open."
+        category="delivery"
+      />
 
       <ClientTabs clientId={client.id} active="support" />
 
-      <div className="space-y-8">
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Support address</h2>
-          {address ? (
-            <div className="rounded-lg border border-neutral-200 bg-white p-4">
-              <p className="font-mono text-sm text-neutral-900">{address.address}</p>
-              <p className="mt-1 text-sm text-neutral-500">
-                {address.displayName ?? client.name} · created {formatDateTime(address.createdAt)}
-              </p>
-              <p className="mt-2 text-xs text-neutral-400">
-                Mail to this address is turned into a conversation and a ticket by the inbound webhook.
-              </p>
-            </div>
-          ) : (
-            <EmptyState>
-              No support address yet. It is created automatically for new clients; run <code>pnpm db:seed</code> to
-              backfill this one.
-            </EmptyState>
-          )}
-        </section>
+      <Section
+        title="Support address"
+        description="Mail to this address is turned into a conversation and a ticket by the inbound webhook."
+      >
+        {address ? (
+          <div className="rounded-xl border bg-card p-4">
+            <KeyValue
+              columns={2}
+              items={[
+                { label: "Address", value: <span className="font-mono break-all">{address.address}</span> },
+                { label: "Display name", value: address.displayName ?? client.name },
+                { label: "Created", value: formatDateTime(address.createdAt) },
+              ]}
+            />
+          </div>
+        ) : (
+          <EmptyState icon={AtSign}>
+            No support address yet. It is created automatically for new clients; run <code>pnpm db:seed</code> to
+            backfill this one.
+          </EmptyState>
+        )}
+      </Section>
 
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Open cases</h2>
-          {tickets.length === 0 ? (
-            <EmptyState>Nothing open. Resolved and closed cases stay on the case list.</EmptyState>
-          ) : (
-            <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Case</TableHead>
-                    <TableHead>Severity</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>SLA due</TableHead>
-                    <TableHead>Assignee</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {tickets.map((ticket) => (
-                    <TableRow key={ticket.id}>
-                      <TableCell>
-                        <Link href={`/cases/${ticket.id}`} className="font-medium text-neutral-900 hover:underline">
-                          {ticket.subject}
-                        </Link>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge value={ticket.severity} />
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge value={ticket.status} />
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-neutral-600">
-                        {formatDateTime(ticket.slaDueAt)}
-                      </TableCell>
-                      <TableCell className="text-neutral-600">{ticket.assigneeName ?? "Unassigned"}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </section>
+      <Section title="Open cases" description="Resolved and closed cases stay on the case list.">
+        <DataList
+          rows={tickets}
+          columns={TICKET_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Open cases"
+          empty={<EmptyState icon={LifeBuoy}>Nothing open for this client.</EmptyState>}
+        />
+      </Section>
 
-        <section>
-          <h2 className="mb-3 text-sm font-semibold text-neutral-900">Recent conversations</h2>
-          {conversations.length === 0 ? (
-            <EmptyState>No conversations yet. One is opened by the first email or portal message.</EmptyState>
-          ) : (
-            <ul className="space-y-2">
-              {conversations.map((conversation) => (
-                <li key={conversation.id} className="rounded-lg border border-neutral-200 bg-white p-4">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <Link href={`/inbox/${conversation.id}`} className="text-sm font-medium text-neutral-900 hover:underline">
-                      {conversation.subject}
-                    </Link>
-                    <p className="text-xs text-neutral-400">
-                      {conversation.channel} · {formatDateTime(conversation.lastMessageAt)}
-                    </p>
-                  </div>
-                  <div className="mt-2">
-                    <StatusBadge value={conversation.status} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      </div>
+      <Section title="Recent conversations" description="One is opened by the first email or portal message.">
+        {conversations.length === 0 ? (
+          <EmptyState icon={MessagesSquare}>No conversations yet.</EmptyState>
+        ) : (
+          <ul className="grid gap-3">
+            {conversations.map((conversation) => (
+              <li key={conversation.id} className="rounded-xl border bg-card p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <Link href={`/inbox/${conversation.id}`} className="min-w-0 text-sm font-medium break-words hover:underline">
+                    {conversation.subject}
+                  </Link>
+                  <p className="shrink-0 text-meta text-muted-foreground">
+                    {conversation.channel} · {formatDateTime(conversation.lastMessageAt)}
+                  </p>
+                </div>
+                <div className="mt-2">
+                  <StatusBadge value={conversation.status} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </>
   );
 }

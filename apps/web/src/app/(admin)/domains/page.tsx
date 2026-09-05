@@ -1,13 +1,61 @@
 import { listDomains } from "@launchos/core";
+import { Network } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
+
+type DomainRow = Awaited<ReturnType<typeof listDomains>>[number];
+
+const COLUMNS: readonly DataListColumn<DomainRow>[] = [
+  {
+    key: "name",
+    header: "Domain",
+    primary: true,
+    cell: (row) => (
+      <>
+        <Link href={`/domains/${row.id}`} className="break-all hover:underline">
+          {row.name}
+        </Link>
+        <span className="block text-meta font-normal text-muted-foreground">
+          {row.registrar ?? "registrar unknown"}
+        </span>
+      </>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: (row) => (
+      <Link href={`/clients/${row.clientId}`} className="hover:underline">
+        {row.clientName}
+      </Link>
+    ),
+  },
+  {
+    key: "site",
+    header: "Website",
+    cell: (row) =>
+      row.siteId ? (
+        <Link href={`/websites/${row.siteId}`} className="hover:underline">
+          {row.siteName}
+        </Link>
+      ) : (
+        "—"
+      ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "dns", header: "DNS", hideOnMobile: true, cell: (row) => row.dnsProvider },
+  { key: "expires", header: "Expires", className: "whitespace-nowrap", cell: (row) => formatDateTime(row.expiresAt) },
+];
 
 export default async function DomainsPage({ searchParams }: PageProps<"/domains">) {
   const session = await requireAdmin();
@@ -17,70 +65,36 @@ export default async function DomainsPage({ searchParams }: PageProps<"/domains"
 
   return (
     <>
-      <PageHeader title="Domains" description="Every domain bought for or assigned to a client." />
+      <PageHeader
+        title="Domains"
+        description="Every domain bought for or assigned to a client."
+        category="delivery"
+      />
 
-      <form className="mb-4" action="/domains">
-        <label htmlFor="q" className="sr-only">
-          Search domains
-        </label>
-        <input
-          id="q"
-          name="q"
-          defaultValue={query ?? ""}
-          placeholder="Domain or registrar"
-          className="h-9 w-72 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-        />
+      <form action="/domains">
+        <FilterBar>
+          <ToolbarField label="Search domains" htmlFor="q" className="sm:w-72">
+            <Input id="q" name="q" defaultValue={query ?? ""} placeholder="Domain or registrar" />
+          </ToolbarField>
+          <ToolbarActions>
+            <Button type="submit" variant="secondary">
+              Apply
+            </Button>
+          </ToolbarActions>
+        </FilterBar>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>No domains yet. Add one from a client&rsquo;s &ldquo;Sites &amp; Domains&rdquo; tab.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Domain</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Website</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>DNS</TableHead>
-                <TableHead>Expires</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link href={`/domains/${row.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {row.name}
-                    </Link>
-                    <span className="block text-xs text-neutral-400">{row.registrar ?? "registrar unknown"}</span>
-                  </TableCell>
-                  <TableCell>
-                    <Link href={`/clients/${row.clientId}`} className="text-neutral-700 hover:underline">
-                      {row.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    {row.siteId ? (
-                      <Link href={`/websites/${row.siteId}`} className="hover:underline">
-                        {row.siteName}
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{row.dnsProvider}</TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(row.expiresAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Domains"
+        empty={
+          <EmptyState icon={Network}>
+            No domains yet. Add one from a client&rsquo;s &ldquo;Sites &amp; Domains&rdquo; tab.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

@@ -1,9 +1,10 @@
 import { getClient, listClientReports } from "@launchos/core";
+import { FileText } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -11,6 +12,29 @@ import { uuidOr404 } from "@/lib/uuid-route";
 import { ClientTabs } from "../tabs";
 
 export const dynamic = "force-dynamic";
+
+type ReportRow = Awaited<ReturnType<typeof listClientReports>>[number];
+
+const COLUMNS: readonly DataListColumn<ReportRow>[] = [
+  {
+    key: "period",
+    header: "Period",
+    primary: true,
+    className: "whitespace-nowrap",
+    cell: (row) => (
+      <Link href={`/reports/${row.id}`} className="hover:underline">
+        {formatDate(row.periodStart)} → {formatDate(row.periodEnd)}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "published",
+    header: "Published",
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.publishedAt),
+  },
+];
 
 export default async function ClientReportsPage({ params }: PageProps<"/clients/[id]/reports">) {
   const session = await requireAdmin();
@@ -27,42 +51,18 @@ export default async function ClientReportsPage({ params }: PageProps<"/clients/
       <PageHeader
         title={client.name}
         description="Monthly reports for this client. A published report is visible in their portal."
+        category="delivery"
       />
 
       <ClientTabs clientId={client.id} active="reports" />
 
-      {reports.length === 0 ? (
-        <EmptyState>No reports for this client yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Published</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reports.map((report) => (
-                <TableRow key={report.id}>
-                  <TableCell className="whitespace-nowrap">
-                    <Link href={`/reports/${report.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {formatDate(report.periodStart)} → {formatDate(report.periodEnd)}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={report.status} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">
-                    {formatDateTime(report.publishedAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={reports}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Reports"
+        empty={<EmptyState icon={FileText}>No reports for this client yet.</EmptyState>}
+      />
     </>
   );
 }

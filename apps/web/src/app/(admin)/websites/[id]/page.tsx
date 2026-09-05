@@ -1,11 +1,15 @@
 import { getClient, getSite, listDnsRecords, listDomains } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
+import { Activity, Network, ShieldAlert, TableProperties } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -13,6 +17,67 @@ import { requireAdmin } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 const INCIDENT_LIMIT = 10;
+
+type DomainRow = Awaited<ReturnType<typeof listDomains>>[number];
+type DnsRow = { id: string; domainName: string; type: string; name: string; value: string; ttl: number };
+type MonitorRow = { id: string; target: string; intervalSeconds: number; consecutiveFailures: number };
+type IncidentRow = { id: string; title: string; status: string; severity: string; openedAt: Date | null };
+
+const DOMAIN_COLUMNS: readonly DataListColumn<DomainRow>[] = [
+  {
+    key: "name",
+    header: "Domain",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/domains/${row.id}`} className="break-all hover:underline">
+        {row.name}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "dns", header: "DNS", cell: (row) => row.dnsProvider },
+  { key: "expires", header: "Expires", className: "whitespace-nowrap", cell: (row) => formatDateTime(row.expiresAt) },
+];
+
+const DNS_COLUMNS: readonly DataListColumn<DnsRow>[] = [
+  { key: "type", header: "Type", primary: true, cell: (row) => row.type },
+  { key: "domain", header: "Domain", cell: (row) => <span className="break-all">{row.domainName}</span> },
+  { key: "name", header: "Name", cell: (row) => <span className="break-all">{row.name}</span> },
+  { key: "value", header: "Value", className: "break-all", cell: (row) => row.value },
+  { key: "ttl", header: "TTL", numeric: true, cell: (row) => row.ttl },
+];
+
+const MONITOR_COLUMNS: readonly DataListColumn<MonitorRow>[] = [
+  { key: "target", header: "Target", primary: true, cell: (row) => <span className="break-all">{row.target}</span> },
+  { key: "interval", header: "Every", numeric: true, cell: (row) => `${row.intervalSeconds}s` },
+  {
+    key: "failures",
+    header: "Failures",
+    numeric: true,
+    cell: (row) =>
+      row.consecutiveFailures > 0 ? (
+        <span className="font-medium text-danger-fg">{row.consecutiveFailures}</span>
+      ) : (
+        row.consecutiveFailures
+      ),
+  },
+];
+
+const INCIDENT_COLUMNS: readonly DataListColumn<IncidentRow>[] = [
+  {
+    key: "title",
+    header: "Incident",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/incidents/${row.id}`} className="hover:underline">
+        {row.title}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "severity", header: "Severity", cell: (row) => <StatusBadge value={row.severity} /> },
+  { key: "opened", header: "Opened", className: "whitespace-nowrap", cell: (row) => formatDateTime(row.openedAt) },
+];
 
 export default async function WebsiteDetailPage({ params }: PageProps<"/websites/[id]">) {
   const { id } = await params;
@@ -51,136 +116,88 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
       records: await listDnsRecords(db, session.organisationId, domain.id),
     })),
   );
+  const dnsRows: DnsRow[] = dnsByDomain.flatMap((entry) =>
+    entry.records.map((record) => ({
+      id: record.id,
+      domainName: entry.domain.name,
+      type: record.type,
+      name: record.name,
+      value: record.value,
+      ttl: record.ttl,
+    })),
+  );
 
   return (
     <>
       <PageHeader
         title={site.name}
         description={site.primaryUrl}
+        category="delivery"
         actions={
-          client ? (
-            <Link href={`/clients/${client.id}`} className="text-sm text-neutral-700 underline">
-              {client.name}
-            </Link>
-          ) : null
+          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+            <StatusBadge value={site.status} />
+            {client ? (
+              <Button asChild variant="secondary">
+                <Link href={`/clients/${client.id}`}>{client.name}</Link>
+              </Button>
+            ) : null}
+          </div>
         }
       />
 
-      <dl className="mb-6 grid grid-cols-2 gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-4">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Status</dt>
-          <dd className="mt-1">
-            <StatusBadge value={site.status} />
-          </dd>
+      <Section title="Hosting">
+        <div className="rounded-xl border bg-card p-4">
+          <KeyValue
+            columns={2}
+            items={[
+              { label: "Platform", value: site.platform },
+              { label: "Hosting", value: site.hostingProvider },
+              { label: "Hosting ref", value: site.hostingRef ?? "—" },
+              { label: "Primary URL", value: <span className="break-all">{site.primaryUrl}</span> },
+            ]}
+          />
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Platform</dt>
-          <dd className="mt-1 text-neutral-700">{site.platform}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Hosting</dt>
-          <dd className="mt-1 text-neutral-700">{site.hostingProvider}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Hosting ref</dt>
-          <dd className="mt-1 truncate text-neutral-700">{site.hostingRef ?? "—"}</dd>
-        </div>
-      </dl>
+      </Section>
 
-      <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-neutral-900">Domains</h2>
-        {domains.length === 0 ? (
-          <EmptyState>No domain points at this website yet.</EmptyState>
-        ) : (
-          <ul className="flex flex-wrap gap-2">
-            {domains.map((domain) => (
-              <li key={domain.id}>
-                <Link
-                  href={`/domains/${domain.id}`}
-                  className="rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-sm text-neutral-800 hover:border-neutral-300"
-                >
-                  {domain.name}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <Section title="Domains" description="Every domain pointed at this website.">
+        <DataList
+          rows={domains}
+          columns={DOMAIN_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Domains"
+          empty={<EmptyState icon={Network}>No domain points at this website yet.</EmptyState>}
+        />
+      </Section>
 
-      <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-neutral-900">DNS records</h2>
-        {dnsByDomain.every((entry) => entry.records.length === 0) ? (
-          <EmptyState>No DNS records recorded. Add them on the domain page.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Value</TableHead>
-                  <TableHead className="text-right">TTL</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {dnsByDomain.flatMap((entry) =>
-                  entry.records.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="text-neutral-600">{entry.domain.name}</TableCell>
-                      <TableCell className="font-medium text-neutral-900">{record.type}</TableCell>
-                      <TableCell className="text-neutral-600">{record.name}</TableCell>
-                      <TableCell className="max-w-xs truncate text-neutral-600">{record.value}</TableCell>
-                      <TableCell className="text-right tabular-nums text-neutral-600">{record.ttl}</TableCell>
-                    </TableRow>
-                  )),
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </section>
+      <Section title="DNS records" description="What DNS should say. Editing lives on the domain page.">
+        <DataList
+          rows={dnsRows}
+          columns={DNS_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="DNS records"
+          empty={<EmptyState icon={TableProperties}>No DNS records recorded. Add them on the domain page.</EmptyState>}
+        />
+      </Section>
 
-      <section className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-900">Monitors</h2>
-          {monitors.length === 0 ? (
-            <p className="text-sm text-neutral-500">No monitor watches this site.</p>
-          ) : (
-            <ul className="space-y-1 text-sm text-neutral-700">
-              {monitors.map((monitor) => (
-                <li key={monitor.id} className="flex justify-between gap-2">
-                  <span className="truncate">{monitor.target}</span>
-                  <span className="shrink-0 text-xs text-neutral-400">
-                    every {monitor.intervalSeconds}s · {monitor.consecutiveFailures} failures
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+      <Section title="Monitors" description="What watches this site, and how often.">
+        <DataList
+          rows={monitors}
+          columns={MONITOR_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Monitors"
+          empty={<EmptyState icon={Activity}>No monitor watches this site.</EmptyState>}
+        />
+      </Section>
 
-        <div className="rounded-lg border border-neutral-200 bg-white p-4">
-          <h2 className="mb-2 text-sm font-semibold text-neutral-900">Recent incidents</h2>
-          {incidents.length === 0 ? (
-            <p className="text-sm text-neutral-500">No incidents recorded.</p>
-          ) : (
-            <ul className="space-y-1.5 text-sm">
-              {incidents.map((incident) => (
-                <li key={incident.id} className="flex items-center justify-between gap-2">
-                  <Link href={`/incidents/${incident.id}`} className="truncate text-neutral-800 hover:underline">
-                    {incident.title}
-                  </Link>
-                  <span className="flex shrink-0 items-center gap-1">
-                    <StatusBadge value={incident.status} />
-                    <span className="text-xs text-neutral-400">{formatDateTime(incident.openedAt)}</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </section>
+      <Section title="Recent incidents">
+        <DataList
+          rows={incidents}
+          columns={INCIDENT_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Recent incidents"
+          empty={<EmptyState icon={ShieldAlert}>No incidents recorded.</EmptyState>}
+        />
+      </Section>
     </>
   );
 }

@@ -17,6 +17,7 @@ export function RaiseInvoiceButton({ clientId }: { clientId: string }) {
 
   return (
     <form
+      className="max-sm:w-full"
       action={async (formData) => {
         const result = await createInvoiceForClient(formData);
         if (result.status === "error") return void toast.error(result.message);
@@ -25,7 +26,9 @@ export function RaiseInvoiceButton({ clientId }: { clientId: string }) {
       }}
     >
       <input type="hidden" name="clientId" value={clientId} />
-      <Button type="submit">Raise invoice</Button>
+      <Button type="submit" className="max-sm:w-full">
+        Raise invoice
+      </Button>
     </form>
   );
 }
