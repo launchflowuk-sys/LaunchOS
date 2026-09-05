@@ -40,9 +40,13 @@ export function dnsUpdateRecord(dns: DnsProvider) {
         };
       }
       const record = `${input.name}.${domain.name}`;
-      const isMock = dns.name.startsWith("mock");
+      // A registry answers for several providers at once, so the card must name
+      // the one this domain's `dns_provider` actually routes to — `dns.name`
+      // would say `dns-registry` for a live zone and a mocked one alike.
+      const effective = dns.for?.(domain.provider) ?? dns;
+      const isMock = effective.name.startsWith("mock");
       const effect = isMock
-        ? `The DNS adapter wired into this deployment is the mock (\`${dns.name}\`): approving records the change in LaunchOS and audits it, but **no zone is touched** until a real DNS provider is configured.`
+        ? `The DNS adapter wired into this deployment for ${domain.provider} zones is the mock (\`${effective.name}\`): approving records the change in LaunchOS and audits it, but **no zone is touched** until a real DNS provider is configured.`
         : "Live DNS changes take effect immediately.";
       return {
         title: `Set the ${input.type} record ${record} to ${input.value}`,
@@ -56,7 +60,7 @@ export function dnsUpdateRecord(dns: DnsProvider) {
           // What the domain row says the zone is hosted on, and what will
           // actually be called. They differ while the adapter is a mock, and
           // the approver should see both rather than infer one from the other.
-          adapter: dns.name,
+          adapter: effective.name,
           appliesToLiveZone: !isMock,
           type: input.type,
           record,
@@ -68,20 +72,26 @@ export function dnsUpdateRecord(dns: DnsProvider) {
     execute: async (input, ctx) => {
       // The zone is read from our own records, never from the model, so an
       // approved change can only ever touch a domain we manage.
+      // `dnsProvider` comes with it: it is what routes the change to the right
+      // API, and reading it here rather than trusting the model means an
+      // approved change can only ever reach the provider our own row names.
       const [domain] = await ctx.db
-        .select({ name: schema.domains.name })
+        .select({ name: schema.domains.name, provider: schema.domains.dnsProvider })
         .from(schema.domains)
         .where(and(eq(schema.domains.id, input.domainId), eq(schema.domains.organisationId, ctx.organisationId)));
       if (!domain) throw new Error(`domain ${input.domainId} not found in organisation`);
 
-      const result = await dns.updateRecord({ zone: domain.name, type: input.type, name: input.name, value: input.value, ttl: input.ttl });
+      const result = await dns.updateRecord({
+        zone: domain.name, provider: domain.provider, type: input.type, name: input.name, value: input.value, ttl: input.ttl,
+      });
       const [record] = await ctx.db
         .insert(schema.dnsRecords)
         .values({ organisationId: ctx.organisationId, domainId: input.domainId, type: input.type, name: input.name, value: input.value, ttl: input.ttl })
         .returning();
       await recordAudit(ctx.db, ctx.organisationId, {
         actorKind: "agent", actorId: "support-triage", action: "dns_record.updated",
-        targetType: "dns_record", targetId: record!.id, after: { ...input, zone: domain.name, provider: dns.name },
+        targetType: "dns_record", targetId: record!.id,
+        after: { ...input, zone: domain.name, dnsProvider: domain.provider, provider: (dns.for?.(domain.provider) ?? dns).name },
       });
       return { ...result, dnsRecordId: record!.id };
     },

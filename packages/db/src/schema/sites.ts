@@ -7,7 +7,7 @@ export const hostingProviderEnum = pgEnum("hosting_provider", ["coolify", "other
 export const siteStatusEnum = pgEnum("site_status", ["live", "building", "paused", "archived"]);
 export const domainStatusEnum = pgEnum("domain_status", ["active", "expiring", "expired", "transferring"]);
 export const dnsTypeEnum = pgEnum("dns_type", ["A", "AAAA", "CNAME", "MX", "TXT", "SRV"]);
-export const dnsProviderEnum = pgEnum("dns_provider", ["cloudflare", "registrar", "other"]);
+export const dnsProviderEnum = pgEnum("dns_provider", ["cloudflare", "registrar", "other", "hostinger"]);
 
 export const sites = pgTable("sites", {
   ...tenantColumns(),

@@ -1,0 +1,1 @@
+ALTER TYPE "public"."dns_provider" ADD VALUE 'hostinger';

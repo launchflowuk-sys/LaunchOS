@@ -75,7 +75,7 @@ export const NewDomainSchema = z.object({
     .max(253)
     .regex(/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/, "Hostname only, no scheme or path"),
   registrar: optionalText(100),
-  dnsProvider: z.enum(["cloudflare", "registrar", "other"]).default("other"),
+  dnsProvider: z.enum(["cloudflare", "hostinger", "registrar", "other"]).default("other"),
 });
 export type NewDomainValues = z.input<typeof NewDomainSchema>;
 

@@ -89,6 +89,7 @@ export function AddDomainForm({ clientId }: { clientId: string }) {
         options={[
           { value: "other", label: "Other" },
           { value: "cloudflare", label: "Cloudflare" },
+          { value: "hostinger", label: "Hostinger" },
           { value: "registrar", label: "Registrar" },
         ]}
       />

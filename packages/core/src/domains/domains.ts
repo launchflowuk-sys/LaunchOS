@@ -24,7 +24,7 @@ export const CreateDomainInput = z.object({
   name: z.string().trim().toLowerCase().max(253).regex(HOSTNAME),
   siteId: z.string().uuid().optional(),
   registrar: z.string().max(100).optional(),
-  dnsProvider: z.enum(["cloudflare", "registrar", "other"]).default("other"),
+  dnsProvider: z.enum(["cloudflare", "hostinger", "registrar", "other"]).default("other"),
   nameservers: z.array(z.string().max(253)).max(10).default([]),
   expiresAt: z.coerce.date().optional(),
   autoRenew: z.boolean().default(true),
@@ -69,7 +69,7 @@ export const UpdateDomainInput = z.object({
   domainId: z.string().uuid(),
   siteId: z.string().uuid().nullish(),
   registrar: z.string().max(100).nullish(),
-  dnsProvider: z.enum(["cloudflare", "registrar", "other"]).optional(),
+  dnsProvider: z.enum(["cloudflare", "hostinger", "registrar", "other"]).optional(),
   nameservers: z.array(z.string().max(253)).max(10).optional(),
   expiresAt: z.coerce.date().nullish(),
   autoRenew: z.boolean().optional(),
@@ -127,7 +127,7 @@ export type DomainListRow = {
   id: string;
   name: string;
   status: "active" | "expiring" | "expired" | "transferring";
-  dnsProvider: "cloudflare" | "registrar" | "other";
+  dnsProvider: "cloudflare" | "hostinger" | "registrar" | "other";
   registrar: string | null;
   expiresAt: Date | null;
   clientId: string;
