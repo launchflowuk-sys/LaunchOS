@@ -196,7 +196,9 @@ test.describe("client portal", () => {
     await page.getByRole("link", { name: "New request" }).click();
     await expect(page.getByRole("heading", { name: "New request" })).toBeVisible({ timeout: COLD_COMPILE });
     await page.getByLabel("Subject").fill(NEW_TICKET_SUBJECT);
-    await page.getByLabel("Severity").selectOption("high");
+    // The field is still `name="severity"` with the same three values; the
+    // portal asks the question in the client's words rather than the schema's.
+    await page.getByLabel("How urgent is it?").selectOption("high");
     await page.getByLabel("What has happened?").fill(NEW_TICKET_BODY);
     await page.getByRole("button", { name: "Raise request" }).click();
 
@@ -211,7 +213,7 @@ test.describe("client portal", () => {
 
     // A client cannot self-declare a critical severity.
     await page.goto("/portal/support/new");
-    await expect(page.getByLabel("Severity").getByRole("option", { name: "critical" })).toHaveCount(0);
+    await expect(page.getByLabel("How urgent is it?").getByRole("option", { name: /critical/i })).toHaveCount(0);
   });
 
   test("another client's ticket id in the URL is a 404, not somebody else's thread", async ({ page }) => {

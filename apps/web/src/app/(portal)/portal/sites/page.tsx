@@ -1,7 +1,8 @@
 import { listSites } from "@launchos/core";
+import { Globe } from "lucide-react";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SiteStatusBadge } from "@/components/portal/portal-status";
 import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
 
@@ -21,6 +22,34 @@ function isSafeUrl(url: string): boolean {
 
 export const dynamic = "force-dynamic";
 
+type SiteRow = { id: string; name: string; primaryUrl: string; platform: string; status: string };
+
+/** The `site_platform` values, spelled the way their makers spell them. */
+const PLATFORM_LABEL: Record<string, string> = {
+  wordpress: "WordPress",
+  static: "Static site",
+  nextjs: "Next.js",
+  other: "Custom build",
+};
+
+const COLUMNS: readonly DataListColumn<SiteRow>[] = [
+  { key: "name", header: "Website", primary: true, cell: (row) => row.name },
+  {
+    key: "url",
+    header: "Address",
+    cell: (row) =>
+      isSafeUrl(row.primaryUrl) ? (
+        <a href={row.primaryUrl} target="_blank" rel="noreferrer" className="break-all hover:underline">
+          {row.primaryUrl}
+        </a>
+      ) : (
+        <span className="break-all">{row.primaryUrl}</span>
+      ),
+  },
+  { key: "platform", header: "Built with", hideOnMobile: true, cell: (row) => PLATFORM_LABEL[row.platform] ?? row.platform },
+  { key: "status", header: "Status", status: true, cell: (row) => <SiteStatusBadge value={row.status} /> },
+];
+
 export default async function PortalSitesPage() {
   const session = await requireClient();
   // `listSites` filters on the organisation; `clientId` from the session is the
@@ -29,49 +58,23 @@ export default async function PortalSitesPage() {
 
   return (
     <>
-      <PageHeader title="Websites" description="The sites we build, host and look after for you." />
+      <PageHeader
+        title="Websites"
+        description="The sites we build, host and look after for you."
+        category="delivery"
+      />
 
-      {rows.length === 0 ? (
-        <EmptyState>No websites on your account yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>URL</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium text-neutral-900">{row.name}</TableCell>
-                  <TableCell>
-                    {isSafeUrl(row.primaryUrl) ? (
-                      <a
-                        href={row.primaryUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-neutral-700 hover:underline"
-                      >
-                        {row.primaryUrl}
-                      </a>
-                    ) : (
-                      <span className="text-neutral-700">{row.primaryUrl}</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{row.platform}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Your websites"
+        empty={
+          <EmptyState icon={Globe}>
+            No websites on your account yet. We will list yours here as soon as one is under way.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

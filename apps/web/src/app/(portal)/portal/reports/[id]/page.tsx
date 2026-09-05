@@ -1,12 +1,16 @@
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { z } from "zod";
 import { PageHeader } from "@/components/page-header";
+import { PrintButton } from "@/components/portal/print-button";
+import { StatCard } from "@/components/stat-card";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
 import { periodLabel } from "../period";
 
@@ -46,27 +50,36 @@ export default async function PortalReportPage({ params }: PageProps<"/portal/re
     <>
       <PageHeader
         title={periodLabel(report.periodStart, report.periodEnd)}
-        description={`Published ${formatDateTime(report.publishedAt)}`}
+        description={`Published ${formatDate(report.publishedAt)}`}
+        category="money"
         actions={
-          <Link href="/portal/reports" className="text-sm text-neutral-600 hover:underline print:hidden">
-            Back to reports
-          </Link>
+          <>
+            <Button asChild variant="secondary" className="print:hidden">
+              <Link href="/portal/reports">
+                <ArrowLeft aria-hidden strokeWidth={1.75} />
+                Back to reports
+              </Link>
+            </Button>
+            <PrintButton />
+          </>
         }
       />
 
-      <section className="mb-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section aria-label="Headline figures" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card) => (
-          <div key={card.label} className="rounded-lg border border-neutral-200 bg-white p-4">
-            <p className="text-xs text-neutral-500">{card.label}</p>
-            <p className="mt-1 text-xl font-semibold tabular-nums tracking-tight text-neutral-900">{card.value}</p>
-          </div>
+          <StatCard key={card.label} label={card.label} value={card.value} category="money" />
         ))}
       </section>
 
-      <article className="rounded-lg border border-neutral-200 bg-white p-6">
+      {/* The summary is the document a client may save or forward, so it prints
+          as plain text on white with no card around it. */}
+      <article className="mt-6 rounded-xl border bg-card p-5 sm:p-8 print:mt-0 print:border-0 print:p-0">
         {/* `react-markdown` renders text, not HTML: no rehype-raw, so nothing in
             a summary can inject markup into the portal. */}
-        <div className="prose prose-neutral max-w-none">
+        {/* The page already carries the period as its `h1`, so the summary's own
+            headings are capped: `prose` defaults put a 36px title inside a card on
+            a 375px phone. */}
+        <div className="prose max-w-none text-base text-foreground prose-headings:text-foreground prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-strong:text-foreground prose-a:text-primary">
           <Markdown>{report.summaryMd}</Markdown>
         </div>
       </article>

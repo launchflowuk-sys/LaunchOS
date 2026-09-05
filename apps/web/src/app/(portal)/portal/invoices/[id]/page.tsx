@@ -1,9 +1,12 @@
 import { schema } from "@launchos/db";
 import { and, eq, ne } from "drizzle-orm";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
 import { InvoiceDocument } from "@/components/invoice-document";
+import { PrintButton } from "@/components/portal/print-button";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
 
@@ -80,13 +83,16 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
 
   return (
     <>
-      <div className="mb-6 print:hidden">
-        <Link href="/portal/invoices" className="text-sm text-neutral-600 hover:underline">
-          Back to invoices
-        </Link>
-        <p className="mt-2 text-xs text-neutral-500">
-          Use your browser&rsquo;s print dialog to save this invoice as a PDF.
-        </p>
+      {/* Every bit of this bar is chrome: it is `print:hidden` so the saved PDF
+          is the document and nothing else. */}
+      <div className="mb-6 flex flex-wrap items-center gap-3 print:hidden">
+        <Button asChild variant="secondary">
+          <Link href="/portal/invoices">
+            <ArrowLeft aria-hidden strokeWidth={1.75} />
+            Back to invoices
+          </Link>
+        </Button>
+        <PrintButton />
       </div>
 
       <InvoiceDocument

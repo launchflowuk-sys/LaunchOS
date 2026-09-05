@@ -1,10 +1,13 @@
 import { listTasks, type TaskListRow } from "@launchos/core";
 import { schema } from "@launchos/db";
+import { ListChecks } from "lucide-react";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
-import { ProgressBar } from "@/components/progress-bar";
+import { PortalProgress } from "@/components/portal/portal-progress";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +23,14 @@ function progressOf(tasks: readonly TaskListRow[]): { done: number; total: numbe
   const counted = tasks.filter((task) => task.status !== "cancelled");
   return { done: counted.filter((task) => task.status === "done").length, total: counted.length };
 }
+
+type TaskRow = { id: string; title: string; status: string; dueAt: Date | null };
+
+const COLUMNS: readonly DataListColumn<TaskRow>[] = [
+  { key: "title", header: "Job", primary: true, cell: (row) => row.title },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  { key: "due", header: "Due", cell: (row) => (row.dueAt ? formatDate(row.dueAt) : "No date set") },
+];
 
 export default async function PortalTasksPage() {
   const session = await requireClient();
@@ -38,33 +49,27 @@ export default async function PortalTasksPage() {
 
   return (
     <>
-      <PageHeader title="Progress" description="Where the work on your account has got to." />
+      <PageHeader
+        title="Progress"
+        description="Where the work on your account has got to."
+        category="delivery"
+      />
 
       {groups.length === 0 ? (
-        <EmptyState>Nothing to show yet. We will add work here as it is planned.</EmptyState>
+        <EmptyState icon={ListChecks}>
+          Nothing to show yet. We will list the work here as it is planned.
+        </EmptyState>
       ) : (
-        <div className="space-y-6">
-          {groups.map((group) => {
-            const { done, total } = progressOf(group.tasks);
-            return (
-              <section key={group.phase} className="rounded-lg border border-neutral-200 bg-white p-5">
-                <ProgressBar label={PHASE_LABEL[group.phase] ?? group.phase} done={done} total={total} />
-
-                <ul className="mt-4 divide-y divide-neutral-100">
-                  {group.tasks.map((task) => (
-                    <li key={task.id} className="flex flex-wrap items-center gap-3 py-2.5">
-                      <span className="min-w-0 flex-1 truncate text-sm text-neutral-800">{task.title}</span>
-                      <StatusBadge value={task.status} />
-                      <span className="w-40 shrink-0 text-right text-xs text-neutral-500">
-                        {task.dueAt ? formatDateTime(task.dueAt) : "No date set"}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            );
-          })}
-        </div>
+        groups.map((group) => {
+          const { done, total } = progressOf(group.tasks);
+          const label = PHASE_LABEL[group.phase] ?? group.phase;
+          return (
+            <Section key={group.phase} title={label}>
+              <PortalProgress label={label} done={done} total={total} className="mb-4" />
+              <DataList rows={group.tasks} columns={COLUMNS} getRowKey={(row) => row.id} caption={label} />
+            </Section>
+          );
+        })
       )}
     </>
   );

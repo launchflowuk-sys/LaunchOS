@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 
 /**
@@ -10,6 +11,9 @@ import { Button } from "@/components/ui/button";
  *
  * Clients see even less than staff do: only the digest, never the message.
  * Raw errors can carry table names, query fragments or another tenant's ids.
+ *
+ * It keeps an `<h1>`: a page whose content failed still has to announce itself
+ * to a screen reader, and the failure is the page.
  */
 export default function PortalError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
@@ -17,18 +21,24 @@ export default function PortalError({ error, retry }: { error: Error & { digest?
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-lg rounded-lg border border-neutral-200 bg-white p-6 text-center">
-      <h1 className="text-base font-semibold text-neutral-900">Something went wrong</h1>
-      <p className="mt-2 text-sm text-neutral-500">
-        This page could not be loaded. Trying again usually fixes it. If it does not, quote the reference below when you
-        get in touch and we will find it in our logs.
+    <div className="mx-auto max-w-lg">
+      <h1 className="text-title font-semibold">Something went wrong</h1>
+      <p className="mt-2 text-base text-muted-foreground">
+        This page could not be loaded. Trying again usually fixes it — nothing on your account has changed.
       </p>
-      <div className="mt-4 flex justify-center">
-        <Button type="button" onClick={() => retry()}>
-          Retry
+
+      <div className="mt-5 max-sm:[&>*]:w-full">
+        <Button type="button" size="lg" onClick={() => retry()}>
+          Try again
         </Button>
       </div>
-      {error.digest ? <p className="mt-4 text-xs text-neutral-400">Reference {error.digest}</p> : null}
+
+      {error.digest ? (
+        <InlineAlert tone="info" className="mt-6">
+          If it keeps happening, quote reference <span className="font-mono">{error.digest}</span> when you get in
+          touch and we will find it in our logs.
+        </InlineAlert>
+      ) : null}
     </div>
   );
 }

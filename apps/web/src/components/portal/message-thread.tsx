@@ -1,4 +1,7 @@
+import { MessagesSquare } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
 import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export type ThreadMessage = {
   id: string;
@@ -29,31 +32,45 @@ const AUTHOR_LABEL: Record<ThreadMessage["authorKind"], string> = {
 };
 
 /**
- * The client-facing view of a conversation. Presentational and server-safe:
- * the caller does the filtering with `isVisibleToClient` so a page can never
- * render this component over an unfiltered list by accident.
+ * The client-facing view of a conversation, as a thread of bubbles.
+ *
+ * Presentational and server-safe: the caller does the filtering with
+ * `isVisibleToClient` so a page can never render this component over an
+ * unfiltered list by accident.
+ *
+ * Direction carries the colour. The client's own messages sit right on the
+ * indigo `primary-soft`, ours sit left on white — the arrangement every
+ * messaging app has taught them, so nobody has to read "You" to know who said
+ * what. The bubble caps at `85%` rather than a fixed width so a one-word reply
+ * is a one-word bubble on a 375px phone.
  */
 export function MessageThread({ messages }: { messages: readonly ThreadMessage[] }) {
   if (messages.length === 0) {
-    return <p className="text-sm text-neutral-500">Nothing on this thread yet.</p>;
+    return (
+      <EmptyState icon={MessagesSquare}>
+        Nothing on this thread yet. Add a reply below and we will pick it up.
+      </EmptyState>
+    );
   }
 
   return (
-    <ol className="space-y-3">
+    <ol className="flex flex-col gap-4">
       {messages.map((message) => {
         const fromClient = message.authorKind === "client";
         return (
-          <li
-            key={message.id}
-            className={`rounded-lg border px-4 py-3 ${
-              fromClient ? "border-neutral-200 bg-white" : "border-blue-100 bg-blue-50/60"
-            }`}
-          >
-            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2 text-xs">
-              <span className="font-medium text-neutral-700">{AUTHOR_LABEL[message.authorKind]}</span>
-              <span className="text-neutral-500">{formatDateTime(message.createdAt)}</span>
+          <li key={message.id} className={cn("flex min-w-0", fromClient ? "justify-end" : "justify-start")}>
+            <div
+              className={cn(
+                "min-w-0 max-w-[85%] rounded-xl border px-4 py-3",
+                fromClient ? "border-primary/20 bg-primary-soft" : "border-border bg-card",
+              )}
+            >
+              <div className="mb-1 flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
+                <span className="text-meta font-semibold">{AUTHOR_LABEL[message.authorKind]}</span>
+                <span className="text-meta text-muted-foreground">{formatDateTime(message.createdAt)}</span>
+              </div>
+              <p className="text-base leading-relaxed break-words whitespace-pre-wrap">{message.body}</p>
             </div>
-            <p className="whitespace-pre-wrap text-sm text-neutral-800">{message.body}</p>
           </li>
         );
       })}

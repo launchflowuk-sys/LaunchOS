@@ -1,14 +1,24 @@
 "use client";
 
+import { Rocket } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
 
 /**
  * The sign-in form. `notice` is resolved by the server component next door —
  * why a gate sent somebody back here, e.g. portal access that has been removed
  * — so this file needs no search-param hook and no Suspense boundary.
+ *
+ * One card on the cool workspace ground, centred, `max-w-sm` so it never
+ * stretches on a desktop and never crowds a 375px phone. The two audiences it
+ * serves — Shoji on his phone and a client signing in twice a year — both get
+ * 16px fields at 44px tall, which is also what stops iOS zooming the page on
+ * focus.
  */
 export function SignInForm({ notice }: { notice: string | null }) {
   const router = useRouter();
@@ -35,73 +45,81 @@ export function SignInForm({ notice }: { notice: string | null }) {
   }
 
   return (
-    <main className="flex min-h-screen flex-1 items-center justify-center bg-neutral-50 px-4">
+    <main className="flex min-h-screen flex-1 items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold tracking-tight text-neutral-900">LaunchOS</h1>
-          <p className="mt-1 text-sm text-neutral-500">Sign in to LaunchOS.</p>
+        <div className="mb-6 flex flex-col items-center text-center">
+          <span
+            aria-hidden
+            className="flex size-11 items-center justify-center rounded-xl bg-sidebar text-sidebar-accent-foreground"
+          >
+            <Rocket strokeWidth={1.75} className="size-5" />
+          </span>
+          <h1 className="mt-3 text-title font-semibold">LaunchOS</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sign in to your account.
+          </p>
         </div>
 
         {notice ? (
-          <p role="status" className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <InlineAlert tone="warning" className="mb-4">
             {notice}
-          </p>
+          </InlineAlert>
         ) : null}
 
-        <form
-          onSubmit={onSubmit}
-          className="space-y-4 rounded-lg border border-neutral-200 bg-white p-6 shadow-sm"
-        >
-          <div className="space-y-1.5">
-            <label htmlFor="email" className="block text-sm font-medium text-neutral-700">
-              Email
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              // Mobile browsers and password managers add attributes to these fields
-              // before React hydrates; that is expected, not a bug.
-              suppressHydrationWarning
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
-            />
-          </div>
+        <form onSubmit={onSubmit} aria-label="Sign in" className="rounded-xl border bg-card p-6 shadow-sm">
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
+                inputMode="email"
+                required
+                // Mobile browsers and password managers add attributes to these fields
+                // before React hydrates; that is expected, not a bug.
+                suppressHydrationWarning
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11 bg-card"
+              />
+            </div>
 
-          <div className="space-y-1.5">
-            <label htmlFor="password" className="block text-sm font-medium text-neutral-700">
-              Password
-            </label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              // Mobile browsers and password managers add attributes to these fields
-              // before React hydrates; that is expected, not a bug.
-              suppressHydrationWarning
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
-            />
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                suppressHydrationWarning
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-11 bg-card"
+              />
+            </div>
           </div>
 
           {error ? (
-            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            <InlineAlert tone="danger" title="Could not sign in" className="mt-4">
               {error}
-            </p>
+            </InlineAlert>
           ) : null}
 
-          <Button type="submit" size="lg" className="w-full" disabled={pending}>
-            {pending ? "Signing in…" : "Sign in"}
+          {/* `loading` keeps the label: the accessible name of the one action on
+              this page must not change to "Signing in…" mid-request. */}
+          <Button type="submit" size="lg" loading={pending} className="mt-5 w-full">
+            Sign in
           </Button>
+
+          <p className="mt-4 text-center text-meta text-muted-foreground">
+            Forgotten your password? Ask us and we will send you a new one.
+          </p>
         </form>
 
-        <p className="mt-6 text-center text-xs text-neutral-400">Powered by LaunchFlow</p>
+        <p className="mt-6 text-center text-meta text-muted-foreground">Powered by LaunchFlow</p>
       </div>
     </main>
   );

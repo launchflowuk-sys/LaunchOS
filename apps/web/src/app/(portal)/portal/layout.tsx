@@ -1,3 +1,4 @@
+import { Rocket } from "lucide-react";
 import { PortalTabs, type PortalTab } from "@/components/portal/portal-tabs";
 import { SignOutButton } from "@/components/portal/sign-out-button";
 import { requireClient } from "@/lib/portal-session";
@@ -40,23 +41,34 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
     <div className="flex min-h-screen flex-1 flex-col bg-background print:bg-white">
       <header className="sticky top-0 z-30 border-b bg-card print:hidden">
         <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
+          {/* The navy tile is the one piece of LaunchFlow branding above the
+              fold; the name that matters on this surface is the client's. */}
+          <span
+            aria-hidden
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-sidebar text-sidebar-accent-foreground"
+          >
+            <Rocket strokeWidth={1.75} className="size-4" />
+          </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold tracking-tight">{session.clientName}</p>
-            <p className="text-meta text-muted-foreground">Client portal</p>
+            <p className="truncate text-base font-semibold tracking-tight">{session.clientName}</p>
+            <p className="text-meta text-muted-foreground">Your LaunchFlow portal</p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-3">
             <p className="hidden max-w-64 truncate text-meta text-muted-foreground sm:block">{session.email}</p>
-            <SignOutButton />
+            <SignOutButton size="sm" />
           </div>
         </div>
         <PortalTabs tabs={NAV} />
       </header>
 
-      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 py-5 sm:px-6 lg:py-8 print:max-w-none print:px-0 print:py-0">
+      {/* 16px is the portal's body size: this is read on a phone, rarely, by
+          somebody who does not use it every day. Components that set their own
+          scale — tables, pills, meta lines — still do. */}
+      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 py-6 text-base sm:px-6 lg:py-10 print:max-w-none print:px-0 print:py-0">
         {children}
       </main>
 
-      <footer className="border-t bg-card px-4 py-4 text-center text-meta text-muted-foreground print:hidden">
+      <footer className="border-t bg-card px-4 py-5 text-center text-meta text-muted-foreground print:hidden">
         Powered by LaunchFlow
       </footer>
     </div>

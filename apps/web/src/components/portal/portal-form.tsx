@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useRef, type ReactNode } from "react";
+import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 /**
  * The shape every portal server action returns: a failure is a sentence on the
@@ -16,8 +18,12 @@ type ActionResult = { status: "ok"; id?: string } | { status: "error"; message: 
  *
  * The portal has no toaster — a client should read what went wrong next to the
  * field they filled in, not in a corner that fades — so the result is rendered
- * inline. The action itself is a server action passed down as a prop, which
- * keeps `@launchos/db` and `@launchos/core` out of the browser bundle.
+ * inline as an `InlineAlert`, the same box the rest of the product uses for a
+ * send that failed. The action itself is a server action passed down as a prop,
+ * which keeps `@launchos/db` and `@launchos/core` out of the browser bundle.
+ *
+ * The submit button is full width under `sm`: one clear primary action per
+ * portal screen, sized for a thumb.
  */
 export function PortalForm({
   action,
@@ -48,24 +54,26 @@ export function PortalForm({
   );
 
   return (
-    <form ref={form} action={formAction} className={className} aria-label={ariaLabel}>
+    <form ref={form} action={formAction} className={cn("min-w-0", className)} aria-label={ariaLabel}>
       {children}
 
       {state?.status === "error" ? (
-        <p role="alert" className="mt-3 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+        <InlineAlert tone="danger" className="mt-4">
           {state.message}
-        </p>
+        </InlineAlert>
       ) : null}
 
       {state?.status === "ok" && success ? (
-        <p role="status" className="mt-3 rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+        <InlineAlert tone="success" className="mt-4">
           {success}
-        </p>
+        </InlineAlert>
       ) : null}
 
       <div className="mt-4">
-        <Button type="submit" disabled={pending}>
-          {pending ? "Working…" : submitLabel}
+        {/* `loading` keeps the label in place — a button that swaps its words
+            mid-submit moves the target under the thumb. */}
+        <Button type="submit" size="lg" loading={pending} className="w-full sm:w-auto">
+          {submitLabel}
         </Button>
       </div>
     </form>

@@ -13,7 +13,13 @@ import { authClient } from "@/lib/auth-client";
  * the cached server render of the portal shell, so the back button lands on
  * the sign-in gate rather than on a stale page.
  */
-export function SignOutButton({ variant = "secondary" }: { variant?: "secondary" | "ghost" }) {
+export function SignOutButton({
+  variant = "secondary",
+  size = "md",
+}: {
+  variant?: "secondary" | "ghost";
+  size?: "sm" | "md";
+}) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -29,9 +35,12 @@ export function SignOutButton({ variant = "secondary" }: { variant?: "secondary"
     }
   }
 
+  // `loading` rather than a swapped label: the word "Sign out" is the button's
+  // accessible name, and it should not become "Signing out…" for the half
+  // second the request takes.
   return (
-    <Button type="button" variant={variant} onClick={signOut} disabled={pending}>
-      {pending ? "Signing out…" : "Sign out"}
+    <Button type="button" variant={variant} size={size} onClick={signOut} loading={pending}>
+      Sign out
     </Button>
   );
 }

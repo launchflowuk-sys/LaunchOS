@@ -1,13 +1,38 @@
 import { schema } from "@launchos/db";
 import { and, asc, eq } from "drizzle-orm";
+import { Link2 } from "lucide-react";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
-import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { DomainStatusBadge } from "@/components/portal/portal-status";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
 
 export const dynamic = "force-dynamic";
+
+type DomainRow = {
+  id: string;
+  name: string;
+  registrar: string | null;
+  expiresAt: Date | null;
+  autoRenew: boolean;
+  status: string;
+};
+
+const COLUMNS: readonly DataListColumn<DomainRow>[] = [
+  { key: "name", header: "Domain", primary: true, cell: (row) => <span className="break-all">{row.name}</span> },
+  { key: "registrar", header: "Registered with", hideOnMobile: true, cell: (row) => row.registrar ?? "—" },
+  { key: "expires", header: "Renews", cell: (row) => formatDate(row.expiresAt) },
+  {
+    key: "autoRenew",
+    header: "Auto-renew",
+    // A domain that will not renew itself is the one thing on this screen a
+    // client may need to act on, so both states are worded rather than ticked.
+    // What "on" means is said once, in the page description, not on every row.
+    cell: (row) => (row.autoRenew ? "On" : "Off"),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <DomainStatusBadge value={row.status} /> },
+];
 
 export default async function PortalDomainsPage() {
   const session = await requireClient();
@@ -35,38 +60,23 @@ export default async function PortalDomainsPage() {
 
   return (
     <>
-      <PageHeader title="Domains" description="The domain names registered for you." />
+      <PageHeader
+        title="Domains"
+        description="The domain names registered for you. Anything with auto-renew on, we renew for you."
+        category="delivery"
+      />
 
-      {rows.length === 0 ? (
-        <EmptyState>No domains on your account yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Registrar</TableHead>
-                <TableHead>Expires</TableHead>
-                <TableHead>Auto-renew</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell className="font-medium text-neutral-900">{row.name}</TableCell>
-                  <TableCell className="text-neutral-600">{row.registrar ?? "—"}</TableCell>
-                  <TableCell className="text-neutral-600">{formatDateTime(row.expiresAt)}</TableCell>
-                  <TableCell className="text-neutral-600">{row.autoRenew ? "On" : "Off"}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Your domains"
+        empty={
+          <EmptyState icon={Link2}>
+            No domains on your account yet. Raise a request if you would like us to register one.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

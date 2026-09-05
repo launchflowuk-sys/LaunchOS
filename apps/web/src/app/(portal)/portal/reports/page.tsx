@@ -1,10 +1,12 @@
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
+import { FileText } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
 import { periodLabel } from "./period";
 
@@ -12,6 +14,32 @@ export const dynamic = "force-dynamic";
 
 /** Newest first, so what falls off the end is the oldest — say so rather than hide it. */
 const LIST_LIMIT = 200;
+
+type ReportRow = { id: string; periodStart: string; periodEnd: string; publishedAt: Date | null };
+
+const COLUMNS: readonly DataListColumn<ReportRow>[] = [
+  {
+    key: "period",
+    header: "Period",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/portal/reports/${row.id}`} className="hover:underline">
+        {periodLabel(row.periodStart, row.periodEnd)}
+      </Link>
+    ),
+  },
+  { key: "published", header: "Published", cell: (row) => formatDate(row.publishedAt) },
+  {
+    key: "open",
+    header: "Open report",
+    action: true,
+    cell: (row) => (
+      <Button asChild variant="secondary" size="sm">
+        <Link href={`/portal/reports/${row.id}`}>Read report</Link>
+      </Button>
+    ),
+  },
+];
 
 export default async function PortalReportsPage() {
   const session = await requireClient();
@@ -38,39 +66,26 @@ export default async function PortalReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" description="What we did on your account, month by month." />
+      <PageHeader
+        title="Reports"
+        description="What we did on your account, month by month."
+        category="money"
+      />
 
-      {reports.length === 0 ? (
-        <EmptyState>No reports published yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Published</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reports.map((report) => (
-                <TableRow key={report.id}>
-                  <TableCell className="font-medium text-neutral-900">
-                    <Link href={`/portal/reports/${report.id}`} className="hover:underline">
-                      {periodLabel(report.periodStart, report.periodEnd)}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">
-                    {formatDateTime(report.publishedAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={reports}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Your reports"
+        empty={
+          <EmptyState icon={FileText}>
+            No reports published yet. We will put your first one here at the end of the month.
+          </EmptyState>
+        }
+      />
 
       {reports.length === LIST_LIMIT ? (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-meta text-muted-foreground">
           Showing the {LIST_LIMIT} most recent reports. Ask us if you need an older one.
         </p>
       ) : null}

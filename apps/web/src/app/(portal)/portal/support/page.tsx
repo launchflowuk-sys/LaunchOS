@@ -1,14 +1,47 @@
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
+import { LifeBuoy } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
 
 export const dynamic = "force-dynamic";
+
+type TicketRow = {
+  id: string;
+  subject: string;
+  status: string;
+  severity: string;
+  createdAt: Date;
+  updatedAt: Date;
+  lastMessageAt: Date | null;
+};
+
+const COLUMNS: readonly DataListColumn<TicketRow>[] = [
+  {
+    key: "subject",
+    header: "Request",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/portal/support/${row.id}`} className="hover:underline">
+        {row.subject}
+      </Link>
+    ),
+  },
+  { key: "severity", header: "Priority", cell: (row) => <StatusBadge value={row.severity} /> },
+  { key: "raised", header: "Raised", hideOnMobile: true, cell: (row) => formatDate(row.createdAt) },
+  {
+    key: "updated",
+    header: "Last update",
+    cell: (row) => formatDateTime(row.lastMessageAt ?? row.updatedAt),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+];
 
 export default async function PortalSupportPage() {
   const session = await requireClient();
@@ -47,63 +80,32 @@ export default async function PortalSupportPage() {
       <PageHeader
         title="Support"
         description="Everything you have raised with us, and where each request has got to."
+        category="support"
         actions={
-          <Link
-            href="/portal/support/new"
-            className="inline-flex h-9 items-center rounded-md bg-neutral-900 px-4 text-sm font-medium text-white hover:bg-neutral-800"
-          >
-            New request
-          </Link>
+          <Button asChild size="lg">
+            <Link href="/portal/support/new">New request</Link>
+          </Button>
         }
       />
 
-      {rows.length === 0 ? (
-        <EmptyState>
-          Nothing raised yet.{" "}
-          <Link href="/portal/support/new" className="font-medium text-neutral-900 hover:underline">
-            Raise your first request
-          </Link>
-          .
-        </EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Raised</TableHead>
-                <TableHead>Last update</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link
-                      href={`/portal/support/${row.id}`}
-                      className="font-medium text-neutral-900 hover:underline"
-                    >
-                      {row.subject}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.status} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.severity} />
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{formatDateTime(row.createdAt)}</TableCell>
-                  <TableCell className="text-neutral-600">
-                    {formatDateTime(row.lastMessageAt ?? row.updatedAt)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Your support requests"
+        empty={
+          <EmptyState
+            icon={LifeBuoy}
+            action={
+              <Button asChild>
+                <Link href="/portal/support/new">Raise a request</Link>
+              </Button>
+            }
+          >
+            Nothing raised yet. If something is not working, or you would like a change made, tell us here.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

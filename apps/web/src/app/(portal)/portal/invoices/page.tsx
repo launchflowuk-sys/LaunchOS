@@ -1,9 +1,11 @@
 import { schema } from "@launchos/db";
 import { and, desc, eq, ne } from "drizzle-orm";
+import { Receipt } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDate, formatPence } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
@@ -16,6 +18,49 @@ export const dynamic = "force-dynamic";
  * find an old invoice is told why rather than left to guess.
  */
 const LIST_LIMIT = 200;
+
+type InvoiceRow = {
+  id: string;
+  number: string;
+  status: string;
+  issuedAt: Date;
+  dueAt: Date;
+  totalPence: number;
+  currency: string;
+};
+
+const COLUMNS: readonly DataListColumn<InvoiceRow>[] = [
+  {
+    key: "number",
+    header: "Invoice",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/portal/invoices/${row.id}`} className="hover:underline">
+        {row.number}
+      </Link>
+    ),
+  },
+  { key: "issued", header: "Issued", hideOnMobile: true, cell: (row) => formatDate(row.issuedAt) },
+  { key: "due", header: "Due", cell: (row) => formatDate(row.dueAt) },
+  {
+    key: "total",
+    header: "Total",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: (row) => formatPence(row.totalPence, row.currency),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "open",
+    header: "Open invoice",
+    action: true,
+    cell: (row) => (
+      <Button asChild variant="secondary" size="sm">
+        <Link href={`/portal/invoices/${row.id}`}>View invoice</Link>
+      </Button>
+    ),
+  },
+];
 
 export default async function PortalInvoicesPage() {
   const session = await requireClient();
@@ -46,47 +91,22 @@ export default async function PortalInvoicesPage() {
 
   return (
     <>
-      <PageHeader title="Invoices" description="Your invoices from LaunchFlow." />
+      <PageHeader
+        title="Invoices"
+        description="Your invoices from LaunchFlow. Open one to print it or save it as a PDF."
+        category="money"
+      />
 
-      {invoices.length === 0 ? (
-        <EmptyState>No invoices yet.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Issued</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell className="font-medium text-neutral-900">
-                    <Link href={`/portal/invoices/${invoice.id}`} className="hover:underline">
-                      {invoice.number}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.issuedAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.dueAt)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(invoice.totalPence, invoice.currency)}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={invoice.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={invoices}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Your invoices"
+        empty={<EmptyState icon={Receipt}>No invoices yet. There is nothing for you to pay.</EmptyState>}
+      />
 
       {invoices.length === LIST_LIMIT ? (
-        <p className="mt-3 text-xs text-neutral-500">
+        <p className="mt-3 text-meta text-muted-foreground">
           Showing the {LIST_LIMIT} most recent invoices. Ask us if you need an older one.
         </p>
       ) : null}

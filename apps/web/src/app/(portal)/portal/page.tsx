@@ -1,9 +1,16 @@
 import { listSites, listTasks } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, count, desc, eq, notInArray } from "drizzle-orm";
+import { and, desc, eq, notInArray } from "drizzle-orm";
+import { Globe, LifeBuoy } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { SiteStatusBadge } from "@/components/portal/portal-status";
+import { Section } from "@/components/section";
+import { StatCard } from "@/components/stat-card";
+import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
@@ -14,34 +21,59 @@ const CLOSED_TICKET_STATUSES = ["resolved", "closed"] as const;
 /** Everything `task_status` offers except the two finished states. */
 const ACTIVE_TASK_STATUSES = ["todo", "in_progress", "blocked", "review"] as const;
 
-function Card({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-5">
-      <h2 className="text-xs font-medium uppercase tracking-wide text-neutral-500">{title}</h2>
-      <div className="mt-2">{children}</div>
-    </div>
-  );
-}
+/**
+ * The overview shows a shortlist, not the whole account: the tab for each
+ * module is one tap away and holds the rest.
+ */
+const PREVIEW_ROWS = 5;
 
-function Figure({ value, caption }: { value: number; caption: string }) {
-  return (
-    <>
-      <p className="text-3xl font-semibold tabular-nums text-neutral-900">{value}</p>
-      <p className="mt-1 text-sm text-neutral-500">{caption}</p>
-    </>
-  );
-}
+type SiteRow = { id: string; name: string; status: string };
+type RequestRow = { id: string; subject: string; status: string; lastMessageAt: Date | null; updatedAt: Date };
+
+const SITE_COLUMNS: readonly DataListColumn<SiteRow>[] = [
+  { key: "name", header: "Website", primary: true, cell: (row) => row.name },
+  { key: "status", header: "Status", status: true, cell: (row) => <SiteStatusBadge value={row.status} /> },
+];
+
+const REQUEST_COLUMNS: readonly DataListColumn<RequestRow>[] = [
+  {
+    key: "subject",
+    header: "Request",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/portal/support/${row.id}`} className="hover:underline">
+        {row.subject}
+      </Link>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+  {
+    key: "updated",
+    header: "Last update",
+    cell: (row) => formatDateTime(row.lastMessageAt ?? row.updatedAt),
+  },
+];
 
 export default async function PortalHomePage() {
   const session = await requireClient();
   const db = getDb();
   const scope = { organisationId: session.organisationId, clientId: session.clientId };
 
-  const [liveSites, openTickets, openTasks, latestConversation] = await Promise.all([
-    listSites(db, scope.organisationId, { clientId: scope.clientId, status: "live" }),
+  const [sites, openRequests, openTasks] = await Promise.all([
+    listSites(db, scope.organisationId, { clientId: scope.clientId }),
+    // `client_visible` is not optional: the overdue sweep opens a ticket per
+    // unpaid invoice and an agent's `tickets_create` is internal by design.
+    // Both are this client's by `client_id` and neither is theirs to read.
     db
-      .select({ total: count() })
+      .select({
+        id: schema.tickets.id,
+        subject: schema.tickets.subject,
+        status: schema.tickets.status,
+        updatedAt: schema.tickets.updatedAt,
+        lastMessageAt: schema.conversations.lastMessageAt,
+      })
       .from(schema.tickets)
+      .leftJoin(schema.conversations, eq(schema.tickets.conversationId, schema.conversations.id))
       .where(
         and(
           eq(schema.tickets.organisationId, scope.organisationId),
@@ -49,92 +81,106 @@ export default async function PortalHomePage() {
           eq(schema.tickets.clientVisible, true),
           notInArray(schema.tickets.status, [...CLOSED_TICKET_STATUSES]),
         ),
-      ),
+      )
+      .orderBy(desc(schema.tickets.createdAt)),
     listTasks(db, scope.organisationId, {
       clientId: scope.clientId,
       clientVisible: true,
       status: [...ACTIVE_TASK_STATUSES],
     }),
-    db
-      .select({
-        subject: schema.conversations.subject,
-        ticketId: schema.conversations.ticketId,
-        lastMessageAt: schema.conversations.lastMessageAt,
-      })
-      .from(schema.conversations)
-      // Inner join, not left: a conversation with no client-visible ticket
-      // behind it is internal, and this card deep-links straight into a thread.
-      .innerJoin(schema.tickets, eq(schema.conversations.ticketId, schema.tickets.id))
-      .where(
-        and(
-          eq(schema.conversations.organisationId, scope.organisationId),
-          eq(schema.conversations.clientId, scope.clientId),
-          eq(schema.tickets.clientVisible, true),
-        ),
-      )
-      .orderBy(desc(schema.conversations.lastMessageAt), desc(schema.conversations.createdAt))
-      .limit(1),
   ]);
 
-  const openTicketCount = openTickets[0]?.total ?? 0;
-  const latest = latestConversation[0];
+  const liveSites = sites.filter((site) => site.status === "live");
 
   return (
     <>
-      <PageHeader title={`Hello, ${session.name}`} description="Everything we are looking after for you." />
+      <PageHeader
+        title={`Hello, ${session.name}`}
+        description="Everything we are looking after for you, in one place."
+      />
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card title="Websites live">
-          {liveSites.length === 0 ? (
-            <p className="text-sm text-neutral-500">Nothing live yet — we will let you know as soon as it is.</p>
-          ) : (
-            <Figure value={liveSites.length} caption={liveSites.length === 1 ? "site online" : "sites online"} />
-          )}
-        </Card>
-
-        <Card title="Open requests">
-          {openTicketCount === 0 ? (
-            <p className="text-sm text-neutral-500">
-              Nothing open.{" "}
-              <Link href="/portal/support/new" className="font-medium text-neutral-900 hover:underline">
-                Raise a request
-              </Link>
-              .
-            </p>
-          ) : (
-            <Figure value={openTicketCount} caption={openTicketCount === 1 ? "request with us" : "requests with us"} />
-          )}
-        </Card>
-
-        <Card title="Work in progress">
-          {openTasks.length === 0 ? (
-            <p className="text-sm text-neutral-500">No open work right now.</p>
-          ) : (
-            <Figure value={openTasks.length} caption={openTasks.length === 1 ? "task underway" : "tasks underway"} />
-          )}
-        </Card>
-
-        <Card title="Latest conversation">
-          {!latest ? (
-            <p className="text-sm text-neutral-500">Nothing yet.</p>
-          ) : latest.ticketId ? (
-            <>
-              <Link
-                href={`/portal/support/${latest.ticketId}`}
-                className="text-sm font-medium text-neutral-900 hover:underline"
-              >
-                {latest.subject}
-              </Link>
-              <p className="mt-1 text-xs text-neutral-500">{formatDateTime(latest.lastMessageAt)}</p>
-            </>
-          ) : (
-            <>
-              <p className="text-sm font-medium text-neutral-900">{latest.subject}</p>
-              <p className="mt-1 text-xs text-neutral-500">{formatDateTime(latest.lastMessageAt)}</p>
-            </>
-          )}
-        </Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <StatCard
+          label="Websites live"
+          value={liveSites.length}
+          hint={
+            sites.length === 0
+              ? "Nothing live yet"
+              : liveSites.length === sites.length
+                ? "All of your sites are online"
+                : `${sites.length} on your account`
+          }
+          href="/portal/sites"
+          category="delivery"
+        />
+        <StatCard
+          label="Open requests"
+          value={openRequests.length}
+          hint={openRequests.length === 0 ? "Nothing waiting on us" : "We are on it"}
+          href="/portal/support"
+          category="support"
+        />
+        <StatCard
+          label="Work under way"
+          value={openTasks.length}
+          hint={openTasks.length === 0 ? "Nothing scheduled right now" : "Jobs in progress for you"}
+          href="/portal/tasks"
+          category="delivery"
+        />
       </div>
+
+      <Section
+        title="Your websites"
+        description="How each site we host for you is doing."
+        actions={
+          sites.length > PREVIEW_ROWS ? (
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/portal/sites">See all websites</Link>
+            </Button>
+          ) : null
+        }
+      >
+        <DataList
+          rows={sites.slice(0, PREVIEW_ROWS)}
+          columns={SITE_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Your websites"
+          empty={
+            <EmptyState icon={Globe}>
+              No websites on your account yet. We will add yours here as soon as it is under way.
+            </EmptyState>
+          }
+        />
+      </Section>
+
+      <Section
+        title="Open requests"
+        description="Anything you have raised that we have not closed off."
+        actions={
+          <Button asChild size="sm">
+            <Link href="/portal/support/new">Raise a request</Link>
+          </Button>
+        }
+      >
+        <DataList
+          rows={openRequests.slice(0, PREVIEW_ROWS)}
+          columns={REQUEST_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Open requests"
+          empty={
+            <EmptyState icon={LifeBuoy}>
+              No open requests. Need help with something? Raise a request and we will pick it up.
+            </EmptyState>
+          }
+        />
+        {openRequests.length > PREVIEW_ROWS ? (
+          <p className="mt-3 text-sm">
+            <Link href="/portal/support" className="font-medium text-primary hover:underline">
+              See all {openRequests.length} requests
+            </Link>
+          </p>
+        ) : null}
+      </Section>
     </>
   );
 }

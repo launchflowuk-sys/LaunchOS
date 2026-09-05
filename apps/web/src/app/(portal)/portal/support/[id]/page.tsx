@@ -1,5 +1,6 @@
 import { schema } from "@launchos/db";
 import { and, asc, eq } from "drizzle-orm";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
@@ -7,6 +8,9 @@ import { PageHeader } from "@/components/page-header";
 import { isVisibleToClient, MessageThread } from "@/components/portal/message-thread";
 import { PortalForm } from "@/components/portal/portal-form";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
@@ -91,10 +95,14 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
       <PageHeader
         title={ticket.subject}
         description={`Raised ${formatDateTime(ticket.createdAt)}`}
+        category="support"
         actions={
-          <Link href="/portal/support" className="text-sm text-neutral-600 hover:underline">
-            Back to support
-          </Link>
+          <Button asChild variant="secondary">
+            <Link href="/portal/support">
+              <ArrowLeft aria-hidden strokeWidth={1.75} />
+              Back to support
+            </Link>
+          </Button>
         }
       />
 
@@ -105,7 +113,11 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
 
       <MessageThread messages={visible} />
 
-      <div className="mt-6 max-w-2xl rounded-lg border border-neutral-200 bg-white p-5">
+      {/* The composer is the one action on this screen, so on a phone it stays
+          on the glass at the bottom of the thread rather than below however
+          many messages have accumulated. It bleeds to the edges to sit flush
+          against the viewport, and becomes an ordinary card from `md`. */}
+      <div className="sticky bottom-0 z-10 -mx-4 mt-6 border-t bg-card px-4 py-4 sm:-mx-6 sm:px-6 md:static md:mx-0 md:max-w-2xl md:rounded-xl md:border md:p-5">
         <PortalForm
           action={replyToPortalThread}
           submitLabel="Send reply"
@@ -114,17 +126,8 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
         >
           <input type="hidden" name="ticketId" value={ticket.id} />
           <div className="space-y-1.5">
-            <label htmlFor="reply-body" className="block text-sm font-medium text-neutral-700">
-              Add a reply
-            </label>
-            <textarea
-              id="reply-body"
-              name="body"
-              required
-              rows={4}
-              maxLength={8000}
-              className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
-            />
+            <Label htmlFor="reply-body">Add a reply</Label>
+            <Textarea id="reply-body" name="body" required rows={4} maxLength={8000} className="bg-card" />
           </div>
         </PortalForm>
       </div>

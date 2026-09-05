@@ -24,7 +24,7 @@ export function PortalTabs({ tabs }: { tabs: readonly PortalTab[] }) {
 
   return (
     <nav aria-label="Portal" className="scrollbar-none overflow-x-auto">
-      <div className="mx-auto flex w-max max-w-5xl gap-1 px-4 pb-2 sm:px-6">
+      <div className="mx-auto flex w-max max-w-5xl gap-1 px-4 pb-2.5 sm:px-6">
         {tabs.map((tab) => {
           const isCurrent = current === tab.href;
           return (
@@ -33,7 +33,7 @@ export function PortalTabs({ tabs }: { tabs: readonly PortalTab[] }) {
               href={tab.href}
               aria-current={isCurrent ? "page" : undefined}
               className={cn(
-                "rounded-md px-3 py-1.5 text-sm whitespace-nowrap transition-colors",
+                "rounded-md px-3 py-2 text-sm whitespace-nowrap transition-colors",
                 isCurrent
                   ? "bg-primary-soft font-medium text-primary"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground",
