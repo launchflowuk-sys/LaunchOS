@@ -220,7 +220,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               <input type="hidden" name="ticketId" value={ticket.id} />
               {/* Each press is a billed Claude run; the action refuses a second
                   one too, so a direct POST is bounded by the same rule. */}
-              <Button type="submit" variant="outline" disabled={triageInFlight}>
+              <Button type="submit" variant="secondary" disabled={triageInFlight}>
                 {triageInFlight ? "Triage running…" : "Run triage now"}
               </Button>
             </ActionForm>
@@ -233,7 +233,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
                 <ActionForm key={value} action={setTicketStatus} ariaLabel={`Set status ${value}`} success="Status updated">
                   <input type="hidden" name="ticketId" value={ticket.id} />
                   <input type="hidden" name="status" value={value} />
-                  <Button type="submit" variant={value === ticket.status ? "default" : "outline"} size="sm">
+                  <Button type="submit" variant={value === ticket.status ? "primary" : "secondary"} size="sm">
                     {value.replaceAll("_", " ")}
                   </Button>
                 </ActionForm>
@@ -255,7 +255,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             >
               <input type="hidden" name="ticketId" value={ticket.id} />
               <input type="hidden" name="clientVisible" value={ticket.clientVisible ? "false" : "true"} />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 {ticket.clientVisible ? "Hide from the client" : "Share with the client"}
               </Button>
             </ActionForm>
@@ -278,7 +278,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
                   </option>
                 ))}
               </select>
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 Assign
               </Button>
             </ActionForm>

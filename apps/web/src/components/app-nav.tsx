@@ -1,44 +1,93 @@
 "use client";
 
+import { Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import type { NavGroup } from "@/lib/nav";
+import { CATEGORY_DOT } from "@/lib/categories";
+import { APPROVALS_HREF, NAV_GROUPS } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
-function isActive(pathname: string, href: string): boolean {
-  return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
+/**
+ * The longest matching href wins, so `/ads/reports` lights "Ad reports" alone
+ * rather than "Ads" as well. `/` only ever matches itself.
+ */
+function activeHref(pathname: string): string {
+  let best = "";
+  for (const group of NAV_GROUPS) {
+    for (const item of group.items) {
+      const matches =
+        item.href === "/" ? pathname === "/" : pathname === item.href || pathname.startsWith(`${item.href}/`);
+      if (matches && item.href.length > best.length) best = item.href;
+    }
+  }
+  return best;
+}
+
+/** "shujaat@nexusedu.co.uk" → "SH"; "ada.lovelace@…" → "AL". */
+export function initialsFromEmail(email: string): string {
+  const local = email.split("@")[0] ?? "";
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+  return (local.slice(0, 2) || "?").toUpperCase();
 }
 
 const NOOP = () => {};
 
-function NavList({ groups, onNavigate = NOOP }: { groups: readonly NavGroup[]; onNavigate?: () => void }) {
+type NavProps = {
+  email: string;
+  role: string;
+  /** Pending approvals, counted on the server and shown on the rail. */
+  pendingApprovals: number;
+};
+
+function NavList({ pendingApprovals, onNavigate = NOOP }: { pendingApprovals: number; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const current = activeHref(pathname);
+
   return (
-    <nav aria-label="Main" className="flex-1 space-y-4 overflow-y-auto p-3">
-      {groups.map((group) => (
+    <nav aria-label="Main" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
+      {NAV_GROUPS.map((group) => (
         <div key={group.label}>
-          <p className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{group.label}</p>
+          <p className="label-caps flex items-center gap-2 px-3 pb-1.5 text-sidebar-muted">
+            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[group.category])} />
+            {group.label}
+          </p>
           <div className="space-y-0.5">
             {/* Every entry is a link: the disabled "arrives in Plan N" label
                 went out with the last pending module (see `lib/nav.ts`). */}
-            {group.items.map((item) => (
-              <Link
-                key={item.label}
-                href={item.href}
-                onClick={onNavigate}
-                aria-current={isActive(pathname, item.href) ? "page" : undefined}
-                className={cn(
-                  "block rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive(pathname, item.href)
-                    ? "bg-neutral-100 font-medium text-neutral-900"
-                    : "text-neutral-700 hover:bg-neutral-100 hover:text-neutral-900",
-                )}
-              >
-                {item.label}
-              </Link>
-            ))}
+            {group.items.map((item) => {
+              const Icon = item.icon;
+              const isCurrent = current === item.href;
+              const badge = item.href === APPROVALS_HREF ? pendingApprovals : 0;
+              return (
+                <Link
+                  key={item.label}
+                  href={item.href}
+                  onClick={onNavigate}
+                  aria-current={isCurrent ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    isCurrent
+                      ? "bg-sidebar-active font-medium text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                  )}
+                >
+                  <Icon aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+                  <span className="truncate">{item.label}</span>
+                  {badge > 0 ? (
+                    <span
+                      className="ml-auto shrink-0 rounded-full bg-warning-bg px-1.5 py-0.5 text-meta leading-none font-semibold tabular-nums text-warning-fg"
+                      aria-label={`${badge} waiting for a decision`}
+                    >
+                      {badge}
+                    </span>
+                  ) : null}
+                </Link>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -54,17 +103,55 @@ function NavList({ groups, onNavigate = NOOP }: { groups: readonly NavGroup[]; o
  */
 function Identity({ email, role, onNavigate = NOOP }: { email: string; role: string; onNavigate?: () => void }) {
   return (
-    <div className="border-t border-neutral-200 px-5 py-4 text-xs text-neutral-500">
-      <p className="truncate font-medium text-neutral-700">{email}</p>
-      <p className="mt-0.5 capitalize">{role}</p>
-      <Link href="/account" onClick={onNavigate} className="mt-1.5 inline-block text-neutral-600 hover:text-neutral-900 hover:underline">
+    <div className="border-t border-sidebar-border px-4 py-4">
+      <div className="flex items-center gap-3">
+        <Avatar className="size-8 shrink-0">
+          <AvatarFallback className="bg-sidebar-active text-meta font-semibold text-sidebar-accent-foreground">
+            {initialsFromEmail(email)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0">
+          <p className="truncate text-row font-medium text-sidebar-accent-foreground">{email}</p>
+          <p className="text-meta capitalize text-sidebar-muted">{role}</p>
+        </div>
+      </div>
+      <Link
+        href="/account"
+        onClick={onNavigate}
+        className="mt-3 inline-block text-row text-sidebar-muted transition-colors hover:text-sidebar-accent-foreground"
+      >
         Account
       </Link>
     </div>
   );
 }
 
-export function AppNav({ groups, email, role }: { groups: readonly NavGroup[]; email: string; role: string }) {
+function Brand() {
+  return (
+    <div className="border-b border-sidebar-border px-5 py-4">
+      <p className="text-sm font-semibold tracking-tight text-sidebar-accent-foreground">LaunchOS</p>
+      <p className="mt-0.5 text-meta text-sidebar-muted">Admin portal</p>
+    </div>
+  );
+}
+
+/** The 256px navy rail, `lg` and up. */
+export function AppNav({ email, role, pendingApprovals }: NavProps) {
+  return (
+    <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
+      <Brand />
+      <NavList pendingApprovals={pendingApprovals} />
+      <Identity email={email} role={role} />
+    </aside>
+  );
+}
+
+/**
+ * The same navigation as a sheet, opened from the menu icon in the top bar
+ * under `lg`. Radix keeps the panel out of the DOM while it is closed, so the
+ * desktop rail stays the only navigation landmark on a wide screen.
+ */
+export function AppNavSheet({ email, role, pendingApprovals }: NavProps) {
   const pathname = usePathname();
   // The drawer remembers the route it was opened on, so any navigation closes
   // it without an effect: a tap-through never leaves the overlay covering the
@@ -74,38 +161,26 @@ export function AppNav({ groups, email, role }: { groups: readonly NavGroup[]; e
   const setOpen = (next: boolean) => setOpenedOn(next ? pathname : null);
 
   return (
-    <>
-      <aside className="hidden w-60 shrink-0 flex-col border-r border-neutral-200 bg-white lg:flex">
-        <div className="border-b border-neutral-200 px-5 py-4">
-          <p className="text-sm font-semibold tracking-tight text-neutral-900">LaunchOS</p>
-          <p className="mt-0.5 text-xs text-neutral-500">Admin portal</p>
-        </div>
-        <NavList groups={groups} />
-        <Identity email={email} role={role} />
-      </aside>
-
-      {/* Under 1024px the sidebar collapses into a sheet (spec §2). Radix keeps
-          the panel out of the DOM while it is closed, so the desktop aside stays
-          the only navigation landmark on the page. */}
-      <Sheet open={open} onOpenChange={setOpen}>
-        {/* self-start keeps the trigger a button rather than a full-height
-            column: it is a flex child of the shell row, which stretches by
-            default. The margin lines it up with the header beside it. */}
-        <SheetTrigger
-          aria-label="Open menu"
-          className="m-3 self-start rounded-md border border-neutral-300 px-2.5 py-1.5 text-sm text-neutral-700 lg:hidden"
-        >
-          Menu
-        </SheetTrigger>
-        <SheetContent side="left" className="w-72 gap-0 bg-white p-0 sm:max-w-72">
-          <SheetHeader className="border-b border-neutral-200 px-5 py-4">
-            <SheetTitle className="text-sm font-semibold tracking-tight text-neutral-900">LaunchOS</SheetTitle>
-            <SheetDescription className="text-xs text-neutral-500">Admin portal</SheetDescription>
-          </SheetHeader>
-          <NavList groups={groups} onNavigate={() => setOpen(false)} />
-          <Identity email={email} role={role} onNavigate={() => setOpen(false)} />
-        </SheetContent>
-      </Sheet>
-    </>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger
+        aria-label="Open menu"
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-md border text-foreground transition-colors hover:bg-muted lg:hidden"
+      >
+        <Menu aria-hidden strokeWidth={1.75} className="size-4" />
+      </SheetTrigger>
+      <SheetContent
+        side="left"
+        className="flex w-72 flex-col gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground sm:max-w-72"
+      >
+        <SheetHeader className="border-b border-sidebar-border px-5 py-4">
+          <SheetTitle className="text-sm font-semibold tracking-tight text-sidebar-accent-foreground">
+            LaunchOS
+          </SheetTitle>
+          <SheetDescription className="text-meta text-sidebar-muted">Admin portal</SheetDescription>
+        </SheetHeader>
+        <NavList pendingApprovals={pendingApprovals} onNavigate={() => setOpen(false)} />
+        <Identity email={email} role={role} onNavigate={() => setOpen(false)} />
+      </SheetContent>
+    </Sheet>
   );
 }

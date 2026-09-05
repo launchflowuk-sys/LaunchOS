@@ -180,7 +180,7 @@ export function ArchiveClientButton({ clientId, disabled }: { clientId: string; 
   return (
     <Button
       type="button"
-      variant="outline"
+      variant="secondary"
       disabled={disabled || busy}
       onClick={async () => {
         setBusy(true);

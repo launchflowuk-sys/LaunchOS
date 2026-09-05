@@ -69,7 +69,7 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
           <div className="flex gap-2">
             <form action={acknowledgeIncident}>
               <input type="hidden" name="incidentId" value={incident.incident.id} />
-              <Button type="submit" variant="outline" disabled={incident.incident.status !== "open"}>
+              <Button type="submit" variant="secondary" disabled={incident.incident.status !== "open"}>
                 Acknowledge
               </Button>
             </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { SearchResults } from "@launchos/core";
+import { Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
@@ -51,7 +52,12 @@ export function GlobalSearch() {
   ].filter((g) => g.rows.length > 0);
 
   return (
-    <div ref={containerRef} className="relative w-full max-w-md">
+    <div ref={containerRef} className="relative w-full min-w-0 max-w-md">
+      <Search
+        aria-hidden
+        strokeWidth={1.75}
+        className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+      />
       <input
         type="search"
         aria-label="Search"
@@ -63,13 +69,13 @@ export function GlobalSearch() {
         }}
         // Let a click on a result land before the panel goes away.
         onBlur={() => setTimeout(() => setDismissed(true), BLUR_DISMISS_MS)}
-        className="h-9 w-full rounded-md border border-neutral-300 bg-white px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
+        className="h-9 w-full rounded-md border bg-card pr-3 pl-9 text-sm text-foreground transition-colors placeholder:text-muted-foreground hover:border-primary/30"
       />
       {groups.length > 0 ? (
-        <div className="absolute left-0 right-0 top-11 z-40 max-h-96 overflow-y-auto rounded-md border border-neutral-200 bg-white p-2 shadow-lg">
+        <div className="absolute top-11 right-0 left-0 z-40 max-h-96 overflow-y-auto rounded-lg border bg-popover p-2 shadow-lg">
           {groups.map((group) => (
             <div key={group.label} className="mb-2 last:mb-0">
-              <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">{group.label}</p>
+              <p className="label-caps px-2 pb-1 text-muted-foreground">{group.label}</p>
               {group.rows.map((row) => (
                 <Link
                   key={row.id}
@@ -78,10 +84,10 @@ export function GlobalSearch() {
                     setQuery("");
                     setDismissed(true);
                   }}
-                  className="block rounded-md px-2 py-1.5 text-sm text-neutral-800 hover:bg-neutral-100"
+                  className="block rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted"
                 >
                   {row.label}
-                  {row.hint ? <span className="ml-2 text-xs text-neutral-400">{row.hint}</span> : null}
+                  {row.hint ? <span className="ml-2 text-meta text-muted-foreground">{row.hint}</span> : null}
                 </Link>
               ))}
             </div>

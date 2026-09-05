@@ -76,7 +76,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
           <>
             {/* The same document the client reads in their portal, so an
                 invoice can be saved as a PDF for a client who never signs in. */}
-            <Button asChild variant="outline">
+            <Button asChild variant="secondary">
               <Link href={`/invoices/${invoice.id}/print`}>Print</Link>
             </Button>
             {sendable ? (
@@ -88,7 +88,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
             {settled ? null : (
               <ActionForm action={markInvoiceAsPaid} ariaLabel="Mark this invoice paid" success="Invoice marked paid">
                 <input type="hidden" name="invoiceId" value={invoice.id} />
-                <Button type="submit" variant="outline">
+                <Button type="submit" variant="secondary">
                   Mark paid
                 </Button>
               </ActionForm>
@@ -96,7 +96,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
             {settled ? null : (
               <ActionForm action={voidInvoiceAction} ariaLabel="Void this invoice" success="Invoice voided">
                 <input type="hidden" name="invoiceId" value={invoice.id} />
-                <Button type="submit" variant="outline">
+                <Button type="submit" variant="secondary">
                   Void
                 </Button>
               </ActionForm>
@@ -122,7 +122,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
               success="Send queued for approval"
             >
               <input type="hidden" name="invoiceId" value={invoice.id} />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 Request send again
               </Button>
             </ActionForm>

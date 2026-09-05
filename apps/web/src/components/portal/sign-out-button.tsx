@@ -13,7 +13,7 @@ import { authClient } from "@/lib/auth-client";
  * the cached server render of the portal shell, so the back button lands on
  * the sign-in gate rather than on a stale page.
  */
-export function SignOutButton({ variant = "outline" }: { variant?: "outline" | "ghost" }) {
+export function SignOutButton({ variant = "secondary" }: { variant?: "secondary" | "ghost" }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 

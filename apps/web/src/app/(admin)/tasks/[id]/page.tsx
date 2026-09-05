@@ -118,7 +118,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
                 placeholder="Add a comment"
                 className="w-full rounded-md border border-neutral-300 p-2 text-sm"
               />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 Add comment
               </Button>
             </ActionForm>
@@ -174,7 +174,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
                   </option>
                 ))}
               </select>
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 Save
               </Button>
             </ActionForm>
@@ -188,7 +188,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
             <ActionForm action={setTaskVisibilityAction} ariaLabel="Client portal visibility">
               <input type="hidden" name="taskId" value={task.id} />
               <input type="hidden" name="clientVisible" value={task.clientVisible ? "false" : "true"} />
-              <Button type="submit" variant="outline">
+              <Button type="submit" variant="secondary">
                 {task.clientVisible ? "Hide from client" : "Show to client"}
               </Button>
             </ActionForm>

@@ -34,10 +34,10 @@ export function MarkdownEditor({
       </label>
       <div className="rounded-lg border border-neutral-200 bg-white">
         <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2">
-          <Button type="button" size="sm" variant={preview ? "outline" : "default"} onClick={() => setPreview(false)}>
+          <Button type="button" size="sm" variant={preview ? "secondary" : "primary"} onClick={() => setPreview(false)}>
             Write
           </Button>
-          <Button type="button" size="sm" variant={preview ? "default" : "outline"} onClick={() => setPreview(true)}>
+          <Button type="button" size="sm" variant={preview ? "primary" : "secondary"} onClick={() => setPreview(true)}>
             Preview
           </Button>
           <span className="ml-auto text-xs text-neutral-400">Markdown</span>

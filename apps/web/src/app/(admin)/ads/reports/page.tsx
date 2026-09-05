@@ -112,7 +112,7 @@ export default async function AdReportsPage() {
                         success="Report approved"
                       >
                         <input type="hidden" name="adReportId" value={report.id} />
-                        <Button type="submit" variant="outline">
+                        <Button type="submit" variant="secondary">
                           Approve
                         </Button>
                       </ActionForm>

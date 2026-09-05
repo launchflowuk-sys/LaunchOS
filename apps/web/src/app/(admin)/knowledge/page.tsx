@@ -77,7 +77,7 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
             className="h-9 w-72 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
           />
         </div>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="secondary">
           Search
         </Button>
         {query ? (

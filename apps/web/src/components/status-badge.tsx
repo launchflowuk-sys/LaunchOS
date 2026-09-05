@@ -1,16 +1,34 @@
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
+/**
+ * The state vocabulary, one pill, used identically in the admin app and the
+ * client portal. A leading dot carries the colour so the state survives a
+ * greyscale print and a colour-blind reader still has the word.
+ */
 const TONES = {
-  neutral: "border-neutral-300 bg-neutral-100 text-neutral-700",
-  info: "border-blue-200 bg-blue-50 text-blue-700",
-  warn: "border-amber-200 bg-amber-50 text-amber-800",
-  danger: "border-red-200 bg-red-50 text-red-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  neutral: "border-neutral-border bg-neutral-bg text-neutral-fg",
+  info: "border-info-border bg-info-bg text-info-fg",
+  warn: "border-warning-border bg-warning-bg text-warning-fg",
+  danger: "border-danger-border bg-danger-bg text-danger-fg",
+  success: "border-success-border bg-success-bg text-success-fg",
 } as const;
 
-type Tone = keyof typeof TONES;
+const DOTS = {
+  neutral: "bg-neutral-fg",
+  info: "bg-info-fg",
+  warn: "bg-warning-fg",
+  danger: "bg-danger-fg",
+  success: "bg-success-fg",
+} as const;
 
-const TONE_BY_VALUE: Record<string, Tone> = {
+export type StatusTone = keyof typeof TONES;
+
+/**
+ * The map every screen shares. It is deliberately exhaustive rather than
+ * clever: a value that lands here with no entry reads `neutral`, which is the
+ * safe direction — a calm pill for an unknown state, never a false alarm.
+ */
+const TONE_BY_VALUE: Record<string, StatusTone> = {
   // incident + ticket status
   open: "danger",
   acknowledged: "warn",
@@ -68,11 +86,39 @@ const TONE_BY_VALUE: Record<string, Tone> = {
   disconnected: "danger",
 };
 
-export function StatusBadge({ value, tone }: { value: string; tone?: Tone }) {
+/**
+ * `waiting_client` is a database value; "waiting client" is English. The case is
+ * left alone on purpose — these are status words in running rows, not titles,
+ * and the acceptance specs read them as they are stored.
+ */
+function humanise(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
+export function StatusBadge({
+  value,
+  tone,
+  label,
+  className,
+}: {
+  value: string;
+  tone?: StatusTone;
+  /** Override the words without changing which colour the value maps to. */
+  label?: string;
+  className?: string;
+}) {
   const resolved = tone ?? TONE_BY_VALUE[value] ?? "neutral";
   return (
-    <Badge variant="outline" className={TONES[resolved]}>
-      {value.replaceAll("_", " ")}
-    </Badge>
+    <span
+      data-status={value}
+      className={cn(
+        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta font-medium whitespace-nowrap",
+        TONES[resolved],
+        className,
+      )}
+    >
+      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOTS[resolved])} />
+      <span className="truncate">{label ?? humanise(value)}</span>
+    </span>
   );
 }

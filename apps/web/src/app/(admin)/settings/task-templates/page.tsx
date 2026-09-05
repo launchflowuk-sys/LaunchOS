@@ -122,7 +122,7 @@ export default async function TaskTemplatesPage() {
                         showPhase={false}
                       />
                       <div className="flex justify-end">
-                        <Button type="submit" variant="outline">
+                        <Button type="submit" variant="secondary">
                           Save
                         </Button>
                       </div>

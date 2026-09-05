@@ -58,7 +58,7 @@ export function AttachSiteForm({
           ))}
         </select>
       </div>
-      <Button type="submit" variant="outline" disabled={isPending}>
+      <Button type="submit" variant="secondary" disabled={isPending}>
         Save
       </Button>
     </form>

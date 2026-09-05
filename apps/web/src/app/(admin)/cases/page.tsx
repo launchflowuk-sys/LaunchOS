@@ -138,7 +138,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
             ))}
           </select>
         </label>
-        <Button type="submit" variant="outline">
+        <Button type="submit" variant="secondary">
           Apply
         </Button>
       </form>

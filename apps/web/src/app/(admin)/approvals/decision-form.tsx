@@ -13,7 +13,7 @@ type ActionResult = { status: "ok" } | { status: "error"; message: string };
 function SubmitButton({ label, pendingLabel, destructive }: { label: string; pendingLabel: string; destructive?: boolean }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={destructive ? "destructive" : "default"} disabled={pending}>
+    <Button type="submit" variant={destructive ? "destructive" : "primary"} disabled={pending}>
       {pending ? pendingLabel : label}
     </Button>
   );

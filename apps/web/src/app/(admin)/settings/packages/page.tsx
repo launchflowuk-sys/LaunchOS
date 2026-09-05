@@ -95,7 +95,7 @@ export default async function PackagesPage() {
                     />
                     Active
                   </label>
-                  <Button type="submit" variant="outline">
+                  <Button type="submit" variant="secondary">
                     Save
                   </Button>
                 </div>

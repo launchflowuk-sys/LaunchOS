@@ -46,7 +46,7 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
         title={article.title}
         description={`${article.slug} · updated ${formatDateTime(article.updatedAt)}`}
         actions={
-          <Button asChild variant="outline">
+          <Button asChild variant="secondary">
             <Link href="/knowledge">Back to list</Link>
           </Button>
         }

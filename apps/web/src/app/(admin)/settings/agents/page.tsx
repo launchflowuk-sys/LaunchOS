@@ -60,7 +60,7 @@ export default async function AgentSettingsPage() {
                 <form action={setAgentEnabled}>
                   <input type="hidden" name="agentKey" value={agent.key} />
                   <input type="hidden" name="enabled" value={enabled ? "false" : "true"} />
-                  <Button type="submit" variant={enabled ? "outline" : "default"}>
+                  <Button type="submit" variant={enabled ? "secondary" : "primary"}>
                     {enabled ? "Disable" : "Enable"}
                   </Button>
                 </form>

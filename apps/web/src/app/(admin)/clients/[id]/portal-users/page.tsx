@@ -78,7 +78,7 @@ export default async function ClientPortalUsersPage({ params }: PageProps<"/clie
                       <input type="hidden" name="clientId" value={client.id} />
                       <input type="hidden" name="clientUserId" value={user.id} />
                       <input type="hidden" name="status" value={user.status === "active" ? "suspended" : "active"} />
-                      <Button type="submit" size="sm" variant={user.status === "active" ? "destructive" : "outline"}>
+                      <Button type="submit" size="sm" variant={user.status === "active" ? "destructive" : "secondary"}>
                         {user.status === "active" ? "Suspend" : "Reactivate"}
                       </Button>
                     </ActionForm>

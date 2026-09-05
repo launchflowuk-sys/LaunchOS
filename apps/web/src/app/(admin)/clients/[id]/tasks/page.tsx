@@ -98,7 +98,7 @@ export default async function ClientTasksPage({ params }: PageProps<"/clients/[i
             success="Onboarding tasks generated"
           >
             <input type="hidden" name="clientId" value={client.id} />
-            <Button type="submit" variant="outline">
+            <Button type="submit" variant="secondary">
               Generate onboarding tasks
             </Button>
           </ActionForm>

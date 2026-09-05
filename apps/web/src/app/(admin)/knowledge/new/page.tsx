@@ -24,7 +24,7 @@ export default async function NewArticlePage({ searchParams }: PageProps<"/knowl
       <form action={createArticleAction} className="rounded-lg border border-neutral-200 bg-white p-4">
         <ArticleFields defaults={EMPTY_ARTICLE} />
         <div className="mt-4 flex justify-end gap-2">
-          <Button asChild variant="outline">
+          <Button asChild variant="secondary">
             <Link href="/knowledge">Cancel</Link>
           </Button>
           <Button type="submit">Create article</Button>

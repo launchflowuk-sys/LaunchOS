@@ -71,7 +71,7 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
                 >
                   <input type="hidden" name="clientId" value={clientId} />
                   <input type="hidden" name="subscriptionId" value={subscription.id} />
-                  <Button type="submit" variant="outline">
+                  <Button type="submit" variant="secondary">
                     Cancel subscription
                   </Button>
                 </ActionForm>

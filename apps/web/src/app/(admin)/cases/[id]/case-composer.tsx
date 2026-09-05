@@ -96,7 +96,7 @@ export function CaseComposer({
           <Button
             type="button"
             size="sm"
-            variant={mode === "reply" ? "default" : "outline"}
+            variant={mode === "reply" ? "primary" : "secondary"}
             aria-pressed={mode === "reply"}
             onClick={() => setChosen("reply")}
           >
@@ -106,7 +106,7 @@ export function CaseComposer({
         <Button
           type="button"
           size="sm"
-          variant={mode === "note" ? "default" : "outline"}
+          variant={mode === "note" ? "primary" : "secondary"}
           aria-pressed={mode === "note"}
           onClick={() => setChosen("note")}
         >
