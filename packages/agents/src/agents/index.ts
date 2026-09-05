@@ -5,6 +5,7 @@ export { cmsProviderFor, scopedCmsProvider } from "./integrations.js";
 export type { AgentIntegrations, CmsProviderFactory, CmsProviderScope } from "./integrations.js";
 import type { AgentDefinition } from "../kernel/types.js";
 import { adPerformanceSentinel } from "./ad-performance-sentinel/index.js";
+import { contentWriter } from "./content-writer/index.js";
 import { hostingGuardDog } from "./hosting-guard-dog/index.js";
 import { supportTriage } from "./support-triage/index.js";
 
@@ -34,6 +35,7 @@ export function agentRegistry(deps: AgentRegistryDeps): Record<string, AgentDefi
     hostingGuardDog(deps.integrations),
     supportTriage(deps.integrations),
     adPerformanceSentinel({ email: deps.email, portalBaseUrl: deps.portalBaseUrl }),
+    contentWriter(),
   ];
   return Object.fromEntries(defs.map((d) => [d.key, d]));
 }

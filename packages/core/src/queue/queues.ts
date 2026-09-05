@@ -92,6 +92,7 @@
  * | `outbound.message` | `outbound:<messageId>` | `dispatch-event.ts`, `apps/web/src/lib/queue.ts`, `apps/worker/src/jobs/outbound-sweep.ts` |
  * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
  * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
+ * | `content.draft` | `content-draft:<clientId>:<periodKey>` + `singletonSeconds` (an Opus-priced writer run, like the Sentinel); a manual "Draft with AI" appends `:manual:<epochMs>` | `apps/worker/src/jobs/content-plan-month.ts`, C4's client content tab |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
  */
 
@@ -116,6 +117,10 @@ export const QUEUE = {
   approvalsResumeSweep: "approvals.resume-sweep",
   agentRunsStuckSweep: "agent-runs.stuck-sweep",
   outboundSweep: "outbound.sweep",
+  contentPlanMonth: "content.plan-month",
+  contentDraft: "content.draft",
+  contentPublishDue: "content.publish-due",
+  contentReport: "content.report",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -150,6 +155,12 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // `outbound.message` jobs it sends carry `outbound:<messageId>` onto the
   // `short` queue above.
   "outbound.sweep": "standard",
+  // The content engine. Three cron queues (payload `{}`), and `content.draft`,
+  // whose every send carries `content-draft:<clientId>:<periodKey>`.
+  "content.plan-month": "standard",
+  "content.draft": "short",
+  "content.publish-due": "standard",
+  "content.report": "standard",
 };
 
 /**

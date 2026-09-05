@@ -16,6 +16,14 @@ export {
   AD_SENTINEL_PROMPT,
   SEVERITY_HIGH_ROAS_DROP_PERCENT,
 } from "./agents/ad-performance-sentinel/index.js";
+export {
+  contentWriter,
+  CONTENT_WRITER_KEY,
+  CONTENT_WRITER_PROMPT,
+  BLOG_MIN_WORDS,
+  BLOG_MAX_WORDS,
+  MAX_KNOWLEDGE_SEARCHES,
+} from "./agents/content-writer/index.js";
 export { uptimeCheckSite } from "./tools/uptime-check-site.js";
 export { hostingGetResources } from "./tools/hosting-get-resources.js";
 export { incidentsUpdate } from "./tools/incidents-update.js";
@@ -33,3 +41,8 @@ export { adsListAccounts } from "./tools/ads-list-accounts.js";
 export { adsGetSignals } from "./tools/ads-get-signals.js";
 export { adsSaveDraftReport } from "./tools/ads-save-draft-report.js";
 export { reportsSendToClient } from "./tools/reports-send-to-client.js";
+export { contentGetBrief } from "./tools/content-get-brief.js";
+export { contentListSlots } from "./tools/content-list-slots.js";
+export { contentSaveDraft } from "./tools/content-save-draft.js";
+export { contentRequestApproval } from "./tools/content-request-approval.js";
+export { GBP_MAX_BODY_CHARS, SOCIAL_TARGET_MAX_CHARS } from "./tools/content-shared.js";

@@ -21,6 +21,8 @@ import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overd
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
 import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
+import { ensureContentWriterEnabled } from "./jobs/content-enablement.js";
+import { registerContentJobs } from "./jobs/content-jobs.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -148,6 +150,20 @@ async function main() {
 
   await boss.work(QUEUE.adsSentinel, async () => {
     await dispatchSentinelRuns({ db, boss }, new Date());
+  });
+
+  // The content engine: plan the month, draft it, publish what is approved
+  // when it is due, report on it. Its workers and crons register together in
+  // ./jobs/content-jobs.ts so a test can assert the schedule; the writer is
+  // switched on by default for every organisation that has never decided
+  // about it (an existing row, on or off, is left alone).
+  await ensureContentWriterEnabled(db);
+  await registerContentJobs({
+    db,
+    boss,
+    agentRun: { db, registry, llm, policy: env.AGENT_POLICY, logger: console },
+    social: integrations.social,
+    cms: scopedCmsProvider(process.env),
   });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
