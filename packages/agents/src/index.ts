@@ -24,6 +24,7 @@ export {
   BLOG_MAX_WORDS,
   MAX_KNOWLEDGE_SEARCHES,
 } from "./agents/content-writer/index.js";
+export { opsBrief, OPS_BRIEF_KEY, OPS_BRIEF_PROMPT, OPS_BRIEF_CRON, OPS_BRIEF_MAX_WORDS } from "./agents/ops-brief/index.js";
 export { uptimeCheckSite } from "./tools/uptime-check-site.js";
 export { hostingGetResources } from "./tools/hosting-get-resources.js";
 export { incidentsUpdate } from "./tools/incidents-update.js";
@@ -46,3 +47,7 @@ export { contentListSlots } from "./tools/content-list-slots.js";
 export { contentSaveDraft } from "./tools/content-save-draft.js";
 export { contentRequestApproval } from "./tools/content-request-approval.js";
 export { GBP_MAX_BODY_CHARS, SOCIAL_TARGET_MAX_CHARS } from "./tools/content-shared.js";
+export { opsMetricsSnapshotTool } from "./tools/ops-metrics-snapshot.js";
+export { opsRecentActivity } from "./tools/ops-recent-activity.js";
+export { opsSaveBrief } from "./tools/ops-save-brief.js";
+export { OPS_BRIEF_HARD_MAX_WORDS, wordCount } from "./tools/ops-shared.js";

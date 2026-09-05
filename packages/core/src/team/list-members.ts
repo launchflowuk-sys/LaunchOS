@@ -1,6 +1,8 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
+import type { MemberPermissions } from "@launchos/db/schema";
 import { and, asc, eq } from "drizzle-orm";
+import { resolvePermissions } from "./permissions.js";
 
 export type MemberRow = {
   id: string;
@@ -14,10 +16,12 @@ export type MemberRow = {
   status: "active" | "invited" | "suspended";
   initialPasswordSetAt: Date | null;
   createdAt: Date;
+  /** What the member may do, resolved: an owner always has all five. */
+  permissions: MemberPermissions;
 };
 
 export async function listMembers(db: Db, organisationId: string): Promise<MemberRow[]> {
-  return db
+  const rows = await db
     .select({
       id: schema.organisationMembers.id,
       userId: schema.organisationMembers.userId,
@@ -30,11 +34,13 @@ export async function listMembers(db: Db, organisationId: string): Promise<Membe
       status: schema.organisationMembers.status,
       initialPasswordSetAt: schema.organisationMembers.initialPasswordSetAt,
       createdAt: schema.organisationMembers.createdAt,
+      stored: schema.organisationMembers.permissions,
     })
     .from(schema.organisationMembers)
     .innerJoin(schema.user, eq(schema.organisationMembers.userId, schema.user.id))
     .where(eq(schema.organisationMembers.organisationId, organisationId))
     .orderBy(asc(schema.organisationMembers.createdAt));
+  return rows.map(({ stored, ...row }) => ({ ...row, permissions: resolvePermissions(row.role, stored) }));
 }
 
 /** Active owners, used to stop the last one being locked out. */

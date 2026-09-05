@@ -93,6 +93,7 @@
  * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
  * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
  * | `content.draft` | `content-draft:<clientId>:<periodKey>` + `singletonSeconds` (an Opus-priced writer run, like the Sentinel); a manual "Draft with AI" appends `:manual:<epochMs>` | `apps/worker/src/jobs/content-plan-month.ts`, C4's client content tab |
+ * | `ops.brief` | none from the cron (payload `{}`); a manual "Write today's brief" sends `{ organisationId }` with `ops-brief:<org>:manual:<epochMs>` | `apps/worker/src/jobs/ops-brief.ts`, the web `/briefs` page |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
  */
 
@@ -121,6 +122,7 @@ export const QUEUE = {
   contentDraft: "content.draft",
   contentPublishDue: "content.publish-due",
   contentReport: "content.report",
+  opsBrief: "ops.brief",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -161,6 +163,10 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "content.draft": "short",
   "content.publish-due": "standard",
   "content.report": "standard",
+  // The daily Ops Brief. The cron sends `{}` with no key, so `standard`; the
+  // day's brief is one row per organisation per date regardless of how many
+  // times the job runs (`createOpsBrief` replaces in place).
+  "ops.brief": "standard",
 };
 
 /**

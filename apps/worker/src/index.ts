@@ -23,6 +23,7 @@ import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
 import { ensureContentWriterEnabled } from "./jobs/content-enablement.js";
 import { registerContentJobs } from "./jobs/content-jobs.js";
+import { ensureOpsBriefEnabled, registerOpsBriefJob } from "./jobs/ops-brief.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -164,6 +165,19 @@ async function main() {
     agentRun: { db, registry, llm, policy: env.AGENT_POLICY, logger: console },
     social: integrations.social,
     cms: scopedCmsProvider(process.env),
+  });
+
+  // The morning Ops Brief: one agent run per organisation at 07:00 London,
+  // then the owner's bell and, with OWNER_NOTIFY_EMAIL set, the branded email.
+  // On by default like the writer; a person's decision in Settings → Agents
+  // is never overwritten.
+  await ensureOpsBriefEnabled(db);
+  await registerOpsBriefJob({
+    db,
+    boss,
+    agentRun: { db, registry, llm, policy: env.AGENT_POLICY, logger: console },
+    email: emailAdapter,
+    env: process.env,
   });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });

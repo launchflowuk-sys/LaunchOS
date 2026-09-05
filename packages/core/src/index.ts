@@ -95,6 +95,32 @@ export { deactivateMember, DeactivateMemberInput } from "./team/deactivate-membe
 export { reissueOneTimePassword, ReissueOneTimePasswordInput } from "./team/reissue-password.js";
 export { recordOwnPasswordChange, RecordOwnPasswordChangeInput } from "./team/record-own-password-change.js";
 export type { RecordOwnPasswordChangeResult } from "./team/record-own-password-change.js";
+export {
+  PERMISSION_KEYS, PERMISSION_LABELS, defaultPermissions, resolvePermissions,
+  getMemberPermissions, setMemberPermissions, hasPermission, assertPermission, PermissionDenied,
+  GetMemberPermissionsInput, SetMemberPermissionsInput,
+} from "./team/permissions.js";
+export type { MemberPermissions, PermissionKey, MemberPermissionsRow } from "./team/permissions.js";
+export {
+  clockIn, clockOut, startTimer, stopTimer, getRunningEntry,
+  ClockInInput, ClockOutInput, StartTimerInput, GetRunningEntryInput,
+} from "./team/time-entries.js";
+export type { TimeEntry } from "./team/time-entries.js";
+export { listTimesheet, teamTimesheets, ListTimesheetInput, TeamTimesheetsInput } from "./team/timesheets.js";
+export type { Timesheet, TimesheetDay, TimesheetEntry, TeamTimesheets, MemberTimesheet } from "./team/timesheets.js";
+export { weekBounds, mondayOf, addCalendarDays, londonDayStart, londonDayOf, entryMinutes, formatMinutes } from "./team/week.js";
+export type { WeekBounds, IsoDate } from "./team/week.js";
+export { teamHealth, TeamHealthInput, OPEN_TICKET_STATUSES } from "./team/team-health.js";
+export type { TeamHealth, MemberHealth } from "./team/team-health.js";
+export {
+  createOpsBrief, latestOpsBrief, getOpsBrief, listOpsBriefs,
+  CreateOpsBriefInput, GetOpsBriefInput, ListOpsBriefsInput, OpsBriefHighlightSchema,
+} from "./team/ops-briefs.js";
+export type { OpsBrief, OpsBriefHighlight } from "./team/ops-briefs.js";
+export { opsMetricsSnapshot, OpsMetricsInput } from "./team/ops-metrics.js";
+export type { OpsMetricsSnapshot, MoneyCount } from "./team/ops-metrics.js";
+export { recentOpsActivity, RecentOpsActivityInput } from "./team/ops-activity.js";
+export type { RecentOpsActivity, OpsTimelineItem } from "./team/ops-activity.js";
 export { search, SearchInput } from "./search/search.js";
 export type { SearchResults } from "./search/search.js";
 export { createPackage, CreatePackageInput, PackageIncludesInput } from "./packages/create-package.js";
