@@ -16,6 +16,7 @@ import { getDb } from "@/lib/db";
 import { formatDateTime, formatJson, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { approveApproval, rejectApproval } from "./actions";
+import { ContentPublishRequest } from "./content-publish-card";
 import { DecisionForm } from "./decision-form";
 
 export const dynamic = "force-dynamic";
@@ -123,6 +124,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
   const payload = ApprovalPayload.safeParse(approval.payload);
   const description = payload.success ? payload.data.description : undefined;
   const isSubscriptionChange = approval.kind === "subscription_change";
+  const isContentPublish = approval.kind === "content_publish";
 
   return (
     // The id is on the card so a test can address exactly one approval: two
@@ -139,6 +141,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
 
       <div className="space-y-4 p-4">
         {isSubscriptionChange ? <SubscriptionChangeRequest approval={approval} /> : null}
+        {isContentPublish ? <ContentPublishRequest approval={approval} /> : null}
 
         {description ? (
           <InlineAlert tone="warning" title="What approving does">
@@ -151,6 +154,8 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         <p className="text-meta text-muted-foreground">
           {isSubscriptionChange ? (
             "Raised by the client from their portal."
+          ) : isContentPublish && !approval.runId ? (
+            "Sent for approval from the Content screen."
           ) : approval.runId ? (
             <>
               Agent <span className="font-medium text-foreground">{agentKey ?? "unknown"}</span> (

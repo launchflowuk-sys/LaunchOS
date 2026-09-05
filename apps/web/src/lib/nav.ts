@@ -13,6 +13,7 @@ import {
   Mail,
   Megaphone,
   Network,
+  Newspaper,
   Package,
   Receipt,
   Settings,
@@ -58,6 +59,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
+      { label: "Content", href: "/content", icon: Newspaper },
     ],
   },
   {

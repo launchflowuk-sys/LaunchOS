@@ -11,6 +11,7 @@ const NAV: readonly PortalTab[] = [
   { label: "Support", href: "/portal/support" },
   { label: "Invoices", href: "/portal/invoices" },
   { label: "Plan", href: "/portal/plan" },
+  { label: "Content", href: "/portal/content" },
   { label: "Reports", href: "/portal/reports" },
   { label: "Account", href: "/portal/account" },
 ];
