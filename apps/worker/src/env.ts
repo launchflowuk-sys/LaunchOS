@@ -82,6 +82,9 @@ const EnvShape = z.object({
   GOOGLE_ADS_API_VERSION: z.string().optional(),
   META_ADS_ACCESS_TOKEN: z.string().optional(),
   META_ADS_APP_SECRET: z.string().optional(),
+  GBP_CLIENT_ID: z.string().optional(),
+  GBP_CLIENT_SECRET: z.string().optional(),
+  GBP_REFRESH_TOKEN: z.string().optional(),
   META_ADS_API_VERSION: z.string().optional(),
   META_ADS_CONVERSION_ACTIONS: z.string().optional(),
   /**
