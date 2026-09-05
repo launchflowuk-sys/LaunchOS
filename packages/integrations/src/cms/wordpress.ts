@@ -1,4 +1,7 @@
-import type { CmsConnectionTest, CmsContentChange, CmsContentResult, CmsProvider } from "./index.js";
+import type {
+  CmsConnectionTest, CmsContentChange, CmsContentResult, CmsCreatePostInput, CmsCreatePostResult, CmsProvider,
+} from "./index.js";
+import { createWordPressPost, type WordPressRequestInit } from "./create-post.js";
 import { markdownToSafeHtml } from "./markdown.js";
 
 /**
@@ -114,6 +117,19 @@ export class WordPressCmsProvider implements CmsProvider {
     return { revisionId: await this.latestRevisionId(session, target, updated), applied: true };
   }
 
+  /** A new post. The work is in `create-post.ts`; this binds it to the site's session. */
+  async createPost(input: CmsCreatePostInput): Promise<CmsCreatePostResult> {
+    const session = await this.open(input.siteId);
+    return createWordPressPost(
+      {
+        request: <T>(path: string, init?: WordPressRequestInit) => this.request<T>(session, path, init),
+        fetchImpl: this.fetchImpl,
+        timeoutMs: this.timeoutMs,
+      },
+      input,
+    );
+  }
+
   /**
    * `GET /wp-json/wp/v2/users/me` — the cheapest call that proves the base URL,
    * the username and the application password all line up.
@@ -204,7 +220,8 @@ export class WordPressCmsProvider implements CmsProvider {
     return `${target.type}-${target.id}@${updated.modified_gmt ?? updated.modified ?? "unknown"}`;
   }
 
-  private async request<T>(session: Session, path: string, init: { method?: string; body?: string } = {}): Promise<T> {
+  /** A JSON body is sent as such; a binary one (a media upload) with whatever headers the caller set. */
+  private async request<T>(session: Session, path: string, init: WordPressRequestInit = {}): Promise<T> {
     const url = `${session.apiBase}/${path}`;
     const method = init.method ?? "GET";
     let response: Response;
@@ -214,7 +231,8 @@ export class WordPressCmsProvider implements CmsProvider {
         headers: {
           authorization: session.authorization,
           accept: "application/json",
-          ...(init.body === undefined ? {} : { "content-type": "application/json" }),
+          ...(typeof init.body === "string" ? { "content-type": "application/json" } : {}),
+          ...(init.headers ?? {}),
         },
         ...(init.body === undefined ? {} : { body: init.body }),
         signal: AbortSignal.timeout(this.timeoutMs),

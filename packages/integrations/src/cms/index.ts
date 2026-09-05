@@ -14,6 +14,33 @@ export interface CmsContentChange {
 }
 export interface CmsContentResult { revisionId: string; applied: boolean }
 
+export type CmsPostStatus = "publish" | "draft";
+
+/** A new blog post, written by the content engine and approved by a human. */
+export interface CmsCreatePostInput {
+  /** The LaunchOS site id; credentials are held per site. */
+  readonly siteId: string;
+  readonly title: string;
+  /** The same markdown subset `updateContent` takes — see `markdownToSafeHtml`. */
+  readonly contentMarkdown: string;
+  readonly status: CmsPostStatus;
+  readonly excerpt?: string | undefined;
+  /** Category *names*; resolved to ids, created when missing, skipped with a note when neither is allowed. */
+  readonly categories?: readonly string[] | undefined;
+  /** A publicly fetchable image, sideloaded into the media library. Best effort — see `note`. */
+  readonly featuredImageUrl?: string | undefined;
+}
+
+export interface CmsCreatePostResult {
+  /** The WordPress post id. */
+  readonly externalId: string;
+  /** The post's `link` — the public URL for a published post, a preview URL for a draft. */
+  readonly url: string;
+  readonly status: CmsPostStatus;
+  /** Anything that did not go to plan without stopping the post: a skipped image or category, in words. */
+  readonly note?: string | undefined;
+}
+
 /** What a "test this connection" button gets back. Never throws for a failure. */
 export interface CmsConnectionTest {
   ok: boolean;
@@ -27,6 +54,7 @@ export interface CmsConnectionTest {
 export interface CmsProvider {
   readonly name: "mock-cms" | "wordpress";
   updateContent(input: CmsContentChange): Promise<CmsContentResult>;
+  createPost(input: CmsCreatePostInput): Promise<CmsCreatePostResult>;
   testConnection(input: { siteId: string }): Promise<CmsConnectionTest>;
 }
 
@@ -38,9 +66,15 @@ export interface CmsProvider {
 export class MockCmsProvider implements CmsProvider {
   readonly name = "mock-cms" as const;
   readonly changes: CmsContentChange[] = [];
+  readonly posts: CmsCreatePostInput[] = [];
   async updateContent(input: CmsContentChange): Promise<CmsContentResult> {
     this.changes.push(input);
     return { revisionId: `mock-cms-${this.changes.length}`, applied: true };
+  }
+  async createPost(input: CmsCreatePostInput): Promise<CmsCreatePostResult> {
+    this.posts.push(input);
+    const n = this.posts.length;
+    return { externalId: `mock-post-${n}`, url: `https://mock-cms.local/?p=${n}`, status: input.status };
   }
   async testConnection(): Promise<CmsConnectionTest> {
     return {
@@ -99,3 +133,4 @@ export function createCmsProviderFromEnv(env: NodeJS.ProcessEnv, deps: CmsProvid
 
 export * from "./wordpress.js";
 export { markdownToSafeHtml } from "./markdown.js";
+export type { WordPressPostClient, WordPressRequestInit } from "./create-post.js";

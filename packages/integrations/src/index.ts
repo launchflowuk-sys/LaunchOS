@@ -5,6 +5,7 @@ import { createAdsAdapterFromEnv, type AdsAdapter } from "./ads/index.js";
 import type { DnsProvider } from "./cloudflare/index.js";
 import { createDnsProvidersFromEnv } from "./dns/index.js";
 import { createCmsProviderFromEnv, type CmsProvider, type CmsProviderDeps } from "./cms/index.js";
+import { createSocialPublisherFromEnv, type SocialPublisher } from "./social/index.js";
 
 export * from "./uptime/index.js";
 export * from "./coolify/index.js";
@@ -13,6 +14,7 @@ export * from "./ads/index.js";
 export * from "./cloudflare/index.js";
 export * from "./dns/index.js";
 export * from "./cms/index.js";
+export * from "./social/index.js";
 export * from "./adapter-guard.js";
 
 export interface Integrations {
@@ -23,6 +25,8 @@ export interface Integrations {
   /** A per-domain registry (`dns.for?.(provider)`), not a single provider. */
   dns: DnsProvider;
   cms: CmsProvider;
+  /** Facebook Pages and Instagram, on the same Meta system-user token as `ads`. */
+  social: SocialPublisher;
 }
 
 /**
@@ -66,5 +70,6 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     ads: createAdsAdapterFromEnv(env),
     dns: createDnsProvidersFromEnv(env),
     cms: createCmsProviderFromEnv(env, deps),
+    social: createSocialPublisherFromEnv(env),
   };
 }

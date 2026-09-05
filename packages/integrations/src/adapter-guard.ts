@@ -5,8 +5,8 @@
  * Selection itself is spread across the factories — `createEmailAdapter`
  * (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapterFromEnv`,
  * `createHostingProviderFromEnv`, `createDnsProvidersFromEnv`,
- * `createCmsProviderFromEnv` and the `UPTIME_PROBE` branch in
- * `createIntegrations`. This module is the one place that *names* the outcome
+ * `createCmsProviderFromEnv`, `createSocialPublisherFromEnv` and the
+ * `UPTIME_PROBE` branch in `createIntegrations`. This module is the one place that *names* the outcome
  * of all of them, for two jobs no factory can do on its own: printing the
  * resolved set in the startup log, and refusing to boot a production process on
  * a mock it was not meant to run on.
@@ -24,6 +24,7 @@
  * live next door.
  */
 import { ADS_ENV_KEYS } from "./ads/index.js";
+import { META_SOCIAL_ENV_KEYS } from "./social/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -95,7 +96,7 @@ export const UNBUILDABLE = "unbuildable";
  *   variable since it shipped, and every production deployment has carried
  *   that variable, so an unset one is a variable lost in a redeploy.
  * - `log`: the mock is tolerated and **warned about** at startup, through
- *   `productionMockWarnings`. Hosting, DNS, CMS and ads: their real adapters
+ *   `productionMockWarnings`. Hosting, DNS, CMS, ads and social: their real adapters
  *   landed after production was already running with none of their keys set,
  *   and a deployment whose domains are all `registrar` / `other`, or which has
  *   no ad accounts yet, is sound without them. Refusing would have refused the
@@ -206,6 +207,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "approved content changes are recorded and audited but no page is touched, and no site credential can be stored",
+    },
+    {
+      name: "social",
+      variable: META_SOCIAL_ENV_KEYS.join(","),
+      ...resolveSocial(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "approved Facebook and Instagram posts are marked published with a fake permalink and nothing reaches the page",
     },
   ];
 }
@@ -412,6 +421,24 @@ function resolveDns(env: AdapterEnv): SelectionOutcome {
 function resolveCms(env: AdapterEnv): SelectionOutcome {
   const resolved = trimmedOrUnset(env.SECRETS_ENCRYPTION_KEY) !== undefined ? "wordpress" : "mock";
   return { requested: resolved, ...builds(resolved) };
+}
+
+/**
+ * `social/index.ts` `createSocialPublisherFromEnv`: the Meta publisher when
+ * both `META_ADS_*` keys are non-blank, the mock otherwise — the same pair and
+ * the same trim rule as the Meta half of `resolveAds`, because it is the same
+ * system-user token doing a second job. One key alone is a downgrade the guard
+ * refuses, exactly as `resolveAds` already does for that pair, so a token lost
+ * in a redeploy cannot leave the content engine quietly "publishing" to a mock.
+ * The constructor validates nothing beyond presence, so there is no
+ * `UNBUILDABLE` branch.
+ */
+function resolveSocial(env: AdapterEnv): SelectionOutcome {
+  const set = META_SOCIAL_ENV_KEYS.filter((key) => trimmedOrUnset(env[key]) !== undefined);
+  if (set.length === 0) return { requested: "mock", ...builds("mock") };
+  if (set.length === META_SOCIAL_ENV_KEYS.length) return { requested: "meta", ...builds("meta") };
+  const missing = META_SOCIAL_ENV_KEYS.filter((key) => !set.includes(key));
+  return { requested: "meta", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
 }
 
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */

@@ -12,6 +12,7 @@ import { createAdsAdapterFromEnv } from "./ads/index.js";
 import { createHostingProviderFromEnv } from "./coolify/index.js";
 import { createDnsProvidersFromEnv } from "./dns/index.js";
 import { createCmsProviderFromEnv } from "./cms/index.js";
+import { createSocialPublisherFromEnv } from "./social/index.js";
 import { createIntegrations } from "./index.js";
 import { HttpUptimeProbe } from "./uptime/index.js";
 
@@ -67,13 +68,14 @@ const fullyLive = { ...live, ...GOOGLE, ...META, ...COOLIFY, ...DNS, ...CMS };
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
     expect(describeAdapters(live)).toEqual({
-      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock",
+      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock",
     });
     expect(describeAdapters(fullyLive)).toEqual({
-      email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare", cms: "wordpress",
+      email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
+      cms: "wordpress", social: "meta",
     });
     expect(describeAdapters({})).toEqual({
-      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock",
+      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock",
     });
   });
 
@@ -122,7 +124,10 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
+      "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET",
     ]);
+    expect(warnings[4]!.message).toMatch(/social adapter is the MOCK/);
+    expect(warnings[4]!.message).toMatch(/nothing reaches the page/);
     expect(warnings[1]!.message).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
     expect(warnings[1]!.message).toMatch(/Guard-Dog diagnoses from fiction/);
     // Nothing to warn about once everything is real.
@@ -196,6 +201,29 @@ describe("cms (WordPress)", () => {
     expect(describeAdapters({ ...live, SECRETS_ENCRYPTION_KEY: "not-a-real-key" }).cms).toBe("wordpress");
     expect(describeAdapters({ ...live, SECRETS_ENCRYPTION_KEY: "  " }).cms).toBe("mock");
     expect(productionAdapterIssues({ ...live, ...CMS })).toEqual([]);
+  });
+});
+
+describe("social (Meta Pages + Instagram, by credential)", () => {
+  it("is real when both Meta keys are set, and shares them with the ads adapter", () => {
+    expect(describeAdapters({ ...live, ...META }).social).toBe("meta");
+    expect(describeAdapters({ ...live, ...GOOGLE }).social).toBe("mock");
+    expect(productionAdapterIssues({ ...live, ...META })).toEqual([]);
+    expect(productionMockWarnings({ ...live, ...META }).map((w) => w.variable)).not.toContain(
+      "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET",
+    );
+  });
+
+  it("refuses one key without the other as a silent downgrade, naming the missing one", () => {
+    const issues = productionAdapterIssues({ ...live, META_ADS_APP_SECRET: "app" });
+    expect(issues.map((i) => i.variable)).toContain("META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET");
+    expect(issues.find((i) => i.variable.startsWith("META_ADS"))!.message)
+      .toMatch(/falls back to the mock social adapter.*Missing: META_ADS_ACCESS_TOKEN/);
+    expect(productionAdapterIssues({ ...live, META_ADS_APP_SECRET: "app", ALLOW_MOCK_ADAPTERS: "1" })).toEqual([]);
+  });
+
+  it("reads a blank key as unset, exactly as the factory does", () => {
+    expect(describeAdapters({ ...live, ...META, META_ADS_APP_SECRET: "  " }).social).toBe("mock");
   });
 });
 
@@ -302,6 +330,7 @@ function built(make: (env: NodeJS.ProcessEnv) => { readonly name: string }, env:
 const GUARD_NAME: Record<string, string> = {
   "mock-coolify": "mock",
   "mock-cms": "mock",
+  "mock-social": "mock",
   "multi": "google+meta",
 };
 const named = (name: string): string => GUARD_NAME[name] ?? name;
@@ -433,6 +462,19 @@ describe("every guard rule against the factory it mirrors", () => {
     expect(guard(env, "cms")).toBe(named(built(createCmsProviderFromEnv, env)));
   });
 
+  it.each([
+    {},
+    { ...META },
+    { META_ADS_ACCESS_TOKEN: "EAAG" },
+    { META_ADS_APP_SECRET: "app" },
+    { META_ADS_ACCESS_TOKEN: "", META_ADS_APP_SECRET: "app" },
+    { META_ADS_ACCESS_TOKEN: " EAAG ", META_ADS_APP_SECRET: " " },
+    { ...META, META_ADS_API_VERSION: "v99.0" },
+    { ...GOOGLE },
+  ])("social: %o", (env) => {
+    expect(guard(env, "social")).toBe(named(built(createSocialPublisherFromEnv, env)));
+  });
+
   it("createIntegrations builds what the guard names, mocks and real alike", () => {
     const mocks = createIntegrations({} as NodeJS.ProcessEnv);
     expect(mocks.hosting.name).toBe("mock-coolify");
@@ -440,6 +482,7 @@ describe("every guard rule against the factory it mirrors", () => {
     expect(mocks.dns.for?.("cloudflare")?.name).toBe("mock-cloudflare");
     expect(mocks.cms.name).toBe("mock-cms");
     expect(mocks.ads.name).toBe("mock");
+    expect(mocks.social.name).toBe("mock-social");
 
     const real = createIntegrations(fullyLive as NodeJS.ProcessEnv);
     expect(real.hosting.name).toBe("coolify");
@@ -447,6 +490,7 @@ describe("every guard rule against the factory it mirrors", () => {
     expect(real.dns.for?.("cloudflare")?.name).toBe("cloudflare");
     expect(real.cms.name).toBe("wordpress");
     expect(real.ads.name).toBe("multi");
+    expect(real.social.name).toBe("meta");
   });
 
   it("a real CMS provider built without a credential resolver refuses rather than pretending", async () => {
