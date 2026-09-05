@@ -1,4 +1,4 @@
-import { listActivity, listTasks } from "@launchos/core";
+import { latestOpsBrief, listActivity, listTasks } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
 import {
@@ -23,6 +23,7 @@ import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
 import { requireAdmin } from "@/lib/session";
+import { BriefCard } from "./briefs/brief-card";
 
 export const dynamic = "force-dynamic";
 
@@ -115,6 +116,7 @@ export default async function DashboardPage() {
     approvalQueue,
     overdueQueue,
     activity,
+    brief,
   ] = await Promise.all([
     db
       .select({ value: count() })
@@ -185,6 +187,7 @@ export default async function DashboardPage() {
       limit: NEEDS_YOU_LIMIT,
     }),
     listActivity(db, org, { limit: ACTIVITY_LIMIT }),
+    latestOpsBrief(db, org),
   ]);
 
   // Attention-first: the three counts that mean a person has to do something
@@ -261,6 +264,10 @@ export default async function DashboardPage() {
           <StatCard key={card.label} {...card} />
         ))}
       </div>
+
+      <Section title="This morning's brief" description="What the Ops Brief agent saw at 07:00, and what it says needs you.">
+        <BriefCard brief={brief} />
+      </Section>
 
       <Section
         title="Waiting on a decision"

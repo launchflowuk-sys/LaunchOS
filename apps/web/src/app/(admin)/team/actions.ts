@@ -1,11 +1,17 @@
 "use server";
 
-import { createMember, deactivateMember, reissueOneTimePassword } from "@launchos/core";
+import {
+  createMember, deactivateMember, PERMISSION_KEYS, reissueOneTimePassword, setMemberPermissions,
+} from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { requirePermission } from "@/lib/permissions";
 import { installWebEnqueue } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
+
+/** The shape `ActionForm` expects; each admin module declares its own. */
+export type ActionResult = { status: "ok" } | { status: "error"; message: string };
 
 export type AddMemberState =
   | { status: "idle" }
@@ -121,4 +127,38 @@ export async function deactivateMemberAction(formData: FormData): Promise<void> 
     console.error("deactivateMemberAction failed", error);
   }
   revalidatePath("/team");
+}
+
+const PermissionsInput = z.object({ memberId: z.string().uuid() });
+
+/**
+ * Saves the five boxes for one member. Only somebody with `settings` may
+ * change who can do what (the owner always has it); core refuses to narrow an
+ * owner, and that refusal is the message shown.
+ *
+ * Every key is read: a box that did not post is `false`, so the stored set is
+ * exactly what the form showed on submit, never a partial overlay.
+ */
+export async function setMemberPermissionsAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+
+  const parsed = PermissionsInput.safeParse({ memberId: formData.get("memberId") });
+  if (!parsed.success) return { status: "error", message: "That member could not be identified" };
+
+  const permissions = Object.fromEntries(PERMISSION_KEYS.map((key) => [key, formData.get(key) === "on"]));
+  try {
+    await setMemberPermissions(getDb(), session.organisationId, {
+      memberId: parsed.data.memberId,
+      permissions,
+      actorId: session.userId,
+    });
+    revalidatePath("/team");
+    // The rail is built from these; the member sees the change on their next request.
+    revalidatePath("/", "layout");
+    return { status: "ok" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Could not save the permissions" };
+  }
 }

@@ -1,10 +1,13 @@
+import type { MemberPermissions, PermissionKey } from "@launchos/core";
 import {
   BookOpen,
   Bot,
   ChartColumn,
   ChartLine,
+  Clock,
   CreditCard,
   Globe,
+  HeartPulse,
   Inbox,
   LayoutDashboard,
   LayoutTemplate,
@@ -19,6 +22,7 @@ import {
   Settings,
   ShieldCheck,
   SquareCheckBig,
+  Sunrise,
   TriangleAlert,
   Users,
   UsersRound,
@@ -31,6 +35,12 @@ export type NavItem = {
   href: string;
   /** 16px on the rail, `stroke-width 1.75` — set once by the nav, not here. */
   icon: LucideIcon;
+  /**
+   * The permission that shows this entry. Absent means every member sees it.
+   * Hiding is a courtesy, not the guard: the server actions behind each area
+   * call `requirePermission` themselves (`src/lib/permissions.ts`).
+   */
+  permission?: PermissionKey;
 };
 export type NavGroup = { label: string; category: Category; items: readonly NavItem[] };
 
@@ -59,51 +69,69 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
-      { label: "Content", href: "/content", icon: Newspaper },
+      { label: "Content", href: "/content", icon: Newspaper, permission: "content" },
     ],
   },
   {
     label: "Support",
     category: "support",
     items: [
-      { label: "Inbox", href: "/inbox", icon: Inbox },
-      { label: "Open Cases", href: "/cases", icon: LifeBuoy },
-      { label: "Incidents", href: "/incidents", icon: TriangleAlert },
+      { label: "Inbox", href: "/inbox", icon: Inbox, permission: "support" },
+      { label: "Open Cases", href: "/cases", icon: LifeBuoy, permission: "support" },
+      { label: "Incidents", href: "/incidents", icon: TriangleAlert, permission: "support" },
     ],
   },
   {
     label: "Money",
     category: "money",
     items: [
-      { label: "Payments", href: "/payments", icon: CreditCard },
-      { label: "Invoices", href: "/invoices", icon: Receipt },
-      { label: "Ads", href: "/ads", icon: Megaphone },
-      { label: "Ad reports", href: "/ads/reports", icon: ChartColumn },
-      { label: "Reports", href: "/reports", icon: ChartLine },
+      { label: "Payments", href: "/payments", icon: CreditCard, permission: "billing" },
+      { label: "Invoices", href: "/invoices", icon: Receipt, permission: "billing" },
+      { label: "Ads", href: "/ads", icon: Megaphone, permission: "billing" },
+      { label: "Ad reports", href: "/ads/reports", icon: ChartColumn, permission: "billing" },
+      { label: "Reports", href: "/reports", icon: ChartLine, permission: "billing" },
     ],
   },
   {
     label: "Automation",
     category: "automation",
     items: [
-      { label: "Approvals", href: "/approvals", icon: ShieldCheck },
-      { label: "Agents", href: "/settings/agents", icon: Bot },
-      { label: "Email", href: "/settings/email", icon: Mail },
-      { label: "Knowledge Base", href: "/knowledge", icon: BookOpen },
+      { label: "Approvals", href: "/approvals", icon: ShieldCheck, permission: "approvals" },
+      { label: "Briefs", href: "/briefs", icon: Sunrise },
+      { label: "Agents", href: "/settings/agents", icon: Bot, permission: "settings" },
+      { label: "Email", href: "/settings/email", icon: Mail, permission: "settings" },
+      { label: "Knowledge Base", href: "/knowledge", icon: BookOpen, permission: "settings" },
     ],
   },
   {
     label: "Organisation",
     category: "organisation",
     items: [
-      { label: "Team", href: "/team", icon: UsersRound },
-      { label: "Settings", href: "/settings/organisation", icon: Settings },
-      { label: "Billing", href: "/settings/billing", icon: Wallet },
-      { label: "Packages", href: "/settings/packages", icon: Package },
-      { label: "Task templates", href: "/settings/task-templates", icon: LayoutTemplate },
+      { label: "Team", href: "/team", icon: UsersRound, permission: "settings" },
+      // Not "Team health": three specs look the rail up by `name: "Team"`, and
+      // a role name matches as a substring.
+      { label: "Health", href: "/team/health", icon: HeartPulse, permission: "settings" },
+      // Everyone: a member without `settings` still sees their own week.
+      { label: "Timesheets", href: "/team/timesheets", icon: Clock },
+      { label: "Settings", href: "/settings/organisation", icon: Settings, permission: "settings" },
+      { label: "Billing", href: "/settings/billing", icon: Wallet, permission: "settings" },
+      { label: "Packages", href: "/settings/packages", icon: Package, permission: "settings" },
+      { label: "Task templates", href: "/settings/task-templates", icon: LayoutTemplate, permission: "settings" },
     ],
   },
 ];
+
+/**
+ * The groups a member sees: every entry whose permission they hold, and no
+ * group left standing empty. The owner holds all five, so this is the full
+ * list for them.
+ */
+export function visibleNavGroups(permissions: MemberPermissions): readonly NavGroup[] {
+  return NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.permission || permissions[item.permission]),
+  })).filter((group) => group.items.length > 0);
+}
 
 /**
  * The one item that carries a live count on the rail. Approvals is where every

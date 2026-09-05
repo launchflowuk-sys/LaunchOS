@@ -5,7 +5,7 @@ import { schema } from "@launchos/db";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 
 /**
  * Local to this module rather than shared — every admin module in this app
@@ -54,7 +54,9 @@ function failed(error: unknown, fallback: string): ActionResult {
 
 /** Replaces the whole brief: what the content writer is told about this client. */
 export async function saveContentBriefAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = BriefSchema.safeParse({
     clientId: value(formData, "clientId"),
     tone: text(formData, "tone"),
@@ -82,7 +84,9 @@ export async function saveContentBriefAction(formData: FormData): Promise<Action
 
 /** Connects (or updates) one channel: the Page, the IG account, the blog site or the GBP location. */
 export async function saveContentChannelAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const displayName = text(formData, "displayName");
   const parsed = ChannelSchema.safeParse({
     clientId: value(formData, "clientId"),

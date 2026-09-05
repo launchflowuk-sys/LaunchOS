@@ -3,7 +3,7 @@
 import { createPackage, updatePackage } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import {
   type ActionResult, CreatePackageSchema, readIncludes, readPackageBase, UpdatePackageSchema,
 } from "./schemas";
@@ -14,7 +14,9 @@ function errorMessage(error: unknown): string {
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function createPackageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = CreatePackageSchema.safeParse({
     ...readPackageBase(formData),
     slug: formData.get("slug"),
@@ -43,7 +45,9 @@ export async function createPackageAction(formData: FormData): Promise<ActionRes
 }
 
 export async function updatePackageAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = UpdatePackageSchema.safeParse({
     ...readPackageBase(formData),
     packageId: formData.get("packageId"),

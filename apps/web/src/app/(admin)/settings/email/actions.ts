@@ -4,7 +4,7 @@ import { createEmailAdapter, renderBrandedEmail } from "@launchos/channels";
 import { brandEmailContext, recordAudit } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requireAdminWith } from "@/lib/permissions";
 
 /**
  * Owner notifications bypass the approval gate (spec §4, Outbound email), and
@@ -12,7 +12,7 @@ import { requireAdmin } from "@/lib/session";
  * the request.
  */
 export async function sendTestEmail() {
-  const session = await requireAdmin();
+  const session = await requireAdminWith("settings");
   const to = process.env.OWNER_NOTIFY_EMAIL;
   if (!to) throw new Error("OWNER_NOTIFY_EMAIL is not set");
 

@@ -7,7 +7,7 @@ import type { QueueName } from "@launchos/core/queue";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { londonInputToDate } from "./schedule-input";
 import {
   type ActionResult, CancelItemSchema, EditItemSchema, firstIssue, ItemIdSchema, MonthActionSchema,
@@ -48,7 +48,9 @@ function revalidateItem(itemId: string, clientId: string): void {
  * drafting hands those slots to the content writer in the worker.
  */
 export async function contentMonthAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   installWebEnqueue();
   const parsed = MonthActionSchema.safeParse({
     clientId: value(formData, "clientId"),
@@ -101,7 +103,9 @@ export async function contentMonthAction(formData: FormData): Promise<ActionResu
 
 /** Save the text, image, link and date. Blank clears; the date is read as London time. */
 export async function saveContentItemAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = EditItemSchema.safeParse({
     itemId: value(formData, "itemId"),
     title: value(formData, "title") ?? "",
@@ -136,7 +140,9 @@ export async function saveContentItemAction(formData: FormData): Promise<ActionR
 
 /** Parks the item in Approvals. Approving there is what publishes it. */
 export async function requestContentApprovalAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   installWebEnqueue();
   const parsed = ItemIdSchema.safeParse({ itemId: value(formData, "itemId") });
   if (!parsed.success) return { status: "error", message: "Invalid post" };
@@ -153,7 +159,9 @@ export async function requestContentApprovalAction(formData: FormData): Promise<
 }
 
 export async function cancelContentItemAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const reason = value(formData, "reason")?.trim();
   const parsed = CancelItemSchema.safeParse({
     itemId: value(formData, "itemId"),

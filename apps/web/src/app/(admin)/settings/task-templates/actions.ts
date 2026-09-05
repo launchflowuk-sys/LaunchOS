@@ -3,7 +3,7 @@
 import { createTaskTemplate, deleteTaskTemplate, updateTaskTemplate } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { type ActionResult, readTemplate, TemplateIdSchema, TemplateSchema } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -16,7 +16,9 @@ function revalidate() {
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function createTemplateAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = TemplateSchema.safeParse(readTemplate(formData));
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid template" };
   const v = parsed.data;
@@ -37,7 +39,9 @@ export async function createTemplateAction(formData: FormData): Promise<ActionRe
 }
 
 export async function updateTemplateAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const id = TemplateIdSchema.safeParse({ templateId: formData.get("templateId") });
   if (!id.success) return { status: "error", message: "That template could not be identified" };
   const parsed = TemplateSchema.safeParse(readTemplate(formData));
@@ -65,7 +69,9 @@ export async function updateTemplateAction(formData: FormData): Promise<ActionRe
  * generated from this blueprint survive it.
  */
 export async function deleteTemplateAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const id = TemplateIdSchema.safeParse({ templateId: formData.get("templateId") });
   if (!id.success) return { status: "error", message: "That template could not be identified" };
 

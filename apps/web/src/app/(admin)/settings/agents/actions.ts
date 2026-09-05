@@ -7,7 +7,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { agentCatalog } from "@/lib/agent-catalog";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requireAdminWith } from "@/lib/permissions";
 
 const ToggleInput = z.object({
   agentKey: z.string().min(1),
@@ -17,7 +17,7 @@ const ToggleInput = z.object({
 export async function setAgentEnabled(formData: FormData) {
   // Server Actions accept direct POSTs: authorise, then only accept agent keys
   // this build actually knows about.
-  const session = await requireAdmin();
+  const session = await requireAdminWith("settings");
   const { agentKey, enabled } = ToggleInput.parse({
     agentKey: formData.get("agentKey"),
     enabled: formData.get("enabled"),

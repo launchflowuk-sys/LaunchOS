@@ -4,7 +4,7 @@ import { publishClientReport } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 
 /**
  * Local to this module rather than shared — every admin module in this app
@@ -17,7 +17,9 @@ const ReportRef = z.object({ reportId: z.string().uuid() });
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function publishReportAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = ReportRef.safeParse({ reportId: formData.get("reportId") });
   if (!parsed.success) return { status: "error", message: "Invalid report" };
 

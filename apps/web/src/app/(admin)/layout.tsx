@@ -2,11 +2,14 @@ import { schema } from "@launchos/db";
 import { and, count, eq } from "drizzle-orm";
 import { AccountMenu } from "@/components/account-menu";
 import { AppNav, AppNavSheet } from "@/components/app-nav";
+import { ClockWidget } from "@/components/clock-widget";
 import { GlobalSearch } from "@/components/global-search";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { Toaster } from "@/components/ui/sonner";
 import { getDb } from "@/lib/db";
+import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
+import { runningEntryFor } from "./time/running";
 
 // The whole admin shell reads the session, so nothing here is prerenderable.
 export const dynamic = "force-dynamic";
@@ -17,10 +20,16 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
   // The one number the rail carries. Approvals is where every outward action
   // stops for a human, so the count travels with the shell rather than living
   // only on the screen the owner has to remember to open.
-  const [pending] = await getDb()
-    .select({ value: count() })
-    .from(schema.approvals)
-    .where(and(eq(schema.approvals.organisationId, session.organisationId), eq(schema.approvals.status, "pending")));
+  // Alongside it: what this member may see (which decides the rail) and
+  // whether they are clocked in (the top bar's clock), one indexed query each.
+  const [[pending], permissions, running] = await Promise.all([
+    getDb()
+      .select({ value: count() })
+      .from(schema.approvals)
+      .where(and(eq(schema.approvals.organisationId, session.organisationId), eq(schema.approvals.status, "pending"))),
+    sessionPermissions(),
+    runningEntryFor(session),
+  ]);
   const pendingApprovals = pending?.value ?? 0;
 
   return (
@@ -31,7 +40,12 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
           as a PDF and sent to a client's accountant; the sidebar, the search
           bar and the notifications bell must not travel with it. */}
       <div className="contents print:hidden">
-        <AppNav email={session.email} role={session.role} pendingApprovals={pendingApprovals} />
+        <AppNav
+          email={session.email}
+          role={session.role}
+          pendingApprovals={pendingApprovals}
+          permissions={permissions}
+        />
       </div>
 
       {/* `min-w-0` is what stops a wide table inside a page from pushing the
@@ -39,11 +53,17 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
           content, and DataList's own `overflow-x-auto` never gets to scroll. */}
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-card px-4 py-2.5 sm:gap-3 sm:px-6 print:hidden">
-          <AppNavSheet email={session.email} role={session.role} pendingApprovals={pendingApprovals} />
+          <AppNavSheet
+            email={session.email}
+            role={session.role}
+            pendingApprovals={pendingApprovals}
+            permissions={permissions}
+          />
           <div className="min-w-0 flex-1">
             <GlobalSearch />
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <ClockWidget running={running} />
             <NotificationsBell session={session} />
             <AccountMenu email={session.email} role={session.role} />
           </div>

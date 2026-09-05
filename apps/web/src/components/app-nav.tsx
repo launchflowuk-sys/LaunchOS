@@ -1,5 +1,6 @@
 "use client";
 
+import type { MemberPermissions } from "@launchos/core";
 import { Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -8,7 +9,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { BrandTile } from "@/components/brand-mark";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { CATEGORY_DOT } from "@/lib/categories";
-import { APPROVALS_HREF, NAV_GROUPS } from "@/lib/nav";
+import { APPROVALS_HREF, NAV_GROUPS, visibleNavGroups } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,15 +43,26 @@ type NavProps = {
   role: string;
   /** Pending approvals, counted on the server and shown on the rail. */
   pendingApprovals: number;
+  /** What this member may see. Resolved on the server; the owner holds all five. */
+  permissions: MemberPermissions;
 };
 
-function NavList({ pendingApprovals, onNavigate = NOOP }: { pendingApprovals: number; onNavigate?: () => void }) {
+function NavList({
+  pendingApprovals,
+  permissions,
+  onNavigate = NOOP,
+}: {
+  pendingApprovals: number;
+  permissions: MemberPermissions;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   const current = activeHref(pathname);
+  const groups = visibleNavGroups(permissions);
 
   return (
     <nav aria-label="Main" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-      {NAV_GROUPS.map((group) => (
+      {groups.map((group) => (
         <div key={group.label}>
           <p className="label-caps flex items-center gap-2 px-3 pb-1.5 text-sidebar-muted">
             <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[group.category])} />
@@ -147,11 +159,11 @@ function Brand() {
 }
 
 /** The 256px navy rail, `lg` and up. */
-export function AppNav({ email, role, pendingApprovals }: NavProps) {
+export function AppNav({ email, role, pendingApprovals, permissions }: NavProps) {
   return (
     <aside className="hidden w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground lg:flex">
       <Brand />
-      <NavList pendingApprovals={pendingApprovals} />
+      <NavList pendingApprovals={pendingApprovals} permissions={permissions} />
       <Identity email={email} role={role} />
     </aside>
   );
@@ -162,7 +174,7 @@ export function AppNav({ email, role, pendingApprovals }: NavProps) {
  * under `lg`. Radix keeps the panel out of the DOM while it is closed, so the
  * desktop rail stays the only navigation landmark on a wide screen.
  */
-export function AppNavSheet({ email, role, pendingApprovals }: NavProps) {
+export function AppNavSheet({ email, role, pendingApprovals, permissions }: NavProps) {
   const pathname = usePathname();
   // The drawer remembers the route it was opened on, so any navigation closes
   // it without an effect: a tap-through never leaves the overlay covering the
@@ -190,7 +202,7 @@ export function AppNavSheet({ email, role, pendingApprovals }: NavProps) {
           <BrandTile />
           <SheetDescription className="text-meta text-sidebar-muted">Admin portal</SheetDescription>
         </SheetHeader>
-        <NavList pendingApprovals={pendingApprovals} onNavigate={() => setOpen(false)} />
+        <NavList pendingApprovals={pendingApprovals} permissions={permissions} onNavigate={() => setOpen(false)} />
         <Identity email={email} role={role} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>

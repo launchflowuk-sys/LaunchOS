@@ -3,7 +3,7 @@
 import { recordPayment } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { type ActionResult, RecordPaymentSchema } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -17,7 +17,9 @@ function value(formData: FormData, name: string): string | undefined {
 
 /** Server Actions accept direct POSTs, so this re-authorises and re-validates. */
 export async function recordManualPayment(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = RecordPaymentSchema.safeParse({
     clientId: value(formData, "clientId"),
     invoiceId: value(formData, "invoiceId"),

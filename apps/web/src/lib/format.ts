@@ -61,3 +61,17 @@ export function formatJson(value: unknown): string {
     return String(value);
   }
 }
+
+/**
+ * Minutes as `7h 35m`, the way a timesheet cell and the top-bar clock read.
+ * The same rule as core's `formatMinutes`, kept here so a client component can
+ * use it without pulling `@launchos/core` — and its Postgres driver — into the
+ * browser bundle.
+ */
+export function formatDuration(minutes: number): string {
+  const whole = Math.max(0, Math.floor(minutes));
+  const h = Math.floor(whole / 60);
+  const m = whole % 60;
+  if (h === 0) return `${m}m`;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}

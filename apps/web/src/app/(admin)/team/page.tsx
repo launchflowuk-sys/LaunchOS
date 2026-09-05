@@ -1,15 +1,21 @@
-import { listMembers } from "@launchos/core";
-import { UsersRound } from "lucide-react";
+import { listMembers, PERMISSION_KEYS, PERMISSION_LABELS } from "@launchos/core";
+import { ShieldCheck, UsersRound } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
 import { deactivateMemberAction } from "./actions";
 import { AddMemberDialog } from "./add-member-dialog";
+import { PermissionsForm } from "./permissions-form";
 import { ReissuePasswordDialog } from "./reissue-password-dialog";
+
+/** The five areas, in display order, as plain data for the client form. */
+const PERMISSION_OPTIONS = PERMISSION_KEYS.map((key) => ({ key, label: PERMISSION_LABELS[key] }));
 
 export const dynamic = "force-dynamic";
 
@@ -74,9 +80,12 @@ function columns(isOwner: boolean, currentUserId: string): readonly DataListColu
 }
 
 export default async function TeamPage() {
-  const session = await requireAdmin();
+  const [session, permissions] = await Promise.all([requireAdmin(), sessionPermissions()]);
   const members = await listMembers(getDb(), session.organisationId);
   const isOwner = session.role === "owner";
+  // Who may change what others can do: the owner, or a member granted `settings`.
+  const canEditPermissions = isOwner || permissions.settings;
+  const current = members.filter((member) => member.status !== "suspended");
 
   return (
     <>
@@ -94,6 +103,29 @@ export default async function TeamPage() {
         caption="Team members"
         empty={<EmptyState icon={UsersRound}>No members yet.</EmptyState>}
       />
+
+      <Section
+        title="Permissions"
+        description="What each member can open and act on. The rail hides what they lack, and every action behind it checks again. Staff start with everything except Settings."
+      >
+        {current.length === 0 ? (
+          <EmptyState icon={ShieldCheck}>Permissions appear here once there are members.</EmptyState>
+        ) : (
+          <div className="divide-y rounded-xl border bg-card px-4">
+            {current.map((member) => (
+              <PermissionsForm
+                key={member.id}
+                memberId={member.id}
+                name={member.displayName ?? member.name}
+                role={member.role}
+                permissions={member.permissions}
+                options={PERMISSION_OPTIONS}
+                editable={canEditPermissions}
+              />
+            ))}
+          </div>
+        )}
+      </Section>
     </>
   );
 }

@@ -16,7 +16,7 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 
 /** Each admin module declares its own `ActionResult` with this shape. */
 export type ActionResult = { status: "ok" } | { status: "error"; message: string };
@@ -58,7 +58,9 @@ async function queueResume(
 async function decide(formData: FormData, status: "approved" | "rejected"): Promise<ActionResult> {
   // Server Actions accept direct POSTs, so authorise here and scope every
   // query by the caller's organisation.
-  const session = await requireAdmin();
+  const gate = await requirePermission("approvals");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   // A decided plan change queues courtesy emails through `emit`; without the
   // web enqueue installed they would sit `queued` until the outbound sweep.
   installWebEnqueue();

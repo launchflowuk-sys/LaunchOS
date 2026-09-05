@@ -5,7 +5,7 @@ import { approveAdReport, createAdAccount, sendAdReport, updateAdAccount } from 
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { type ActionResult, AddAdAccount, AdReportRef, EditAdAccount, textField } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -14,7 +14,9 @@ function errorMessage(error: unknown): string {
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function addAdAccount(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = AddAdAccount.safeParse({
     clientId: formData.get("clientId"),
     platform: formData.get("platform"),
@@ -44,7 +46,9 @@ export async function addAdAccount(formData: FormData): Promise<ActionResult> {
  * no edit form anywhere in the portal. Core audits the change.
  */
 export async function editAdAccount(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = EditAdAccount.safeParse({
     adAccountId: formData.get("adAccountId"),
     name: formData.get("name"),
@@ -77,7 +81,9 @@ export async function editAdAccount(formData: FormData): Promise<ActionResult> {
  * claims the row. Approving here is deliberately not the send.
  */
 export async function approveAdReportAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = AdReportRef.safeParse({ adReportId: formData.get("adReportId") });
   if (!parsed.success) return { status: "error", message: "Invalid report" };
 
@@ -96,7 +102,9 @@ export async function approveAdReportAction(formData: FormData): Promise<ActionR
 
 /** Emails the client. Guarded by the report already being `approved` by a human. */
 export async function sendAdReportAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = AdReportRef.safeParse({ adReportId: formData.get("adReportId") });
   if (!parsed.success) return { status: "error", message: "Invalid report" };
 

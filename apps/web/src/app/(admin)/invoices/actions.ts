@@ -7,7 +7,7 @@ import {
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { type ActionResult, ApprovalRef, ClientRef, InvoiceRef } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -16,7 +16,9 @@ function errorMessage(error: unknown): string {
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function createInvoiceForClient(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = ClientRef.safeParse({ clientId: formData.get("clientId") });
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid client" };
 
@@ -43,7 +45,9 @@ export async function createInvoiceForClient(formData: FormData): Promise<Action
 }
 
 export async function markInvoiceAsPaid(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = InvoiceRef.safeParse({ invoiceId: formData.get("invoiceId") });
   if (!parsed.success) return { status: "error", message: "Invalid invoice" };
 
@@ -61,7 +65,9 @@ export async function markInvoiceAsPaid(formData: FormData): Promise<ActionResul
 }
 
 export async function voidInvoiceAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = InvoiceRef.safeParse({ invoiceId: formData.get("invoiceId") });
   if (!parsed.success) return { status: "error", message: "Invalid invoice" };
 
@@ -88,7 +94,9 @@ export async function voidInvoiceAction(formData: FormData): Promise<ActionResul
  * decision already waiting is named instead of quietly returning a new id.
  */
 export async function requestSendInvoice(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = InvoiceRef.safeParse({ invoiceId: formData.get("invoiceId") });
   if (!parsed.success) return { status: "error", message: "Invalid invoice" };
 
@@ -120,7 +128,9 @@ export async function requestSendInvoice(formData: FormData): Promise<ActionResu
  * recording the decision. Wiring that branch is the last task of Plan 5.
  */
 export async function sendApprovedInvoiceAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = ApprovalRef.safeParse({ approvalId: formData.get("approvalId") });
   if (!parsed.success) return { status: "error", message: "Invalid approval" };
 

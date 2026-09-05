@@ -9,12 +9,14 @@ import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
+import { TimerControls } from "@/components/timer-controls";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { runningEntryFor } from "../../time/running";
 import { assignTaskAction, commentOnTaskAction, setTaskVisibilityAction, toggleChecklistAction } from "../actions";
 import { TaskStatusForm } from "../task-row-status";
 
@@ -34,9 +36,10 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
   if (!loaded) notFound();
   const { task, comments } = loaded;
 
-  const [client, members] = await Promise.all([
+  const [client, members, running] = await Promise.all([
     getClient(getDb(), session.organisationId, task.clientId),
     listMembers(getDb(), session.organisationId),
+    runningEntryFor(session),
   ]);
 
   return (
@@ -49,6 +52,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
           <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={task.status} />
             <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />
+            <TimerControls target={{ taskId: task.id }} running={running} />
           </div>
         }
       />

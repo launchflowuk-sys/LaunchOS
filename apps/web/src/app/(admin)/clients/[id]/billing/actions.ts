@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { getPayments } from "@/lib/integrations";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 
 /**
  * Local to this module rather than shared — every admin module in this app
@@ -30,7 +30,9 @@ function errorMessage(error: unknown): string {
 
 /** Server Actions accept direct POSTs, so every action re-authorises and re-validates. */
 export async function startSubscriptionAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = StartSubscription.safeParse({
     clientId: formData.get("clientId"),
     packageId: formData.get("packageId"),
@@ -52,7 +54,9 @@ export async function startSubscriptionAction(formData: FormData): Promise<Actio
 }
 
 export async function cancelSubscriptionAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("billing");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const parsed = CancelSubscription.safeParse({
     clientId: formData.get("clientId"),
     subscriptionId: formData.get("subscriptionId"),

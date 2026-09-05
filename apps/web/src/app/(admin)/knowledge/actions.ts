@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 
 /**
  * The shape the admin server actions return. Declared here rather than
@@ -64,7 +64,9 @@ function messageOf(error: unknown, fallback: string): string {
  */
 export async function createArticleAction(formData: FormData): Promise<void> {
   // Server Actions accept direct POSTs, so authorise before reading anything.
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) redirect(`/knowledge/new?error=${encodeURIComponent(gate.message)}`);
+  const { session } = gate;
   const fields = parse(formData);
   if (!fields.ok) redirect(`/knowledge/new?error=${encodeURIComponent(fields.message)}`);
 
@@ -87,7 +89,9 @@ const ArticleId = z.object({ articleId: z.string().uuid() });
 
 /** Saves in place, so it returns a result the `ActionForm` wrapper can toast. */
 export async function updateArticleAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   const target = ArticleId.safeParse({ articleId: formData.get("articleId") });
   if (!target.success) return { status: "error", message: "That article could not be identified" };
   const fields = parse(formData);
@@ -112,7 +116,9 @@ export async function updateArticleAction(formData: FormData): Promise<ActionRes
  * cited the article still resolves the reference.
  */
 export async function deleteArticleAction(formData: FormData): Promise<void> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) redirect(`/knowledge?error=${encodeURIComponent(gate.message)}`);
+  const { session } = gate;
   const target = ArticleId.safeParse({ articleId: formData.get("articleId") });
   if (!target.success) redirect("/knowledge?error=That+article+could+not+be+identified");
 

@@ -4,7 +4,7 @@ import { updateOrganisation } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { requireAdmin } from "@/lib/session";
+import { requirePermission } from "@/lib/permissions";
 import { type ActionResult, readSupplierFields, UpdateOrganisationSchema } from "./schemas";
 
 /**
@@ -24,7 +24,9 @@ function errorMessage(error: unknown): string {
  * able to change the VAT number the agency bills on.
  */
 export async function updateOrganisationAction(formData: FormData): Promise<ActionResult> {
-  const session = await requireAdmin();
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
   if (session.role !== "owner") {
     return { status: "error", message: "Only an owner can change the organisation's details" };
   }

@@ -11,6 +11,7 @@ import { MessageThread } from "@/components/message-thread";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
+import { TimerControls } from "@/components/timer-controls";
 import { TriagePanel } from "@/components/triage-panel";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -19,6 +20,7 @@ import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
+import { runningEntryFor } from "../../time/running";
 import { isClosed } from "../filters";
 import {
   assignTicketAction,
@@ -93,7 +95,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
     .where(and(eq(schema.tickets.id, id), eq(schema.tickets.organisationId, session.organisationId)));
   if (!ticket) notFound();
 
-  const [messages, events, tasks, members, triageInFlight] = await Promise.all([
+  const [messages, events, tasks, members, triageInFlight, running] = await Promise.all([
     ticket.conversationId
       ? getDb()
           .select({
@@ -145,6 +147,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
       .orderBy(asc(schema.tasks.createdAt)),
     listMembers(getDb(), session.organisationId),
     hasTriageInFlight(session.organisationId, ticket.id),
+    runningEntryFor(session),
   ]);
 
   const breached = !!ticket.slaDueAt && ticket.slaDueAt < new Date() && !isClosed(ticket.status);
@@ -170,6 +173,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             />
             {ticket.escalated ? <StatusBadge value="escalated" tone="danger" /> : null}
             <StatusBadge value={`SLA ${formatDateTime(ticket.slaDueAt)}`} tone={breached ? "danger" : "neutral"} />
+            <TimerControls target={{ ticketId: ticket.id }} running={running} />
           </div>
         }
       />
