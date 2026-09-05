@@ -1,4 +1,5 @@
 import { renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
+import { ukLongDate } from "../tasks/dates.js";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, sql } from "drizzle-orm";
@@ -125,7 +126,7 @@ export async function sendApprovedInvoice(
   const { invoice, clientName, to } = claim;
   const link = `${portalBaseUrl.replace(/\/$/, "")}/portal/invoices/${invoice.id}`;
   const amount = `£${(invoice.totalPence / 100).toFixed(2)}`;
-  const due = invoice.dueAt.toISOString().slice(0, 10);
+  const due = ukLongDate(invoice.dueAt);
   const from = env.MAIL_FROM ?? supportEmailFor("invoices", env);
   const brand = brandEmailContext(env);
   // The client name is typed by a person and the amount is formatted from the

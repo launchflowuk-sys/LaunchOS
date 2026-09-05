@@ -20,7 +20,8 @@
  *   sRGB they resolve to. The two that must match the product are
  *   `--primary` (`#0A71B1`) and the logo navy; `BRAND` below is the whole set.
  * - **Nothing is fetched.** One image — the logo, from an absolute URL on our
- *   own app — and no web font: `Segoe UI`/`Helvetica` is what the recipient
+ *   own app, placed inside the white card because the PNG carries its own
+ *   opaque white ground — and no web font: `Segoe UI`/`Helvetica` is what the recipient
  *   already has, and a mail client that blocks images must still show a
  *   complete message. Hence the `alt` text on the logo.
  *
@@ -196,7 +197,7 @@ export function renderBrandedEmail(input: BrandedEmailInput): RenderedEmail {
       : (input.bodyHtml ?? "");
 
   const logoBlock = logoUrl
-    ? `<img src="${escapeHtml(logoUrl)}" width="132" alt="LaunchFlow" style="display:block;width:132px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />`
+    ? `<img src="${escapeHtml(logoUrl)}" width="${internal ? 112 : 132}" alt="LaunchFlow" style="display:block;width:${internal ? 112 : 132}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />`
     : `<span style="font-size:17px;font-weight:700;color:${BRAND.navy};">LaunchFlow</span>`;
 
   const footerLinks = [
@@ -225,11 +226,6 @@ export function renderBrandedEmail(input: BrandedEmailInput): RenderedEmail {
         <td align="center" style="padding:24px 12px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:${maxWidth}px;width:100%;">
             <tr>
-              <td style="padding:0 0 16px;">
-                ${logoBlock}
-              </td>
-            </tr>
-            <tr>
               <td style="background-color:${BRAND.card};border:1px solid ${BRAND.hairline};border-radius:12px;overflow:hidden;">
                 <!-- The cyan bar off the swoosh: the one decorative stroke in
                      the whole layout, and the thing that makes a LaunchFlow
@@ -240,6 +236,10 @@ export function renderBrandedEmail(input: BrandedEmailInput): RenderedEmail {
                   </tr>
                   <tr>
                     <td style="padding:${internal ? "22px 22px 24px" : "26px 28px 28px"};font-family:${FONT_STACK};">
+                      <!-- The wordmark sits inside the card, on white: the PNG
+                           is not transparent (DESIGN.md), so on the off-white
+                           ground its own white box would show as a chip. -->
+                      <div style="margin:0 0 ${internal ? "16px" : "20px"};">${logoBlock}</div>
                       <h1 style="margin:0 0 14px;font-size:${internal ? "17px" : "20px"};line-height:1.3;font-weight:600;letter-spacing:-0.01em;color:${BRAND.navy};">${escapeHtml(input.heading)}</h1>
                       ${bodyHtml}
                       ${input.cta && cta ? ctaHtml(input.cta, cta) : ""}

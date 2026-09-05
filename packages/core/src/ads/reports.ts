@@ -1,4 +1,5 @@
 import { renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
+import { ukDateRange } from "../tasks/dates.js";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, sql } from "drizzle-orm";
@@ -165,15 +166,16 @@ export async function sendAdReport(
   const link = `${portalBaseUrl.replace(/\/$/, "")}/portal/reports`;
   const from = env.MAIL_FROM ?? supportEmailFor("reports", env);
   const brand = brandEmailContext(env);
+  const period = ukDateRange(report.periodStart, report.periodEnd);
   // The account and client names come off records somebody typed; the summary
   // itself — the one piece of model output in this flow — stays in the portal
   // and never reaches the email. Both names are escaped by the template anyway.
   const { text, html } = renderBrandedEmail({
-    preheader: `${report.periodStart} to ${report.periodEnd}.`,
+    preheader: `${period}.`,
     heading: `Your ${recipient.accountName} advertising summary`,
     paragraphs: [
       `Hello ${recipient.clientName},`,
-      `Your advertising summary for ${report.periodStart} to ${report.periodEnd} is ready in your portal.`,
+      `Your advertising summary for ${period} is ready in your portal.`,
     ],
     cta: { label: "View the report", url: link },
     logoUrl: brand.logoUrl,

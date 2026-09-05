@@ -36,7 +36,7 @@ const SAMPLES: Record<string, BrandedEmailInput> = {
     paragraphs: [
       "Hello Jo,",
       "Thanks for flagging this. The box your site sits on had run out of memory overnight; we have moved you onto a bigger one and the response times are back where they should be.",
-      "Nothing was lost and no action is needed at your end. **Bold** and <b>tags</b> stay as literal text, which is the point of the escaping.",
+      "Nothing was lost and no action is needed at your end. If you notice anything else, reply here and it lands on the same case.",
     ],
     cta: { label: "View your case", url: `${APP}/portal/support/8f2c1b40-0000-4000-8000-000000000001` },
     footerNote: "Reply to this email and your answer lands on the same case.",
@@ -57,11 +57,11 @@ const SAMPLES: Record<string, BrandedEmailInput> = {
   // packages/core/src/billing/invoice-send.ts
   invoice: {
     ...BRAND,
-    preheader: "£420.00, due 2026-09-30.",
+    preheader: "£420.00, due 30 September 2026.",
     heading: "Invoice LF-2026-0018",
     paragraphs: [
       "Hello Grays CabLine,",
-      "Invoice LF-2026-0018 for £420.00 is ready. It is due on 2026-09-30.",
+      "Invoice LF-2026-0018 for £420.00 is ready. It is due on 30 September 2026.",
     ],
     cta: { label: "View invoice", url: `${APP}/portal/invoices/8f2c1b40-0000-4000-8000-000000000003` },
     footerNote: "You can view, print and save this invoice as a PDF from the portal.",
@@ -70,11 +70,11 @@ const SAMPLES: Record<string, BrandedEmailInput> = {
   // packages/core/src/ads/reports.ts
   report: {
     ...BRAND,
-    preheader: "2026-08-01 to 2026-08-31.",
+    preheader: "1 to 31 August 2026.",
     heading: "Your Grays CabLine Search advertising summary",
     paragraphs: [
       "Hello Grays CabLine,",
-      "Your advertising summary for 2026-08-01 to 2026-08-31 is ready in your portal.",
+      "Your advertising summary for 1 to 31 August 2026 is ready in your portal.",
     ],
     cta: { label: "View the report", url: `${APP}/portal/reports` },
   },
@@ -86,7 +86,7 @@ const SAMPLES: Record<string, BrandedEmailInput> = {
     preheader: "Sent with the smtp adapter.",
     heading: "LaunchOS test email",
     paragraphs: [
-      "Sent from LaunchOS Settings → Email at 2026-09-05T05:12:44.108Z using the smtp adapter.",
+      "Sent from LaunchOS Settings → Email at 5 September 2026, 06:12 using the smtp adapter.",
       "If this arrived, outbound email works and the branded layout renders in your client.",
     ],
     cta: { label: "Open LaunchOS", url: `${APP}/settings/email` },

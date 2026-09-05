@@ -52,6 +52,27 @@ export function dueWithinPeriod(period: Period, n: number, quantity: number): Da
   return new Date(period.start.getTime() + Math.round((span * n) / (quantity + 1)));
 }
 
+/**
+ * A date as a person in the UK reads it: `30 September 2026`. Accepts a
+ * `YYYY-MM-DD` string (an `IsoDate`, taken as a calendar day) or a `Date`
+ * (rendered in Europe/London). This is what goes into a client email; the
+ * ISO form stays in records and keys.
+ */
+export function ukLongDate(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(`${value}T12:00:00Z`) : value;
+  return date.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" });
+}
+
+/** `1 to 31 August 2026`, or `28 August to 3 September 2026` across a month. */
+export function ukDateRange(start: Date | string, end: Date | string): string {
+  const [from, to] = [ukLongDate(start), ukLongDate(end)];
+  const [fromDay, fromMonth, fromYear] = from.split(" ");
+  const [, toMonth, toYear] = to.split(" ");
+  if (fromYear === toYear && fromMonth === toMonth) return `${fromDay} to ${to}`;
+  if (fromYear === toYear) return `${fromDay} ${fromMonth} to ${to}`;
+  return `${from} to ${to}`;
+}
+
 /** `YYYY-MM-DD` in Europe/London — the once-per-day notification key. */
 export function londonDateKey(date: Date): string {
   return date.toLocaleDateString("en-CA", { timeZone: "Europe/London" });

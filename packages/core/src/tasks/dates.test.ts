@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addDays, dueWithinPeriod, londonDateKey, periodBounds } from "./dates.js";
+import { addDays, dueWithinPeriod, londonDateKey, periodBounds, ukDateRange, ukLongDate } from "./dates.js";
 
 describe("task dates", () => {
   it("adds whole days without mutating the input", () => {
@@ -59,5 +59,23 @@ describe("task dates", () => {
     // The midpoint of a 29-day period is day 14.5: Feb 15th at noon. A
     // non-leap February's midpoint would land a half-day earlier.
     expect(dueWithinPeriod(p, 1, 1).toISOString()).toBe("2028-02-15T12:00:00.000Z");
+  });
+});
+
+describe("UK long dates for client emails", () => {
+  it("renders an IsoDate as day, month name, year", () => {
+    expect(ukLongDate("2026-09-30")).toBe("30 September 2026");
+    expect(ukLongDate("2026-01-01")).toBe("1 January 2026");
+  });
+
+  it("renders a Date in Europe/London, not UTC", () => {
+    // 23:30 UTC on 30 June is 00:30 BST on 1 July.
+    expect(ukLongDate(new Date("2026-06-30T23:30:00Z"))).toBe("1 July 2026");
+  });
+
+  it("collapses a range inside one month, one year, or neither", () => {
+    expect(ukDateRange("2026-08-01", "2026-08-31")).toBe("1 to 31 August 2026");
+    expect(ukDateRange("2026-08-28", "2026-09-03")).toBe("28 August to 3 September 2026");
+    expect(ukDateRange("2026-12-29", "2027-01-04")).toBe("29 December 2026 to 4 January 2027");
   });
 });
