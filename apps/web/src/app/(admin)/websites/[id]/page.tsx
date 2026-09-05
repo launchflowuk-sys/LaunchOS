@@ -1,4 +1,4 @@
-import { getClient, getSite, listDnsRecords, listDomains } from "@launchos/core";
+import { getClient, getSite, getSiteCmsCredentialStatus, isEncryptionConfigured, listDnsRecords, listDomains } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Activity, Network, ShieldAlert, TableProperties } from "lucide-react";
@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { WordPressConnection } from "./wordpress-connection";
 
 export const dynamic = "force-dynamic";
 
@@ -87,7 +88,7 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
   const site = await getSite(db, session.organisationId, id);
   if (!site) notFound();
 
-  const [client, domains, monitors, incidents] = await Promise.all([
+  const [client, domains, monitors, incidents, cmsCredential] = await Promise.all([
     getClient(db, session.organisationId, site.clientId),
     listDomains(db, session.organisationId, { siteId: site.id }),
     db
@@ -106,6 +107,8 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
       .where(and(eq(schema.incidents.organisationId, session.organisationId), eq(schema.incidents.siteId, site.id)))
       .orderBy(desc(schema.incidents.openedAt))
       .limit(INCIDENT_LIMIT),
+    // Status only — the page never decrypts the stored application password.
+    getSiteCmsCredentialStatus(db, session.organisationId, id),
   ]);
 
   // One flat DNS table across every domain pointed at this site; editing lives
@@ -157,6 +160,19 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
             ]}
           />
         </div>
+      </Section>
+
+      <Section
+        title="WordPress connection"
+        description="The application password LaunchOS uses to publish approved content changes to this site."
+      >
+        <WordPressConnection
+          siteId={site.id}
+          platform={site.platform}
+          encryptionConfigured={isEncryptionConfigured(process.env)}
+          connectedAs={cmsCredential?.username ?? null}
+          connectedAt={cmsCredential?.updatedAt ?? null}
+        />
       </Section>
 
       <Section title="Domains" description="Every domain pointed at this website.">

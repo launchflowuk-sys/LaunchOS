@@ -60,6 +60,15 @@ export {
 export { upsertBillingProfile, getBillingProfile, UpsertBillingProfileInput } from "./billing/upsert-billing-profile.js";
 export { updateSite, UpdateSiteInput } from "./sites/update-site.js";
 export { listSites, getSite, ListSitesInput } from "./sites/list-sites.js";
+export {
+  encryptSecret, decryptSecret, loadEncryptionKey, parseEncryptionKey, isEncryptionConfigured,
+  SecretsKeyError, SecretsDecryptError, SECRETS_ENCRYPTION_KEY_ENV,
+} from "./secrets/encryption.js";
+export {
+  setSiteCmsCredential, getSiteCmsCredential, getSiteCmsCredentialStatus, siteCredentialResolver,
+  SetSiteCmsCredentialInput,
+} from "./sites/site-credentials.js";
+export type { SiteCmsCredential, SiteCmsCredentialStatus } from "./sites/site-credentials.js";
 export type { SiteListRow } from "./sites/list-sites.js";
 export {
   createDomain, updateDomain, deleteDomain, listDomains, getDomain,

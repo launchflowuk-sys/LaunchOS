@@ -73,7 +73,15 @@ export function cmsUpdateContent(cms: CmsProvider) {
       if (!site) throw new Error(`site ${input.siteId} not found in organisation`);
       if (!site.hostingRef) throw new Error(`site ${input.siteId} has no hostingRef to update content on`);
 
-      const result = await cms.updateContent({ siteRef: site.hostingRef, path: input.path, contentMd: input.contentMd });
+      // `siteId` travels alongside `siteRef` because the real WordPress client
+      // looks its credentials up per site, and the hosting ref is Coolify's
+      // name for the container, not ours for the site.
+      const result = await cms.updateContent({
+        siteRef: site.hostingRef,
+        siteId: input.siteId,
+        path: input.path,
+        contentMd: input.contentMd,
+      });
       await recordAudit(ctx.db, ctx.organisationId, {
         actorKind: "agent", actorId: "support-triage", action: "site_content.updated",
         targetType: "site", targetId: input.siteId, after: { ...input, siteRef: site.hostingRef, provider: cms.name },

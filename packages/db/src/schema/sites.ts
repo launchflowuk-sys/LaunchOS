@@ -48,3 +48,32 @@ export const dnsRecords = pgTable("dns_records", {
   ttl: integer("ttl").default(3600).notNull(),
   proxied: boolean("proxied").default(false).notNull(),
 });
+
+export const siteCredentialKindEnum = pgEnum("site_credential_kind", ["wordpress_app_password"]);
+
+/**
+ * A per-site secret for an outward system we manage on the client's behalf —
+ * today only a WordPress application password.
+ *
+ * Per site, never per organisation: each client's WordPress is a separate
+ * install with its own user, and one shared credential would either not exist
+ * or be a master key to every site we touch. The secret is stored as an
+ * AES-256-GCM envelope produced by `packages/core/src/secrets`; the column
+ * holds ciphertext only, and nothing in this repository ever writes the
+ * plaintext to a log, an audit row or a seed.
+ */
+export const siteCredentials = pgTable(
+  "site_credentials",
+  {
+    ...tenantColumns(),
+    siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+    kind: siteCredentialKindEnum("kind").notNull(),
+    username: text("username").notNull(),
+    secretCiphertext: text("secret_ciphertext").notNull(),
+    /** The staff user who last set it. Text, matching `audit_log.actor_id`. */
+    createdBy: text("created_by"),
+  },
+  // One credential of each kind per site: setting it again replaces it, so a
+  // rotated application password cannot leave the superseded one behind.
+  (t) => [uniqueIndex("site_credentials_site_kind").on(t.siteId, t.kind)],
+);
