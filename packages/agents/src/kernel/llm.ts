@@ -20,6 +20,22 @@ export interface LlmClient {
 export class AnthropicLlmClient implements LlmClient {
   constructor(private readonly client: Anthropic = new Anthropic()) {}
 
+  /**
+   * The client for this deployment's environment.
+   *
+   * An organisation-level Anthropic key (one created outside a workspace)
+   * is refused by the API unless every request names the workspace in an
+   * `anthropic-workspace-id` header; a workspace-scoped key needs nothing.
+   * `ANTHROPIC_WORKSPACE_ID` covers the first case, so an operator can use
+   * whichever key they were given. The SDK reads `ANTHROPIC_API_KEY` itself.
+   */
+  static fromEnv(env: { ANTHROPIC_WORKSPACE_ID?: string | undefined } = process.env): AnthropicLlmClient {
+    const workspace = env.ANTHROPIC_WORKSPACE_ID?.trim();
+    return new AnthropicLlmClient(
+      new Anthropic(workspace ? { defaultHeaders: { "anthropic-workspace-id": workspace } } : {}),
+    );
+  }
+
   async complete(req: LlmRequest): Promise<LlmResponse> {
     const res = await this.client.beta.messages.create({
       model: req.model,

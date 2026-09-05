@@ -21,6 +21,8 @@ export const LOCAL_APP_URL = "http://localhost:3000";
 const EnvShape = z.object({
   DATABASE_URL: z.string().url(),
   ANTHROPIC_API_KEY: z.string().min(1).optional(),
+  /** Only for an organisation-level key: the workspace the requests belong to. */
+  ANTHROPIC_WORKSPACE_ID: z.string().optional(),
   AGENT_MODEL: z.string().default("claude-opus-5"),
   AGENT_POLICY: z.enum(["safe", "approval_all"]).default("safe"),
   UPTIME_PROBE: z.enum(["mock", "http"]).default("mock"),

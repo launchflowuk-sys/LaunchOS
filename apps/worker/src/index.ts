@@ -34,7 +34,7 @@ async function main() {
   const db = createDb(env.DATABASE_URL);
   const boss = await createBoss(env.DATABASE_URL);
   const integrations = createIntegrations(process.env);
-  const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : new AnthropicLlmClient();
+  const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : AnthropicLlmClient.fromEnv(env);
   const emailAdapter = createEmailAdapter(process.env);
   // The Ad Performance Sentinel emails clients a portal link once a human
   // approves the send, so the registry needs the same adapter and base URL the
