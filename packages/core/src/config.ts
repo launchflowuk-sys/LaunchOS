@@ -106,3 +106,19 @@ export interface BrandEmailContext {
 export function brandEmailContext(env: NodeJS.ProcessEnv = process.env): BrandEmailContext {
   return { logoUrl: brandLogoUrl(env), appUrl: appUrl(env), supportEmail: brandSupportAddress(env) };
 }
+
+/**
+ * The reply time the case acknowledgement promises, in working hours.
+ *
+ * There is no organisation-level setting for it yet: `organisations.metadata`
+ * may carry `firstResponseHours` once the Organisation screen exposes one, and
+ * `firstResponseHours()` reads it when it does. Until then this is the number
+ * every acknowledgement quotes. It is a promise made to a client, so change it
+ * deliberately and keep it honest against `SLA_HOURS_BY_SEVERITY`.
+ */
+export const DEFAULT_FIRST_RESPONSE_HOURS = 4;
+
+export function firstResponseHours(organisationMetadata: Record<string, unknown> | undefined): number {
+  const raw = organisationMetadata?.["firstResponseHours"];
+  return typeof raw === "number" && Number.isFinite(raw) && raw > 0 ? Math.round(raw) : DEFAULT_FIRST_RESPONSE_HOURS;
+}

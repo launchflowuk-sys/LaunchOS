@@ -55,7 +55,12 @@ function ticketInput(clientId: string, conversationId: string, subject: string, 
   };
 }
 
-export async function ingestInboundEmail(db: Db, organisationId: string, raw: InboundEmail) {
+export async function ingestInboundEmail(
+  db: Db,
+  organisationId: string,
+  raw: InboundEmail,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const inbound = InboundEmailSchema.parse(raw) as InboundEmail;
   const identityClientId = await findIdentityClientId(db, organisationId, inbound.to);
   const matched = identityClientId !== null;
@@ -65,7 +70,7 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
     .select()
     .from(schema.messages)
     .where(and(eq(schema.messages.organisationId, organisationId), eq(schema.messages.externalId, inbound.messageId)));
-  if (duplicate) return healRedelivery(db, organisationId, inbound, duplicate, matched);
+  if (duplicate) return healRedelivery(db, organisationId, inbound, duplicate, matched, env);
 
   const clientId = identityClientId ?? (await ensureHoldingClientId(db, organisationId));
   const subject = inbound.subject.trim() || "(no subject)";
@@ -120,9 +125,10 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
 
     // createTicketInTx owns the ticket + event + audit, so a new email thread
     // reaches Support Triage down exactly the same path as any other source.
-    const ticket = reusable
-      ? linked
-      : (await createTicketInTx(tx, organisationId, ticketInput(clientId, conversation.id, subject, inbound))).ticket;
+    const created = reusable
+      ? undefined
+      : await createTicketInTx(tx, organisationId, ticketInput(clientId, conversation.id, subject, inbound), env);
+    const ticket = created ? created.ticket : linked!;
 
     await recordActivity(tx, organisationId, {
       clientId, actorKind: "client", actorId: inbound.from, kind: "support.email_received",
@@ -130,11 +136,14 @@ export async function ingestInboundEmail(db: Db, organisationId: string, raw: In
     });
 
     const [fresh] = await tx.select().from(schema.conversations).where(eq(schema.conversations.id, conversation.id));
-    return { conversation: fresh!, message: message!, ticket, opened: !reusable };
+    return { conversation: fresh!, message: message!, ticket, opened: !reusable, acknowledgement: created?.acknowledgement };
   });
 
   // After commit: a subscriber must never see an id the transaction rolled back.
   if (result.opened) await emit({ name: "ticket.created", organisationId, ticketId: result.ticket.id });
+  if (result.acknowledgement) {
+    await emit({ name: "message.queued", organisationId, messageId: result.acknowledgement.id });
+  }
   if (!matched) {
     await notifyOwner(db, organisationId, {
       kind: "support.unmatched_inbound",
@@ -159,6 +168,7 @@ async function healRedelivery(
   inbound: InboundEmail,
   duplicate: typeof schema.messages.$inferSelect,
   matched: boolean,
+  env: NodeJS.ProcessEnv,
 ) {
   const [conversation] = await db.select().from(schema.conversations).where(eq(schema.conversations.id, duplicate.conversationId));
   if (!conversation) throw new Error(`conversation ${duplicate.conversationId} not found in organisation`);
@@ -173,8 +183,12 @@ async function healRedelivery(
       txRaw as unknown as Db,
       organisationId,
       ticketInput(conversation.clientId, conversation.id, conversation.subject, inbound),
+      env,
     ),
   );
   await emit({ name: "ticket.created", organisationId, ticketId: healed.ticket.id });
+  if (healed.acknowledgement) {
+    await emit({ name: "message.queued", organisationId, messageId: healed.acknowledgement.id });
+  }
   return { conversation: healed.conversation, message: duplicate, ticket: healed.ticket, matched };
 }

@@ -8,7 +8,7 @@ import { recordAudit } from "../audit/record-audit.js";
 import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
-import { PORTAL_REPLY_NOTICE_KIND } from "./courtesy-notice.js";
+import { CASE_ACKNOWLEDGEMENT_KIND, PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND } from "./courtesy-notice.js";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -104,10 +104,67 @@ function preheaderFrom(body: string): string {
 }
 
 /**
+ * The heading, the preheader and the button for one message, decided by
+ * `metadata.kind`. A reply has none of its own: its heading is the case subject
+ * and its button opens the case. Every notice kind says what it is instead.
+ */
+interface Presentation {
+  preheader: string;
+  heading: string;
+  cta?: { label: string; url: string } | undefined;
+  footerNote?: string | undefined;
+}
+
+function presentationFor(
+  message: Message,
+  context: ConversationContext | undefined,
+  appUrl: string,
+  inbound: boolean,
+): Presentation {
+  const kind = message.metadata["kind"];
+  const caseUrl = context?.ticketId ? `${appUrl}/portal/support/${context.ticketId}` : undefined;
+  const caseHeading = context?.subject ?? message.subject ?? "Your support case";
+
+  if (kind === PORTAL_REPLY_NOTICE_KIND) {
+    return {
+      preheader: "There is a reply waiting in your portal.",
+      heading: caseHeading,
+      cta: caseUrl ? { label: "Read the reply", url: caseUrl } : undefined,
+    };
+  }
+  if (kind === CASE_ACKNOWLEDGEMENT_KIND) {
+    return {
+      preheader: preheaderFrom(message.body),
+      heading: "We've got your request",
+      cta: caseUrl ? { label: "View your case", url: caseUrl } : undefined,
+      footerNote: inbound
+        ? "Reply to this email if you have anything to add and it lands on the same case."
+        : "If you have anything to add, sign in to your portal and reply on the case.",
+    };
+  }
+  if (kind === SUBSCRIPTION_CHANGE_NOTICE_KIND) {
+    const approved = message.metadata["decision"] === "approved";
+    return {
+      preheader: approved ? "LaunchFlow has approved your plan change request." : "LaunchFlow has answered your plan change request.",
+      heading: approved ? "Your request has been approved" : "Your request has been declined",
+      cta: { label: "View your plan", url: `${appUrl}/portal/plan` },
+    };
+  }
+  return {
+    preheader: preheaderFrom(message.body),
+    heading: caseHeading,
+    cta: caseUrl ? { label: "View your case", url: caseUrl } : undefined,
+    footerNote: inbound
+      ? "Reply to this email and your answer lands on the same case."
+      : "To reply, sign in to your portal so your answer stays on this case.",
+  };
+}
+
+/**
  * The branded shell around one queued message.
  *
- * Both kinds of outbound mail come through here, because both are `messages`
- * rows and this is the only place in LaunchOS that hands one to a mail server:
+ * Every kind of outbound mail comes through here, because each is a `messages`
+ * row and this is the only place in LaunchOS that hands one to a mail server:
  *
  * - **A staff or agent reply.** Heading is the case subject (the conversation's,
  *   not the message's `Re: ...`), body is the reply, and the button goes to the
@@ -119,6 +176,10 @@ function preheaderFrom(body: string): string {
  *   record of what the client was told); `paragraphsFromBody` drops that line
  *   here so the branded version does not show the same link twice, once as text
  *   and once as a button.
+ * - **The case acknowledgement** `queueCaseAcknowledgement` writes the moment a
+ *   client raises a case, and **the plan change notice**
+ *   `applySubscriptionChangeDecision` writes when a request is decided. Each
+ *   carries its own heading and button — see `presentationFor`.
  *
  * The footer address is the client's own support identity rather than the
  * generic one: a reply to it threads back onto this case.
@@ -130,21 +191,14 @@ function brandedMessageEmail(
 ): { text: string; html: string } {
   const brand = brandEmailContext(env);
   const inbound = inboundEmailEnabled(env);
-  const isNotice = message.metadata["kind"] === PORTAL_REPLY_NOTICE_KIND;
-  const caseUrl = context?.ticketId ? `${brand.appUrl}/portal/support/${context.ticketId}` : undefined;
+  const shape = presentationFor(message, context, brand.appUrl, inbound);
 
   return renderBrandedEmail({
-    preheader: isNotice ? "There is a reply waiting in your portal." : preheaderFrom(message.body),
-    heading: context?.subject ?? message.subject ?? "Your support case",
-    paragraphs: paragraphsFromBody(message.body, caseUrl),
-    ...(caseUrl ? { cta: { label: isNotice ? "Read the reply" : "View your case", url: caseUrl } } : {}),
-    ...(isNotice
-      ? {}
-      : {
-          footerNote: inbound
-            ? "Reply to this email and your answer lands on the same case."
-            : "To reply, sign in to your portal so your answer stays on this case.",
-        }),
+    preheader: shape.preheader,
+    heading: shape.heading,
+    paragraphs: paragraphsFromBody(message.body, shape.cta?.url),
+    ...(shape.cta ? { cta: shape.cta } : {}),
+    ...(shape.footerNote ? { footerNote: shape.footerNote } : {}),
     logoUrl: brand.logoUrl,
     appUrl: brand.appUrl,
     // With inbound routing on, the client's own support identity: a reply to it

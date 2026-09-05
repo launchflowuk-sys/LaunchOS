@@ -19,13 +19,15 @@ import { replyToPortalThread } from "../actions";
 export const dynamic = "force-dynamic";
 
 /**
- * `messages.metadata.kind` on the courtesy notice queued by
- * `replyToConversation` — see `PORTAL_REPLY_NOTICE_KIND` in
- * packages/core/src/support/reply-to-conversation.ts. Copied rather than
- * imported: `@launchos/core` in a portal page would pull the whole domain
- * layer into this route.
+ * `messages.metadata.kind` on the emails written to a case's conversation that
+ * are records of mail rather than turns in the thread: the "sign in to read
+ * it" nudge a staff reply queues, and the "we've got your request"
+ * acknowledgement a new case queues — see `COURTESY_NOTICE_KINDS` in
+ * packages/core/src/support/courtesy-notice.ts. Copied rather than imported:
+ * `@launchos/core` in a portal page would pull the whole domain layer into
+ * this route. Keep the two lists in step.
  */
-const REPLY_NOTICE_KIND = "portal_reply_notice";
+const NOTICE_KINDS: readonly string[] = ["portal_reply_notice", "case_acknowledgement", "subscription_change_notice"];
 
 export default async function PortalTicketPage({ params }: PageProps<"/portal/support/[id]">) {
   const session = await requireClient();
@@ -88,7 +90,9 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
   // waiting is an `outbound` message like any other, and rendering it here
   // would put "sign in to read it" directly under the reply they are already
   // reading. It is the record of an email, not part of the conversation.
-  const visible = messages.filter((m) => isVisibleToClient(m) && m.metadata["kind"] !== REPLY_NOTICE_KIND);
+  const visible = messages.filter(
+    (m) => isVisibleToClient(m) && !NOTICE_KINDS.includes(String(m.metadata["kind"] ?? "")),
+  );
 
   return (
     <>

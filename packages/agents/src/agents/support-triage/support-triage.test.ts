@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, not } from "drizzle-orm";
 import { MockEmailAdapter } from "@launchos/channels";
-import { createKnowledgeArticle, decideApproval, ensureEmailIdentity, ingestInboundEmail, sendQueuedMessage } from "@launchos/core";
+import {
+  createKnowledgeArticle, decideApproval, ensureEmailIdentity, ingestInboundEmail, isCourtesyNotice, sendQueuedMessage,
+} from "@launchos/core";
 import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockUptimeProbe } from "@launchos/integrations";
 import type { AgentIntegrations } from "../integrations.js";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
@@ -29,6 +31,16 @@ async function member(db: Db, organisationId: string, role: "owner" | "staff") {
     .returning();
   await db.insert(schema.organisationMembers).values({ organisationId, userId: row!.id, role, status: "active" });
   return row!;
+}
+
+/**
+ * Every reply that left, or is queued to leave, for a client. The emailed case
+ * in the fixture also queues the automatic "we've got your request"
+ * acknowledgement (`queueCaseAcknowledgement`) — a record of an email, not a
+ * reply, and excluded here the way every thread reader excludes it.
+ */
+function repliesToClients(db: Db) {
+  return db.select().from(schema.messages).where(and(eq(schema.messages.direction, "outbound"), not(isCourtesyNotice())));
 }
 
 /** An organisation with a client, its support address, one KB article and an inbound email that opened a ticket. */
@@ -145,7 +157,7 @@ describe("support-triage", () => {
         input: { conversationId: f.conversationId, body: draft },
       });
       // Nothing leaves the building before a human decides.
-      expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
+      expect(await repliesToClients(db)).toHaveLength(0);
 
       // Shoji approves in the admin portal. The decision lands on the approval
       // row there; the kernel reads the approver back off it.
@@ -168,7 +180,11 @@ describe("support-triage", () => {
       const [outbound] = await db
         .select()
         .from(schema.messages)
-        .where(and(eq(schema.messages.conversationId, f.conversationId), eq(schema.messages.direction, "outbound")))
+        .where(and(
+          eq(schema.messages.conversationId, f.conversationId),
+          eq(schema.messages.direction, "outbound"),
+          not(isCourtesyNotice()),
+        ))
         .orderBy(asc(schema.messages.createdAt));
       expect(outbound!.status).toBe("queued");
       expect(outbound!.body).toBe(draft);
@@ -237,7 +253,7 @@ describe("support-triage", () => {
       const [decided] = await db.select().from(schema.approvals).where(eq(schema.approvals.id, approval!.id));
       expect(decided!.status).toBe("rejected");
       expect(decided!.decisionNote).toBe("Wrong answer — the zone is not delegated yet.");
-      const outbound = await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"));
+      const outbound = await repliesToClients(db);
       expect(outbound).toHaveLength(0);
     });
   });
@@ -300,7 +316,7 @@ describe("support-triage", () => {
 
       // Escalation is not a reply: nothing was drafted to the client, and no
       // reply is sitting in the approvals queue waiting to become one.
-      expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
+      expect(await repliesToClients(db)).toHaveLength(0);
       expect(await db.select().from(schema.approvals).where(eq(schema.approvals.runId, result.runId))).toHaveLength(0);
     });
   });
@@ -372,7 +388,7 @@ describe("support-triage", () => {
       );
 
       // Ungrounded means unanswered: no reply drafted, none queued for approval.
-      expect(await db.select().from(schema.messages).where(eq(schema.messages.direction, "outbound"))).toHaveLength(0);
+      expect(await repliesToClients(db)).toHaveLength(0);
       expect(await db.select().from(schema.approvals).where(eq(schema.approvals.runId, result.runId))).toHaveLength(0);
     });
   });

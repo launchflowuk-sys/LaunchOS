@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema, type Db } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, not } from "drizzle-orm";
 import type { InboundEmail } from "@launchos/channels";
 import { ensureEmailIdentity } from "../email/ensure-email-identity.js";
+import { isCourtesyNotice } from "./courtesy-notice.js";
 import { createTicket } from "./create-ticket.js";
 import { HOLDING_CLIENT_SLUG, ingestInboundEmail } from "./ingest-inbound-email.js";
 
@@ -19,6 +20,15 @@ function inbound(over: Partial<InboundEmail> & Pick<InboundEmail, "to">): Inboun
 async function newOrg(db: Db) {
   const [o] = await db.insert(schema.organisations).values({ name: "T", slug: `t-${crypto.randomUUID()}` }).returning();
   return o!;
+}
+
+/**
+ * The turns of a thread. A client-raised case also queues an acknowledgement
+ * email on the same conversation (`queueCaseAcknowledgement`); it is a record
+ * of an email rather than a message, and every reader excludes it the same way.
+ */
+function threadMessages(db: Db, conversationId: string) {
+  return db.select().from(schema.messages).where(and(eq(schema.messages.conversationId, conversationId), not(isCourtesyNotice())));
 }
 
 async function newClient(db: Db, organisationId: string, name = "C") {
@@ -59,7 +69,7 @@ describe("ingestInboundEmail", () => {
 
       expect(second.conversation.id).toBe(first.conversation.id);
       expect(second.ticket.id).toBe(first.ticket.id);
-      const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, first.conversation.id));
+      const messages = await threadMessages(db, first.conversation.id);
       expect(messages).toHaveLength(2);
     });
   });
@@ -82,7 +92,7 @@ describe("ingestInboundEmail", () => {
       expect(forged.conversation.id).not.toBe(a.conversation.id);
       expect(forged.conversation.clientId).toBe(clientB.id);
       expect(forged.ticket.id).not.toBe(a.ticket.id);
-      const aMessages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, a.conversation.id));
+      const aMessages = await threadMessages(db, a.conversation.id);
       expect(aMessages).toHaveLength(1);
     });
   });
@@ -127,7 +137,7 @@ describe("ingestInboundEmail", () => {
 
       expect(b.message.id).toBe(a.message.id);
       expect(b.ticket.id).toBe(a.ticket.id);
-      const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, a.conversation.id));
+      const messages = await threadMessages(db, a.conversation.id);
       expect(messages).toHaveLength(1);
     });
   });
@@ -149,7 +159,7 @@ describe("ingestInboundEmail", () => {
       expect(healed.message.id).toBe(first.message.id);
       expect(healed.ticket.id).not.toBe(first.ticket.id);
       expect(healed.conversation.ticketId).toBe(healed.ticket.id);
-      const messages = await db.select().from(schema.messages).where(eq(schema.messages.conversationId, first.conversation.id));
+      const messages = await threadMessages(db, first.conversation.id);
       expect(messages).toHaveLength(1);
     });
   });

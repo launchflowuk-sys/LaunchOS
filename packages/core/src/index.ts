@@ -9,6 +9,8 @@ export {
   brandEmailContext,
   BRAND_LOGO_PATH,
   LOCAL_APP_URL,
+  DEFAULT_FIRST_RESPONSE_HOURS,
+  firstResponseHours,
   type BrandEmailContext,
 } from "./config.js";
 export { truncate, MAX_ADDRESS_CHARS, MAX_ERROR_CHARS } from "./text.js";
@@ -33,7 +35,13 @@ export { setTicketClientVisibility, SetTicketClientVisibilityInput } from "./sup
 export { assignTicket, AssignTicketInput } from "./support/assign-ticket.js";
 export { escalateTicket, EscalateTicketInput } from "./support/escalate-ticket.js";
 export { replyToConversation, ReplyToConversationInput } from "./support/reply-to-conversation.js";
-export { isCourtesyNotice, PORTAL_REPLY_NOTICE_KIND } from "./support/courtesy-notice.js";
+export {
+  isCourtesyNotice, isCourtesyNoticeRow, COURTESY_NOTICE_KINDS,
+  PORTAL_REPLY_NOTICE_KIND, CASE_ACKNOWLEDGEMENT_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
+} from "./support/courtesy-notice.js";
+export type { CourtesyNoticeKind } from "./support/courtesy-notice.js";
+export { queueCaseAcknowledgement, acknowledgementBody, caseReference, ACKNOWLEDGED_AT } from "./support/acknowledge-ticket.js";
+export type { QueueCaseAcknowledgementInput } from "./support/acknowledge-ticket.js";
 export { replyAsClient, ReplyAsClientInput } from "./support/reply-as-client.js";
 export { sendQueuedMessage, SendQueuedMessageInput, MAX_SEND_ATTEMPTS, CLAIM_TTL_MINUTES } from "./support/send-queued-message.js";
 export {

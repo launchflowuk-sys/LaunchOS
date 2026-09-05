@@ -5,6 +5,7 @@ import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
 import { assertClientInOrganisation, assertSiteInOrganisation } from "../tenancy/assert-owned.js";
+import { queueCaseAcknowledgement } from "./acknowledge-ticket.js";
 import { slaDueAt } from "./sla.js";
 
 export const CreateTicketInput = z.object({
@@ -41,9 +42,17 @@ function channelFor(source: CreateTicketInput["source"]): "portal" | "email" | "
  * The whole of ticket creation, minus the transaction and the emit, so a
  * caller that is already inside a transaction (`ingestInboundEmail`) can make
  * the conversation, the message and the ticket atomically. Callers that use
- * this MUST emit `ticket.created` themselves, after their own commit.
+ * this MUST emit `ticket.created` themselves, after their own commit — and
+ * `message.queued` for the `acknowledgement` when there is one, for the same
+ * reason: the worker must never be handed a message id the transaction went
+ * on to roll back.
  */
-export async function createTicketInTx(tx: Db, organisationId: string, input: CreateTicketInput) {
+export async function createTicketInTx(
+  tx: Db,
+  organisationId: string,
+  input: CreateTicketInput,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const v = CreateTicketInput.parse(input);
   await assertClientInOrganisation(tx, organisationId, v.clientId);
   if (v.siteId) await assertSiteInOrganisation(tx, organisationId, v.siteId);
@@ -98,16 +107,34 @@ export async function createTicketInTx(tx: Db, organisationId: string, input: Cr
 
   await tx.insert(schema.ticketEvents).values({ organisationId, ticketId: ticket!.id, kind: "created", actorKind: v.actorKind, actorId: v.actorId ?? null });
   await recordAudit(tx, organisationId, { actorKind: v.actorKind, actorId: v.actorId, action: "ticket.created", targetType: "ticket", targetId: ticket!.id, after: ticket });
-  return { ticket: ticket!, conversation: linked ?? conversation };
+
+  // A client who raised this hears back straight away — "we've got it, here is
+  // the reference" — from the same transaction, so the case and the promise
+  // land together. Nothing for a case staff, a monitor or an agent opened.
+  const acknowledgement = await queueCaseAcknowledgement(
+    tx,
+    organisationId,
+    { ticket: ticket!, conversation: linked ?? conversation, actorKind: v.actorKind, actorId: v.actorId },
+    env,
+  );
+  return { ticket: ticket!, conversation: linked ?? conversation, acknowledgement };
 }
 
-export async function createTicket(db: Db, organisationId: string, input: CreateTicketInput) {
+export async function createTicket(
+  db: Db,
+  organisationId: string,
+  input: CreateTicketInput,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   // One transaction: a ticket without its conversation, opening message, event
   // or audit row is worse than no ticket at all.
-  const created = await db.transaction(async (tx) => createTicketInTx(tx as unknown as Db, organisationId, input));
+  const created = await db.transaction(async (tx) => createTicketInTx(tx as unknown as Db, organisationId, input, env));
 
   // Emitted only once the rows are durable — a subscriber must never see a
   // ticket id the transaction went on to roll back.
   await emit({ name: "ticket.created", organisationId, ticketId: created.ticket.id });
+  if (created.acknowledgement) {
+    await emit({ name: "message.queued", organisationId, messageId: created.acknowledgement.id });
+  }
   return created;
 }
