@@ -9,8 +9,10 @@ export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", 
 // `subscription_change` is the one kind a *client* raises: a portal user asking
 // to cancel, downgrade or upgrade their plan. It has no run behind it and is
 // decided like any other, then carried out by `applySubscriptionChangeDecision`.
+// `content_publish` is a content item asking to go out: approving it is what
+// lets the publish job send it, carried out by `applyContentPublishDecision`.
 export const approvalKindEnum = pgEnum("approval_kind", [
-  "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change",
+  "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change", "content_publish",
 ]);
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
@@ -87,6 +89,14 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_subscription_change")
     .on(t.organisationId, sql`(${t.payload} ->> 'clientId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'subscription_change'`),
+  // At most one *pending* publish request per content item, for the same
+  // reason and in the same shape: `requestContentApproval` writes
+  // `payload.action = 'content_publish'` alongside the enum value, and the
+  // predicate tests the payload so the index and the enum value can land in
+  // one migration.
+  uniqueIndex("approvals_pending_content_publish")
+    .on(t.organisationId, sql`(${t.payload} ->> 'itemId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'content_publish'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {

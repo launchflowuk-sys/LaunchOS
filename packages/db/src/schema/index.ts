@@ -13,3 +13,4 @@ export * from "./email.js";
 export * from "./knowledge.js";
 export * from "./ads.js";
 export * from "./reports.js";
+export * from "./content.js";

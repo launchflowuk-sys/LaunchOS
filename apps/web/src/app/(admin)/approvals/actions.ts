@@ -2,7 +2,9 @@
 
 import { createEmailAdapter } from "@launchos/channels";
 import {
+  applyContentPublishDecision,
   applySubscriptionChangeDecision,
+  CONTENT_PUBLISH_ACTION,
   decideApproval,
   INVOICE_SEND_ACTION,
   recordAudit,
@@ -168,6 +170,17 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         });
         revalidatePath(`/clients/${applied.clientId}`);
         revalidatePath("/portal/plan");
+      } else if (payload.success && payload.data.action === CONTENT_PUBLISH_ACTION) {
+        // A content item asking to go out: approve makes it `approved` for the
+        // publish sweep, reject sends it back — both verdicts land on the item.
+        const applied = await applyContentPublishDecision(getDb(), session.organisationId, {
+          approvalId,
+          actorId: session.userId,
+        });
+        revalidatePath("/content");
+        revalidatePath(`/content/${applied.itemId}`);
+        revalidatePath(`/clients/${applied.clientId}`);
+        revalidatePath("/portal/content");
       } else if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
         const { invoiceId } = await sendApprovedInvoice(
           getDb(),

@@ -180,3 +180,33 @@ export { buildClientReport, monthPeriod } from "./reports/build-client-report.js
 export type { ReportPeriod } from "./reports/build-client-report.js";
 export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";
 export { listClientReports, getClientReport, ListClientReportsInput } from "./reports/list-client-reports.js";
+export {
+  ContentRefused, CHANNEL_LABEL, KIND_FOR_CHANNEL, TASK_KIND_FOR_CHANNEL, EDITABLE_STATUSES, CANCELLABLE_STATUSES,
+  MAX_CONTENT_BODY_CHARS, MAX_CONTENT_TITLE_CHARS, PeriodKeySchema, periodKeyFor, shortLondonDate, monthName, excerpt,
+} from "./content/shared.js";
+export type {
+  ContentRefusedReason, ContentItemRow, ContentBriefRow, ContentChannelRow, ContentReportRow,
+} from "./content/shared.js";
+export { spreadSlotTimes, weekdaysOf, londonAt, londonOffsetMinutes, parsePeriodKey, PUBLISH_HOUR_LONDON } from "./content/schedule.js";
+export { upsertContentBrief, getContentBrief, UpsertContentBriefInput, GetContentBriefInput } from "./content/briefs.js";
+export { setContentChannel, listContentChannels, SetContentChannelInput, ListContentChannelsInput } from "./content/channels.js";
+export {
+  createContentItem, updateContentItem, getContentItem, listContentItems, cancelContentItem,
+  CreateContentItemInput, UpdateContentItemInput, GetContentItemInput, ListContentItemsInput, CancelContentItemInput,
+} from "./content/items.js";
+export type { ContentItemListRow, ContentItemDetail } from "./content/items.js";
+export { planContentMonth, slotsFor, PlanContentMonthInput } from "./content/plan-month.js";
+export type { PlanContentMonthResult } from "./content/plan-month.js";
+export {
+  requestContentApproval, applyContentPublishDecision, contentPublishSummary,
+  RequestContentApprovalInput, ApplyContentPublishDecisionInput, ContentPublishPayload,
+  CONTENT_PUBLISH_ACTION, PENDING_CONTENT_PUBLISH_INDEX,
+} from "./content/approval.js";
+export type { ApplyContentPublishDecisionResult } from "./content/approval.js";
+export {
+  claimDueContent, markContentPublished, markContentFailed, MAX_CONTENT_PUBLISH_ATTEMPTS,
+  ClaimDueContentInput, MarkContentPublishedInput, MarkContentFailedInput,
+} from "./content/publishing.js";
+export type { MarkContentFailedResult } from "./content/publishing.js";
+export { suggestContentItem, SuggestContentItemInput } from "./content/suggest.js";
+export { buildContentReport, BuildContentReportInput } from "./content/report.js";
