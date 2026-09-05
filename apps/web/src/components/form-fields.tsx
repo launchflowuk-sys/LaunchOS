@@ -2,6 +2,10 @@
 
 import { useId, type ReactNode } from "react";
 import type { FieldError, FieldValues, Path, UseFormRegister } from "react-hook-form";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type FieldProps<T extends FieldValues> = {
   name: Path<T>;
@@ -12,9 +16,6 @@ type FieldProps<T extends FieldValues> = {
   placeholder?: string | undefined;
   required?: boolean | undefined;
 };
-
-const CONTROL =
-  "h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none";
 
 /**
  * `htmlFor` uses a generated id rather than the field name: two forms on the
@@ -27,12 +28,10 @@ function Wrapper({
 }: { id: string; label: string; error?: FieldError | undefined; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-neutral-700">
-        {label}
-      </label>
+      <Label htmlFor={id}>{label}</Label>
       {children}
       {error ? (
-        <p role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-meta text-danger-fg">
           {error.message}
         </p>
       ) : null}
@@ -44,7 +43,14 @@ export function TextField<T extends FieldValues>({ name, label, register, error,
   const id = useId();
   return (
     <Wrapper id={id} label={label} error={error}>
-      <input id={id} type={type} placeholder={placeholder} required={required} className={CONTROL} {...register(name)} />
+      <Input
+        id={id}
+        type={type}
+        placeholder={placeholder}
+        required={required}
+        aria-invalid={error ? true : undefined}
+        {...register(name)}
+      />
     </Wrapper>
   );
 }
@@ -53,7 +59,13 @@ export function TextAreaField<T extends FieldValues>({ name, label, register, er
   const id = useId();
   return (
     <Wrapper id={id} label={label} error={error}>
-      <textarea id={id} rows={3} placeholder={placeholder} className={`${CONTROL} h-auto py-2`} {...register(name)} />
+      <Textarea
+        id={id}
+        rows={3}
+        placeholder={placeholder}
+        aria-invalid={error ? true : undefined}
+        {...register(name)}
+      />
     </Wrapper>
   );
 }
@@ -64,13 +76,13 @@ export function SelectField<T extends FieldValues>({
   const id = useId();
   return (
     <Wrapper id={id} label={label} error={error}>
-      <select id={id} className={CONTROL} {...register(name)}>
+      <NativeSelect id={id} aria-invalid={error ? true : undefined} {...register(name)}>
         {options.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
         ))}
-      </select>
+      </NativeSelect>
     </Wrapper>
   );
 }

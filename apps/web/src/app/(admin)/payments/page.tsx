@@ -1,10 +1,11 @@
 import { listClients } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { CreditCard } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -15,6 +16,61 @@ export const dynamic = "force-dynamic";
 
 /** An invoice can still take money until it is settled or written off. */
 const UNPAID = ["draft", "sent", "overdue"] as const;
+
+type PaymentRow = {
+  id: string;
+  amountPence: number;
+  currency: string;
+  provider: string;
+  providerRef: string | null;
+  status: string;
+  paidAt: Date | null;
+  createdAt: Date;
+  clientId: string;
+  clientName: string;
+  invoiceId: string | null;
+  invoiceNumber: string | null;
+};
+
+const COLUMNS: readonly DataListColumn<PaymentRow>[] = [
+  {
+    key: "client",
+    header: "Client",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/clients/${row.clientId}`} className="hover:underline">
+        {row.clientName}
+      </Link>
+    ),
+  },
+  {
+    key: "date",
+    header: "Date",
+    cell: (row) => <span className="whitespace-nowrap">{formatDateTime(row.paidAt ?? row.createdAt)}</span>,
+  },
+  {
+    key: "invoice",
+    header: "Invoice",
+    cell: (row) =>
+      row.invoiceId ? (
+        <Link href={`/invoices/${row.invoiceId}`} className="hover:underline">
+          {row.invoiceNumber}
+        </Link>
+      ) : (
+        "—"
+      ),
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: (row) => formatPence(row.amountPence, row.currency),
+  },
+  { key: "provider", header: "Provider", cell: (row) => row.provider },
+  { key: "reference", header: "Reference", hideOnMobile: true, cell: (row) => row.providerRef ?? "—" },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+];
 
 export default async function PaymentsPage() {
   const session = await requireAdmin();
@@ -70,6 +126,7 @@ export default async function PaymentsPage() {
       <PageHeader
         title="Payments"
         description="Every payment recorded against a client, from Stripe or by hand."
+        category="money"
         actions={
           <RecordPaymentDialog
             clients={clients.map((c) => ({ value: c.id, label: c.name }))}
@@ -83,56 +140,17 @@ export default async function PaymentsPage() {
         }
       />
 
-      {payments.length === 0 ? (
-        <EmptyState>No payments recorded yet. Record one above once money lands.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Invoice</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
-                <TableHead>Provider</TableHead>
-                <TableHead>Reference</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payments.map((payment) => (
-                <TableRow key={payment.id}>
-                  <TableCell className="whitespace-nowrap text-neutral-600">
-                    {formatDateTime(payment.paidAt ?? payment.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/clients/${payment.clientId}`} className="hover:underline">
-                      {payment.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    {payment.invoiceId ? (
-                      <Link href={`/invoices/${payment.invoiceId}`} className="hover:underline">
-                        {payment.invoiceNumber}
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(payment.amountPence, payment.currency)}
-                  </TableCell>
-                  <TableCell className="text-neutral-600">{payment.provider}</TableCell>
-                  <TableCell className="text-neutral-600">{payment.providerRef ?? "—"}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={payment.status} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList<PaymentRow>
+        rows={payments}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Payments"
+        empty={
+          <EmptyState icon={CreditCard}>
+            No payments recorded yet. Record one above once money lands.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

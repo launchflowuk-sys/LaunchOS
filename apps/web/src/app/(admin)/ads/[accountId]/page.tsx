@@ -1,14 +1,19 @@
 import { computeAccountSignals, type SignalWindow } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { ChartColumn } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { NativeSelect } from "@/components/ui/native-select";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { Sparkline } from "@/components/sparkline";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getDb } from "@/lib/db";
 import { formatDate, formatMoney } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -17,10 +22,6 @@ import { editAdAccount } from "../actions";
 
 export const dynamic = "force-dynamic";
 
-const CARD = "rounded-lg border border-neutral-200 bg-white p-4";
-const HEADING = "mb-2 text-sm font-semibold text-neutral-900";
-const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
-const LABEL = "block text-xs font-medium text-neutral-500";
 const SNAPSHOT_DAYS = 30;
 
 function WindowCard({ title, window: w, currency }: { title: string; window: SignalWindow; currency: string }) {
@@ -33,21 +34,42 @@ function WindowCard({ title, window: w, currency }: { title: string; window: Sig
   ] as const;
 
   return (
-    <section className={CARD}>
-      <h2 className={HEADING}>{title}</h2>
-      <p className="mb-3 text-xs text-neutral-400">
+    <section className="min-w-0 rounded-xl border bg-card p-4">
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="mt-1 text-meta text-muted-foreground">
         {w.from} to {w.to} · {w.days} {w.days === 1 ? "day" : "days"} of data
       </p>
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-row">
         {stats.map(([label, value]) => (
           <div key={label} className="contents">
-            <dt className="text-neutral-500">{label}</dt>
-            <dd className="text-right tabular-nums text-neutral-900">{value}</dd>
+            <dt className="text-muted-foreground">{label}</dt>
+            <dd className="text-right font-medium tabular-nums">{value}</dd>
           </div>
         ))}
       </dl>
     </section>
   );
+}
+
+type Snapshot = typeof schema.adMetricSnapshots.$inferSelect;
+
+function snapshotColumns(currency: string): readonly DataListColumn<Snapshot>[] {
+  const count = (n: number) => n.toLocaleString("en-GB");
+  return [
+    { key: "date", header: "Date", primary: true, cell: (s) => <span className="whitespace-nowrap">{formatDate(s.date)}</span> },
+    {
+      key: "spend",
+      header: "Spend",
+      numeric: true,
+      className: "font-medium text-foreground",
+      cell: (s) => formatMoney(s.spendPence, currency),
+    },
+    { key: "impressions", header: "Impressions", numeric: true, hideOnMobile: true, cell: (s) => count(s.impressions) },
+    { key: "clicks", header: "Clicks", numeric: true, cell: (s) => count(s.clicks) },
+    { key: "conversions", header: "Conversions", numeric: true, cell: (s) => count(s.conversions) },
+    { key: "cpc", header: "CPC", numeric: true, cell: (s) => formatMoney(Math.round(s.cpcPence), currency) },
+    { key: "roas", header: "ROAS", numeric: true, className: "font-medium text-foreground", cell: (s) => s.roas.toFixed(2) },
+  ];
 }
 
 export default async function AdAccountPage({ params }: PageProps<"/ads/[accountId]">) {
@@ -102,15 +124,22 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
       <PageHeader
         title={account.name}
         description={`${account.platform === "google" ? "Google" : "Meta"} · ${account.externalId} · ${account.clientName}`}
-        actions={<StatusBadge value={account.status} />}
+        category="money"
+        // Wrapped: PageHeader stretches its actions under `sm`, and a pill
+        // that fills the width reads as a button, not a state.
+        actions={
+          <div>
+            <StatusBadge value={account.status} />
+          </div>
+        }
       />
 
-      <p className="mb-6 text-sm text-neutral-500">
-        <Link href="/ads" className="underline">
+      <p className="mb-6 text-sm text-muted-foreground">
+        <Link href="/ads" className="underline hover:text-foreground">
           All ad accounts
         </Link>{" "}
         ·{" "}
-        <Link href={`/clients/${account.clientId}`} className="underline">
+        <Link href={`/clients/${account.clientId}`} className="underline hover:text-foreground">
           {account.clientName}
         </Link>
       </p>
@@ -121,123 +150,99 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
         account. The currency is why this form exists: before it, a mistyped
         code could only be fixed with an UPDATE against production Postgres.
       */}
-      <details className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <summary className="cursor-pointer text-sm font-semibold text-neutral-900">Edit account</summary>
+      <details className="mb-8 rounded-xl border bg-card p-4">
+        <summary className="cursor-pointer text-sm font-medium">Edit account</summary>
         <ActionForm
           action={editAdAccount}
           ariaLabel="Edit ad account"
           success="Ad account updated"
-          className="mt-3 space-y-3"
+          className="mt-4 space-y-4"
         >
           <input type="hidden" name="adAccountId" value={account.id} />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className={LABEL}>
-              Account name
-              <input name="name" required maxLength={200} defaultValue={account.name} className={FIELD} />
-            </label>
-            <label className={LABEL}>
-              Currency
-              <input
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="ad-account-name">Account name</Label>
+              <Input id="ad-account-name" name="name" required maxLength={200} defaultValue={account.name} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ad-account-currency">Currency</Label>
+              <Input
+                id="ad-account-currency"
                 name="currency"
                 required
                 maxLength={3}
                 pattern="[A-Za-z]{3}"
                 title="A three-letter currency code, such as GBP"
                 defaultValue={account.currency}
-                className={FIELD}
               />
-            </label>
-            <label className={LABEL}>
-              Status
-              <select name="status" defaultValue={account.status} className={FIELD}>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="ad-account-status">Status</Label>
+              <NativeSelect id="ad-account-status" name="status" defaultValue={account.status}>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
                 <option value="disconnected">Disconnected</option>
-              </select>
-            </label>
+              </NativeSelect>
+            </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end max-sm:[&>*]:w-full">
             <Button type="submit">Save changes</Button>
           </div>
         </ActionForm>
       </details>
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-3">
         <WindowCard title="Last 7 days" window={signals.current} currency={account.currency} />
         <WindowCard title="Previous 7 days" window={signals.previous} currency={account.currency} />
-        <section className={CARD}>
-          <h2 className={HEADING}>Signals</h2>
+        <section className="min-w-0 rounded-xl border bg-card p-4">
+          <h2 className="text-base font-semibold">Signals</h2>
           {signals.flagged ? (
-            <ul className="list-disc space-y-1 pl-4 text-sm text-red-700">
+            <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-danger-fg">
               {signals.reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-neutral-500">No signals — this account is steady.</p>
+            <p className="mt-3 text-sm text-muted-foreground">No signals — this account is steady.</p>
           )}
         </section>
       </div>
 
       {oldestFirst.length === 0 ? (
-        <EmptyState>No daily metrics yet. The ads ingest job writes one snapshot per account per day.</EmptyState>
+        <Section title="Daily metrics">
+          <EmptyState icon={ChartColumn}>
+            No daily metrics yet. The ads ingest job writes one snapshot per account per day.
+          </EmptyState>
+        </Section>
       ) : (
         <>
-          <div className="mb-6 grid gap-4 lg:grid-cols-3">
-            <section className={CARD}>
-              <h2 className={HEADING}>ROAS, last 30 days</h2>
-              <Sparkline values={oldestFirst.map((s) => s.roas)} label="ROAS, last 30 days" />
-            </section>
-            <section className={CARD}>
-              <h2 className={HEADING}>Spend, last 30 days</h2>
-              <Sparkline values={oldestFirst.map((s) => s.spendPence)} label="Spend, last 30 days" />
-            </section>
-            <section className={CARD}>
-              <h2 className={HEADING}>Clicks, last 30 days</h2>
-              <Sparkline values={oldestFirst.map((s) => s.clicks)} label="Clicks, last 30 days" />
-            </section>
-          </div>
+          <Section title="Last 30 days">
+            <div className="grid gap-4 lg:grid-cols-3">
+              {(
+                [
+                  ["ROAS", oldestFirst.map((s) => s.roas)],
+                  ["Spend", oldestFirst.map((s) => s.spendPence)],
+                  ["Clicks", oldestFirst.map((s) => s.clicks)],
+                ] as const
+              ).map(([label, values]) => (
+                <section key={label} className="min-w-0 overflow-hidden rounded-xl border bg-card p-4">
+                  <h3 className="label-caps text-muted-foreground">{label}</h3>
+                  <div className="mt-2">
+                    <Sparkline values={[...values]} label={`${label}, last 30 days`} />
+                  </div>
+                </section>
+              ))}
+            </div>
+          </Section>
 
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Spend</TableHead>
-                  <TableHead className="text-right">Impressions</TableHead>
-                  <TableHead className="text-right">Clicks</TableHead>
-                  <TableHead className="text-right">Conversions</TableHead>
-                  <TableHead className="text-right">CPC</TableHead>
-                  <TableHead className="text-right">ROAS</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {newestFirst.map((snapshot) => (
-                  <TableRow key={snapshot.id}>
-                    <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(snapshot.date)}</TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-900">
-                      {formatMoney(snapshot.spendPence, account.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-600">
-                      {snapshot.impressions.toLocaleString("en-GB")}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-600">
-                      {snapshot.clicks.toLocaleString("en-GB")}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-600">
-                      {snapshot.conversions.toLocaleString("en-GB")}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-600">
-                      {formatMoney(Math.round(snapshot.cpcPence), account.currency)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-900">
-                      {snapshot.roas.toFixed(2)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <Section title="Daily metrics">
+            <DataList
+              rows={newestFirst}
+              columns={snapshotColumns(account.currency)}
+              getRowKey={(snapshot) => snapshot.id}
+              caption="Daily ad metrics"
+            />
+          </Section>
         </>
       )}
     </>

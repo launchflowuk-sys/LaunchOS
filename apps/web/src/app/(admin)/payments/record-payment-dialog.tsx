@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { recordManualPayment } from "./actions";
 
 type Option = { value: string; label: string };
 type InvoiceOption = Option & { clientId: string };
-
-const FIELD = "h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
 
 /**
  * The options arrive as props rather than being queried here: `@launchos/db`
@@ -50,16 +51,16 @@ export function RecordPaymentDialog({
             setClientId("");
             setOpen(false);
           }}
-          className="space-y-3"
+          className="space-y-4"
         >
-          <label className="block text-xs text-neutral-500">
-            Client
-            <select
+          <div className="space-y-1.5">
+            <Label htmlFor="payment-client">Client</Label>
+            <NativeSelect
+              id="payment-client"
               name="clientId"
               required
               value={clientId}
               onChange={(event) => setClientId(event.target.value)}
-              className={FIELD}
             >
               <option value="" disabled>
                 Choose a client
@@ -69,13 +70,20 @@ export function RecordPaymentDialog({
                   {c.label}
                 </option>
               ))}
-            </select>
-          </label>
-          <label className="block text-xs text-neutral-500">
-            Invoice
+            </NativeSelect>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="payment-invoice">Invoice</Label>
             {/* Remounted per client so a selection made for the previous one
                 cannot survive into the new list. */}
-            <select key={clientId} name="invoiceId" defaultValue="" disabled={clientId === ""} className={FIELD}>
+            <NativeSelect
+              key={clientId}
+              id="payment-invoice"
+              name="invoiceId"
+              defaultValue=""
+              disabled={clientId === ""}
+            >
               <option value="">
                 {clientId === ""
                   ? "Choose a client first"
@@ -88,36 +96,40 @@ export function RecordPaymentDialog({
                   {i.label}
                 </option>
               ))}
-            </select>
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            <label className="block text-xs text-neutral-500">
-              Amount (£)
-              <input
+            </NativeSelect>
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="payment-amount">Amount (£)</Label>
+              <Input
+                id="payment-amount"
                 name="amountPounds"
                 type="number"
                 step="0.01"
                 min="0.01"
                 required
-                className={FIELD}
                 placeholder="118.80"
+                className="tabular-nums"
               />
-            </label>
-            <label className="block text-xs text-neutral-500">
-              Provider
-              <select name="provider" defaultValue="bank" className={FIELD}>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="payment-provider">Provider</Label>
+              <NativeSelect id="payment-provider" name="provider" defaultValue="bank">
                 {providers.map((p) => (
                   <option key={p} value={p}>
                     {p}
                   </option>
                 ))}
-              </select>
-            </label>
+              </NativeSelect>
+            </div>
           </div>
-          <label className="block text-xs text-neutral-500">
-            Reference
-            <input name="providerRef" maxLength={200} className={FIELD} placeholder="Bank statement reference" />
-          </label>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="payment-reference">Reference</Label>
+            <Input id="payment-reference" name="providerRef" maxLength={200} placeholder="Bank statement reference" />
+          </div>
+
           <DialogFooter>
             <Button type="submit">Record payment</Button>
           </DialogFooter>

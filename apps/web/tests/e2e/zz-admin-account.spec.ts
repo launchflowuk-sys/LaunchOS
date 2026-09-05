@@ -31,6 +31,12 @@ const RECOVERY =
  * Follows a link and waits for the destination to render. A plain `click()` is
  * not enough against `next dev`: a Fast Refresh full reload cancels the
  * in-flight client navigation. Same helper as `admin-team.spec.ts`.
+ *
+ * The rail's "Account" link is looked up with `exact: true` at every call site:
+ * a role name is matched as a case-insensitive substring by default, and the
+ * dashboard's activity feed carries links like "Google ads account connected:
+ * …", which made a bare `name: "Account"` a strict-mode violation as soon as an
+ * ad account existed.
  */
 async function follow(page: Page, link: Locator, heading: string | RegExp): Promise<void> {
   const target = page.getByRole("heading", { name: heading });
@@ -112,7 +118,7 @@ test.afterEach(async ({ page }) => {
   }
 
   try {
-    await follow(page, page.getByRole("link", { name: "Account" }), "Account");
+    await follow(page, page.getByRole("link", { name: "Account", exact: true }), "Account");
     await changePassword(page, TEMPORARY, OWNER.password);
   } catch (error) {
     throw new Error(`${RECOVERY} (restore failed: ${String(error)})`);
@@ -135,7 +141,7 @@ test("an owner changes their own password, and /team stops offering a re-issue",
   test.setTimeout(300_000);
 
   await signIn(page);
-  await follow(page, page.getByRole("link", { name: "Account" }), "Account");
+  await follow(page, page.getByRole("link", { name: "Account", exact: true }), "Account");
   // Scoped to `main`: the sidebar's identity block shows the same address.
   await expect(page.getByRole("main").getByText(OWNER.email)).toBeVisible();
 
@@ -161,7 +167,7 @@ test("an owner changes their own password, and /team stops offering a re-issue",
   // Back to the seeded password, so the rest of the suite (and the next `pnpm
   // db:seed`-less run) can still sign in. The `afterEach` above is the net for
   // the case where this line is never reached.
-  await follow(page, page.getByRole("link", { name: "Account" }), "Account");
+  await follow(page, page.getByRole("link", { name: "Account", exact: true }), "Account");
   await changePassword(page, TEMPORARY, OWNER.password);
 
   // Proven, not assumed: sign out and back in with the seeded credentials.

@@ -1,14 +1,17 @@
 import { INVOICE_SEND_ACTION } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, sql } from "drizzle-orm";
+import { Banknote } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { InlineAlert } from "@/components/inline-alert";
+import { KeyValue, type KeyValueItem } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime, formatPence } from "@/lib/format";
@@ -17,6 +20,52 @@ import { requireAdmin } from "@/lib/session";
 import { markInvoiceAsPaid, requestSendInvoice, voidInvoiceAction } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+type LineRow = { description: string; quantity: number; unitPence: number };
+type PaymentRow = {
+  id: string;
+  amountPence: number;
+  currency: string;
+  provider: string;
+  providerRef: string | null;
+  status: string;
+  paidAt: Date | null;
+  createdAt: Date;
+};
+
+function lineColumns(currency: string): readonly DataListColumn<LineRow>[] {
+  return [
+    { key: "description", header: "Description", primary: true, cell: (line) => line.description },
+    { key: "qty", header: "Qty", numeric: true, cell: (line) => line.quantity },
+    { key: "unit", header: "Unit", numeric: true, cell: (line) => formatPence(line.unitPence, currency) },
+    {
+      key: "total",
+      header: "Line total",
+      numeric: true,
+      className: "font-medium text-foreground",
+      cell: (line) => formatPence(line.unitPence * line.quantity, currency),
+    },
+  ];
+}
+
+const PAYMENT_COLUMNS: readonly DataListColumn<PaymentRow>[] = [
+  {
+    key: "date",
+    header: "Date",
+    primary: true,
+    cell: (row) => <span className="whitespace-nowrap">{formatDateTime(row.paidAt ?? row.createdAt)}</span>,
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: (row) => formatPence(row.amountPence, row.currency),
+  },
+  { key: "provider", header: "Provider", cell: (row) => row.provider },
+  { key: "reference", header: "Reference", cell: (row) => row.providerRef ?? "—" },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+];
 
 export default async function InvoicePage({ params }: PageProps<"/invoices/[id]">) {
   const { id } = await params;
@@ -67,182 +116,139 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
   // invoice out needs a fresh one.
   const sendFailure = readSendFailure(invoice.metadata);
 
+  const details: KeyValueItem[] = [
+    { label: "Status", value: <StatusBadge value={invoice.status} /> },
+    { label: "Issued", value: formatDate(invoice.issuedAt) },
+    { label: "Due", value: formatDate(invoice.dueAt) },
+    { label: "Paid", value: formatDateTime(invoice.paidAt) },
+    { label: "Currency", value: invoice.currency },
+    { label: "Subtotal", value: <span className="tabular-nums">{formatPence(invoice.subtotalPence, invoice.currency)}</span> },
+    { label: "VAT", value: <span className="tabular-nums">{formatPence(invoice.vatPence, invoice.currency)}</span> },
+    {
+      label: "Total",
+      value: (
+        <span className="text-base font-semibold tabular-nums">
+          {formatPence(invoice.totalPence, invoice.currency)}
+        </span>
+      ),
+    },
+    ...(subscription
+      ? [{
+          label: "Subscription",
+          value: `${formatPence(subscription.amountPence, subscription.currency)} a month · ${subscription.status.replaceAll("_", " ")}`,
+        }]
+      : []),
+    ...(invoice.stripeInvoiceId ? [{ label: "Stripe invoice", value: invoice.stripeInvoiceId }] : []),
+  ];
+
   return (
     <>
       <PageHeader
         title={invoice.number}
         description={client?.name ?? "Unknown client"}
+        category="money"
+        /* Two actions only. Sending is the one thing this screen is for, and
+           printing is how an invoice reaches a client who never signs in.
+           Marking paid and voiding change what the invoice *is*, so they sit
+           with the figures they change, at the foot of the detail card. */
         actions={
           <>
+            {sendable ? (
+              <ActionForm action={requestSendInvoice} ariaLabel="Send this invoice" success="Send queued for approval">
+                <input type="hidden" name="invoiceId" value={invoice.id} />
+                <Button type="submit" className="max-sm:w-full">
+                  Send…
+                </Button>
+              </ActionForm>
+            ) : null}
             {/* The same document the client reads in their portal, so an
                 invoice can be saved as a PDF for a client who never signs in. */}
             <Button asChild variant="secondary">
               <Link href={`/invoices/${invoice.id}/print`}>Print</Link>
             </Button>
-            {sendable ? (
-              <ActionForm action={requestSendInvoice} ariaLabel="Send this invoice" success="Send queued for approval">
-                <input type="hidden" name="invoiceId" value={invoice.id} />
-                <Button type="submit">Send…</Button>
-              </ActionForm>
-            ) : null}
-            {settled ? null : (
-              <ActionForm action={markInvoiceAsPaid} ariaLabel="Mark this invoice paid" success="Invoice marked paid">
-                <input type="hidden" name="invoiceId" value={invoice.id} />
-                <Button type="submit" variant="secondary">
-                  Mark paid
-                </Button>
-              </ActionForm>
-            )}
-            {settled ? null : (
-              <ActionForm action={voidInvoiceAction} ariaLabel="Void this invoice" success="Invoice voided">
-                <input type="hidden" name="invoiceId" value={invoice.id} />
-                <Button type="submit" variant="secondary">
-                  Void
-                </Button>
-              </ActionForm>
-            )}
           </>
         }
       />
 
       {sendFailure ? (
-        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-          <p>
-            <span className="font-semibold">Send failed:</span> {sendFailure.message}
-            {sendFailure.to ? ` (to ${sendFailure.to})` : ""}
-          </p>
-          <p className="mt-1 text-xs text-red-700">
-            The invoice is marked sent so it cannot go out twice, and the approval that authorised it is spent.
-          </p>
-          {sendable ? (
-            <ActionForm
-              className="mt-2"
-              action={requestSendInvoice}
-              ariaLabel="Request another send of this invoice"
-              success="Send queued for approval"
-            >
-              <input type="hidden" name="invoiceId" value={invoice.id} />
-              <Button type="submit" variant="secondary">
-                Request send again
-              </Button>
-            </ActionForm>
-          ) : null}
-        </div>
+        <InlineAlert
+          tone="danger"
+          title={`Send failed: ${sendFailure.message}${sendFailure.to ? ` (to ${sendFailure.to})` : ""}`}
+          className="mb-4"
+          action={
+            sendable ? (
+              <ActionForm
+                action={requestSendInvoice}
+                ariaLabel="Request another send of this invoice"
+                success="Send queued for approval"
+              >
+                <input type="hidden" name="invoiceId" value={invoice.id} />
+                <Button type="submit" variant="secondary" size="sm">
+                  Request send again
+                </Button>
+              </ActionForm>
+            ) : null
+          }
+        >
+          The invoice is marked sent so it cannot go out twice, and the approval that authorised it is spent.
+        </InlineAlert>
       ) : null}
 
       {pendingSend ? (
-        <p className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        <InlineAlert tone="warning" className="mb-4">
           This invoice is awaiting approval before it is emailed.{" "}
           <Link href="/approvals" className="underline">
             Open approvals
           </Link>
           .
-        </p>
+        </InlineAlert>
       ) : (
-        <p className="mb-4 text-xs text-neutral-400">
+        <p className="mb-4 text-meta text-muted-foreground">
           Sending emails the client a link to their portal invoice and needs approval first.
         </p>
       )}
 
-      <section className="mb-8 rounded-lg border border-neutral-200 bg-white p-4">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-4">
-          <Field label="Status">
-            <StatusBadge value={invoice.status} />
-          </Field>
-          <Field label="Issued">{formatDate(invoice.issuedAt)}</Field>
-          <Field label="Due">{formatDate(invoice.dueAt)}</Field>
-          <Field label="Paid">{formatDateTime(invoice.paidAt)}</Field>
-          <Field label="Currency">{invoice.currency}</Field>
-          <Field label="Subtotal">{formatPence(invoice.subtotalPence, invoice.currency)}</Field>
-          <Field label="VAT">{formatPence(invoice.vatPence, invoice.currency)}</Field>
-          <Field label="Total">
-            <span className="font-semibold text-neutral-900">{formatPence(invoice.totalPence, invoice.currency)}</span>
-          </Field>
-          {subscription ? (
-            <Field label="Subscription">
-              {formatPence(subscription.amountPence, subscription.currency)} a month · {subscription.status.replaceAll("_", " ")}
-            </Field>
-          ) : null}
-          {invoice.stripeInvoiceId ? <Field label="Stripe invoice">{invoice.stripeInvoiceId}</Field> : null}
-        </dl>
-      </section>
-
-      <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold text-neutral-900">Line items</h2>
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Description</TableHead>
-                <TableHead className="text-right">Qty</TableHead>
-                <TableHead className="text-right">Unit</TableHead>
-                <TableHead className="text-right">Line total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoice.lineItems.map((line, index) => (
-                <TableRow key={`${line.description}-${index}`}>
-                  <TableCell className="text-neutral-900">{line.description}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">{line.quantity}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-600">
-                    {formatPence(line.unitPence, invoice.currency)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(line.unitPence * line.quantity, invoice.currency)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+      <Section>
+        <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <KeyValue items={details} columns={2} className="sm:grid-cols-2 lg:grid-cols-4" />
+          {settled ? null : (
+            <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-4">
+              <ActionForm action={markInvoiceAsPaid} ariaLabel="Mark this invoice paid" success="Invoice marked paid">
+                <input type="hidden" name="invoiceId" value={invoice.id} />
+                <Button type="submit" variant="secondary" size="sm">
+                  Mark paid
+                </Button>
+              </ActionForm>
+              <ActionForm action={voidInvoiceAction} ariaLabel="Void this invoice" success="Invoice voided">
+                <input type="hidden" name="invoiceId" value={invoice.id} />
+                <Button type="submit" variant="destructive" size="sm">
+                  Void
+                </Button>
+              </ActionForm>
+            </div>
+          )}
         </div>
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-900">Payments</h2>
-        {payments.length === 0 ? (
-          <EmptyState>No payments recorded against this invoice.</EmptyState>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Reference</TableHead>
-                  <TableHead>Status</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {payments.map((payment) => (
-                  <TableRow key={payment.id}>
-                    <TableCell className="whitespace-nowrap text-neutral-600">
-                      {formatDateTime(payment.paidAt ?? payment.createdAt)}
-                    </TableCell>
-                    <TableCell className="text-right tabular-nums text-neutral-900">
-                      {formatPence(payment.amountPence, payment.currency)}
-                    </TableCell>
-                    <TableCell className="text-neutral-600">{payment.provider}</TableCell>
-                    <TableCell className="text-neutral-600">{payment.providerRef ?? "—"}</TableCell>
-                    <TableCell>
-                      <StatusBadge value={payment.status} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </section>
+      <Section title="Line items">
+        <DataList
+          rows={invoice.lineItems}
+          columns={lineColumns(invoice.currency)}
+          getRowKey={(line, index) => `${line.description}-${index}`}
+          caption="Invoice line items"
+          empty={<EmptyState>This invoice has no line items.</EmptyState>}
+        />
+      </Section>
+
+      <Section title="Payments">
+        <DataList<PaymentRow>
+          rows={payments}
+          columns={PAYMENT_COLUMNS}
+          getRowKey={(row) => row.id}
+          caption="Payments against this invoice"
+          empty={<EmptyState icon={Banknote}>No payments recorded against this invoice.</EmptyState>}
+        />
+      </Section>
     </>
-  );
-}
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div>
-      <dt className="text-xs text-neutral-500">{label}</dt>
-      <dd className="mt-1 text-sm text-neutral-700">{children}</dd>
-    </div>
   );
 }

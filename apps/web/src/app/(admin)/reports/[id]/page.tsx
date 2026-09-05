@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
@@ -99,6 +100,7 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
             ? `Published ${formatDateTime(report.publishedAt)} and visible in the client portal.`
             : "A draft. Publishing makes it visible in the client portal."
         }
+        category="money"
         actions={
           report.status === "draft" ? (
             <ActionForm action={publishReportAction} ariaLabel="Publish this report" success="Report published">
@@ -106,36 +108,42 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
               <Button type="submit">Publish</Button>
             </ActionForm>
           ) : (
-            <StatusBadge value={report.status} />
+            // Wrapped: PageHeader stretches its actions under `sm`, and a pill
+            // that is 343px wide reads as a button, not a state.
+            <div>
+              <StatusBadge value={report.status} />
+            </div>
           )
         }
       />
 
-      <p className="mb-6 text-sm text-neutral-500">
-        <Link href="/reports" className="underline">
+      <p className="mb-6 text-sm text-muted-foreground">
+        <Link href="/reports" className="underline hover:text-foreground">
           All reports
         </Link>{" "}
         ·{" "}
-        <Link href={`/clients/${report.clientId}`} className="underline">
+        <Link href={`/clients/${report.clientId}`} className="underline hover:text-foreground">
           {clientName}
         </Link>
       </p>
 
-      <dl className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => (
-          <div key={tile.label} className="rounded-lg border border-neutral-200 bg-white p-4">
-            <dt className="text-xs font-medium uppercase tracking-wide text-neutral-400">{tile.label}</dt>
-            <dd className="mt-1 text-lg font-semibold tabular-nums text-neutral-900">{tile.value}</dd>
-            {tile.note ? <dd className="mt-1 text-xs text-amber-700">{tile.note}</dd> : null}
+          <div key={tile.label} className="min-w-0 rounded-xl border bg-card p-4">
+            <dt className="label-caps text-muted-foreground">{tile.label}</dt>
+            <dd className="mt-2 text-lg leading-none font-semibold tabular-nums">{tile.value}</dd>
+            {tile.note ? <dd className="mt-2 text-meta text-warning-fg">{tile.note}</dd> : null}
           </div>
         ))}
       </dl>
 
-      <section className="rounded-lg border border-neutral-200 bg-white p-6">
-        <div className="prose prose-neutral max-w-none">
-          <Markdown>{report.summaryMd}</Markdown>
+      <Section title="Summary">
+        <div className="rounded-xl border bg-card p-4 sm:p-6">
+          <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-foreground">
+            <Markdown>{report.summaryMd}</Markdown>
+          </div>
         </div>
-      </section>
+      </Section>
     </>
   );
 }

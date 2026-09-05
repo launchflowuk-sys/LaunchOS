@@ -1,19 +1,157 @@
 import { schema } from "@launchos/db";
 import { desc, eq } from "drizzle-orm";
+import { ChartColumn } from "lucide-react";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { readSendFailure, type SendFailure } from "@/lib/send-status";
 import { requireAdmin } from "@/lib/session";
+
 import { approveAdReportAction, sendAdReportAction } from "../actions";
 
 export const dynamic = "force-dynamic";
+
+type ReportRow = {
+  id: string;
+  periodStart: string;
+  periodEnd: string;
+  summaryMd: string;
+  status: string;
+  agentRunId: string | null;
+  createdAt: Date;
+  sentAt: Date | null;
+  metadata: Record<string, unknown>;
+  accountId: string;
+  accountName: string;
+  clientId: string;
+  clientName: string;
+};
+
+/**
+ * A report whose email was rejected keeps its claim — a rollback would arm a
+ * second send — so the badge still reads "sent". Without this note the only
+ * signals are an owner notification and a client activity row, both of which
+ * scroll away, and the screen quietly tells Shoji the client has the report.
+ */
+function SendFailureNote({ failure }: { failure: SendFailure | null }) {
+  if (!failure) return null;
+  return (
+    <p className="mt-2 max-w-prose text-meta font-normal text-danger-fg">
+      <span className="font-semibold">Send failed:</span> {failure.message}
+      {failure.to ? <span className="block">to {failure.to}</span> : null}
+      <span className="block text-muted-foreground">Draft a fresh report if the client still needs it.</span>
+    </p>
+  );
+}
+
+const COLUMNS: readonly DataListColumn<ReportRow>[] = [
+  {
+    key: "period",
+    header: "Period",
+    primary: true,
+    cell: (report) => (
+      <>
+        <span className="whitespace-nowrap">
+          {formatDate(report.periodStart)} → {formatDate(report.periodEnd)}
+        </span>
+        <SendFailureNote failure={readSendFailure(report.metadata)} />
+      </>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: (report) => (
+      <Link href={`/clients/${report.clientId}`} className="hover:underline">
+        {report.clientName}
+      </Link>
+    ),
+  },
+  {
+    key: "account",
+    header: "Account",
+    cell: (report) => (
+      <Link href={`/ads/${report.accountId}`} className="hover:underline">
+        {report.accountName}
+      </Link>
+    ),
+  },
+  {
+    key: "drafted",
+    header: "Drafted",
+    hideOnMobile: true,
+    cell: (report) => <span className="whitespace-nowrap">{formatDateTime(report.createdAt)}</span>,
+  },
+  {
+    key: "run",
+    header: "Agent run",
+    hideOnMobile: true,
+    cell: (report) =>
+      report.agentRunId ? (
+        <Link href={`/agents/runs/${report.agentRunId}`} className="underline hover:text-foreground">
+          view run
+        </Link>
+      ) : (
+        "—"
+      ),
+  },
+  {
+    key: "summary",
+    header: "Summary",
+    className: "text-left",
+    cell: (report) => (
+      <details className="group">
+        <summary className="cursor-pointer text-muted-foreground group-open:text-foreground">Preview</summary>
+        <div className="prose prose-sm mt-2 max-w-prose text-left text-foreground">
+          <Markdown>{report.summaryMd}</Markdown>
+        </div>
+      </details>
+    ),
+  },
+  { key: "status", header: "Status", status: true, cell: (report) => <StatusBadge value={report.status} /> },
+  {
+    key: "actions",
+    header: "Actions",
+    action: true,
+    cell: (report) => (
+      <>
+        {report.status === "draft" ? (
+          <ActionForm
+            action={approveAdReportAction}
+            ariaLabel={`Approve the report for ${report.accountName}`}
+            success="Report approved"
+          >
+            <input type="hidden" name="adReportId" value={report.id} />
+            <Button type="submit" variant="success" size="sm">
+              Approve
+            </Button>
+          </ActionForm>
+        ) : null}
+        {report.status === "approved" ? (
+          <ActionForm
+            action={sendAdReportAction}
+            ariaLabel={`Send the report for ${report.accountName}`}
+            success="Report sent"
+          >
+            <input type="hidden" name="adReportId" value={report.id} />
+            <Button type="submit" size="sm">
+              Send
+            </Button>
+          </ActionForm>
+        ) : null}
+        {report.status === "sent" ? (
+          <span className="text-meta text-muted-foreground">Sent {formatDateTime(report.sentAt)}</span>
+        ) : null}
+      </>
+    ),
+  },
+];
 
 export default async function AdReportsPage() {
   const session = await requireAdmin();
@@ -46,114 +184,20 @@ export default async function AdReportsPage() {
       <PageHeader
         title="Ad reports"
         description="Drafted by the Ad Performance Sentinel. Approve one before it can be emailed to the client."
+        category="money"
       />
 
-      {reports.length === 0 ? (
-        <EmptyState>No ad reports yet. The Ad Performance Sentinel drafts one when an account is flagged.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Period</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Account</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Drafted</TableHead>
-                <TableHead>Agent run</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {reports.map((report) => (
-                <TableRow key={report.id}>
-                  <TableCell className="whitespace-nowrap text-neutral-900">
-                    {formatDate(report.periodStart)} → {formatDate(report.periodEnd)}
-                    <details className="mt-1">
-                      <summary className="cursor-pointer text-xs uppercase tracking-wide text-neutral-400">
-                        Preview
-                      </summary>
-                      <div className="prose prose-sm mt-2 max-w-none text-neutral-700">
-                        <Markdown>{report.summaryMd}</Markdown>
-                      </div>
-                    </details>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/clients/${report.clientId}`} className="hover:underline">
-                      {report.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/ads/${report.accountId}`} className="hover:underline">
-                      {report.accountName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={report.status} />
-                    <SendFailureNote failure={readSendFailure(report.metadata)} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">
-                    {formatDateTime(report.createdAt)}
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    {report.agentRunId ? (
-                      <Link href={`/agents/runs/${report.agentRunId}`} className="underline">
-                        view run
-                      </Link>
-                    ) : (
-                      "—"
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {report.status === "draft" ? (
-                      <ActionForm
-                        action={approveAdReportAction}
-                        ariaLabel={`Approve the report for ${report.accountName}`}
-                        success="Report approved"
-                      >
-                        <input type="hidden" name="adReportId" value={report.id} />
-                        <Button type="submit" variant="secondary">
-                          Approve
-                        </Button>
-                      </ActionForm>
-                    ) : null}
-                    {report.status === "approved" ? (
-                      <ActionForm
-                        action={sendAdReportAction}
-                        ariaLabel={`Send the report for ${report.accountName}`}
-                        success="Report sent"
-                      >
-                        <input type="hidden" name="adReportId" value={report.id} />
-                        <Button type="submit">Send</Button>
-                      </ActionForm>
-                    ) : null}
-                    {report.status === "sent" ? (
-                      <span className="text-xs text-neutral-400">Sent {formatDateTime(report.sentAt)}</span>
-                    ) : null}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList<ReportRow>
+        rows={reports}
+        columns={COLUMNS}
+        getRowKey={(report) => report.id}
+        caption="Ad reports"
+        empty={
+          <EmptyState icon={ChartColumn}>
+            No ad reports yet. The Ad Performance Sentinel drafts one when an account is flagged.
+          </EmptyState>
+        }
+      />
     </>
-  );
-}
-
-/**
- * A report whose email was rejected keeps its claim — a rollback would arm a
- * second send — so the badge still reads "sent". Without this note the only
- * signals are an owner notification and a client activity row, both of which
- * scroll away, and the screen quietly tells Shoji the client has the report.
- */
-function SendFailureNote({ failure }: { failure: SendFailure | null }) {
-  if (!failure) return null;
-  return (
-    <p className="mt-1 max-w-xs text-xs text-red-700">
-      <span className="font-semibold">Send failed:</span> {failure.message}
-      {failure.to ? <span className="block text-red-600">to {failure.to}</span> : null}
-      <span className="block text-neutral-500">Draft a fresh report if the client still needs it.</span>
-    </p>
   );
 }

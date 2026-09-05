@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { OneTimePasswordDialog } from "@/components/one-time-password-dialog";
+import { InlineAlert } from "@/components/inline-alert";
+import { OneTimePasswordDialog, OneTimePassword } from "@/components/one-time-password-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { reissuePasswordAction, type ReissuePasswordState } from "./actions";
@@ -19,9 +20,9 @@ export function ReissuePasswordDialog({ memberId, name }: { memberId: string; na
     <OneTimePasswordDialog
       triggerLabel="Re-issue password"
       trigger={
-        <button type="button" className="text-xs text-neutral-500 hover:text-neutral-900">
+        <Button type="button" variant="secondary" size="sm">
           Re-issue password
-        </button>
+        </Button>
       }
     >
       {({ close }) => <ReissuePasswordBody memberId={memberId} name={name} onClose={close} />}
@@ -48,17 +49,12 @@ function ReissuePasswordBody({ memberId, name, onClose }: { memberId: string; na
 
       {state.status === "issued" ? (
         <div className="space-y-4">
-          <p className="text-sm text-neutral-600">
-            {state.displayName} can now sign in with <span className="font-medium text-neutral-900">{state.email}</span> and
+          <p className="text-sm text-muted-foreground">
+            {state.displayName} can now sign in with <span className="font-medium text-foreground">{state.email}</span> and
             this password. Their previous password no longer works and anyone signed in as them has been signed out. It is
             shown once and cannot be retrieved again — send it to them now and ask them to change it.
           </p>
-          <p
-            data-testid="one-time-password"
-            className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center font-mono text-base tracking-widest text-neutral-900"
-          >
-            {state.oneTimePassword}
-          </p>
+          <OneTimePassword value={state.oneTimePassword} />
           <div className="flex justify-end">
             <Button type="button" onClick={onClose}>
               Done
@@ -66,25 +62,21 @@ function ReissuePasswordBody({ memberId, name, onClose }: { memberId: string; na
           </div>
         </div>
       ) : (
-        <form action={formAction} className="space-y-3">
+        <form action={formAction} className="space-y-4">
           <input type="hidden" name="memberId" value={memberId} />
-          <p className="text-sm text-neutral-600">
+          <p className="text-sm text-muted-foreground">
             This replaces {name}&apos;s password with a new one-time password, immediately invalidates the old one and signs
             out every session it opened. Use it when the password they were given never reached them.
           </p>
 
-          {state.status === "error" ? (
-            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              {state.message}
-            </p>
-          ) : null}
+          {state.status === "error" ? <InlineAlert tone="danger">{state.message}</InlineAlert> : null}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Issuing…" : "Re-issue password"}
+            <Button type="submit" loading={pending}>
+              Re-issue password
             </Button>
           </div>
         </form>

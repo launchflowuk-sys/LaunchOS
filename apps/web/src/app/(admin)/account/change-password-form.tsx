@@ -1,7 +1,10 @@
 "use client";
 
 import { useActionState } from "react";
+import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { changeOwnPasswordAction, type ChangePasswordState } from "./actions";
 
 /**
@@ -14,19 +17,14 @@ const MIN_PASSWORD_LENGTH = 12;
 
 const INITIAL: ChangePasswordState = { status: "idle" };
 
-const CONTROL =
-  "h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none";
-
 export function ChangePasswordForm() {
   const [state, formAction, pending] = useActionState(changeOwnPasswordAction, INITIAL);
 
   return (
     <form action={formAction} aria-label="Change password" className="max-w-sm space-y-4">
       <div className="space-y-1.5">
-        <label htmlFor="currentPassword" className="block text-sm font-medium text-neutral-700">
-          Current password
-        </label>
-        <input
+        <Label htmlFor="currentPassword">Current password</Label>
+        <Input
           id="currentPassword"
           name="currentPassword"
           type="password"
@@ -35,15 +33,12 @@ export function ChangePasswordForm() {
           // Password managers rewrite these fields before React hydrates; that
           // is expected, not a bug.
           suppressHydrationWarning
-          className={CONTROL}
         />
       </div>
 
       <div className="space-y-1.5">
-        <label htmlFor="newPassword" className="block text-sm font-medium text-neutral-700">
-          New password
-        </label>
-        <input
+        <Label htmlFor="newPassword">New password</Label>
+        <Input
           id="newPassword"
           name="newPassword"
           type="password"
@@ -51,15 +46,14 @@ export function ChangePasswordForm() {
           required
           minLength={MIN_PASSWORD_LENGTH}
           suppressHydrationWarning
-          className={CONTROL}
         />
-        <p className="text-xs text-neutral-500">At least {MIN_PASSWORD_LENGTH} characters.</p>
+        <p className="text-meta text-muted-foreground">At least {MIN_PASSWORD_LENGTH} characters.</p>
       </div>
 
       {state.status === "error" ? (
-        <p role="alert" data-testid="password-error" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-          {state.message}
-        </p>
+        <div data-testid="password-error">
+          <InlineAlert tone="danger">{state.message}</InlineAlert>
+        </div>
       ) : null}
 
       {/*
@@ -69,21 +63,15 @@ export function ChangePasswordForm() {
         read as a failure — the new password is the live one either way.
       */}
       {state.status === "changed" ? (
-        <p
-          role="status"
-          data-testid="password-changed"
-          className={
-            state.warning
-              ? "rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800"
-              : "rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
-          }
-        >
-          {state.warning ?? "Password changed. Any other devices have been signed out."}
-        </p>
+        <div role="status" data-testid="password-changed">
+          <InlineAlert tone={state.warning ? "warning" : "success"}>
+            {state.warning ?? "Password changed. Any other devices have been signed out."}
+          </InlineAlert>
+        </div>
       ) : null}
 
-      <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : "Change password"}
+      <Button type="submit" loading={pending}>
+        Change password
       </Button>
     </form>
   );

@@ -1,5 +1,8 @@
 import { listMembers } from "@launchos/core";
+import { InlineAlert } from "@/components/inline-alert";
+import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -24,34 +27,41 @@ export default async function AccountPage() {
 
   return (
     <>
-      <PageHeader title="Account" description="Your own sign-in details for this organisation." />
+      <PageHeader
+        title="Account"
+        description="Your own sign-in details for this organisation."
+        category="organisation"
+      />
 
-      <section className="mb-8">
-        <h2 className="mb-3 text-sm font-semibold text-neutral-900">Signed in as</h2>
-        <div className="rounded-lg border border-neutral-200 bg-white p-5 text-sm">
-          <p className="font-medium text-neutral-900">{me?.displayName ?? me?.name ?? session.email}</p>
-          <p className="mt-1 text-neutral-600">{session.email}</p>
-          <p className="mt-1 text-xs capitalize text-neutral-500">{session.role}</p>
+      <Section title="Signed in as">
+        <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <KeyValue
+            columns={2}
+            items={[
+              { label: "Name", value: me?.displayName ?? me?.name ?? session.email },
+              { label: "Email", value: session.email },
+              { label: "Role", value: <span className="capitalize">{session.role}</span> },
+            ]}
+          />
         </div>
-      </section>
+      </Section>
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-neutral-900">Password</h2>
-        <div className="rounded-lg border border-neutral-200 bg-white p-5">
+      <Section
+        title="Password"
+        {...(me?.initialPasswordSetAt
+          ? { description: `You set your own password on ${formatDateTime(me.initialPasswordSetAt)}.` }
+          : {})}
+      >
+        <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
           {me && me.initialPasswordSetAt === null ? (
-            <p className="mb-4 rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            <InlineAlert tone="warning">
               You are still on the password you were issued. Change it here — until you do, an owner can re-issue a new
               one over the top of it from the Team screen.
-            </p>
-          ) : null}
-          {me?.initialPasswordSetAt ? (
-            <p className="mb-4 text-xs text-neutral-500">
-              You set your own password on {formatDateTime(me.initialPasswordSetAt)}.
-            </p>
+            </InlineAlert>
           ) : null}
           <ChangePasswordForm />
         </div>
-      </section>
+      </Section>
     </>
   );
 }

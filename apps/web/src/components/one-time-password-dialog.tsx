@@ -28,10 +28,10 @@ export function OneTimePasswordDialog({
   /** Label for the default primary-button trigger; also the accessible name. */
   triggerLabel: string;
   /**
-   * Replaces the default `<Button>` when the caller needs a different control —
-   * the per-row "Re-issue password" is a plain text button inside a table cell,
-   * not a primary action. Must be a single element that accepts a ref and the
-   * props Radix spreads onto it (`asChild`).
+   * Replaces the default primary `<Button>` when the caller needs a different
+   * control — the per-row "Re-issue password" is a small secondary button
+   * inside a table cell, not the screen's one primary action. Must be a single
+   * element that accepts a ref and the props Radix spreads onto it (`asChild`).
    */
   trigger?: ReactNode;
   children: (props: { close: () => void }) => ReactNode;
@@ -53,5 +53,24 @@ export function OneTimePasswordDialog({
         <Fragment key={round}>{children({ close })}</Fragment>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The credential itself. One presentation for all three flows, so the thing the
+ * owner has to copy always looks the same: mono, spaced out so an `l` and a `1`
+ * are told apart, on a muted surface that says "this is a value, not prose".
+ *
+ * `data-testid="one-time-password"` is the e2e suite's hook for "shown exactly
+ * once" — keep it.
+ */
+export function OneTimePassword({ value }: { value: string }) {
+  return (
+    <p
+      data-testid="one-time-password"
+      className="rounded-lg border bg-muted px-3 py-2.5 text-center font-mono text-base tracking-widest break-all select-all"
+    >
+      {value}
+    </p>
   );
 }

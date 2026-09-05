@@ -1,5 +1,7 @@
-export const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
-export const LABEL = "block text-xs font-medium text-neutral-500";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 export type TemplateEnums = {
   phases: readonly string[];
@@ -21,18 +23,20 @@ export type TemplateDefaults = {
   checklist: readonly string[];
 };
 
-function Select({ name, label, value, options }: { name: string; label: string; value: string; options: readonly string[] }) {
+function EnumSelect({
+  id, name, label, value, options,
+}: { id: string; name: string; label: string; value: string; options: readonly string[] }) {
   return (
-    <label className={LABEL}>
-      {label}
-      <select name={name} defaultValue={value} className={FIELD}>
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>{label}</Label>
+      <NativeSelect id={id} name={name} defaultValue={value}>
         {options.map((option) => (
           <option key={option} value={option}>
             {option.replaceAll("_", " ")}
           </option>
         ))}
-      </select>
-    </label>
+      </NativeSelect>
+    </div>
   );
 }
 
@@ -42,81 +46,102 @@ function Select({ name, label, value, options }: { name: string; label: string; 
  *
  * Reordering is editing `sortOrder` and saving — no drag-and-drop library, and
  * it works on a phone.
+ *
+ * `idPrefix` is what keeps `htmlFor` honest: this block is rendered once per
+ * template on the same screen and a server component has no `useId`, so the
+ * caller passes the template id (or "new") and every control keeps a unique id.
  */
 export function TemplateFields({
   defaults,
   enums,
   packages,
   showPhase,
+  idPrefix,
 }: {
   defaults: TemplateDefaults;
   enums: TemplateEnums;
   packages: { value: string; label: string }[];
   showPhase: boolean;
+  idPrefix: string;
 }) {
+  const id = (field: string) => `${idPrefix}-${field}`;
+
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={LABEL}>
-          Title
-          <input name="title" required maxLength={200} defaultValue={defaults.title} className={FIELD} />
-        </label>
-        <label className={LABEL}>
-          Package
-          <select name="packageId" defaultValue={defaults.packageId} className={FIELD}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={id("title")}>Title</Label>
+          <Input id={id("title")} name="title" required maxLength={200} defaultValue={defaults.title} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("packageId")}>Package</Label>
+          <NativeSelect id={id("packageId")} name="packageId" defaultValue={defaults.packageId}>
             <option value="">Every package</option>
             {packages.map((pkg) => (
               <option key={pkg.value} value={pkg.value}>
                 {pkg.label}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         {showPhase ? (
-          <Select name="phase" label="Phase" value={defaults.phase} options={enums.phases} />
+          <EnumSelect id={id("phase")} name="phase" label="Phase" value={defaults.phase} options={enums.phases} />
         ) : (
           <input type="hidden" name="phase" value={defaults.phase} />
         )}
-        <Select name="kind" label="Kind" value={defaults.kind} options={enums.kinds} />
-        <Select name="recurrence" label="Recurrence" value={defaults.recurrence} options={enums.recurrences} />
-        <Select
+        <EnumSelect id={id("kind")} name="kind" label="Kind" value={defaults.kind} options={enums.kinds} />
+        <EnumSelect
+          id={id("recurrence")}
+          name="recurrence"
+          label="Recurrence"
+          value={defaults.recurrence}
+          options={enums.recurrences}
+        />
+        <EnumSelect
+          id={id("defaultAssigneeRole")}
           name="defaultAssigneeRole"
           label="Default assignee"
           value={defaults.defaultAssigneeRole}
           options={enums.assigneeRoles}
         />
-        <label className={LABEL}>
-          Offset days
-          <input type="number" name="offsetDays" min={0} max={365} defaultValue={defaults.offsetDays} className={FIELD} />
-        </label>
-        <label className={LABEL}>
-          Sort order
-          <input type="number" name="sortOrder" min={0} max={10000} defaultValue={defaults.sortOrder} className={FIELD} />
-        </label>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("offsetDays")}>Offset days</Label>
+          <Input
+            id={id("offsetDays")}
+            type="number"
+            name="offsetDays"
+            min={0}
+            max={365}
+            defaultValue={defaults.offsetDays}
+            className="tabular-nums"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("sortOrder")}>Sort order</Label>
+          <Input
+            id={id("sortOrder")}
+            type="number"
+            name="sortOrder"
+            min={0}
+            max={10000}
+            defaultValue={defaults.sortOrder}
+            className="tabular-nums"
+          />
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={LABEL}>
-          Description
-          <textarea
-            name="descriptionMd"
-            rows={3}
-            defaultValue={defaults.descriptionMd}
-            className="mt-1 w-full rounded-md border border-neutral-300 bg-white p-2 text-sm text-neutral-900"
-          />
-        </label>
-        <label className={LABEL}>
-          Checklist (one item per line)
-          <textarea
-            name="checklist"
-            rows={3}
-            defaultValue={defaults.checklist.join("\n")}
-            className="mt-1 w-full rounded-md border border-neutral-300 bg-white p-2 text-sm text-neutral-900"
-          />
-        </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={id("descriptionMd")}>Description</Label>
+          <Textarea id={id("descriptionMd")} name="descriptionMd" rows={3} defaultValue={defaults.descriptionMd} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("checklist")}>Checklist (one item per line)</Label>
+          <Textarea id={id("checklist")} name="checklist" rows={3} defaultValue={defaults.checklist.join("\n")} />
+        </div>
       </div>
     </>
   );

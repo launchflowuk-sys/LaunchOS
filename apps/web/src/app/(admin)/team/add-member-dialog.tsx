@@ -1,9 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import { OneTimePasswordDialog } from "@/components/one-time-password-dialog";
+import { InlineAlert } from "@/components/inline-alert";
+import { NativeSelect } from "@/components/ui/native-select";
+import { OneTimePasswordDialog, OneTimePassword } from "@/components/one-time-password-dialog";
 import { Button } from "@/components/ui/button";
 import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { addMemberAction, type AddMemberState } from "./actions";
 
 const INITIAL: AddMemberState = { status: "idle" };
@@ -33,16 +37,11 @@ function AddMemberBody({ onClose }: { onClose: () => void }) {
 
       {state.status === "created" ? (
         <div className="space-y-4">
-          <p className="text-sm text-neutral-600">
-            {state.displayName} can sign in with <span className="font-medium text-neutral-900">{state.email}</span> and this
+          <p className="text-sm text-muted-foreground">
+            {state.displayName} can sign in with <span className="font-medium text-foreground">{state.email}</span> and this
             one-time password. It is shown once and cannot be retrieved again — send it to them now and ask them to change it.
           </p>
-          <p
-            data-testid="one-time-password"
-            className="rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-center font-mono text-base tracking-widest text-neutral-900"
-          >
-            {state.oneTimePassword}
-          </p>
+          <OneTimePassword value={state.oneTimePassword} />
           <div className="flex justify-end">
             <Button type="button" onClick={onClose}>
               Done
@@ -50,67 +49,35 @@ function AddMemberBody({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       ) : (
-        <form action={formAction} className="space-y-3">
+        <form action={formAction} className="space-y-4">
           <div className="space-y-1.5">
-            <label htmlFor="displayName" className="block text-sm font-medium text-neutral-700">
-              Full name
-            </label>
-            <input
-              id="displayName"
-              name="displayName"
-              required
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-            />
+            <Label htmlFor="member-display-name">Full name</Label>
+            <Input id="member-display-name" name="displayName" required />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="email" className="block text-sm font-medium text-neutral-700">
-              Email address
-            </label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              required
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-            />
+            <Label htmlFor="member-email">Email address</Label>
+            <Input id="member-email" name="email" type="email" required />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="title" className="block text-sm font-medium text-neutral-700">
-              Job title
-            </label>
-            <input
-              id="title"
-              name="title"
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-            />
+            <Label htmlFor="member-title">Job title</Label>
+            <Input id="member-title" name="title" />
           </div>
           <div className="space-y-1.5">
-            <label htmlFor="role" className="block text-sm font-medium text-neutral-700">
-              Role
-            </label>
-            <select
-              id="role"
-              name="role"
-              defaultValue="staff"
-              className="h-9 w-full rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-            >
+            <Label htmlFor="member-role">Role</Label>
+            <NativeSelect id="member-role" name="role" defaultValue="staff">
               <option value="staff">Staff</option>
               <option value="owner">Owner</option>
-            </select>
+            </NativeSelect>
           </div>
 
-          {state.status === "error" ? (
-            <p role="alert" className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-              {state.message}
-            </p>
-          ) : null}
+          {state.status === "error" ? <InlineAlert tone="danger">{state.message}</InlineAlert> : null}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={pending}>
-              {pending ? "Creating…" : "Create member"}
+            <Button type="submit" loading={pending}>
+              Create member
             </Button>
           </div>
         </form>

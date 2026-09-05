@@ -129,28 +129,26 @@ export function InvoiceDocument({
   );
 
   return (
-    <article className="mx-auto max-w-3xl rounded-lg border border-neutral-200 bg-white p-8 print:max-w-none print:border-0 print:p-0">
-      <header className="flex flex-wrap items-start justify-between gap-6 border-b border-neutral-200 pb-6">
-        <div className="text-sm text-neutral-600">
-          <p className="text-lg font-semibold tracking-tight text-neutral-900">
+    <article className="mx-auto max-w-3xl rounded-xl border bg-card p-6 sm:p-8 print:max-w-none print:rounded-none print:border-0 print:p-0">
+      <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
+        <div className="min-w-0 text-sm text-muted-foreground">
+          <p className="text-lg font-semibold tracking-tight text-foreground">
             {supplier.legalName ?? supplier.name}
           </p>
           <address className="mt-1 not-italic">
             {supplierLines(supplier).map((line, index) => (
-              <span key={`supplier-${index}`} className="block text-xs text-neutral-600">
+              <span key={`supplier-${index}`} className="block text-meta">
                 {line}
               </span>
             ))}
           </address>
-          <p className="mt-2 text-xs text-neutral-600">{registrationLine}</p>
-          {supplier.companyNumber ? (
-            <p className="text-xs text-neutral-600">Company no. {supplier.companyNumber}</p>
-          ) : null}
+          <p className="mt-2 text-meta">{registrationLine}</p>
+          {supplier.companyNumber ? <p className="text-meta">Company no. {supplier.companyNumber}</p> : null}
         </div>
         <div className="text-right">
-          <p className="text-lg font-semibold tracking-tight text-neutral-900">Invoice {invoice.number}</p>
-          <p className="mt-1 text-xs text-neutral-500">Issued {formatDate(invoice.issuedAt)}</p>
-          <p className="text-xs text-neutral-500">Due {formatDate(invoice.dueAt)}</p>
+          <p className="text-lg font-semibold tracking-tight text-foreground">Invoice {invoice.number}</p>
+          <p className="mt-1 text-meta text-muted-foreground">Issued {formatDate(invoice.issuedAt)}</p>
+          <p className="text-meta text-muted-foreground">Due {formatDate(invoice.dueAt)}</p>
           <div className="mt-2 flex justify-end">
             <StatusBadge value={invoice.status} />
           </div>
@@ -158,8 +156,8 @@ export function InvoiceDocument({
       </header>
 
       <section className="py-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Billed to</h2>
-        <address className="mt-2 text-sm not-italic text-neutral-800">
+        <h2 className="label-caps text-muted-foreground">Billed to</h2>
+        <address className="mt-2 text-sm not-italic">
           {billedTo.map((line, index) => (
             <span key={`billed-${index}`} className="block">
               {line}
@@ -168,31 +166,31 @@ export function InvoiceDocument({
         </address>
       </section>
 
-      <section>
+      <section className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Qty</TableHead>
-              <TableHead className="text-right">Unit</TableHead>
-              {showVat ? <TableHead className="text-right">VAT rate</TableHead> : null}
-              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="label-caps text-muted-foreground">Description</TableHead>
+              <TableHead className="label-caps text-right text-muted-foreground">Qty</TableHead>
+              <TableHead className="label-caps text-right text-muted-foreground">Unit</TableHead>
+              {showVat ? <TableHead className="label-caps text-right text-muted-foreground">VAT rate</TableHead> : null}
+              <TableHead className="label-caps text-right text-muted-foreground">Amount</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {invoice.lineItems.map((line, index) => (
               <TableRow key={`${line.description}-${index}`}>
-                <TableCell className="text-neutral-900">{line.description}</TableCell>
-                <TableCell className="text-right tabular-nums text-neutral-600">{line.quantity}</TableCell>
-                <TableCell className="text-right tabular-nums text-neutral-600">
+                <TableCell className="whitespace-normal">{line.description}</TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">{line.quantity}</TableCell>
+                <TableCell className="text-right tabular-nums text-muted-foreground">
                   {formatPence(line.unitPence, invoice.currency)}
                 </TableCell>
                 {showVat ? (
                   // The schema holds one VAT total for the invoice, not a rate
                   // per line, so every line carries the same derived rate.
-                  <TableCell className="text-right tabular-nums text-neutral-600">{rateLabel}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{rateLabel}</TableCell>
                 ) : null}
-                <TableCell className="text-right tabular-nums text-neutral-900">
+                <TableCell className="text-right font-medium tabular-nums">
                   {formatPence(line.unitPence * line.quantity, invoice.currency)}
                 </TableCell>
               </TableRow>
@@ -203,26 +201,26 @@ export function InvoiceDocument({
 
       <section className="mt-6 flex justify-end">
         <dl className="w-full max-w-xs space-y-2 text-sm">
-          <div className="flex justify-between">
-            <dt className="text-neutral-500">Subtotal</dt>
-            <dd className="tabular-nums text-neutral-800">{formatPence(invoice.subtotalPence, invoice.currency)}</dd>
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">Subtotal</dt>
+            <dd className="tabular-nums">{formatPence(invoice.subtotalPence, invoice.currency)}</dd>
           </div>
           {showVat ? (
-            <div className="flex justify-between">
-              <dt className="text-neutral-500">{vatLabel}</dt>
-              <dd className="tabular-nums text-neutral-800">{formatPence(invoice.vatPence, invoice.currency)}</dd>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">{vatLabel}</dt>
+              <dd className="tabular-nums">{formatPence(invoice.vatPence, invoice.currency)}</dd>
             </div>
           ) : null}
-          <div className="flex justify-between border-t border-neutral-200 pt-2">
-            <dt className="font-semibold text-neutral-900">Total</dt>
-            <dd className="tabular-nums font-semibold text-neutral-900">
+          <div className="flex justify-between gap-4 border-t pt-2">
+            <dt className="text-base font-semibold">Total</dt>
+            <dd className="text-base font-semibold tabular-nums">
               {formatPence(invoice.totalPence, invoice.currency)}
             </dd>
           </div>
         </dl>
       </section>
 
-      <footer className="mt-8 space-y-1 border-t border-neutral-200 pt-4 text-xs text-neutral-500">
+      <footer className="mt-8 space-y-1 border-t pt-4 text-meta text-muted-foreground">
         <p>Payment terms: {paymentTermsDays} days.</p>
         {supplier.invoiceFooter ? <p className="whitespace-pre-line">{supplier.invoiceFooter}</p> : null}
       </footer>

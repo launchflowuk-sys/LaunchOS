@@ -4,7 +4,9 @@ import { eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
+import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,8 +35,8 @@ function Field({
   return (
     <div className={className}>
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} defaultValue={defaultValue ?? ""} className="mt-1" />
-      {hint ? <p className="mt-1 text-xs text-neutral-500">{hint}</p> : null}
+      <Input id={name} name={name} defaultValue={defaultValue ?? ""} className="mt-1.5" />
+      {hint ? <p className="mt-1.5 text-meta text-muted-foreground">{hint}</p> : null}
     </div>
   );
 }
@@ -51,57 +53,41 @@ export default async function OrganisationSettingsPage() {
 
   return (
     <>
-      <PageHeader title="Organisation" description="Who this LaunchOS runs for, and where client mail lands." />
+      <PageHeader
+        title="Organisation"
+        description="Who this LaunchOS runs for, and where client mail lands."
+        category="organisation"
+      />
 
-      <dl className="grid grid-cols-1 gap-4 rounded-lg border border-neutral-200 bg-white p-4 text-sm sm:grid-cols-2">
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Name</dt>
-          <dd className="mt-1 text-neutral-900">{organisation.name}</dd>
+      <Section title="This organisation">
+        <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <KeyValue
+            columns={2}
+            items={[
+              { label: "Name", value: organisation.name },
+              { label: "Slug", value: organisation.slug },
+              { label: "Status", value: <StatusBadge value={organisation.status} /> },
+              { label: "Created", value: formatDateTime(organisation.createdAt) },
+              {
+                label: "Support email domain",
+                value: <code className="rounded bg-muted px-1.5 py-0.5 font-mono">{supportEmailDomain()}</code>,
+                hint: `Every client address is slug@${supportEmailDomain()}. Change it with the SUPPORT_EMAIL_DOMAIN environment variable.`,
+              },
+            ]}
+          />
         </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Slug</dt>
-          <dd className="mt-1 text-neutral-700">{organisation.slug}</dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Status</dt>
-          <dd className="mt-1">
-            <StatusBadge value={organisation.status} />
-          </dd>
-        </div>
-        <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Created</dt>
-          <dd className="mt-1 text-neutral-700">{formatDateTime(organisation.createdAt)}</dd>
-        </div>
-        <div className="sm:col-span-2">
-          <dt className="text-xs uppercase tracking-wide text-neutral-400">Support email domain</dt>
-          <dd className="mt-1 text-neutral-900">
-            <code className="rounded bg-neutral-100 px-1.5 py-0.5">{supportEmailDomain()}</code>
-            <span className="ml-2 text-xs text-neutral-500">
-              Every client address is <code>slug@{supportEmailDomain()}</code>. Change it with the{" "}
-              <code>SUPPORT_EMAIL_DOMAIN</code> environment variable.
-            </span>
-          </dd>
-        </div>
-      </dl>
+      </Section>
 
-      <section className="mt-8 rounded-lg border border-neutral-200 bg-white p-4">
-        <h2 className="text-sm font-semibold text-neutral-900">Invoice details</h2>
-        <p className="mt-1 text-sm text-neutral-500">
-          Printed on every invoice, in the portal and on{" "}
-          <Link href="/invoices" className="underline">
-            Invoices
-          </Link>
-          . HMRC requires a VAT invoice to carry the supplier&rsquo;s name, address and VAT registration number, so an
-          invoice is only a valid one once these are filled in. Leave <strong>VAT number</strong> empty if you are not
-          registered and invoices will print &ldquo;VAT not registered&rdquo; with no VAT line.
-        </p>
-
+      <Section
+        title="Invoice details"
+        description="Printed on every invoice, in the portal and on Invoices. HMRC requires a VAT invoice to carry the supplier's name, address and VAT registration number, so an invoice is only a valid one once these are filled in. Leave VAT number empty if you are not registered and invoices will print “VAT not registered” with no VAT line."
+      >
         {isOwner ? (
           <ActionForm
             action={updateOrganisationAction}
             ariaLabel="Organisation invoice details"
             success="Invoice details saved"
-            className="mt-4"
+            className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
@@ -140,40 +126,40 @@ export default async function OrganisationSettingsPage() {
                   name="invoiceFooter"
                   rows={3}
                   defaultValue={organisation.invoiceFooter ?? ""}
-                  className="mt-1"
+                  className="mt-1.5"
                 />
-                <p className="mt-1 text-xs text-neutral-500">
+                <p className="mt-1.5 text-meta text-muted-foreground">
                   Printed under the payment terms — bank details, or anything else every invoice should say.
                 </p>
               </div>
             </div>
-            <div className="mt-4">
+            <div className="flex justify-end max-sm:[&>*]:w-full">
               <Button type="submit">Save invoice details</Button>
             </div>
           </ActionForm>
         ) : (
-          <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <dt className="text-xs uppercase tracking-wide text-neutral-400">Legal name</dt>
-              <dd className="mt-1 text-neutral-900">{organisation.legalName ?? organisation.name}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-neutral-400">VAT number</dt>
-              <dd className="mt-1 text-neutral-900">{organisation.vatNumber ?? "Not registered"}</dd>
-            </div>
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-neutral-400">Company number</dt>
-              <dd className="mt-1 text-neutral-900">{organisation.companyNumber ?? "—"}</dd>
-            </div>
-            <p className="text-xs text-neutral-500 sm:col-span-2">Only an owner can change these.</p>
-          </dl>
+          <div className="rounded-xl border bg-card p-4 sm:p-5">
+            <KeyValue
+              columns={2}
+              items={[
+                { label: "Legal name", value: organisation.legalName ?? organisation.name },
+                { label: "VAT number", value: organisation.vatNumber ?? "Not registered" },
+                { label: "Company number", value: organisation.companyNumber ?? "—" },
+              ]}
+            />
+            <p className="mt-4 text-meta text-muted-foreground">Only an owner can change these.</p>
+          </div>
         )}
-      </section>
+      </Section>
 
-      <p className="mt-4 text-sm text-neutral-500">
+      <p className="mt-8 text-sm text-muted-foreground">
         Agent enablement lives on{" "}
-        <Link href="/settings/agents" className="underline">
+        <Link href="/settings/agents" className="underline hover:text-foreground">
           Settings → Agents
+        </Link>
+        . Invoices are listed on{" "}
+        <Link href="/invoices" className="underline hover:text-foreground">
+          Invoices
         </Link>
         .
       </p>

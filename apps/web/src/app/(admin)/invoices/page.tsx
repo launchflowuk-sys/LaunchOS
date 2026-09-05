@@ -1,9 +1,10 @@
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
+import { Receipt } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDate, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -12,7 +13,59 @@ import { INVOICE_STATUSES, InvoiceStatusFilter } from "./schemas";
 
 export const dynamic = "force-dynamic";
 
-const FILTER_BASE = "rounded-md px-3 py-1.5 text-sm capitalize";
+/**
+ * The status filter is a row of links rather than a select: it is the only
+ * control on the screen, every option is one tap, and a GET link keeps the
+ * filtered list shareable and reloadable.
+ */
+const FILTER_BASE =
+  "rounded-full border px-3 py-1 text-row transition-colors";
+const FILTER_ON = "border-primary bg-primary text-primary-foreground";
+const FILTER_OFF = "border-border bg-card text-muted-foreground hover:bg-muted";
+
+type InvoiceRow = {
+  id: string;
+  number: string;
+  status: string;
+  issuedAt: Date;
+  dueAt: Date;
+  totalPence: number;
+  currency: string;
+  clientId: string;
+  clientName: string;
+};
+
+const COLUMNS: readonly DataListColumn<InvoiceRow>[] = [
+  {
+    key: "number",
+    header: "Number",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/invoices/${row.id}`} className="hover:underline">
+        {row.number}
+      </Link>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: (row) => (
+      <Link href={`/clients/${row.clientId}`} className="hover:underline">
+        {row.clientName}
+      </Link>
+    ),
+  },
+  { key: "issued", header: "Issued", cell: (row) => <span className="whitespace-nowrap">{formatDate(row.issuedAt)}</span> },
+  { key: "due", header: "Due", cell: (row) => <span className="whitespace-nowrap">{formatDate(row.dueAt)}</span> },
+  {
+    key: "total",
+    header: "Total",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: (row) => formatPence(row.totalPence, row.currency),
+  },
+  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
+];
 
 export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
   const session = await requireAdmin();
@@ -40,68 +93,38 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
 
   return (
     <>
-      <PageHeader title="Invoices" description="Every invoice raised for a client, and where it has got to." />
+      <PageHeader
+        title="Invoices"
+        description="Every invoice raised for a client, and where it has got to."
+        category="money"
+      />
 
       <nav aria-label="Filter by status" className="mb-4 flex flex-wrap gap-2">
-        <Link
-          href="/invoices"
-          className={cn(FILTER_BASE, active ? "border border-neutral-200 text-neutral-700" : "bg-neutral-900 text-white")}
-        >
-          All
+        <Link href="/invoices" className={cn(FILTER_BASE, active ? FILTER_OFF : FILTER_ON)}>
+          all
         </Link>
         {INVOICE_STATUSES.map((value) => (
           <Link
             key={value}
             href={`/invoices?status=${value}`}
-            className={cn(FILTER_BASE, value === active ? "bg-neutral-900 text-white" : "border border-neutral-200 text-neutral-700")}
+            className={cn(FILTER_BASE, value === active ? FILTER_ON : FILTER_OFF)}
           >
             {value}
           </Link>
         ))}
       </nav>
 
-      {invoices.length === 0 ? (
-        <EmptyState>No invoices yet. Raise one from a client&apos;s Contacts &amp; Billing tab.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Issued</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead className="text-right">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {invoices.map((invoice) => (
-                <TableRow key={invoice.id}>
-                  <TableCell>
-                    <Link href={`/invoices/${invoice.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {invoice.number}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/clients/${invoice.clientId}`} className="hover:underline">
-                      {invoice.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge value={invoice.status} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.issuedAt)}</TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDate(invoice.dueAt)}</TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatPence(invoice.totalPence, invoice.currency)}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList<InvoiceRow>
+        rows={invoices}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Invoices"
+        empty={
+          <EmptyState icon={Receipt}>
+            No invoices yet. Raise one from a client&apos;s Contacts &amp; Billing tab.
+          </EmptyState>
+        }
+      />
     </>
   );
 }

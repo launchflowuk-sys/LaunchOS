@@ -1,5 +1,6 @@
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
+import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { z } from "zod";
@@ -77,10 +78,14 @@ export default async function AdminInvoicePrintPage({ params }: PageProps<"/invo
   return (
     <>
       <div className="mb-6 print:hidden">
-        <Link href={`/invoices/${invoice.id}`} className="text-sm text-neutral-600 hover:underline">
+        <Link
+          href={`/invoices/${invoice.id}`}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground hover:underline"
+        >
+          <ChevronLeft aria-hidden strokeWidth={1.75} className="size-4" />
           Back to {invoice.number}
         </Link>
-        <p className="mt-2 text-xs text-neutral-500">
+        <p className="mt-2 text-meta text-muted-foreground">
           Use your browser&rsquo;s print dialog to save this invoice as a PDF. Supplier details come from{" "}
           <Link href="/settings/organisation" className="underline">
             Settings &rarr; Organisation

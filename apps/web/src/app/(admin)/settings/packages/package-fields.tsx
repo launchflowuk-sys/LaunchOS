@@ -1,7 +1,6 @@
 import type { PackageIncludes } from "@launchos/db/schema";
-
-export const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
-export const LABEL = "block text-xs font-medium text-neutral-500";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /** Quantities that drive recurring task generation, one task per unit a month. */
 const QUANTITIES = [
@@ -20,9 +19,15 @@ const FLAGS = [
 /**
  * The inputs shared by "New package" and every per-package edit form. A plain
  * server component: the surrounding `<form>` supplies the action.
+ *
+ * `idPrefix` is what keeps `htmlFor` honest. This block is rendered once per
+ * package on the same screen, and a server component has no `useId`, so the
+ * caller passes the package id (or "new") and every control on the page still
+ * gets a unique id its own label points at.
  */
 export function PackageFields({
   defaults,
+  idPrefix,
 }: {
   defaults: {
     name: string;
@@ -31,72 +36,79 @@ export function PackageFields({
     setupPricePence: number;
     includes: PackageIncludes;
   };
+  idPrefix: string;
 }) {
+  const id = (field: string) => `${idPrefix}-${field}`;
+
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={LABEL}>
-          Name
-          <input name="name" required maxLength={120} defaultValue={defaults.name} className={FIELD} />
-        </label>
-        <label className={LABEL}>
-          Description
-          <input name="description" maxLength={2000} defaultValue={defaults.description} className={FIELD} />
-        </label>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={id("name")}>Name</Label>
+          <Input id={id("name")} name="name" required maxLength={120} defaultValue={defaults.name} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("description")}>Description</Label>
+          <Input id={id("description")} name="description" maxLength={2000} defaultValue={defaults.description} />
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        <label className={LABEL}>
-          Monthly price (pence)
-          <input
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor={id("monthlyPricePence")}>Monthly price (pence)</Label>
+          <Input
+            id={id("monthlyPricePence")}
             type="number"
             name="monthlyPricePence"
             min={0}
             defaultValue={defaults.monthlyPricePence}
-            className={FIELD}
+            className="tabular-nums"
           />
-        </label>
-        <label className={LABEL}>
-          Setup price (pence)
-          <input
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("setupPricePence")}>Setup price (pence)</Label>
+          <Input
+            id={id("setupPricePence")}
             type="number"
             name="setupPricePence"
             min={0}
             defaultValue={defaults.setupPricePence}
-            className={FIELD}
+            className="tabular-nums"
           />
-        </label>
+        </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         {QUANTITIES.map((quantity) => (
-          <label key={quantity.name} className={LABEL}>
-            {quantity.label}
-            <input
+          <div key={quantity.name} className="space-y-1.5">
+            <Label htmlFor={id(quantity.name)}>{quantity.label}</Label>
+            <Input
+              id={id(quantity.name)}
               type="number"
               name={quantity.name}
               min={0}
               max={60}
               defaultValue={defaults.includes[quantity.name]}
-              className={FIELD}
+              className="tabular-nums"
             />
-          </label>
+          </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-4">
+      <fieldset className="flex flex-wrap gap-x-6 gap-y-3">
+        <legend className="label-caps mb-2 text-muted-foreground">Includes</legend>
         {FLAGS.map((flag) => (
-          <label key={flag.name} className="flex items-center gap-2 text-sm text-neutral-700">
+          <label key={flag.name} className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
               name={flag.name}
               defaultChecked={defaults.includes[flag.name]}
-              className="h-4 w-4 rounded border-neutral-300"
+              className="size-4 rounded-[4px] border-input accent-primary"
             />
             {flag.label}
           </label>
         ))}
-      </div>
+      </fieldset>
     </>
   );
 }

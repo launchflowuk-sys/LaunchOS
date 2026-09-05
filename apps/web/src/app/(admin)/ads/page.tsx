@@ -1,12 +1,17 @@
 import {
   computeAccountSignals, CPC_RISE_THRESHOLD_PERCENT, listAdAccounts, listClients, ROAS_DROP_THRESHOLD_PERCENT,
 } from "@launchos/core";
+import { Megaphone } from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { NativeSelect } from "@/components/ui/native-select";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { getDb } from "@/lib/db";
 import { formatMoney } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -14,9 +19,6 @@ import { cn } from "@/lib/utils";
 import { addAdAccount } from "./actions";
 
 export const dynamic = "force-dynamic";
-
-const FIELD = "mt-1 h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
-const LABEL = "block text-xs font-medium text-neutral-500";
 
 /**
  * A percentage change, signed, coloured red only once it is past the signal
@@ -32,14 +34,14 @@ function Delta({
 }: { percent: number; threshold: number; direction: "drop" | "rise"; hasBaseline: boolean }) {
   if (!hasBaseline) {
     return (
-      <span className="text-neutral-400" title="No previous week to compare against">
+      <span className="text-muted-foreground" title="No previous week to compare against">
         —
       </span>
     );
   }
   const bad = direction === "drop" ? percent < -threshold : percent > threshold;
   return (
-    <span className={cn("tabular-nums", bad ? "text-red-600" : "text-neutral-600")}>
+    <span className={cn("tabular-nums", bad ? "font-medium text-danger-fg" : "text-muted-foreground")}>
       {percent > 0 ? "+" : ""}
       {percent.toFixed(1)}%
     </span>
@@ -48,6 +50,94 @@ function Delta({
 
 /** The most accounts one screen will render; past this, the list is paginated work. */
 const MAX_ACCOUNTS = 100;
+
+type AccountRow = {
+  account: Awaited<ReturnType<typeof listAdAccounts>>[number];
+  signals: Awaited<ReturnType<typeof computeAccountSignals>>;
+};
+
+const COLUMNS: readonly DataListColumn<AccountRow>[] = [
+  {
+    key: "account",
+    header: "Account",
+    primary: true,
+    cell: ({ account }) => (
+      <>
+        <Link href={`/ads/${account.id}`} className="hover:underline">
+          {account.name}
+        </Link>
+        <span className="block text-meta font-normal text-muted-foreground">{account.externalId}</span>
+      </>
+    ),
+  },
+  {
+    key: "client",
+    header: "Client",
+    cell: ({ account }) => (
+      <Link href={`/clients/${account.clientId}`} className="hover:underline">
+        {account.clientName}
+      </Link>
+    ),
+  },
+  { key: "platform", header: "Platform", cell: ({ account }) => <span className="capitalize">{account.platform}</span> },
+  {
+    key: "spend",
+    header: "7-day spend",
+    numeric: true,
+    className: "font-medium text-foreground",
+    cell: ({ account, signals }) => formatMoney(signals.current.spendPence, account.currency),
+  },
+  {
+    key: "roas",
+    header: "ROAS",
+    numeric: true,
+    cell: ({ signals }) =>
+      signals.current.days === 0 ? (
+        <span className="text-muted-foreground" title="No metrics collected for this week yet">
+          —
+        </span>
+      ) : (
+        signals.current.roas.toFixed(2)
+      ),
+  },
+  {
+    key: "roasChange",
+    header: "ROAS change",
+    numeric: true,
+    hideOnMobile: true,
+    cell: ({ signals }) => (
+      <Delta
+        percent={signals.roasDeltaPercent}
+        threshold={ROAS_DROP_THRESHOLD_PERCENT}
+        direction="drop"
+        hasBaseline={signals.previous.days > 0}
+      />
+    ),
+  },
+  {
+    key: "cpcChange",
+    header: "CPC change",
+    numeric: true,
+    hideOnMobile: true,
+    cell: ({ signals }) => (
+      <Delta
+        percent={signals.cpcDeltaPercent}
+        threshold={CPC_RISE_THRESHOLD_PERCENT}
+        direction="rise"
+        hasBaseline={signals.previous.days > 0}
+      />
+    ),
+  },
+  { key: "accountStatus", header: "Account", cell: ({ account }) => <StatusBadge value={account.status} /> },
+  {
+    key: "signal",
+    header: "Signal",
+    status: true,
+    cell: ({ signals }) => (
+      <StatusBadge value={signals.flagged ? "flagged" : "steady"} tone={signals.flagged ? "danger" : "success"} />
+    ),
+  },
+];
 
 export default async function AdsPage() {
   const session = await requireAdmin();
@@ -62,7 +152,7 @@ export default async function AdsPage() {
   ]);
 
   const now = new Date();
-  const rows = await Promise.all(
+  const rows: AccountRow[] = await Promise.all(
     accounts.map(async (account) => ({
       account,
       signals: await computeAccountSignals(db, session.organisationId, account.id, { now }),
@@ -74,10 +164,10 @@ export default async function AdsPage() {
       <PageHeader
         title="Ads"
         description="Google and Meta accounts, and how the last week compares with the one before."
+        category="money"
       />
 
-      <section className="mb-6">
-        <h2 className="mb-2 text-sm font-semibold text-neutral-900">Add an ad account</h2>
+      <Section title="Add an ad account">
         {clients.length === 0 ? (
           <EmptyState>
             No active clients yet. Create one under <Link href="/clients" className="underline">Clients</Link> first.
@@ -88,12 +178,12 @@ export default async function AdsPage() {
             ariaLabel="Add an ad account"
             success="Ad account added"
             resetOnSuccess
-            className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4"
+            className="space-y-4 rounded-xl border bg-card p-4"
           >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className={LABEL}>
-                Client
-                <select name="clientId" required defaultValue="" className={FIELD}>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="ads-client">Client</Label>
+                <NativeSelect id="ads-client" name="clientId" required defaultValue="">
                   <option value="" disabled>
                     Choose a client
                   </option>
@@ -102,118 +192,55 @@ export default async function AdsPage() {
                       {client.name}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className={LABEL}>
-                Platform
-                <select name="platform" defaultValue="google" className={FIELD}>
+                </NativeSelect>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ads-platform">Platform</Label>
+                <NativeSelect id="ads-platform" name="platform" defaultValue="google">
                   <option value="google">Google</option>
                   <option value="meta">Meta</option>
-                </select>
-              </label>
-              <label className={LABEL}>
-                Account id
-                <input name="externalId" required maxLength={120} placeholder="123-456-7890" className={FIELD} />
-              </label>
-              <label className={LABEL}>
-                Account name
-                <input name="name" required maxLength={200} placeholder="Search — brand" className={FIELD} />
-              </label>
-              <label className={LABEL}>
-                Currency
-                <input
+                </NativeSelect>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ads-external-id">Account id</Label>
+                <Input id="ads-external-id" name="externalId" required maxLength={120} placeholder="123-456-7890" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ads-name">Account name</Label>
+                <Input id="ads-name" name="name" required maxLength={200} placeholder="Search — brand" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="ads-currency">Currency</Label>
+                <Input
+                  id="ads-currency"
                   name="currency"
                   maxLength={3}
                   pattern="[A-Za-z]{3}"
                   title="A three-letter currency code, such as GBP"
                   defaultValue="GBP"
-                  className={FIELD}
                 />
-              </label>
+              </div>
             </div>
-            <div className="flex justify-end">
+            <div className="flex justify-end max-sm:[&>*]:w-full">
               <Button type="submit">Add ad account</Button>
             </div>
           </ActionForm>
         )}
-      </section>
+      </Section>
 
-      {rows.length === 0 ? (
-        <EmptyState>No ad accounts yet. Add one above to start collecting daily metrics.</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Account</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Platform</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">7-day spend</TableHead>
-                <TableHead className="text-right">ROAS</TableHead>
-                <TableHead className="text-right">ROAS change</TableHead>
-                <TableHead className="text-right">CPC change</TableHead>
-                <TableHead>Signal</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map(({ account, signals }) => (
-                <TableRow key={account.id}>
-                  <TableCell>
-                    <Link href={`/ads/${account.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {account.name}
-                    </Link>
-                    <span className="block text-xs text-neutral-400">{account.externalId}</span>
-                  </TableCell>
-                  <TableCell className="text-neutral-600">
-                    <Link href={`/clients/${account.clientId}`} className="hover:underline">
-                      {account.clientName}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="capitalize text-neutral-600">{account.platform}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={account.status} />
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {formatMoney(signals.current.spendPence, account.currency)}
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums text-neutral-900">
-                    {signals.current.days === 0 ? (
-                      <span className="text-neutral-400" title="No metrics collected for this week yet">
-                        —
-                      </span>
-                    ) : (
-                      signals.current.roas.toFixed(2)
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Delta
-                      percent={signals.roasDeltaPercent}
-                      threshold={ROAS_DROP_THRESHOLD_PERCENT}
-                      direction="drop"
-                      hasBaseline={signals.previous.days > 0}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Delta
-                      percent={signals.cpcDeltaPercent}
-                      threshold={CPC_RISE_THRESHOLD_PERCENT}
-                      direction="rise"
-                      hasBaseline={signals.previous.days > 0}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge
-                      value={signals.flagged ? "flagged" : "steady"}
-                      tone={signals.flagged ? "danger" : "success"}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <Section title="Accounts">
+        <DataList
+          rows={rows}
+          columns={COLUMNS}
+          getRowKey={({ account }) => account.id}
+          caption="Ad accounts"
+          empty={
+            <EmptyState icon={Megaphone}>
+              No ad accounts yet. Add one above to start collecting daily metrics.
+            </EmptyState>
+          }
+        />
+      </Section>
     </>
   );
 }

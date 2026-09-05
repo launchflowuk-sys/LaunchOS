@@ -58,7 +58,15 @@ test("raise an invoice, send it through approvals, mark it paid, then record a p
   const approval = page.getByRole("listitem").filter({ hasText: `Send invoice ${number}` }).first();
   await expect(approval).toBeVisible({ timeout: COLD_COMPILE });
   await approval.getByRole("form", { name: "Approve approval" }).getByRole("button", { name: "Approve" }).click();
-  await expect(approval.getByText("approved", { exact: true })).toBeVisible({ timeout: COLD_COMPILE });
+  // The decision landed and reads as approved. /approvals keeps decided
+  // approvals on the page but moves them out of the "waiting for you" cards and
+  // into an "already decided" list, so this is looked for in that row rather
+  // than in the card, which is gone. It has to be a *positive* signal: the
+  // invoice is only sent once this server action has finished, and asserting
+  // the card's absence would pass the moment it disappears and race the send.
+  await expect(
+    page.getByRole("row").filter({ hasText: `Send invoice ${number}` }).getByText("approved", { exact: true }),
+  ).toBeVisible({ timeout: COLD_COMPILE });
 
   await page.goto(invoiceUrl);
   await expect(page.getByRole("heading", { name: number })).toBeVisible({ timeout: COLD_COMPILE });
