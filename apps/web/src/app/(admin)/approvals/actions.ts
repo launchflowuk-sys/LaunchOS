@@ -1,12 +1,19 @@
 "use server";
 
 import { createEmailAdapter } from "@launchos/channels";
-import { decideApproval, INVOICE_SEND_ACTION, recordAudit, sendApprovedInvoice } from "@launchos/core";
+import {
+  applySubscriptionChangeDecision,
+  decideApproval,
+  INVOICE_SEND_ACTION,
+  recordAudit,
+  sendApprovedInvoice,
+  SUBSCRIPTION_CHANGE_ACTION,
+} from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
-import { sendJob } from "@/lib/queue";
+import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 
 /** Each admin module declares its own `ActionResult` with this shape. */
@@ -50,6 +57,9 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
   // Server Actions accept direct POSTs, so authorise here and scope every
   // query by the caller's organisation.
   const session = await requireAdmin();
+  // A decided plan change queues courtesy emails through `emit`; without the
+  // web enqueue installed they would sit `queued` until the outbound sweep.
+  installWebEnqueue();
   const raw = formData.get("note");
   const parsed = DecisionInput.safeParse({
     approvalId: formData.get("approvalId"),
@@ -146,8 +156,19 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
       // decision and stops. A throw from the send reaches the catch below and
       // is shown to the approver: "no email address", "invoice is paid" and the
       // like are answers they need, not noise to swallow.
+      //
+      // A plan change request is the one kind a *client* raised, so both
+      // verdicts are answers they are waiting on: approve or reject, the
+      // decision is carried out and the client's portal users are emailed.
       const payload = NonAgentPayload.safeParse(before.payload);
-      if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
+      if (payload.success && payload.data.action === SUBSCRIPTION_CHANGE_ACTION) {
+        const applied = await applySubscriptionChangeDecision(getDb(), session.organisationId, {
+          approvalId,
+          actorId: session.userId,
+        });
+        revalidatePath(`/clients/${applied.clientId}`);
+        revalidatePath("/portal/plan");
+      } else if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
         const { invoiceId } = await sendApprovedInvoice(
           getDb(),
           session.organisationId,

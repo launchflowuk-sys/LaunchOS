@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 export type PortalTab = { label: string; href: string };
 
 /**
- * The portal's whole navigation: eight short labels on one line.
+ * The portal's whole navigation: nine short labels on one line.
  *
  * It scrolls sideways rather than wrapping — DESIGN.md forbids a nav that
- * stacks into three rows, and on a 375px phone eight labels would do exactly
+ * stacks into three rows, and on a 375px phone nine labels would do exactly
  * that. `w-max` on the row is what keeps it a single line inside the scroller.
  */
 export function PortalTabs({ tabs }: { tabs: readonly PortalTab[] }) {

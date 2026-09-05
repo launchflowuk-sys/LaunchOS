@@ -1,0 +1,2 @@
+ALTER TYPE "public"."approval_kind" ADD VALUE 'subscription_change';--> statement-breakpoint
+CREATE UNIQUE INDEX "approvals_pending_subscription_change" ON "approvals" USING btree ("organisation_id",("payload" ->> 'clientId')) WHERE "approvals"."status" = 'pending' and "approvals"."payload" ->> 'action' = 'subscription_change';

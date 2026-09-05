@@ -10,6 +10,7 @@ const NAV: readonly PortalTab[] = [
   { label: "Progress", href: "/portal/tasks" },
   { label: "Support", href: "/portal/support" },
   { label: "Invoices", href: "/portal/invoices" },
+  { label: "Plan", href: "/portal/plan" },
   { label: "Reports", href: "/portal/reports" },
   { label: "Account", href: "/portal/account" },
 ];
@@ -34,7 +35,7 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
   return (
     // Print rules exist for one screen in particular: `/portal/invoices/[id]`
     // is a document a client saves as a PDF and forwards to a bookkeeper. The
-    // shell's own chrome — the client name bar, the eight-item nav, the signed
+    // shell's own chrome — the client name bar, the nine-item nav, the signed
     // -in email address and the footer — must not travel with it, and the page
     // ground must not print as a grey field in browsers with background
     // graphics turned on. Every other portal screen prints the better for it.

@@ -163,6 +163,17 @@ export {
 export {
   findPendingInvoiceSendApproval, requestInvoiceSendOnce,
 } from "./billing/invoice-send-requests.js";
+export {
+  requestSubscriptionChange, findPendingSubscriptionChange, latestSubscriptionChange,
+  isPendingSubscriptionChangeCollision, SubscriptionChangeRefused,
+  RequestSubscriptionChangeInput, SubscriptionChangePayload,
+  SUBSCRIPTION_CHANGE_ACTION, SUBSCRIPTION_CHANGE_KINDS, SUBSCRIPTION_CHANGE_LABEL, PENDING_SUBSCRIPTION_CHANGE_INDEX,
+} from "./billing/subscription-change-request.js";
+export type { SubscriptionChangeKind } from "./billing/subscription-change-request.js";
+export {
+  applySubscriptionChangeDecision, ApplySubscriptionChangeDecisionInput,
+} from "./billing/subscription-change-decision.js";
+export type { ApplySubscriptionChangeDecisionResult } from "./billing/subscription-change-decision.js";
 export { decideApproval, DecideApprovalInput } from "./approvals/decide-approval.js";
 export type { ApprovalRow, DecideApprovalResult } from "./approvals/decide-approval.js";
 export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";

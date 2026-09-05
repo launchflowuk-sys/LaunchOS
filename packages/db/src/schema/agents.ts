@@ -6,7 +6,12 @@ import { actorKindEnum } from "./support.js";
 export const agentTriggerEnum = pgEnum("agent_trigger", ["cron", "event", "manual", "resume"]);
 export const agentRunStatusEnum = pgEnum("agent_run_status", ["running", "completed", "awaiting_approval", "failed"]);
 export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", "tool_result", "approval_requested", "note"]);
-export const approvalKindEnum = pgEnum("approval_kind", ["tool_call", "report_send", "message_send", "dns_change", "content_change"]);
+// `subscription_change` is the one kind a *client* raises: a portal user asking
+// to cancel, downgrade or upgrade their plan. It has no run behind it and is
+// decided like any other, then carried out by `applySubscriptionChangeDecision`.
+export const approvalKindEnum = pgEnum("approval_kind", [
+  "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change",
+]);
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
 export const agentEnablement = pgTable("agent_enablement", {
@@ -68,6 +73,20 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_invoice_send")
     .on(t.organisationId, sql`(${t.payload} ->> 'invoiceId')`)
     .where(sql`${t.status} = 'pending' and ${t.kind} = 'message_send' and ${t.payload} ->> 'action' = 'invoice_send'`),
+  // At most one *pending* plan change request per client, for the same reason:
+  // a portal form submitted twice must land one card in the queue, not two
+  // that could be decided differently. `requestSubscriptionChange` reads first
+  // and treats the index firing as "already pending".
+  //
+  // The predicate tests `payload->>'action'` rather than `kind` on purpose: the
+  // migration that adds this index also adds the enum value, and Postgres
+  // refuses to *use* a value added in the same transaction (`unsafe use of new
+  // value`), while an enum-to-text cast is not immutable and so cannot sit in
+  // an index predicate at all. `requestSubscriptionChange` always writes
+  // `action` alongside `kind`, exactly as the invoice send does.
+  uniqueIndex("approvals_pending_subscription_change")
+    .on(t.organisationId, sql`(${t.payload} ->> 'clientId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'subscription_change'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {

@@ -99,6 +99,13 @@
       "when": 1788584585513,
       "tag": "0013_demonic_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1788601472267,
+      "tag": "0014_purple_green_goblin",
+      "breakpoints": true
     }
   ]
 }

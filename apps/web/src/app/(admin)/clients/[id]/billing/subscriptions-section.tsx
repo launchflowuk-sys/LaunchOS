@@ -1,10 +1,18 @@
-import { activeSubscriptionForClient, getPackage, listPackages } from "@launchos/core";
+import {
+  activeSubscriptionForClient,
+  findPendingSubscriptionChange,
+  getPackage,
+  listPackages,
+  SUBSCRIPTION_CHANGE_LABEL,
+  SubscriptionChangePayload,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Receipt } from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { DataList, type DataListColumn } from "@/components/data-list";
+import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { EmptyState } from "@/components/page-header";
 import { Section } from "@/components/section";
@@ -13,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
-import { formatDate, formatPence } from "@/lib/format";
+import { formatDate, formatDateTime, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { cancelSubscriptionAction, startSubscriptionAction } from "./actions";
 import { RaiseInvoiceButton } from "./raise-invoice-button";
@@ -57,9 +65,10 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
   const session = await requireAdmin();
   const db = getDb();
 
-  const [subscription, packages, invoices] = await Promise.all([
+  const [subscription, packages, pendingChange, invoices] = await Promise.all([
     activeSubscriptionForClient(db, session.organisationId, clientId),
     listPackages(db, session.organisationId, { activeOnly: true }),
+    findPendingSubscriptionChange(db, session.organisationId, clientId),
     db
       .select({
         id: schema.invoices.id,
@@ -79,6 +88,7 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
   ]);
 
   const pkg = subscription?.packageId ? await getPackage(db, session.organisationId, subscription.packageId) : null;
+  const pendingRequest = pendingChange ? SubscriptionChangePayload.safeParse(pendingChange.payload) : undefined;
 
   return (
     <>
@@ -104,6 +114,25 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
           ) : null
         }
       >
+        {pendingChange ? (
+          <InlineAlert
+            tone="warning"
+            title="Pending change request"
+            className="mb-4"
+            action={
+              <Button asChild variant="secondary" size="sm">
+                <Link href="/approvals">Decide in Approvals</Link>
+              </Button>
+            }
+          >
+            <p>
+              {pendingRequest?.success
+                ? `${pendingRequest.data.summary} — asked ${formatDateTime(pendingChange.createdAt)}.`
+                : `The client has asked to change their plan (${formatDateTime(pendingChange.createdAt)}).`}
+              {pendingRequest?.success ? ` (${SUBSCRIPTION_CHANGE_LABEL[pendingRequest.data.kind]})` : ""}
+            </p>
+          </InlineAlert>
+        ) : null}
         <div className="rounded-xl border bg-card p-4">
           {subscription ? (
             <KeyValue

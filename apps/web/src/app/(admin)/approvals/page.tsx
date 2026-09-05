@@ -1,3 +1,4 @@
+import { SUBSCRIPTION_CHANGE_LABEL, SubscriptionChangePayload } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, ne } from "drizzle-orm";
 import { ShieldCheck } from "lucide-react";
@@ -12,7 +13,7 @@ import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
-import { formatDateTime, formatJson } from "@/lib/format";
+import { formatDateTime, formatJson, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { approveApproval, rejectApproval } from "./actions";
 import { DecisionForm } from "./decision-form";
@@ -77,10 +78,51 @@ function Disclosure({ label, children }: { label: ReactNode; children: ReactNode
   );
 }
 
+/**
+ * A client asking to change their plan — the one approval a client raises. The
+ * card reads as the owner would say it: who, what they asked, in their words.
+ */
+function SubscriptionChangeRequest({ approval }: { approval: ApprovalRow["approval"] }) {
+  const payload = SubscriptionChangePayload.safeParse(approval.payload);
+  if (!payload.success) return null;
+  const request = payload.data;
+
+  return (
+    <>
+      <InlineAlert tone="warning" title="What approving does">
+        {request.kind === "cancel"
+          ? `${request.summary} Approving cancels the subscription at the end of the current period; the client is emailed either way.`
+          : `${request.summary} Approving records the decision — the package is changed by hand on the client's billing tab; the client is emailed either way.`}
+      </InlineAlert>
+      <KeyValue
+        columns={2}
+        items={[
+          {
+            label: "Client",
+            value: (
+              <Link href={`/clients/${request.clientId}`} className="text-primary underline underline-offset-2">
+                {request.clientName}
+              </Link>
+            ),
+          },
+          { label: "Request", value: SUBSCRIPTION_CHANGE_LABEL[request.kind] },
+          { label: "Current package", value: request.packageName },
+          { label: "Monthly", value: formatPence(request.monthlyPricePence, request.currency) },
+          {
+            label: "Their message",
+            value: <span className="break-words whitespace-pre-wrap">{request.message}</span>,
+          },
+        ]}
+      />
+    </>
+  );
+}
+
 function PendingApproval({ row }: { row: ApprovalRow }) {
   const { approval, agentKey, runStatus } = row;
   const payload = ApprovalPayload.safeParse(approval.payload);
   const description = payload.success ? payload.data.description : undefined;
+  const isSubscriptionChange = approval.kind === "subscription_change";
 
   return (
     // The id is on the card so a test can address exactly one approval: two
@@ -96,6 +138,8 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
       </div>
 
       <div className="space-y-4 p-4">
+        {isSubscriptionChange ? <SubscriptionChangeRequest approval={approval} /> : null}
+
         {description ? (
           <InlineAlert tone="warning" title="What approving does">
             {description.summary}
@@ -105,7 +149,9 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         {description?.details ? <KeyValue items={detailItems(description.details)} columns={2} /> : null}
 
         <p className="text-meta text-muted-foreground">
-          {approval.runId ? (
+          {isSubscriptionChange ? (
+            "Raised by the client from their portal."
+          ) : approval.runId ? (
             <>
               Agent <span className="font-medium text-foreground">{agentKey ?? "unknown"}</span> (
               {runStatus ?? "unknown"}) —{" "}
@@ -245,7 +291,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
     <>
       <PageHeader
         title="Approvals"
-        description="Outward-facing agent actions parked for a human decision."
+        description="Outward-facing actions parked for a human decision — agent tool calls, invoice sends and clients' plan change requests."
         category="automation"
       />
 
