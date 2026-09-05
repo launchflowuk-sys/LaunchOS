@@ -1,13 +1,22 @@
 import { listActivity, listTasks } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
-import { Link2, ListChecks, ShieldCheck } from "lucide-react";
+import {
+  AlarmClock,
+  CalendarClock,
+  Link2,
+  ListChecks,
+  MessageSquare,
+  Rocket,
+  ShieldCheck,
+  Siren,
+} from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
-import { StatCard } from "@/components/stat-card";
+import { StatCard, type StatCardProps } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
@@ -178,37 +187,49 @@ export default async function DashboardPage() {
     listActivity(db, org, { limit: ACTIVITY_LIMIT }),
   ]);
 
-  const cards = [
+  // Attention-first: the three counts that mean a person has to do something
+  // lead, and they take the semantic tint the moment they are above zero. The
+  // three behind them are context and keep their category hue.
+  const cards: readonly StatCardProps[] = [
     {
       label: "Pending approvals",
       value: pendingApprovals[0]?.value ?? 0,
       href: "/approvals",
       hint: "Waiting on a human decision",
-      category: "automation" as const,
+      category: "automation",
+      icon: ShieldCheck,
       attention: true,
+      // Waiting on a decision is a queue, not a failure — DESIGN.md pairs
+      // pending approval with warning, and open incidents with danger.
+      attentionTone: "warning",
     },
     {
       label: "Open incidents",
       value: openIncidents[0]?.value ?? 0,
       href: "/incidents",
       hint: "Open or acknowledged",
-      category: "support" as const,
+      category: "support",
+      icon: Siren,
       attention: true,
+      attentionTone: "danger",
     },
     {
       label: "Overdue tasks",
       value: overdueTasks[0]?.value ?? 0,
       href: "/tasks",
       hint: "Past their due date",
-      category: "delivery" as const,
+      category: "delivery",
+      icon: AlarmClock,
       attention: true,
+      attentionTone: "danger",
     },
     {
       label: "Open cases",
       value: openTickets[0]?.value ?? 0,
       href: "/cases",
       hint: "Not resolved or closed",
-      category: "support" as const,
+      category: "support",
+      icon: MessageSquare,
       attention: false,
     },
     {
@@ -216,7 +237,8 @@ export default async function DashboardPage() {
       value: dueThisWeek[0]?.value ?? 0,
       href: "/tasks",
       hint: "Next seven days",
-      category: "delivery" as const,
+      category: "delivery",
+      icon: CalendarClock,
       attention: false,
     },
     {
@@ -224,7 +246,8 @@ export default async function DashboardPage() {
       value: onboarding[0]?.value ?? 0,
       href: "/clients",
       hint: "On a package, not handed over",
-      category: "delivery" as const,
+      category: "delivery",
+      icon: Rocket,
       attention: false,
     },
   ];
@@ -233,7 +256,7 @@ export default async function DashboardPage() {
     <>
       <PageHeader title="Dashboard" description="What needs attention right now." />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         {cards.map((card) => (
           <StatCard key={card.label} {...card} />
         ))}
