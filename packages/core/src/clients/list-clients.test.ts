@@ -39,4 +39,53 @@ describe("listClients", () => {
       expect((await getClient(db, org.id, doc.id))?.name).toBe("Mobile PC Doctor");
     });
   });
+
+  it("pages newest first with limit and offset, keeping the status and search filters", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      // `created_at` defaults to the transaction timestamp, which is the same
+      // instant for every row inserted here, so the dates are set explicitly:
+      // the point of the test is the order, not the clock.
+      const at = (day: number) => new Date(Date.UTC(2026, 0, day));
+      const suffix = crypto.randomUUID().slice(0, 8);
+      await db.insert(schema.clients).values(
+        [1, 2, 3, 4].map((n) => ({
+          organisationId: org.id,
+          name: `Paged ${n} ${suffix}`,
+          slug: `paged-${n}-${suffix}`,
+          status: "active" as const,
+          createdAt: at(n),
+        })),
+      );
+      // An archived row on the newest date: it must not take a slot on page 1
+      // of an active-only listing.
+      await db.insert(schema.clients).values({
+        organisationId: org.id,
+        name: `Paged 5 ${suffix}`,
+        slug: `paged-5-${suffix}`,
+        status: "archived",
+        createdAt: at(9),
+      });
+
+      const names = (rows: { name: string }[]) => rows.map((r) => r.name);
+
+      const first = await listClients(db, org.id, { status: "active", limit: 2, offset: 0 });
+      expect(names(first)).toEqual([`Paged 4 ${suffix}`, `Paged 3 ${suffix}`]);
+
+      const second = await listClients(db, org.id, { status: "active", limit: 2, offset: 2 });
+      expect(names(second)).toEqual([`Paged 2 ${suffix}`, `Paged 1 ${suffix}`]);
+
+      // Past the end is empty, not a repeat of the last page.
+      expect(await listClients(db, org.id, { status: "active", limit: 2, offset: 4 })).toHaveLength(0);
+
+      // The search term survives the offset, and the archived row is excluded
+      // by status even though it matches the term and is the newest.
+      const searched = await listClients(db, org.id, { query: `Paged`, status: "active", limit: 3, offset: 1 });
+      expect(names(searched)).toEqual([`Paged 3 ${suffix}`, `Paged 2 ${suffix}`, `Paged 1 ${suffix}`]);
+
+      // Without a status filter the archived row is the newest of the five.
+      const all = await listClients(db, org.id, { query: suffix, limit: 1 });
+      expect(names(all)).toEqual([`Paged 5 ${suffix}`]);
+    });
+  });
 });

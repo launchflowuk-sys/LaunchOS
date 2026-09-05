@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, asc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 export const ListClientsInput = z.object({
@@ -84,7 +84,12 @@ export async function listClients(
           : undefined,
       ),
     )
-    .orderBy(asc(schema.clients.name))
+    // Newest first, like every other list in the admin portal, so a client
+    // created a moment ago is on page 1 rather than wherever the alphabet puts
+    // it. `id` breaks the tie: `created_at` defaults to `now()`, which is the
+    // transaction timestamp, so a batch inserted together shares one — and
+    // without a total order an offset page can repeat or skip a row.
+    .orderBy(desc(schema.clients.createdAt), desc(schema.clients.id))
     .limit(v.limit)
     .offset(v.offset);
 }

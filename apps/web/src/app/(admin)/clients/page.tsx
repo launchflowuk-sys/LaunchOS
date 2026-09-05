@@ -3,6 +3,7 @@ import { Building2 } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
 import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
@@ -49,14 +50,23 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
   const query = typeof params.q === "string" ? params.q : undefined;
   const statusParam = typeof params.status === "string" ? params.status : "active";
   const status = STATUSES.includes(statusParam as (typeof STATUSES)[number]) ? statusParam : "active";
+  const page = pageParam(params.page);
 
-  const [rows, packages] = await Promise.all([
+  // One screenful at a time: the roster grows without bound and under `md` a
+  // DataList renders a card per row, so an unpaged list is a phone scrolling
+  // past every client the agency has ever had.
+  const [fetched, packages] = await Promise.all([
     listClients(getDb(), session.organisationId, {
       query,
       status: status === "all" ? undefined : (status as "active" | "paused" | "archived"),
+      limit: PAGE_SIZE + 1,
+      offset: (page - 1) * PAGE_SIZE,
     }),
     listPackages(getDb(), session.organisationId, { activeOnly: true }),
   ]);
+
+  const hasNext = fetched.length > PAGE_SIZE;
+  const rows = hasNext ? fetched.slice(0, PAGE_SIZE) : fetched;
 
   return (
     <>
@@ -96,10 +106,15 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
         caption="Clients"
         empty={
           <EmptyState icon={Building2}>
-            No clients match. Use &ldquo;New client&rdquo; to add the first one.
+            {page > 1
+              ? "There are no clients on this page. Go back to a newer page."
+              : "No clients match. Use “New client” to add the first one."}
           </EmptyState>
         }
       />
+      {/* Outside the empty check on purpose: a page past the end has no rows
+          and still needs the "Newer" link back. */}
+      <Pager basePath="/clients" query={{ q: query, status }} page={page} hasNext={hasNext} />
     </>
   );
 }

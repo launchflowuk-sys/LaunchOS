@@ -1,5 +1,5 @@
 import { schema } from "@launchos/db";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -8,6 +8,7 @@ import { DataList, type DataListColumn } from "@/components/data-list";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
@@ -193,29 +194,52 @@ const DECIDED_COLUMNS: readonly DataListColumn<ApprovalRow>[] = [
   },
 ];
 
-export default async function ApprovalsPage() {
+export default async function ApprovalsPage({ searchParams }: PageProps<"/approvals">) {
   const session = await requireAdmin();
+  const sp = await searchParams;
+  const page = pageParam(sp.page);
 
-  // Decided approvals stay on the page: the decision and what happened next
-  // are the audit trail a human actually reads.
-  const rows = await getDb()
-    .select({
-      approval: schema.approvals,
-      agentKey: schema.agentRuns.agentKey,
-      runStatus: schema.agentRuns.status,
-      decidedByName: schema.user.name,
-    })
-    .from(schema.approvals)
-    .leftJoin(schema.agentRuns, eq(schema.approvals.runId, schema.agentRuns.id))
-    .leftJoin(schema.user, eq(schema.approvals.decidedBy, schema.user.id))
-    .where(eq(schema.approvals.organisationId, session.organisationId))
-    .orderBy(desc(schema.approvals.createdAt))
-    .limit(50);
+  const db = getDb();
+  const base = () =>
+    db
+      .select({
+        approval: schema.approvals,
+        agentKey: schema.agentRuns.agentKey,
+        runStatus: schema.agentRuns.status,
+        decidedByName: schema.user.name,
+      })
+      .from(schema.approvals)
+      .leftJoin(schema.agentRuns, eq(schema.approvals.runId, schema.agentRuns.id))
+      .leftJoin(schema.user, eq(schema.approvals.decidedBy, schema.user.id));
 
-  // Two lists, not one: what still needs Shoji, and what has already been
-  // decided. Mixing them is how a decided card gets read as a live one.
-  const pending = rows.filter((r) => r.approval.status === "pending");
-  const decided = rows.filter((r) => r.approval.status !== "pending");
+  // Two lists, not one, and two queries rather than one filtered in memory:
+  // what still needs Shoji, and what has already been decided. Mixing them is
+  // how a decided card gets read as a live one — and a single capped fetch
+  // meant a busy week of decisions could push the pending cards off the end of
+  // it, hiding the work queue behind its own history.
+  //
+  // Pending is deliberately unpaged: it is the queue, and every row in it is
+  // an outward action parked waiting on a human. Decided approvals stay on the
+  // page because the decision and what happened next are the audit trail a
+  // human actually reads — but that grows without bound, so it is paged.
+  const [pending, decidedRows] = await Promise.all([
+    base()
+      .where(
+        and(eq(schema.approvals.organisationId, session.organisationId), eq(schema.approvals.status, "pending")),
+      )
+      .orderBy(desc(schema.approvals.createdAt)),
+    base()
+      .where(and(eq(schema.approvals.organisationId, session.organisationId), ne(schema.approvals.status, "pending")))
+      // `decided_at` is when the decision was made and is what the column
+      // shows; `id` breaks the tie so an offset page never repeats or skips a
+      // row when two decisions share a timestamp.
+      .orderBy(desc(schema.approvals.decidedAt), desc(schema.approvals.id))
+      .limit(PAGE_SIZE + 1)
+      .offset((page - 1) * PAGE_SIZE),
+  ]);
+
+  const hasNext = decidedRows.length > PAGE_SIZE;
+  const decided = hasNext ? decidedRows.slice(0, PAGE_SIZE) : decidedRows;
 
   return (
     <>
@@ -245,14 +269,18 @@ export default async function ApprovalsPage() {
         )}
       </Section>
 
-      {decided.length > 0 ? (
-        <Section title="Already decided" description="The last 50 decisions, newest first.">
+      {decided.length > 0 || page > 1 ? (
+        <Section title="Already decided" description="Newest first, fifty to a page.">
           <DataList
             rows={decided}
             columns={DECIDED_COLUMNS}
             getRowKey={(row) => row.approval.id}
             caption="Decided approvals"
+            empty={<EmptyState icon={ShieldCheck}>There are no decisions on this page. Go back to a newer page.</EmptyState>}
           />
+          {/* Outside the empty check on purpose: a page past the end has no
+              rows and still needs the "Newer" link back. */}
+          <Pager basePath="/approvals" query={{}} page={page} hasNext={hasNext} />
         </Section>
       ) : null}
     </>

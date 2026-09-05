@@ -30,9 +30,12 @@ function withPage(query: Query, page: number | undefined): Record<string, string
   return out;
 }
 
-const LINK =
-  "rounded-md border bg-card px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted";
-const DISABLED = "rounded-md border px-3 py-1.5 text-sm text-muted-foreground opacity-50";
+// Under `sm` the two controls stack and fill the width, the way the page
+// header's primary action and the toolbar's fields do: a 72px link floating at
+// the left edge under a full-width list of row cards reads as a stray word.
+const BASE = "block rounded-md border px-3 py-2 text-center text-sm sm:inline-block sm:py-1.5";
+const LINK = `${BASE} bg-card text-foreground transition-colors hover:bg-muted`;
+const DISABLED = `${BASE} text-muted-foreground opacity-50`;
 
 /**
  * Newer / Older links that carry the current filters. Deliberately offset-based
@@ -47,7 +50,7 @@ export function Pager({
   hasNext,
 }: {
   /** Typed-routes literal, so a pager can never point at a route that is gone. */
-  basePath: "/inbox" | "/cases" | "/tasks";
+  basePath: "/inbox" | "/cases" | "/tasks" | "/approvals" | "/clients";
   query: Query;
   page: number;
   hasNext: boolean;
@@ -55,7 +58,7 @@ export function Pager({
   if (page === 1 && !hasNext) return null;
 
   return (
-    <nav aria-label="Pagination" className="mt-3 flex items-center gap-2">
+    <nav aria-label="Pagination" className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
       {page > 1 ? (
         <Link href={{ pathname: basePath, query: withPage(query, page - 1) }} className={LINK}>
           Newer
@@ -63,7 +66,7 @@ export function Pager({
       ) : (
         <span className={DISABLED}>Newer</span>
       )}
-      <span className="text-sm tabular-nums text-muted-foreground">Page {page}</span>
+      <span className="text-center text-sm tabular-nums text-muted-foreground">Page {page}</span>
       {hasNext ? (
         <Link href={{ pathname: basePath, query: withPage(query, page + 1) }} className={LINK}>
           Older
