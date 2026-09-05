@@ -1,16 +1,66 @@
 import { schema } from "@launchos/db";
 import { desc, eq } from "drizzle-orm";
+import { Mails } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { lastMessageDirection } from "./thread-filters";
 
 export const dynamic = "force-dynamic";
+
+type Row = {
+  id: string;
+  subject: string;
+  status: string;
+  channel: string;
+  participantEmail: string | null;
+  lastMessageAt: Date | null;
+  ticketId: string | null;
+  clientName: string;
+  lastDirection: string | null;
+};
+
+/** The last word on the thread is theirs, so it is still ours to answer. */
+const needsReply = (row: Row): boolean => row.lastDirection === "inbound";
+
+const COLUMNS: readonly DataListColumn<Row>[] = [
+  {
+    key: "subject",
+    header: "Subject",
+    primary: true,
+    cell: (row) => (
+      <Link href={`/inbox/${row.id}`} className="underline-offset-2 hover:underline">
+        {row.subject}
+      </Link>
+    ),
+  },
+  {
+    key: "state",
+    header: "State",
+    status: true,
+    cell: (row) => {
+      if (needsReply(row)) return <StatusBadge value="needs reply" tone="warn" />;
+      // An open conversation is the calm state here — unlike an open incident —
+      // so it must not borrow the alarm colour the shared map gives that word.
+      if (row.status === "open") return <StatusBadge value="open" tone="neutral" />;
+      return <StatusBadge value={row.status} />;
+    },
+  },
+  { key: "client", header: "Client", cell: (row) => row.clientName },
+  { key: "from", header: "From", hideOnMobile: true, cell: (row) => row.participantEmail ?? "—" },
+  { key: "channel", header: "Channel", hideOnMobile: true, cell: (row) => row.channel },
+  {
+    key: "last",
+    header: "Last message",
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.lastMessageAt),
+  },
+];
 
 export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
   const session = await requireAdmin();
@@ -50,53 +100,21 @@ export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
 
   return (
     <>
-      <PageHeader title="Inbox" description="Every client conversation, newest first." />
+      <PageHeader title="Inbox" description="Every client conversation, newest first." category="support" />
 
-      {rows.length === 0 ? (
-        <EmptyState>
-          {page > 1
-            ? "No more conversations on this page."
-            : "No conversations yet. Mail sent to a client's support address appears here."}
-        </EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>From</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Last message</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                // The last word on the thread is theirs, so it is still ours to answer.
-                const needsReply = row.lastDirection === "inbound";
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell className={needsReply ? "font-semibold text-neutral-900" : "text-neutral-900"}>
-                      <span className="flex flex-wrap items-center gap-2">
-                        <Link href={`/inbox/${row.id}`} className="underline-offset-2 hover:underline">
-                          {row.subject}
-                        </Link>
-                        {needsReply ? <StatusBadge value="needs reply" tone="warn" /> : null}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-neutral-600">{row.clientName}</TableCell>
-                    <TableCell className="text-neutral-600">{row.participantEmail ?? "—"}</TableCell>
-                    <TableCell className="text-neutral-600">{row.channel}</TableCell>
-                    <TableCell className="whitespace-nowrap text-neutral-600">
-                      {formatDateTime(row.lastMessageAt)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Conversations"
+        empty={
+          <EmptyState icon={Mails}>
+            {page > 1
+              ? "No more conversations on this page."
+              : "No conversations yet. Mail sent to a client's support address appears here."}
+          </EmptyState>
+        }
+      />
 
       <Pager basePath="/inbox" query={{}} page={page} hasNext={hasNext} />
     </>

@@ -30,8 +30,9 @@ function withPage(query: Query, page: number | undefined): Record<string, string
   return out;
 }
 
-const LINK = "rounded-md border border-neutral-300 px-3 py-1.5 text-sm text-neutral-700 hover:bg-neutral-100";
-const DISABLED = "rounded-md border border-neutral-200 px-3 py-1.5 text-sm text-neutral-300";
+const LINK =
+  "rounded-md border bg-card px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-muted";
+const DISABLED = "rounded-md border px-3 py-1.5 text-sm text-muted-foreground opacity-50";
 
 /**
  * Newer / Older links that carry the current filters. Deliberately offset-based

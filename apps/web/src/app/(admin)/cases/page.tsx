@@ -1,12 +1,15 @@
 import { listClients, listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray, type SQL } from "drizzle-orm";
+import { LifeBuoy } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
+import { Toolbar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -14,13 +17,110 @@ import { ALL_STATUSES, CASE_FILTER_SCHEMA, CLOSED_STATUSES, isClosed } from "./f
 
 export const dynamic = "force-dynamic";
 
-const CONTROL = "h-9 rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
+/**
+ * A native `<select>` on purpose: the filters are a plain GET form, so the
+ * screen keeps working with no client JavaScript and a shared link reproduces
+ * the view. The classes are the shadcn control shape, written once here rather
+ * than ad hoc on each field.
+ */
+function FilterSelect({
+  name,
+  defaultValue,
+  id,
+  children,
+}: {
+  name: string;
+  defaultValue: string;
+  id: string;
+  children: ReactNode;
+}) {
+  return (
+    <select
+      id={id}
+      name={name}
+      defaultValue={defaultValue}
+      className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:w-44"
+    >
+      {children}
+    </select>
+  );
+}
 
 /** An empty GET-form field arrives as "", which means "no filter". */
 const one = (v: string | string[] | undefined): string | undefined => {
   const raw = Array.isArray(v) ? v[0] : v;
   return raw && raw.length > 0 ? raw : undefined;
 };
+
+type Row = {
+  id: string;
+  subject: string;
+  severity: string;
+  status: string;
+  slaDueAt: Date | null;
+  clientVisible: boolean;
+  resolvedAt: Date | null;
+  createdAt: Date;
+  clientName: string;
+  assigneeName: string | null;
+};
+
+function columnsFor(now: Date): readonly DataListColumn<Row>[] {
+  return [
+    {
+      key: "subject",
+      header: "Subject",
+      primary: true,
+      cell: (row) => (
+        <Link href={`/cases/${row.id}`} className="underline-offset-2 hover:underline">
+          {row.subject}
+        </Link>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      status: true,
+      className: "whitespace-nowrap",
+      cell: (row) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <StatusBadge value={row.status} />
+          {/* Only the exception is called out: most cases the list shows are
+              the client's own, and a badge on every row would say nothing. */}
+          {row.clientVisible ? null : <StatusBadge value="Internal" tone="neutral" />}
+        </span>
+      ),
+    },
+    { key: "client", header: "Client", cell: (row) => row.clientName },
+    { key: "severity", header: "Severity", cell: (row) => <StatusBadge value={row.severity} /> },
+    {
+      key: "assignee",
+      header: "Assignee",
+      cell: (row) =>
+        row.assigneeName ?? <span className="text-warning-fg">Unassigned</span>,
+    },
+    {
+      key: "sla",
+      header: "SLA due",
+      className: "whitespace-nowrap",
+      cell: (row) => {
+        const breached = !!row.slaDueAt && row.slaDueAt < now && !isClosed(row.status);
+        return breached ? (
+          <span className="font-medium text-danger-fg">{formatDateTime(row.slaDueAt)}</span>
+        ) : (
+          formatDateTime(row.slaDueAt)
+        );
+      },
+    },
+    {
+      key: "created",
+      header: "Created",
+      hideOnMobile: true,
+      className: "whitespace-nowrap",
+      cell: (row) => formatDateTime(row.createdAt),
+    },
+  ];
+}
 
 export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
   const session = await requireAdmin();
@@ -80,123 +180,79 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
 
   const hasNext = found.length > PAGE_SIZE;
   const rows = hasNext ? found.slice(0, PAGE_SIZE) : found;
-  const now = new Date();
 
   return (
     <>
-      <PageHeader title="Open Cases" description="Support work raised by clients, monitors and agents." />
+      <PageHeader
+        title="Open Cases"
+        description="Support work raised by clients, monitors and agents."
+        category="support"
+      />
 
       {/* A plain GET form: the filters live in the URL, so a filtered view is
           shareable and needs no client JavaScript. */}
-      <form
-        method="get"
-        aria-label="Case filters"
-        className="mb-4 flex flex-wrap items-end gap-3 rounded-lg border border-neutral-200 bg-white p-3"
-      >
-        <label className="flex flex-col gap-1 text-xs text-neutral-500">
-          Status
-          <select name="status" defaultValue={statusFilter ?? ""} className={`${CONTROL} min-w-40`}>
-            <option value="">Open only</option>
-            <option value={ALL_STATUSES}>All statuses</option>
-            {schema.ticketStatusEnum.enumValues.map((v) => (
-              <option key={v} value={v}>
-                {v.replaceAll("_", " ")}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-neutral-500">
-          Severity
-          <select name="severity" defaultValue={severityFilter ?? ""} className={`${CONTROL} min-w-40`}>
-            <option value="">Any</option>
-            {schema.severityEnum.enumValues.map((v) => (
-              <option key={v} value={v}>
-                {v}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-neutral-500">
-          Assignee
-          <select name="assignee" defaultValue={assigneeFilter ?? ""} className={`${CONTROL} min-w-40`}>
-            <option value="">Any</option>
-            {members.map((m) => (
-              <option key={m.userId} value={m.userId}>
-                {m.displayName ?? m.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-neutral-500">
-          Client
-          <select name="clientId" defaultValue={clientFilter ?? ""} className={`${CONTROL} min-w-40`}>
-            <option value="">Any</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button type="submit" variant="secondary">
-          Apply
-        </Button>
+      <form method="get" aria-label="Case filters">
+        <Toolbar>
+          <ToolbarField label="Status" htmlFor="filter-status">
+            <FilterSelect id="filter-status" name="status" defaultValue={statusFilter ?? ""}>
+              <option value="">Open only</option>
+              <option value={ALL_STATUSES}>All statuses</option>
+              {schema.ticketStatusEnum.enumValues.map((v) => (
+                <option key={v} value={v}>
+                  {v.replaceAll("_", " ")}
+                </option>
+              ))}
+            </FilterSelect>
+          </ToolbarField>
+          <ToolbarField label="Severity" htmlFor="filter-severity">
+            <FilterSelect id="filter-severity" name="severity" defaultValue={severityFilter ?? ""}>
+              <option value="">Any</option>
+              {schema.severityEnum.enumValues.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </FilterSelect>
+          </ToolbarField>
+          <ToolbarField label="Assignee" htmlFor="filter-assignee">
+            <FilterSelect id="filter-assignee" name="assignee" defaultValue={assigneeFilter ?? ""}>
+              <option value="">Any</option>
+              {members.map((m) => (
+                <option key={m.userId} value={m.userId}>
+                  {m.displayName ?? m.name}
+                </option>
+              ))}
+            </FilterSelect>
+          </ToolbarField>
+          <ToolbarField label="Client" htmlFor="filter-client">
+            <FilterSelect id="filter-client" name="clientId" defaultValue={clientFilter ?? ""}>
+              <option value="">Any</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </FilterSelect>
+          </ToolbarField>
+          <ToolbarActions>
+            <Button type="submit" variant="secondary">
+              Apply
+            </Button>
+          </ToolbarActions>
+        </Toolbar>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>{page > 1 ? "No more cases on this page." : "No cases match this view."}</EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Subject</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Severity</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Assignee</TableHead>
-                <TableHead>SLA due</TableHead>
-                <TableHead>Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => {
-                const breached =
-                  !!row.slaDueAt && row.slaDueAt < now && !isClosed(row.status);
-                return (
-                  <TableRow key={row.id}>
-                    <TableCell className="font-medium text-neutral-900">
-                      <Link href={`/cases/${row.id}`} className="underline-offset-2 hover:underline">
-                        {row.subject}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-neutral-600">{row.clientName}</TableCell>
-                    <TableCell>
-                      <StatusBadge value={row.severity} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap">
-                      <StatusBadge value={row.status} />
-                      {/* Only the exception is called out: most cases the list
-                          shows are the client's own, and a badge on every row
-                          would say nothing. */}
-                      {row.clientVisible ? null : <StatusBadge value="Internal" tone="neutral" />}
-                    </TableCell>
-                    <TableCell className="text-neutral-600">{row.assigneeName ?? "Unassigned"}</TableCell>
-                    <TableCell
-                      className={`whitespace-nowrap ${breached ? "font-medium text-red-600" : "text-neutral-600"}`}
-                    >
-                      {formatDateTime(row.slaDueAt)}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-neutral-600">
-                      {formatDateTime(row.createdAt)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={columnsFor(new Date())}
+        getRowKey={(row) => row.id}
+        caption="Cases"
+        empty={
+          <EmptyState icon={LifeBuoy}>
+            {page > 1 ? "No more cases on this page." : "No cases match this view."}
+          </EmptyState>
+        }
+      />
 
       {/* Only the filters that survived validation are carried across pages. */}
       <Pager

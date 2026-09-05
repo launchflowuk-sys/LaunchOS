@@ -301,11 +301,13 @@ test.describe.serial("P4 support intake", () => {
       )
       .toBe("sent");
 
-    // And the decided card records the outcome rather than still asking.
+    // And the decided approval records the outcome rather than still asking.
+    // A decided one leaves the pending cards for the "Already decided" list,
+    // so it is addressed through the id its title cell carries.
     await page.reload();
-    await expect(page.locator(`li[data-approval-id="${approvalId}"]`)).toContainText("approved", {
-      timeout: COLD_COMPILE,
-    });
+    await expect(
+      page.getByRole("row").filter({ has: page.locator(`[data-approval-id="${approvalId}"]`) }),
+    ).toContainText("approved", { timeout: COLD_COMPILE });
   });
 
   test("a client user sees only their own case and can reply", async ({ page }) => {

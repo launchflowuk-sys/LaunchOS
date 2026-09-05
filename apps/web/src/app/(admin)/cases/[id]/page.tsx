@@ -1,15 +1,19 @@
 import { listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, asc, desc, eq } from "drizzle-orm";
+import { History, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { excludingCourtesyNotice } from "@/app/(admin)/inbox/thread-filters";
 import { ActionForm } from "@/components/action-form";
+import { EmptyState } from "@/components/empty-state";
 import { MessageThread } from "@/components/message-thread";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { TriagePanel } from "@/components/triage-panel";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -28,9 +32,8 @@ import { hasTriageInFlight } from "./triage-status";
 
 export const dynamic = "force-dynamic";
 
-const CARD = "rounded-lg border border-neutral-200 bg-white p-4";
-const HEADING = "mb-2 text-sm font-semibold text-neutral-900";
-const CONTROL = "h-9 w-full rounded-md border border-neutral-300 bg-white px-2 text-sm text-neutral-900";
+/** The surface a form sits on. A card marks a surface, not a paragraph. */
+const PANEL = "rounded-xl border bg-card p-4";
 
 // Read in the server component and handed down as a plain array: importing
 // @launchos/db from a client component would pull the postgres driver into the
@@ -153,6 +156,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
       <PageHeader
         title={ticket.subject}
         description={`${ticket.clientName} · ${ticket.source} · opened ${formatDateTime(ticket.createdAt)}`}
+        category="support"
         actions={
           <div role="group" aria-label="Case status" className="flex flex-wrap items-center gap-2">
             <StatusBadge value={ticket.severity} />
@@ -164,73 +168,84 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               tone={ticket.clientVisible ? "info" : "neutral"}
             />
             {ticket.escalated ? <StatusBadge value="escalated" tone="danger" /> : null}
-            <StatusBadge
-              value={`SLA ${formatDateTime(ticket.slaDueAt)}`}
-              tone={breached ? "danger" : "neutral"}
-            />
+            <StatusBadge value={`SLA ${formatDateTime(ticket.slaDueAt)}`} tone={breached ? "danger" : "neutral"} />
           </div>
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          <section className={CARD}>
-            <h2 className={HEADING}>Conversation</h2>
+      <div className="grid min-w-0 gap-8 lg:grid-cols-3">
+        <div className="min-w-0 lg:col-span-2">
+          <Section title="Conversation">
             <MessageThread messages={messages} />
-          </section>
+          </Section>
 
           {/* The composer posts no conversationId: `postCaseMessage` reads the
               thread off the org-scoped ticket, so the two cannot disagree. */}
           {ticket.conversationId ? (
-            <CaseComposer
-              action={postCaseMessage}
-              ticketId={ticket.id}
-              channel={ticket.channel ?? "internal"}
-              clientVisible={ticket.clientVisible}
-              defaultMode={defaultMode}
-            />
+            <Section title="Respond">
+              <CaseComposer
+                action={postCaseMessage}
+                ticketId={ticket.id}
+                channel={ticket.channel ?? "internal"}
+                clientVisible={ticket.clientVisible}
+                defaultMode={defaultMode}
+              />
+            </Section>
           ) : null}
 
-          <section className={CARD}>
-            <h2 className={HEADING}>History</h2>
+          <Section title="History">
             {events.length === 0 ? (
-              <p className="text-sm text-neutral-400">Nothing recorded yet.</p>
+              <EmptyState icon={History}>Nothing recorded yet.</EmptyState>
             ) : (
-              <ul className="space-y-1.5 text-sm text-neutral-700">
+              <ul className="divide-y rounded-xl border bg-card">
                 {events.map((event) => {
                   const detail = eventDetail(event.data);
                   return (
-                    <li key={event.id} className="flex flex-wrap gap-2">
+                    <li key={event.id} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-4 py-2.5 text-row">
                       <span className="font-medium">{detail ?? event.kind.replaceAll("_", " ")}</span>
-                      <span className="text-neutral-500">by {event.actorKind}</span>
-                      <span className="ml-auto text-xs text-neutral-400">{formatDateTime(event.createdAt)}</span>
+                      <span className="text-muted-foreground">by {event.actorKind}</span>
+                      <span className="ml-auto text-meta text-muted-foreground">
+                        {formatDateTime(event.createdAt)}
+                      </span>
                     </li>
                   );
                 })}
               </ul>
             )}
-          </section>
+          </Section>
         </div>
 
-        <div className="space-y-4">
-          <section className={CARD}>
-            <h2 className={HEADING}>Triage</h2>
-            <TriagePanel triage={ticket.triage} />
+        <div className="min-w-0">
+          {/* Not wrapped in a panel: `TriagePanel` renders its own empty-state
+              card when nothing has triaged the case yet, and a card inside a
+              card is the one thing DESIGN.md rules out. */}
+          <Section title="Triage">
+            {ticket.triage ? (
+              <div className={PANEL}>
+                <TriagePanel triage={ticket.triage} />
+              </div>
+            ) : (
+              <TriagePanel triage={ticket.triage} />
+            )}
             <ActionForm action={runTriageNow} ariaLabel="Run triage" success="Triage queued" className="mt-3">
               <input type="hidden" name="ticketId" value={ticket.id} />
               {/* Each press is a billed Claude run; the action refuses a second
                   one too, so a direct POST is bounded by the same rule. */}
-              <Button type="submit" variant="secondary" disabled={triageInFlight}>
+              <Button type="submit" variant="secondary" disabled={triageInFlight} className="w-full">
                 {triageInFlight ? "Triage running…" : "Run triage now"}
               </Button>
             </ActionForm>
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Status</h2>
-            <div className="flex flex-wrap gap-2">
+          <Section title="Status">
+            <div className={`${PANEL} flex flex-wrap gap-2`}>
               {STATUSES.map((value) => (
-                <ActionForm key={value} action={setTicketStatus} ariaLabel={`Set status ${value}`} success="Status updated">
+                <ActionForm
+                  key={value}
+                  action={setTicketStatus}
+                  ariaLabel={`Set status ${value}`}
+                  success="Status updated"
+                >
                   <input type="hidden" name="ticketId" value={ticket.id} />
                   <input type="hidden" name="status" value={value} />
                   <Button type="submit" variant={value === ticket.status ? "primary" : "secondary"} size="sm">
@@ -239,37 +254,44 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
                 </ActionForm>
               ))}
             </div>
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Client visibility</h2>
-            <p className="mb-2 text-sm text-neutral-600">
-              {ticket.clientVisible
-                ? "The client can read this case and reply to it in their portal."
-                : "This case is internal. The client cannot see it, and a reply has nowhere to land."}
-            </p>
+          <Section title="Client visibility">
+            <div className={PANEL}>
+              <p className="mb-3 text-sm text-muted-foreground">
+                {ticket.clientVisible
+                  ? "The client can read this case and reply to it in their portal."
+                  : "This case is internal. The client cannot see it, and a reply has nowhere to land."}
+              </p>
+              <ActionForm
+                action={setCaseVisibility}
+                ariaLabel="Client visibility"
+                success={ticket.clientVisible ? "Hidden from the client" : "Shared with the client"}
+              >
+                <input type="hidden" name="ticketId" value={ticket.id} />
+                <input type="hidden" name="clientVisible" value={ticket.clientVisible ? "false" : "true"} />
+                <Button type="submit" variant="secondary" className="w-full">
+                  {ticket.clientVisible ? "Hide from the client" : "Share with the client"}
+                </Button>
+              </ActionForm>
+            </div>
+          </Section>
+
+          <Section title="Assignee">
             <ActionForm
-              action={setCaseVisibility}
-              ariaLabel="Client visibility"
-              success={ticket.clientVisible ? "Hidden from the client" : "Shared with the client"}
+              action={assignTicketAction}
+              ariaLabel="Assign case"
+              success="Case assigned"
+              className={`${PANEL} space-y-3`}
             >
               <input type="hidden" name="ticketId" value={ticket.id} />
-              <input type="hidden" name="clientVisible" value={ticket.clientVisible ? "false" : "true"} />
-              <Button type="submit" variant="secondary">
-                {ticket.clientVisible ? "Hide from the client" : "Share with the client"}
-              </Button>
-            </ActionForm>
-          </section>
-
-          <section className={CARD}>
-            <h2 className={HEADING}>Assignee</h2>
-            <ActionForm action={assignTicketAction} ariaLabel="Assign case" success="Case assigned" className="space-y-2">
-              <input type="hidden" name="ticketId" value={ticket.id} />
+              {/* A native select: the option list is server data and the form
+                  posts without any client JavaScript of its own. */}
               <select
                 name="assignedUserId"
                 aria-label="Assign to"
                 defaultValue={ticket.assignedUserId ?? ""}
-                className={CONTROL}
+                className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <option value="">Least loaded staff member</option>
                 {members.map((m) => (
@@ -278,62 +300,62 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
                   </option>
                 ))}
               </select>
-              <Button type="submit" variant="secondary">
+              <Button type="submit" variant="secondary" className="w-full">
                 Assign
               </Button>
             </ActionForm>
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Escalate</h2>
-            {ticket.escalationReason ? (
-              <p className="mb-2 text-sm text-neutral-600">{ticket.escalationReason}</p>
-            ) : null}
+          <Section title="Escalate">
             <ActionForm
               action={escalateTicketAction}
               ariaLabel="Escalate case"
               success="Case escalated"
               resetOnSuccess
-              className="space-y-2"
+              className={`${PANEL} space-y-3`}
             >
+              {ticket.escalationReason ? (
+                <p className="text-sm text-muted-foreground">{ticket.escalationReason}</p>
+              ) : null}
               <input type="hidden" name="ticketId" value={ticket.id} />
-              <textarea
+              <Textarea
                 name="reason"
                 rows={2}
                 required
                 maxLength={1000}
                 aria-label="Escalation reason"
                 placeholder="Why this needs Shoji"
-                className="w-full rounded-md border border-neutral-300 p-2 text-sm"
               />
-              <Button type="submit" variant="destructive">
+              <Button type="submit" variant="destructive" className="w-full">
                 Escalate
               </Button>
             </ActionForm>
-          </section>
+          </Section>
 
-          <section className={CARD}>
-            <h2 className={HEADING}>Linked tasks</h2>
+          <Section title="Linked tasks">
             {tasks.length === 0 ? (
-              <p className="text-sm text-neutral-400">No tasks linked to this case.</p>
+              <EmptyState icon={ListChecks}>No tasks linked to this case.</EmptyState>
             ) : (
-              <ul className="space-y-1.5 text-sm">
+              <ul className="divide-y rounded-xl border bg-card">
                 {tasks.map((task) => (
-                  <li key={task.id} className="flex flex-wrap items-center gap-2">
-                    <Link href={`/tasks/${task.id}`} className="text-neutral-800 underline underline-offset-2">
+                  <li key={task.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-row">
+                    <Link href={`/tasks/${task.id}`} className="font-medium underline-offset-2 hover:underline">
                       {task.title}
                     </Link>
                     <StatusBadge value={task.status} />
-                    <span className="ml-auto text-xs text-neutral-400">{formatDateTime(task.dueAt)}</span>
+                    <span className="ml-auto text-meta text-muted-foreground">{formatDateTime(task.dueAt)}</span>
                   </li>
                 ))}
               </ul>
             )}
-          </section>
+          </Section>
 
           {ticket.conversationId ? (
-            <p className="text-xs text-neutral-500">
-              <Link href={`/inbox/${ticket.conversationId}`} className="underline underline-offset-2">
+            <p className="mt-6 text-sm">
+              <Link
+                href={`/inbox/${ticket.conversationId}`}
+                className="text-primary underline underline-offset-2"
+              >
                 Open this thread in the Inbox
               </Link>
             </p>

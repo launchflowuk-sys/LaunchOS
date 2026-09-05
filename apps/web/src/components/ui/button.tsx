@@ -70,8 +70,18 @@ function Button({
       className={cn(buttonVariants({ variant, size }), className)}
       {...props}
     >
-      {loading && !asChild ? <Loader2Icon aria-hidden className="animate-spin" /> : null}
-      {children}
+      {/* Under `asChild` the children are handed to Slot untouched: a
+          `{null}` beside the child makes two children, and Slot refuses
+          anything but one element — which is what turned every
+          `<Button asChild><Link/></Button>` on the product into a 500. */}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {loading ? <Loader2Icon aria-hidden className="animate-spin" /> : null}
+          {children}
+        </>
+      )}
     </Comp>
   );
 }

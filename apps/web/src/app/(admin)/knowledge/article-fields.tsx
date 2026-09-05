@@ -1,7 +1,8 @@
+import { InlineAlert } from "@/components/inline-alert";
 import { MarkdownEditor } from "@/components/markdown-editor";
-
-const CONTROL =
-  "h-9 w-full rounded-md border border-neutral-300 px-3 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export type ArticleDefaults = {
   title: string;
@@ -14,8 +15,8 @@ export const EMPTY_ARTICLE: ArticleDefaults = { title: "", tags: [], bodyMd: "",
 
 /**
  * The fields shared by "New article" and the edit form. A server component: the
- * only interactive part is the Markdown editor, which brings its own
- * `"use client"` boundary.
+ * only interactive parts are the Markdown editor and the published checkbox,
+ * which bring their own `"use client"` boundaries.
  *
  * Ids are fixed rather than generated because exactly one article form is ever
  * rendered on a page — see `form-fields.tsx` for the generated-id variant used
@@ -23,44 +24,37 @@ export const EMPTY_ARTICLE: ArticleDefaults = { title: "", tags: [], bodyMd: "",
  */
 export function ArticleFields({ defaults }: { defaults: ArticleDefaults }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <label htmlFor="article-title" className="block text-sm font-medium text-neutral-700">
-            Title
-          </label>
-          <input id="article-title" name="title" required maxLength={200} defaultValue={defaults.title} className={CONTROL} />
+          <Label htmlFor="article-title">Title</Label>
+          <Input id="article-title" name="title" required maxLength={200} defaultValue={defaults.title} />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="article-tags" className="block text-sm font-medium text-neutral-700">
-            Tags
-          </label>
-          <input
+          <Label htmlFor="article-tags">Tags</Label>
+          <Input
             id="article-tags"
             name="tags"
             defaultValue={defaults.tags.join(", ")}
             placeholder="hosting, dns, wordpress"
-            className={CONTROL}
           />
-          <p className="text-xs text-neutral-400">Comma separated. Tags are searched alongside the title and body.</p>
+          <p className="text-meta text-muted-foreground">
+            Comma separated. Tags are searched alongside the title and body.
+          </p>
         </div>
       </div>
 
       <MarkdownEditor name="bodyMd" label="Article body" defaultValue={defaults.bodyMd} />
 
-      <label htmlFor="article-published" className="flex items-center gap-2 text-sm text-neutral-700">
-        <input
-          id="article-published"
-          type="checkbox"
-          name="published"
-          defaultChecked={defaults.published}
-          className="size-4 rounded border-neutral-300"
-        />
-        Published
-      </label>
-      <p className="-mt-2 text-xs text-neutral-400">
-        Support Triage and the article search only read published articles. A draft stays visible here.
-      </p>
+      <div className="space-y-1.5">
+        <div className="flex items-center gap-2">
+          <Checkbox id="article-published" name="published" defaultChecked={defaults.published} />
+          <Label htmlFor="article-published">Published</Label>
+        </div>
+        <p className="text-meta text-muted-foreground">
+          Support Triage and the article search only read published articles. A draft stays visible here.
+        </p>
+      </div>
     </div>
   );
 }
@@ -76,9 +70,5 @@ const MAX_ERROR_LENGTH = 120;
 export function FormError({ message }: { message?: string | undefined }) {
   if (!message) return null;
   const text = message.length > MAX_ERROR_LENGTH ? `${message.slice(0, MAX_ERROR_LENGTH)}…` : message;
-  return (
-    <p role="alert" className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
-      {text}
-    </p>
-  );
+  return <InlineAlert tone="danger" className="mb-4">{text}</InlineAlert>;
 }

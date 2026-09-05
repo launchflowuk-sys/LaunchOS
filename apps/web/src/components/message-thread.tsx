@@ -1,5 +1,7 @@
+import { Paperclip } from "lucide-react";
 import { StatusBadge } from "@/components/status-badge";
 import { formatDateTime } from "@/lib/format";
+import { cn } from "@/lib/utils";
 
 export type ThreadAttachment = { name: string; contentType: string; size: number; url: string };
 
@@ -24,47 +26,65 @@ const AUTHOR_LABEL: Record<AdminThreadMessage["authorKind"], string> = {
 
 /**
  * The staff-side view of a conversation: every message, including the internal
- * notes the client never sees. Inbound sits on white, our outbound mail on
- * blue, an internal note on amber with an explicit label so nobody mistakes a
- * note for something the client read.
+ * notes the client never sees. Inbound sits on the card surface, our outbound
+ * mail on the info trio, an internal note on the warning trio with an explicit
+ * label so nobody mistakes a note for something the client read.
+ *
+ * The bubbles also lean: what came in sits left, what we sent sits right, so a
+ * thread reads as a conversation at a glance rather than as a log.
  */
-function toneFor(message: AdminThreadMessage): string {
-  if (message.direction === "internal") return "border-amber-200 bg-amber-50";
-  if (message.direction === "outbound") return "border-blue-100 bg-blue-50";
-  return "border-neutral-200 bg-white";
-}
+const TONE: Record<AdminThreadMessage["direction"], string> = {
+  inbound: "border-border bg-card",
+  outbound: "border-info-border bg-info-bg",
+  internal: "border-warning-border bg-warning-bg",
+};
 
 export function MessageThread({ messages }: { messages: readonly AdminThreadMessage[] }) {
   if (messages.length === 0) {
-    return <p className="text-sm text-neutral-400">Nothing on this thread yet.</p>;
+    return (
+      <p className="rounded-xl border border-dashed bg-card px-4 py-6 text-center text-sm text-muted-foreground">
+        Nothing on this thread yet.
+      </p>
+    );
   }
 
   return (
-    <ol className="space-y-3">
+    <ol className="flex flex-col gap-3">
       {messages.map((message) => (
-        <li key={message.id} className={`rounded-lg border px-4 py-3 ${toneFor(message)}`}>
-          <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-            <span className="font-medium text-neutral-700">{AUTHOR_LABEL[message.authorKind]}</span>
+        <li
+          key={message.id}
+          className={cn(
+            "min-w-0 rounded-xl border px-4 py-3 sm:max-w-[46rem]",
+            TONE[message.direction],
+            message.direction === "inbound" ? "sm:mr-auto" : "sm:ml-auto",
+          )}
+        >
+          <div className="mb-1.5 flex flex-wrap items-center gap-2 text-meta">
+            <span className="font-semibold text-foreground">{AUTHOR_LABEL[message.authorKind]}</span>
             {message.direction === "internal" ? (
-              <span className="rounded border border-amber-300 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-800">
+              <span className="label-caps rounded-full border border-warning-border px-2 py-0.5 text-warning-fg">
                 Internal note
               </span>
             ) : null}
             {message.status ? <StatusBadge value={message.status} /> : null}
-            <span className="ml-auto text-neutral-500">{formatDateTime(message.createdAt)}</span>
+            <span className="ml-auto text-muted-foreground">{formatDateTime(message.createdAt)}</span>
           </div>
-          {message.subject ? <p className="mb-1 text-xs text-neutral-500">{message.subject}</p> : null}
+          {message.subject ? <p className="mb-1 text-meta text-muted-foreground">{message.subject}</p> : null}
           {/* Plain text, never dangerouslySetInnerHTML: this body arrived by email. */}
-          <p className="whitespace-pre-wrap text-sm text-neutral-800">{message.body}</p>
+          <p className="text-sm break-words whitespace-pre-wrap text-foreground">{message.body}</p>
           {message.attachments.length > 0 ? (
-            <ul className="mt-2 flex flex-wrap gap-2">
+            <ul className="mt-2.5 flex flex-wrap gap-2">
               {message.attachments.map((attachment) => (
                 <li key={attachment.url}>
                   <a
                     href={attachment.url}
-                    className="rounded border border-neutral-300 bg-white px-2 py-1 text-xs text-neutral-700 underline"
+                    className="inline-flex items-center gap-1.5 rounded-md border bg-card px-2 py-1 text-meta text-foreground transition-colors hover:bg-muted"
                   >
-                    {attachment.name} ({Math.round(attachment.size / 1024)} kB)
+                    <Paperclip aria-hidden strokeWidth={1.75} className="size-3.5 text-muted-foreground" />
+                    <span className="break-all">{attachment.name}</span>
+                    <span className="text-muted-foreground tabular-nums">
+                      {Math.round(attachment.size / 1024)} kB
+                    </span>
                   </a>
                 </li>
               ))}

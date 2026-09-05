@@ -19,7 +19,7 @@ export function DeleteArticleForm({ articleId, title }: { articleId: string; tit
       }}
     >
       <input type="hidden" name="articleId" value={articleId} />
-      <Button type="submit" variant="destructive">
+      <Button type="submit" variant="destructive" className="max-sm:w-full">
         Delete article
       </Button>
     </form>

@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 import { z } from "zod";
 import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
+import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -45,10 +47,17 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
       <PageHeader
         title={article.title}
         description={`${article.slug} · updated ${formatDateTime(article.updatedAt)}`}
+        category="automation"
         actions={
-          <Button asChild variant="secondary">
-            <Link href="/knowledge">Back to list</Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge
+              value={article.published ? "published" : "draft"}
+              tone={article.published ? "success" : "neutral"}
+            />
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/knowledge">Back to list</Link>
+            </Button>
+          </div>
         }
       />
 
@@ -58,7 +67,7 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
         action={updateArticleAction}
         ariaLabel={`Edit ${article.title}`}
         success="Article saved"
-        className="rounded-lg border border-neutral-200 bg-white p-4"
+        className="rounded-xl border bg-card p-4 sm:p-6"
       >
         <input type="hidden" name="articleId" value={article.id} />
         <ArticleFields
@@ -69,19 +78,22 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
             published: article.published,
           }}
         />
-        <div className="mt-4 flex justify-end">
-          <Button type="submit">Save article</Button>
+        <div className="mt-6 flex border-t pt-4 sm:justify-end">
+          <Button type="submit" className="max-sm:w-full">
+            Save article
+          </Button>
         </div>
       </ActionForm>
 
-      <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <p className="text-sm font-medium text-neutral-900">Delete this article</p>
-        <p className="mt-1 mb-3 text-sm text-neutral-500">
-          It stops appearing in the list and in agent searches. The row is kept, so an agent run that already cited it
-          still resolves.
-        </p>
-        <DeleteArticleForm articleId={article.id} title={article.title} />
-      </div>
+      <Section title="Delete this article">
+        <div className="rounded-xl border bg-card p-4">
+          <p className="mb-3 text-sm text-muted-foreground">
+            It stops appearing in the list and in agent searches. The row is kept, so an agent run that already cited
+            it still resolves.
+          </p>
+          <DeleteArticleForm articleId={article.id} title={article.title} />
+        </div>
+      </Section>
     </>
   );
 }

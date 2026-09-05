@@ -5,8 +5,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MessageThread } from "@/components/message-thread";
 import { PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { ThreadComposer } from "@/components/thread-composer";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
@@ -75,51 +77,54 @@ export default async function ConversationPage({ params }: PageProps<"/inbox/[co
       <PageHeader
         title={conversation.subject}
         description={`${conversation.clientName} · ${conversation.channel} · ${conversation.participantEmail ?? "no email address"}`}
+        category="support"
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <StatusBadge value={conversation.status} />
             {conversation.ticketId ? (
-              <Link
-                href={`/cases/${conversation.ticketId}`}
-                className="text-sm text-neutral-700 underline underline-offset-2"
-              >
-                Open case
-              </Link>
+              <Button asChild variant="secondary" size="sm">
+                <Link href={`/cases/${conversation.ticketId}`}>Open case</Link>
+              </Button>
             ) : null}
           </div>
         }
       />
 
-      <div className="space-y-4">
+      <Section title="Conversation">
         <MessageThread messages={messages} />
+      </Section>
 
-        {/* Labelled by how it is actually delivered. The same action serves
-            both: `replyToConversation` emails a thread that has an address and
-            posts one that has not straight into the client's portal. */}
-        <ThreadComposer
-          action={sendThreadReply}
-          conversationId={conversation.id}
-          label={emailThread ? "Reply by email" : "Reply in the portal"}
-          submitLabel="Send reply"
-          placeholder={
-            emailThread
-              ? conversation.participantEmail
-                ? `Emailed to ${conversation.participantEmail}`
-                : "This thread has no email address — answer it on the case instead"
-              : "Appears in the client's portal straight away"
-          }
-          success={emailThread ? "Reply queued" : "Reply posted"}
-        />
+      {/* Labelled by how it is actually delivered. The same action serves
+          both: `replyToConversation` emails a thread that has an address and
+          posts one that has not straight into the client's portal. */}
+      <Section title="Respond">
+        <div className="space-y-4">
+          <ThreadComposer
+            action={sendThreadReply}
+            conversationId={conversation.id}
+            label={emailThread ? "Reply by email" : "Reply in the portal"}
+            submitLabel="Send reply"
+            placeholder={
+              emailThread
+                ? conversation.participantEmail
+                  ? `Emailed to ${conversation.participantEmail}`
+                  : "This thread has no email address — answer it on the case instead"
+                : "Appears in the client's portal straight away"
+            }
+            success={emailThread ? "Reply queued" : "Reply posted"}
+          />
 
-        <ThreadComposer
-          action={addInternalNote}
-          conversationId={conversation.id}
-          label="Internal note"
-          submitLabel="Add internal note"
-          placeholder="Only the team sees this"
-          success="Note added"
-        />
-      </div>
+          <ThreadComposer
+            action={addInternalNote}
+            conversationId={conversation.id}
+            label="Internal note"
+            submitLabel="Add internal note"
+            submitVariant="secondary"
+            placeholder="Only the team sees this"
+            success="Note added"
+          />
+        </div>
+      </Section>
     </>
   );
 }

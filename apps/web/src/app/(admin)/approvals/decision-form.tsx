@@ -3,6 +3,8 @@
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type ActionResult = { status: "ok" } | { status: "error"; message: string };
 
@@ -10,10 +12,18 @@ type ActionResult = { status: "ok" } | { status: "error"; message: string };
  * `useFormStatus` only reports the status of the form it is rendered inside,
  * so the button has to be its own component.
  */
-function SubmitButton({ label, pendingLabel, destructive }: { label: string; pendingLabel: string; destructive?: boolean }) {
+function SubmitButton({
+  label,
+  pendingLabel,
+  variant,
+}: {
+  label: string;
+  pendingLabel: string;
+  variant: "success" | "destructive";
+}) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" variant={destructive ? "destructive" : "primary"} disabled={pending}>
+    <Button type="submit" variant={variant} loading={pending} className="max-sm:w-full">
       {pending ? pendingLabel : label}
     </Button>
   );
@@ -30,20 +40,23 @@ export function DecisionForm({
   approvalId,
   action,
   label,
-  destructive,
+  variant,
   withNote,
   resumesAgent,
 }: {
   approvalId: string;
   action: (formData: FormData) => Promise<ActionResult>;
   label: string;
-  destructive?: boolean;
+  /** `success` releases the action; `destructive` refuses it. */
+  variant: "success" | "destructive";
   withNote?: boolean;
   resumesAgent?: boolean;
 }) {
+  const noteId = `approval-note-${variant}-${approvalId}`;
+
   return (
     <form
-      className="flex flex-wrap items-end gap-2"
+      className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-end"
       aria-label={`${label} approval`}
       action={async (formData) => {
         const result = await action(formData);
@@ -53,21 +66,14 @@ export function DecisionForm({
     >
       <input type="hidden" name="approvalId" value={approvalId} />
       {withNote ? (
-        <label className="flex flex-col gap-1 text-xs text-neutral-500">
-          Decision note (optional)
-          <input
-            type="text"
-            name="note"
-            maxLength={1000}
-            className="h-8 w-72 rounded-md border border-neutral-300 px-2 text-sm text-neutral-900 focus:border-neutral-400 focus:outline-none"
-          />
-        </label>
+        <div className="flex w-full min-w-0 flex-col gap-1.5 sm:w-64">
+          <Label htmlFor={noteId} className="label-caps text-muted-foreground">
+            {label} note (optional)
+          </Label>
+          <Input id={noteId} type="text" name="note" maxLength={1000} />
+        </div>
       ) : null}
-      <SubmitButton
-        label={label}
-        pendingLabel={resumesAgent ? "Resuming…" : "Saving…"}
-        {...(destructive ? { destructive: true } : {})}
-      />
+      <SubmitButton label={label} pendingLabel={resumesAgent ? "Resuming…" : "Saving…"} variant={variant} />
     </form>
   );
 }

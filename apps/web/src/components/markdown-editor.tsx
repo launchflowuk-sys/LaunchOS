@@ -3,6 +3,8 @@
 import { useId, useState } from "react";
 import Markdown from "react-markdown";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 /**
  * Textarea plus preview. The textarea keeps its own `name`, so the enclosing
@@ -29,18 +31,16 @@ export function MarkdownEditor({
 
   return (
     <div className="space-y-1.5">
-      <label htmlFor={id} className="block text-sm font-medium text-neutral-700">
-        {label}
-      </label>
-      <div className="rounded-lg border border-neutral-200 bg-white">
-        <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="overflow-hidden rounded-xl border bg-card">
+        <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
           <Button type="button" size="sm" variant={preview ? "secondary" : "primary"} onClick={() => setPreview(false)}>
             Write
           </Button>
           <Button type="button" size="sm" variant={preview ? "primary" : "secondary"} onClick={() => setPreview(true)}>
             Preview
           </Button>
-          <span className="ml-auto text-xs text-neutral-400">Markdown</span>
+          <span className="label-caps ml-auto text-muted-foreground">Markdown</span>
         </div>
         {/* The textarea stays mounted while previewing: unmounting it would drop
             the field from the form and the browser would post nothing. It also
@@ -48,18 +48,18 @@ export function MarkdownEditor({
             display:none control to report a validation message on it — the
             server validates the body either way. */}
         <div className={preview ? "hidden" : undefined}>
-          <textarea
+          <Textarea
             id={id}
             name={name}
             rows={rows}
             required={!preview}
             value={value}
             onChange={(event) => setValue(event.target.value)}
-            className="w-full resize-y rounded-b-lg px-3 py-2 font-mono text-sm text-neutral-900 focus:outline-none"
+            className="min-h-64 resize-y rounded-none border-0 font-mono focus-visible:ring-0"
           />
         </div>
         {preview ? (
-          <div className="prose prose-sm max-w-none p-4 text-neutral-800">
+          <div className="prose prose-sm max-w-none p-4 text-foreground">
             <Markdown>{value || "_Nothing to preview yet._"}</Markdown>
           </div>
         ) : null}

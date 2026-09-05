@@ -1,8 +1,13 @@
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
+import { AtSign } from "lucide-react";
+import type { ReactNode } from "react";
+import { DataList, type DataListColumn } from "@/components/data-list";
+import { InlineAlert } from "@/components/inline-alert";
+import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -10,12 +15,31 @@ import { sendTestEmail } from "./actions";
 
 export const dynamic = "force-dynamic";
 
-function EnvRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-4 border-b border-neutral-100 px-4 py-2 text-sm last:border-0">
-      <span className="text-neutral-500">{label}</span>
-      <span className="truncate font-mono text-neutral-900">{value}</span>
-    </div>
+type Row = {
+  clientName: string;
+  address: string;
+  displayName: string | null;
+  createdAt: Date;
+};
+
+const COLUMNS: readonly DataListColumn<Row>[] = [
+  { key: "client", header: "Client", primary: true, cell: (row) => row.clientName },
+  { key: "address", header: "Address", className: "font-mono text-meta break-all", cell: (row) => row.address },
+  { key: "displayName", header: "Display name", cell: (row) => row.displayName ?? "—" },
+  {
+    key: "created",
+    header: "Created",
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.createdAt),
+  },
+];
+
+/** An env value that is set reads as itself; one that is not says so in words. */
+function envValue(value: string | undefined): ReactNode {
+  return value ? (
+    <span className="font-mono break-all">{value}</span>
+  ) : (
+    <span className="text-muted-foreground">Not set</span>
   );
 }
 
@@ -40,68 +64,70 @@ export default async function EmailSettingsPage() {
 
   return (
     <>
-      <PageHeader title="Email" description="Inbound support routing and the outbound email adapter." />
+      <PageHeader
+        title="Email"
+        description="Inbound support routing and the outbound email adapter."
+        category="automation"
+      />
 
-      <div className="mb-6 overflow-hidden rounded-lg border border-neutral-200 bg-white">
-        <EnvRow label="Support email domain" value={process.env.SUPPORT_EMAIL_DOMAIN || "Not set"} />
-        <EnvRow label="Inbound provider" value={process.env.INBOUND_EMAIL_PROVIDER || "Not set"} />
-        <EnvRow label="Outbound adapter" value={emailAdapter} />
-        <EnvRow label="Mail from" value={process.env.MAIL_FROM || "Not set"} />
-        <EnvRow label="Owner notify email" value={ownerNotifyEmail || "Not set"} />
-        <EnvRow label="Storage directory" value={process.env.STORAGE_DIR || "Not set"} />
-        <EnvRow label="Inbound webhook secret" value={process.env.INBOUND_EMAIL_SECRET ? "Set" : "Not set"} />
-      </div>
+      <Section title="Configuration" description="Read from the environment at request time.">
+        <div className="rounded-xl border bg-card p-4">
+          <KeyValue
+            columns={2}
+            items={[
+              { label: "Support email domain", value: envValue(process.env.SUPPORT_EMAIL_DOMAIN) },
+              { label: "Inbound provider", value: envValue(process.env.INBOUND_EMAIL_PROVIDER) },
+              { label: "Outbound adapter", value: envValue(emailAdapter) },
+              { label: "Mail from", value: envValue(process.env.MAIL_FROM) },
+              { label: "Owner notify email", value: envValue(ownerNotifyEmail) },
+              { label: "Storage directory", value: envValue(process.env.STORAGE_DIR) },
+              {
+                label: "Inbound webhook secret",
+                value: envValue(process.env.INBOUND_EMAIL_SECRET ? "Set" : undefined),
+              },
+            ]}
+          />
+        </div>
+      </Section>
 
-      <div className="mb-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <p className="text-sm font-medium text-neutral-900">Webhook URL for the inbound provider</p>
-        <p className="mt-1 break-all font-mono text-sm text-neutral-600">{webhookUrl}</p>
-        <p className="mt-2 text-sm text-neutral-500">
-          Send the shared secret in the <code className="font-mono">x-launchos-inbound-secret</code> header.
-        </p>
-      </div>
+      <Section title="Inbound webhook" description="Point the inbound provider at this URL.">
+        <div className="rounded-xl border bg-card p-4">
+          <p className="font-mono text-sm break-all">{webhookUrl}</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Send the shared secret in the <code className="font-mono">x-launchos-inbound-secret</code> header.
+          </p>
+        </div>
+      </Section>
 
-      <p className="mb-2 text-sm font-medium text-neutral-900">Client support addresses</p>
-      {rows.length === 0 ? (
-        <EmptyState>No client support addresses yet — they are created automatically when a client is added.</EmptyState>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Client</TableHead>
-              <TableHead>Address</TableHead>
-              <TableHead>Display name</TableHead>
-              <TableHead>Created</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.address}>
-                <TableCell>{row.clientName}</TableCell>
-                <TableCell className="font-mono">{row.address}</TableCell>
-                <TableCell>{row.displayName ?? "—"}</TableCell>
-                <TableCell>{formatDateTime(row.createdAt)}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      <Section title="Client support addresses">
+        <DataList
+          rows={rows}
+          columns={COLUMNS}
+          getRowKey={(row) => row.address}
+          caption="Client support addresses"
+          empty={
+            <EmptyState icon={AtSign}>
+              No client support addresses yet — they are created automatically when a client is added.
+            </EmptyState>
+          }
+        />
+      </Section>
 
-      <div className="mt-6 rounded-lg border border-neutral-200 bg-white p-4">
-        <p className="text-sm font-medium text-neutral-900">Send a test email</p>
-        <p className="mt-1 text-sm text-neutral-500">
-          Sends via the {emailAdapter} adapter to the owner notification address, bypassing the approval gate.
-        </p>
-        <form action={sendTestEmail} className="mt-3">
-          <Button type="submit" disabled={!ownerNotifyEmail}>
-            Send test email to owner
-          </Button>
-        </form>
-        {!ownerNotifyEmail ? (
-          <div className="mt-3">
-            <EmptyState>Set OWNER_NOTIFY_EMAIL to enable this.</EmptyState>
-          </div>
-        ) : null}
-      </div>
+      <Section title="Send a test email">
+        <div className="space-y-3 rounded-xl border bg-card p-4">
+          <p className="text-sm text-muted-foreground">
+            Sends via the {emailAdapter} adapter to the owner notification address, bypassing the approval gate.
+          </p>
+          {ownerNotifyEmail ? null : (
+            <InlineAlert tone="warning">Set OWNER_NOTIFY_EMAIL to enable this.</InlineAlert>
+          )}
+          <form action={sendTestEmail}>
+            <Button type="submit" disabled={!ownerNotifyEmail} className="max-sm:w-full">
+              Send test email to owner
+            </Button>
+          </form>
+        </div>
+      </Section>
     </>
   );
 }

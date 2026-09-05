@@ -1,9 +1,12 @@
 import { listKnowledgeArticles, searchKnowledge } from "@launchos/core";
+import { BookOpen } from "lucide-react";
 import Link from "next/link";
+import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { Toolbar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -20,6 +23,45 @@ type Row = {
   updatedAt: Date;
   excerpt?: string;
 };
+
+const COLUMNS: readonly DataListColumn<Row>[] = [
+  {
+    key: "title",
+    header: "Title",
+    primary: true,
+    cell: (row) => (
+      <span className="block min-w-0">
+        <Link href={`/knowledge/${row.id}`} className="underline-offset-2 hover:underline">
+          {row.title}
+        </Link>
+        {row.excerpt ? (
+          <span className="mt-0.5 block max-w-prose text-meta font-normal text-muted-foreground">{row.excerpt}</span>
+        ) : null}
+      </span>
+    ),
+  },
+  {
+    key: "published",
+    header: "Published",
+    status: true,
+    cell: (row) => (
+      <StatusBadge value={row.published ? "published" : "draft"} tone={row.published ? "success" : "neutral"} />
+    ),
+  },
+  {
+    key: "slug",
+    header: "Slug",
+    className: "font-mono text-meta",
+    cell: (row) => row.slug,
+  },
+  { key: "tags", header: "Tags", cell: (row) => (row.tags.length > 0 ? row.tags.join(", ") : "—") },
+  {
+    key: "updated",
+    header: "Updated",
+    className: "whitespace-nowrap",
+    cell: (row) => formatDateTime(row.updatedAt),
+  },
+];
 
 /**
  * Search runs through the same `searchKnowledge` the Support Triage agent uses,
@@ -55,6 +97,7 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
       <PageHeader
         title="Knowledge Base"
         description="What Support Triage reads before it drafts a reply, and what the team reads before it fixes the same thing twice."
+        category="automation"
         actions={
           <Button asChild>
             <Link href="/knowledge/new">New article</Link>
@@ -64,68 +107,46 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
 
       <FormError message={error} />
 
-      <form className="mb-4 flex flex-wrap items-end gap-2" action="/knowledge">
-        <div className="space-y-1.5">
-          <label htmlFor="q" className="block text-xs font-medium text-neutral-500">
-            Search articles
-          </label>
-          <input
-            id="q"
-            name="q"
-            defaultValue={query ?? ""}
-            placeholder="Title, body or tag"
-            className="h-9 w-72 rounded-md border border-neutral-300 px-3 text-sm focus:border-neutral-400 focus:outline-none"
-          />
-        </div>
-        <Button type="submit" variant="secondary">
-          Search
-        </Button>
-        {query ? (
-          <Link href="/knowledge" className="px-2 py-2 text-sm text-neutral-500 hover:text-neutral-900">
-            Clear
-          </Link>
-        ) : null}
+      <form action="/knowledge">
+        <Toolbar>
+          <ToolbarField label="Search articles" htmlFor="q" className="sm:w-80">
+            <Input id="q" name="q" defaultValue={query ?? ""} placeholder="Title, body or tag" />
+          </ToolbarField>
+          <ToolbarActions>
+            <Button type="submit" variant="secondary">
+              Search
+            </Button>
+            {query ? (
+              <Button asChild variant="ghost">
+                <Link href="/knowledge">Clear</Link>
+              </Button>
+            ) : null}
+          </ToolbarActions>
+        </Toolbar>
       </form>
 
-      {rows.length === 0 ? (
-        <EmptyState>
-          {query
-            ? "Nothing published matches that. Search covers published articles only, so a draft will not appear here."
-            : "No articles yet. Support Triage searches this, so the first five you write pay for themselves."}
-        </EmptyState>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border border-neutral-200 bg-white">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Title</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Tags</TableHead>
-                <TableHead>Published</TableHead>
-                <TableHead>Updated</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link href={`/knowledge/${row.id}`} className="font-medium text-neutral-900 hover:underline">
-                      {row.title}
-                    </Link>
-                    {row.excerpt ? <span className="block max-w-md text-xs text-neutral-400">{row.excerpt}</span> : null}
-                  </TableCell>
-                  <TableCell className="font-mono text-xs text-neutral-500">{row.slug}</TableCell>
-                  <TableCell className="text-neutral-600">{row.tags.length > 0 ? row.tags.join(", ") : "—"}</TableCell>
-                  <TableCell>
-                    <StatusBadge value={row.published ? "published" : "draft"} tone={row.published ? "success" : "neutral"} />
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-neutral-600">{formatDateTime(row.updatedAt)}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DataList
+        rows={rows}
+        columns={COLUMNS}
+        getRowKey={(row) => row.id}
+        caption="Knowledge articles"
+        empty={
+          <EmptyState
+            icon={BookOpen}
+            action={
+              query ? undefined : (
+                <Button asChild>
+                  <Link href="/knowledge/new">New article</Link>
+                </Button>
+              )
+            }
+          >
+            {query
+              ? "Nothing published matches that. Search covers published articles only, so a draft will not appear here."
+              : "No articles yet. Support Triage searches this, so the first five you write pay for themselves."}
+          </EmptyState>
+        }
+      />
     </>
   );
 }

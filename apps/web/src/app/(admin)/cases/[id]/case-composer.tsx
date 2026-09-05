@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 
 type ActionResult = { status: "ok" } | { status: "error"; message: string };
 type Mode = "reply" | "note";
@@ -18,7 +19,7 @@ function modeNotice(mode: Mode, channel: string): { text: string; className: str
   if (mode === "note") {
     return {
       text: "Internal note — staff only",
-      className: "border-neutral-200 bg-neutral-50 text-neutral-600",
+      className: "border-neutral-border bg-neutral-bg text-neutral-fg",
     };
   }
   return {
@@ -26,7 +27,7 @@ function modeNotice(mode: Mode, channel: string): { text: string; className: str
       channel === "email"
         ? "Replying to the client — emailed to them"
         : "Replying to the client — visible in their portal",
-    className: "border-amber-300 bg-amber-50 text-amber-900",
+    className: "border-warning-border bg-warning-bg text-warning-fg",
   };
 }
 
@@ -87,7 +88,7 @@ export function CaseComposer({
       ariaLabel="Case message"
       success={mode === "reply" ? "Reply sent to the client" : "Note added"}
       resetOnSuccess
-      className="space-y-2 rounded-lg border border-neutral-200 bg-white p-4"
+      className="space-y-3 rounded-xl border bg-card p-4"
     >
       <input type="hidden" name="ticketId" value={ticketId} />
 
@@ -114,25 +115,23 @@ export function CaseComposer({
         </Button>
       </div>
 
-      <p
-        role="status"
-        className={`rounded-md border px-2 py-1.5 text-sm font-medium ${notice.className}`}
-      >
+      <p role="status" className={`rounded-lg border px-3 py-2 text-sm font-medium ${notice.className}`}>
         {notice.text}
       </p>
-      <p className="text-xs text-neutral-500">{deliveryNote(mode, channel, clientVisible)}</p>
+      <p className="text-meta text-muted-foreground">{deliveryNote(mode, channel, clientVisible)}</p>
 
-      <textarea
+      <Textarea
         name="body"
         rows={4}
         required
         maxLength={8000}
         aria-label="Message body"
         placeholder={mode === "reply" ? "What the client should be told" : "Only the team sees this"}
-        className="w-full rounded-md border border-neutral-300 p-2 text-sm text-neutral-900"
       />
       {/* The button says which of the two things pressing it does. */}
-      <Button type="submit">{mode === "reply" ? "Send to client" : "Add note"}</Button>
+      <Button type="submit" className="max-sm:w-full">
+        {mode === "reply" ? "Send to client" : "Add note"}
+      </Button>
     </ActionForm>
   );
 }
