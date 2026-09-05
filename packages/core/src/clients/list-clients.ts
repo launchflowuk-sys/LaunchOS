@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq, ilike, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 export const ListClientsInput = z.object({
@@ -8,6 +8,11 @@ export const ListClientsInput = z.object({
   status: z.enum(["active", "paused", "archived"]).optional(),
   limit: z.number().int().min(1).max(200).default(100),
   offset: z.number().int().min(0).default(0),
+  // Most callers build a picker — a dropdown of every client — where the only
+  // useful order is the one you can scan for a name, so alphabetical is the
+  // default. The paged /clients page asks for "recent" instead: a client added
+  // a moment ago belongs on page 1, not wherever the alphabet puts it.
+  order: z.enum(["recent", "name"]).default("name"),
 });
 export type ListClientsInput = z.input<typeof ListClientsInput>;
 
@@ -84,12 +89,15 @@ export async function listClients(
           : undefined,
       ),
     )
-    // Newest first, like every other list in the admin portal, so a client
-    // created a moment ago is on page 1 rather than wherever the alphabet puts
-    // it. `id` breaks the tie: `created_at` defaults to `now()`, which is the
-    // transaction timestamp, so a batch inserted together shares one — and
-    // without a total order an offset page can repeat or skip a row.
-    .orderBy(desc(schema.clients.createdAt), desc(schema.clients.id))
+    // `id` breaks either tie: `created_at` defaults to `now()`, which is the
+    // transaction timestamp, so a batch inserted together shares one, and two
+    // clients can share a name — without a total order an offset page can
+    // repeat or skip a row.
+    .orderBy(
+      ...(v.order === "recent"
+        ? [desc(schema.clients.createdAt), desc(schema.clients.id)]
+        : [asc(schema.clients.name), asc(schema.clients.id)]),
+    )
     .limit(v.limit)
     .offset(v.offset);
 }

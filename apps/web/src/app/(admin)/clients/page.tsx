@@ -61,6 +61,9 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
       status: status === "all" ? undefined : (status as "active" | "paused" | "archived"),
       limit: PAGE_SIZE + 1,
       offset: (page - 1) * PAGE_SIZE,
+      // Newest first: a client added a moment ago is on page 1 rather than
+      // wherever the alphabet puts them.
+      order: "recent",
     }),
     listPackages(getDb(), session.organisationId, { activeOnly: true }),
   ]);

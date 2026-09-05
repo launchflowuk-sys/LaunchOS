@@ -40,7 +40,45 @@ describe("listClients", () => {
     });
   });
 
-  it("pages newest first with limit and offset, keeping the status and search filters", async () => {
+  it("orders by name by default, so a client dropdown is alphabetical whatever the creation order", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const suffix = crypto.randomUUID().slice(0, 8);
+      // `created_at` is the transaction timestamp, identical for every row this
+      // test inserts, so the dates are set explicitly — and set so that creation
+      // order is the reverse of the alphabet: a query still ordered by
+      // `created_at` cannot pass this by luck.
+      const [zed, mid, ace] = await db
+        .insert(schema.clients)
+        .values(
+          [
+            { name: `Zed ${suffix}`, slug: `zed-${suffix}`, createdAt: new Date(Date.UTC(2026, 0, 3)) },
+            { name: `Mid ${suffix}`, slug: `mid-${suffix}`, createdAt: new Date(Date.UTC(2026, 0, 2)) },
+            { name: `Ace ${suffix}`, slug: `ace-${suffix}`, createdAt: new Date(Date.UTC(2026, 0, 1)) },
+          ].map((c) => ({ ...c, organisationId: org.id, status: "active" as const })),
+        )
+        .returning();
+
+      const names = (rows: { name: string }[]) => rows.map((r) => r.name);
+
+      // No `order` at all: the shape every dropdown call site uses.
+      const all = await listClients(db, org.id, { query: suffix });
+      expect(names(all)).toEqual([`Ace ${suffix}`, `Mid ${suffix}`, `Zed ${suffix}`]);
+      expect(all.map((c) => c.id)).toEqual([ace!.id, mid!.id, zed!.id]);
+
+      // Explicit "name" is the same order, and it pages without repeats.
+      const first = await listClients(db, org.id, { query: suffix, order: "name", limit: 2 });
+      expect(names(first)).toEqual([`Ace ${suffix}`, `Mid ${suffix}`]);
+      const second = await listClients(db, org.id, { query: suffix, order: "name", limit: 2, offset: 2 });
+      expect(names(second)).toEqual([`Zed ${suffix}`]);
+
+      // Same rows, other order — the option is what moves them.
+      const recent = await listClients(db, org.id, { query: suffix, order: "recent" });
+      expect(names(recent)).toEqual([`Ace ${suffix}`, `Mid ${suffix}`, `Zed ${suffix}`].reverse());
+    });
+  });
+
+  it("pages newest first when asked, with limit and offset, keeping the status and search filters", async () => {
     await withTestDb(async (db) => {
       const org = await makeOrg(db);
       // `created_at` defaults to the transaction timestamp, which is the same
@@ -69,22 +107,22 @@ describe("listClients", () => {
 
       const names = (rows: { name: string }[]) => rows.map((r) => r.name);
 
-      const first = await listClients(db, org.id, { status: "active", limit: 2, offset: 0 });
+      const first = await listClients(db, org.id, { status: "active", order: "recent", limit: 2, offset: 0 });
       expect(names(first)).toEqual([`Paged 4 ${suffix}`, `Paged 3 ${suffix}`]);
 
-      const second = await listClients(db, org.id, { status: "active", limit: 2, offset: 2 });
+      const second = await listClients(db, org.id, { status: "active", order: "recent", limit: 2, offset: 2 });
       expect(names(second)).toEqual([`Paged 2 ${suffix}`, `Paged 1 ${suffix}`]);
 
       // Past the end is empty, not a repeat of the last page.
-      expect(await listClients(db, org.id, { status: "active", limit: 2, offset: 4 })).toHaveLength(0);
+      expect(await listClients(db, org.id, { status: "active", order: "recent", limit: 2, offset: 4 })).toHaveLength(0);
 
       // The search term survives the offset, and the archived row is excluded
       // by status even though it matches the term and is the newest.
-      const searched = await listClients(db, org.id, { query: `Paged`, status: "active", limit: 3, offset: 1 });
+      const searched = await listClients(db, org.id, { query: `Paged`, status: "active", order: "recent", limit: 3, offset: 1 });
       expect(names(searched)).toEqual([`Paged 3 ${suffix}`, `Paged 2 ${suffix}`, `Paged 1 ${suffix}`]);
 
       // Without a status filter the archived row is the newest of the five.
-      const all = await listClients(db, org.id, { query: suffix, limit: 1 });
+      const all = await listClients(db, org.id, { query: suffix, order: "recent", limit: 1 });
       expect(names(all)).toEqual([`Paged 5 ${suffix}`]);
     });
   });
