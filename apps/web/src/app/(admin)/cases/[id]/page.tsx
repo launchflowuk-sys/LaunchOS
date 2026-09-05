@@ -13,6 +13,7 @@ import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { TriagePanel } from "@/components/triage-panel";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -287,11 +288,10 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               <input type="hidden" name="ticketId" value={ticket.id} />
               {/* A native select: the option list is server data and the form
                   posts without any client JavaScript of its own. */}
-              <select
+              <NativeSelect
                 name="assignedUserId"
                 aria-label="Assign to"
                 defaultValue={ticket.assignedUserId ?? ""}
-                className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
               >
                 <option value="">Least loaded staff member</option>
                 {members.map((m) => (
@@ -299,7 +299,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
                     {m.displayName ?? m.name}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
               <Button type="submit" variant="secondary" className="w-full">
                 Assign
               </Button>

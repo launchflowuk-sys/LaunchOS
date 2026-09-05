@@ -40,16 +40,28 @@ export function StatCard({
       >
         {value}
       </p>
-      {hint ? <p className="mt-2 text-meta text-muted-foreground">{hint}</p> : null}
+      {hint ? <p className="mt-2 text-meta leading-snug text-muted-foreground">{hint}</p> : null}
     </>
   );
 
-  const shell = "block rounded-xl border bg-card p-4 transition-colors";
+  // A tile that needs you carries the danger surface as well as the danger ink,
+  // so the "needs you" band is one block of colour at a glance rather than six
+  // identical white cards a reader has to compare number by number.
+  const shell = cn(
+    "block rounded-xl border p-3 transition-colors sm:p-4",
+    isAlarming ? "border-danger-border bg-danger-bg" : "bg-card",
+  );
 
   if (!href) return <div className={shell}>{body}</div>;
 
   return (
-    <Link href={href} className={cn(shell, "hover:border-primary/40 hover:bg-primary-soft/40")}>
+    <Link
+      href={href}
+      className={cn(
+        shell,
+        isAlarming ? "hover:border-danger-fg/40" : "hover:border-primary/40 hover:bg-primary-soft/40",
+      )}
+    >
       {body}
     </Link>
   );

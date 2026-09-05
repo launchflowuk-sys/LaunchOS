@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
@@ -40,12 +41,9 @@ const APPROVAL_COLUMNS: readonly DataListColumn<ApprovalRow>[] = [
     header: "Decide",
     action: true,
     cell: () => (
-      <Link
-        href="/approvals"
-        className="inline-flex h-8 items-center justify-center rounded-md border px-3 text-row font-medium transition-colors hover:bg-muted"
-      >
-        Decide
-      </Link>
+      <Button asChild variant="secondary" size="sm">
+        <Link href="/approvals">Decide</Link>
+      </Button>
     ),
   },
 ];
@@ -225,7 +223,7 @@ export default async function DashboardPage() {
       label: "Onboarding in progress",
       value: onboarding[0]?.value ?? 0,
       href: "/clients",
-      hint: "Clients on a package, not handed over",
+      hint: "On a package, not handed over",
       category: "delivery" as const,
       attention: false,
     },
@@ -235,7 +233,7 @@ export default async function DashboardPage() {
     <>
       <PageHeader title="Dashboard" description="What needs attention right now." />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
         {cards.map((card) => (
           <StatCard key={card.label} {...card} />
         ))}

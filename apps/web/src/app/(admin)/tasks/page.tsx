@@ -4,6 +4,7 @@ import { ListChecks } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
@@ -23,6 +24,10 @@ const STATUSES = schema.taskStatusEnum.enumValues;
 const PHASES = schema.taskPhaseEnum.enumValues;
 const KINDS = schema.taskKindEnum.enumValues;
 const PRIORITIES = schema.taskPriorityEnum.enumValues;
+
+const NO_MATCH =
+  "No tasks match these filters. Create one, or give a client a package so onboarding generates its list.";
+const PAST_THE_END = "There are no tasks on this page. Go back to a newer page.";
 
 /** An empty GET-form field arrives as "", which means "no filter". */
 const one = (v: string | string[] | undefined): string | undefined => {
@@ -87,8 +92,14 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
   // then behind every older undated one — so a task the operator just created
   // would land off the end of the page. The due date stays a column and a
   // filter for anyone who wants to work the diary.
+  // The board groups every open task into its column, so it reads the whole
+  // (capped) set; the list is one screenful at a time. Without this a phone
+  // rendered a card per task — thousands of them, tens of thousands of pixels.
+  const page = view === "list" ? pageParam(sp.page) : 1;
+
   const filters: TaskFilters = {
     sort: "recent",
+    ...(view === "list" ? { limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE } : {}),
     ...(client ? { clientId: client } : {}),
     ...(assignee ? { assigneeUserId: assignee } : {}),
     ...(phase ? { phase: phase as NonNullable<TaskFilters["phase"]> } : {}),
@@ -103,6 +114,9 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
     listClients(getDb(), session.organisationId, { limit: 200 }),
     listMembers(getDb(), session.organisationId),
   ]);
+
+  const hasNext = view === "list" && tasks.length > PAGE_SIZE;
+  const rows = hasNext ? tasks.slice(0, PAGE_SIZE) : tasks;
 
   const clientOptions = clients.map((c) => ({ value: c.id, label: c.name }));
   const memberOptions = members.map((m) => ({ value: m.userId, label: m.displayName ?? m.name ?? m.email }));
@@ -138,14 +152,30 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
         current={{ view, client, assignee, phase, kind, status, dueFrom, dueTo }}
       />
 
-      {tasks.length === 0 ? (
-        <EmptyState icon={ListChecks}>
-          No tasks match these filters. Create one, or give a client a package so onboarding generates its list.
-        </EmptyState>
-      ) : view === "board" ? (
-        <TaskBoard tasks={tasks} statuses={STATUSES} />
+      {view === "board" ? (
+        rows.length === 0 ? (
+          <EmptyState icon={ListChecks}>{NO_MATCH}</EmptyState>
+        ) : (
+          <TaskBoard tasks={rows} statuses={STATUSES} />
+        )
       ) : (
-        <DataList rows={tasks} columns={COLUMNS} getRowKey={(task) => task.id} caption="Tasks" />
+        <>
+          <DataList
+            rows={rows}
+            columns={COLUMNS}
+            getRowKey={(task) => task.id}
+            caption="Tasks"
+            empty={<EmptyState icon={ListChecks}>{page > 1 ? PAST_THE_END : NO_MATCH}</EmptyState>}
+          />
+          {/* Outside the empty check on purpose: a page past the end has no rows
+              and still needs the "Newer" link back. */}
+          <Pager
+            basePath="/tasks"
+            query={{ client, assignee, phase, kind, status, dueFrom, dueTo }}
+            page={page}
+            hasNext={hasNext}
+          />
+        </>
       )}
     </>
   );

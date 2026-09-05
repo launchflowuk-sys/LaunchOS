@@ -10,6 +10,7 @@ import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
 import { Toolbar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -20,8 +21,8 @@ export const dynamic = "force-dynamic";
 /**
  * A native `<select>` on purpose: the filters are a plain GET form, so the
  * screen keeps working with no client JavaScript and a shared link reproduces
- * the view. The classes are the shadcn control shape, written once here rather
- * than ad hoc on each field.
+ * the view. The control shape comes from the shared `NativeSelect`; the only
+ * thing this adds is the column width the filter row wants.
  */
 function FilterSelect({
   name,
@@ -35,14 +36,9 @@ function FilterSelect({
   children: ReactNode;
 }) {
   return (
-    <select
-      id={id}
-      name={name}
-      defaultValue={defaultValue}
-      className="h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 sm:w-44"
-    >
+    <NativeSelect id={id} name={name} defaultValue={defaultValue} className="sm:w-44">
       {children}
-    </select>
+    </NativeSelect>
   );
 }
 

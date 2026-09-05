@@ -47,7 +47,7 @@ export function Pager({
   hasNext,
 }: {
   /** Typed-routes literal, so a pager can never point at a route that is gone. */
-  basePath: "/inbox" | "/cases";
+  basePath: "/inbox" | "/cases" | "/tasks";
   query: Query;
   page: number;
   hasNext: boolean;
@@ -63,7 +63,7 @@ export function Pager({
       ) : (
         <span className={DISABLED}>Newer</span>
       )}
-      <span className="text-sm text-neutral-500">Page {page}</span>
+      <span className="text-sm tabular-nums text-muted-foreground">Page {page}</span>
       {hasNext ? (
         <Link href={{ pathname: basePath, query: withPage(query, page + 1) }} className={LINK}>
           Older

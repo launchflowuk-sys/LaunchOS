@@ -145,11 +145,14 @@ export function InvoiceDocument({
           <p className="mt-2 text-meta">{registrationLine}</p>
           {supplier.companyNumber ? <p className="text-meta">Company no. {supplier.companyNumber}</p> : null}
         </div>
-        <div className="text-right">
+        {/* Right-aligned beside the supplier block from `sm`; on a phone the
+            two blocks are stacked, and a right-aligned stack under a
+            left-aligned one just looks broken. Print keeps the wide layout. */}
+        <div className="sm:text-right print:text-right">
           <p className="text-lg font-semibold tracking-tight text-foreground">Invoice {invoice.number}</p>
           <p className="mt-1 text-meta text-muted-foreground">Issued {formatDate(invoice.issuedAt)}</p>
           <p className="text-meta text-muted-foreground">Due {formatDate(invoice.dueAt)}</p>
-          <div className="mt-2 flex justify-end">
+          <div className="mt-2 flex sm:justify-end print:justify-end">
             <StatusBadge value={invoice.status} />
           </div>
         </div>
@@ -166,7 +169,29 @@ export function InvoiceDocument({
         </address>
       </section>
 
-      <section className="overflow-x-auto">
+      {/* Line items, stacked — phones only, never printed. A five-column table
+          at 375px puts the amount off the right edge behind a swipe nobody is
+          told about, and the amount is the one number on the row that matters. */}
+      <ul className="grid gap-3 border-t pt-4 md:hidden print:hidden">
+        {invoice.lineItems.map((line, index) => (
+          <li key={`stacked-${line.description}-${index}`} className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-sm font-medium break-words">{line.description}</p>
+              <p className="mt-0.5 text-meta tabular-nums text-muted-foreground">
+                {line.quantity} × {formatPence(line.unitPence, invoice.currency)}
+                {showVat ? ` · VAT ${rateLabel}` : ""}
+              </p>
+            </div>
+            <p className="shrink-0 text-sm font-medium tabular-nums">
+              {formatPence(line.unitPence * line.quantity, invoice.currency)}
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {/* The same rows as a real table from `md` up, and in print at every
+          width, so the saved document is unchanged. */}
+      <section className="hidden overflow-x-auto md:block print:block">
         <Table>
           <TableHeader>
             <TableRow>

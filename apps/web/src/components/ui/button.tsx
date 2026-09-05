@@ -6,11 +6,20 @@ import { Slot } from "radix-ui";
 import { cn } from "@/lib/utils";
 
 /**
- * The five variants DESIGN.md allows, and nothing else. `primary` is the one
- * indigo action per screen; `success` exists because approving is the single
- * place a green button is the honest colour; `destructive` is the danger red.
+ * The variants DESIGN.md allows, and nothing else. `primary` is the one indigo
+ * action per screen; `success` exists because approving is the single place a
+ * green button is the honest colour; `destructive` is the danger red.
  * The old shadcn `default | outline | link` names are gone on purpose — a
  * screen that wants a link should use a link.
+ *
+ * `destructive` and `destructive-quiet` are one rule split in two, and the
+ * split is about repetition rather than severity. Solid red is the single
+ * decisive destructive action on a screen — Archive this client, Void this
+ * invoice. `destructive-quiet` is the same action repeated once per row in a
+ * list: Remove a contact, Deactivate a member, Suspend portal access. A dozen
+ * solid red bars down a phone screen is an alarm about nothing, and it makes
+ * the one that matters unreadable. The ink and the hover surface are the same
+ * danger tokens either way, so the meaning never changes with the fill.
  */
 const buttonVariants = cva(
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-sm font-medium whitespace-nowrap transition-colors outline-none select-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -21,6 +30,7 @@ const buttonVariants = cva(
         secondary: "border-border bg-card text-foreground hover:bg-muted",
         ghost: "text-foreground hover:bg-muted",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
+        "destructive-quiet": "border-border bg-card text-danger-fg hover:border-danger-border hover:bg-danger-bg",
         success: "bg-success-fg text-white hover:bg-success-fg/90",
       },
       size: {

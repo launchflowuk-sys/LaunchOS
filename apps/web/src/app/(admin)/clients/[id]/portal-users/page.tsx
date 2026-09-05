@@ -51,7 +51,7 @@ const COLUMNS: readonly DataListColumn<PortalUserRow>[] = [
         <input type="hidden" name="clientId" value={row.clientId} />
         <input type="hidden" name="clientUserId" value={row.id} />
         <input type="hidden" name="status" value={row.status === "active" ? "suspended" : "active"} />
-        <Button type="submit" size="sm" variant={row.status === "active" ? "destructive" : "secondary"}>
+        <Button type="submit" size="sm" variant={row.status === "active" ? "destructive-quiet" : "secondary"}>
           {row.status === "active" ? "Suspend" : "Reactivate"}
         </Button>
       </ActionForm>

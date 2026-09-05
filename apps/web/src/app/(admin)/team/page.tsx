@@ -60,17 +60,9 @@ function columns(isOwner: boolean, currentUserId: string): readonly DataListColu
           {isOwner && member.status === "active" && member.userId !== currentUserId ? (
             <form action={deactivateMemberAction} className="max-sm:w-full">
               <input type="hidden" name="memberId" value={member.id} />
-              {/* Danger ink on a bordered button rather than the solid
-                  `destructive` fill: a team list is a dozen rows deep, and a
-                  dozen full-width red bars is an alarm about nothing. The solid
-                  red is kept for the one-off destructive action on a detail
-                  screen — Void an invoice, Delete a template. */}
-              <Button
-                type="submit"
-                variant="secondary"
-                size="sm"
-                className="max-sm:w-full text-danger-fg hover:bg-danger-bg hover:text-danger-fg"
-              >
+              {/* `destructive-quiet`, not the solid fill: this is the same
+                  action once per row, and a team list is a dozen rows deep. */}
+              <Button type="submit" variant="destructive-quiet" size="sm" className="max-sm:w-full">
                 Deactivate
               </Button>
             </form>

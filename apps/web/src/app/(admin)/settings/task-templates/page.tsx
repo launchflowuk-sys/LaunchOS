@@ -107,7 +107,7 @@ export default async function TaskTemplatesPage() {
                         className="shrink-0"
                       >
                         <input type="hidden" name="templateId" value={template.id} />
-                        <Button type="submit" variant="destructive" size="sm">
+                        <Button type="submit" variant="destructive-quiet" size="sm">
                           Delete
                         </Button>
                       </ActionForm>

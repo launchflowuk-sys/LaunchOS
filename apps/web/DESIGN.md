@@ -57,7 +57,7 @@ Fixed rem scale, ratio ≈1.2: 12 (meta) · 13 (table body, labels) · 14 (body)
 
 ## Components (single source: `src/components`)
 
-- **Button** (`ui/button`): `primary` (indigo), `secondary` (white, border), `ghost`, `destructive` (danger), `success` (approve actions), sizes `sm | md | lg | icon`; every variant has hover, focus ring, disabled and loading (spinner replaces icon, label stays).
+- **Button** (`ui/button`): `primary` (indigo), `secondary` (white, border), `ghost`, `destructive` (solid danger — the one decisive destructive action on a screen: archive this client, void this invoice), `destructive-quiet` (bordered, danger ink — the same action repeated once per row of a list: remove a contact, deactivate a member, suspend portal access), `success` (approve actions), sizes `sm | md | lg | icon`; every variant has hover, focus ring, disabled and loading (spinner replaces icon, label stays).
 - **StatusBadge**: pill with a leading dot, colour from the semantic map; value text humanised. Same component in admin and portal.
 - **PageHeader** with category accent dot; **EmptyState** with a lucide icon, one sentence, optional primary action.
 - **DataList**: the one way to show rows. Renders a real `<table>` inside `overflow-x-auto rounded-xl border bg-card` at `md+`; under `md` renders stacked row cards from the same column definitions (primary column as card title, status pill top-right, remaining columns as label/value pairs, row action as a full-width link). Nothing may overflow the viewport.

@@ -1,4 +1,5 @@
 import { ChevronDown } from "lucide-react";
+import { NativeSelect } from "@/components/ui/native-select";
 import { cn } from "@/lib/utils";
 
 /**
@@ -10,8 +11,10 @@ import { cn } from "@/lib/utils";
  * gestures, and it works before React has hydrated. The Radix listbox is a
  * div-and-portal reimplementation of all of that.
  *
- * It is a component rather than a class string copied onto a bare `<select>`
- * so the portal's one dropdown cannot drift from the portal's text inputs.
+ * It wraps the shared `NativeSelect` rather than repeating its classes, so the
+ * portal's one dropdown cannot drift from the admin app's controls: all this
+ * layer adds is a thumb-sized target, a larger type size and the chevron a
+ * `appearance-none` select loses.
  */
 export function PortalSelect({
   className,
@@ -20,18 +23,13 @@ export function PortalSelect({
 }: React.ComponentProps<"select">) {
   return (
     <div className="relative">
-      <select
+      <NativeSelect
         data-slot="select"
-        className={cn(
-          "h-11 w-full min-w-0 appearance-none rounded-lg border border-input bg-card py-1 pr-9 pl-3 text-base transition-colors outline-none",
-          "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
-          "disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50",
-          className,
-        )}
+        className={cn("h-11 appearance-none py-1 pr-9 pl-3 text-base disabled:pointer-events-none", className)}
         {...props}
       >
         {children}
-      </select>
+      </NativeSelect>
       <ChevronDown
         aria-hidden
         strokeWidth={1.75}

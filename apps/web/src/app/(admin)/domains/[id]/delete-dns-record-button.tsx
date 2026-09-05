@@ -19,7 +19,8 @@ export function DeleteDnsRecordButton({ recordId, domainId }: { recordId: string
     <Button
       type="button"
       size="sm"
-      variant="destructive"
+      // One per DNS record row.
+      variant="destructive-quiet"
       loading={isPending}
       onClick={() => {
         startTransition(async () => {

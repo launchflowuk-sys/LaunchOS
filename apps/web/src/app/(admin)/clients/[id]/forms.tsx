@@ -214,7 +214,9 @@ export function RemoveContactButton({ clientId, contactId }: { clientId: string;
     <Button
       type="button"
       size="sm"
-      variant="destructive"
+      // One per contact row: quiet, so the client's one solid red — Archive —
+      // stays the loudest thing on the screen.
+      variant="destructive-quiet"
       loading={busy}
       onClick={async () => {
         setBusy(true);

@@ -81,6 +81,12 @@ test.describe("tasks acceptance", () => {
     await row.getByRole("button", { name: "Move" }).click();
 
     await page.goto("/tasks?view=board&status=in_progress");
-    await expect(page.getByText("Discovery call").first()).toBeVisible();
+    // Scoped to the column, the way `admin-tasks.spec.ts` scopes the same
+    // assertion. Unscoped, `getByText("Discovery call")` also matches the
+    // notifications tray in the top bar — "Assigned: Discovery call …" from an
+    // earlier run — which is in the DOM but hidden, so `.first()` resolved to a
+    // hidden element and the assertion could never pass. The intent is
+    // unchanged: the task the status form moved is now in the in-progress lane.
+    await expect(page.getByRole("region", { name: "in progress" }).getByText("Discovery call").first()).toBeVisible();
   });
 });

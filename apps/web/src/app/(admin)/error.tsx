@@ -18,9 +18,9 @@ export default function AdminError({ error, retry }: { error: Error & { digest?:
   }, [error]);
 
   return (
-    <div className="mx-auto max-w-lg rounded-lg border border-neutral-200 bg-white p-6 text-center">
-      <h1 className="text-base font-semibold text-neutral-900">Something went wrong</h1>
-      <p className="mt-2 text-sm text-neutral-500">
+    <div className="mx-auto max-w-lg rounded-xl border bg-card p-6 text-center">
+      <h1 className="text-lg font-semibold tracking-tight">Something went wrong</h1>
+      <p className="mt-2 text-sm text-muted-foreground">
         This screen could not be loaded. Trying again usually fixes it; if it does not, the reference below identifies
         this failure in the server log.
       </p>
@@ -29,7 +29,9 @@ export default function AdminError({ error, retry }: { error: Error & { digest?:
           Retry
         </Button>
       </div>
-      {error.digest ? <p className="mt-4 text-xs text-neutral-400">Reference {error.digest}</p> : null}
+      {error.digest ? <p className="mt-4 text-meta text-muted-foreground">
+          Reference <span className="font-mono">{error.digest}</span>
+        </p> : null}
     </div>
   );
 }

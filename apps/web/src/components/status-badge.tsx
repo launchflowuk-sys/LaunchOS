@@ -84,6 +84,18 @@ const TONE_BY_VALUE: Record<string, StatusTone> = {
   refunded: "warn",
   // ad accounts and reports
   disconnected: "danger",
+  published: "success",
+  // site status — `paused` and `archived` are shared with client status above
+  live: "success",
+  building: "info",
+  // domain status — `active` is shared with client status above
+  expiring: "warn",
+  expired: "danger",
+  transferring: "info",
+  // message status — `sent` and `failed` are shared with the invoice and agent
+  // run families above, and mean the same thing here
+  queued: "info",
+  received: "neutral",
 };
 
 /**
