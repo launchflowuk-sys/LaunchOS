@@ -2,12 +2,14 @@
  * Which adapter each factory will actually build, and the production rule that
  * refuses a mock.
  *
- * Selection itself is spread across four factories — `createEmailAdapter`
- * (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapter` and the
- * `UPTIME_PROBE` branch in `createIntegrations`. This module is the one place
- * that *names* the outcome of all of them, for two jobs neither factory can do
- * on its own: printing the resolved set in the startup log, and refusing to boot
- * a production process on a mock.
+ * Selection itself is spread across the factories — `createEmailAdapter`
+ * (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapterFromEnv`,
+ * `createHostingProviderFromEnv`, `createDnsProvidersFromEnv`,
+ * `createCmsProviderFromEnv` and the `UPTIME_PROBE` branch in
+ * `createIntegrations`. This module is the one place that *names* the outcome
+ * of all of them, for two jobs no factory can do on its own: printing the
+ * resolved set in the startup log, and refusing to boot a production process on
+ * a mock it was not meant to run on.
  *
  * The reasoning is the one already written out for `LLM=fake` in
  * `apps/worker/src/env.ts`: an adapter that silently falls back to a mock does
@@ -18,9 +20,10 @@
  * reporting all of them delivered, and nothing anywhere says otherwise.
  *
  * Kept in `packages/integrations` because it is a leaf both `apps/web` and
- * `apps/worker` already depend on, and because the payments rule (Stripe only
- * when both secrets are present) lives next door in `payments/index.ts`.
+ * `apps/worker` already depend on, and because most of the factories it mirrors
+ * live next door.
  */
+import { ADS_ENV_KEYS } from "./ads/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -29,20 +32,39 @@
  * **Every field here must survive the caller's own parsing.** `apps/worker`
  * hands `superRefine`'s value to `productionAdapterIssues`, and a Zod object
  * strips keys it does not declare — so a variable named here and *not* declared
- * in `apps/worker/src/env.ts` arrives as `undefined` and reads as unset, which
- * would refuse a perfectly sound deployment. `STRIPE_SECRET_KEY` and
- * `STRIPE_WEBHOOK_SECRET` are declared there for that reason alone; `SMTP_HOST`
- * and `SMTP_PORT` joined them when this module started reading them.
+ * in `apps/worker/src/env.ts` (and, for symmetry, `apps/web/src/lib/env.ts`)
+ * arrives as `undefined` and reads as unset, which would refuse a perfectly
+ * sound deployment. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are
+ * declared there for that reason alone; `SMTP_HOST` and `SMTP_PORT` joined them
+ * when this module started reading them, and the hosting, DNS, CMS and ads
+ * credentials below joined when their real adapters landed.
+ *
+ * Variables a factory reads but which do not change *which* adapter it builds
+ * (`COOLIFY_SERVER_UUID`, `COOLIFY_TIMEOUT_MS`, `GOOGLE_ADS_API_VERSION`,
+ * `META_ADS_API_VERSION`, `META_ADS_CONVERSION_ACTIONS`, `MOCK_ADS_DROP_FROM`)
+ * are deliberately absent: the guard has nothing to say about them.
  */
 export interface AdapterEnv {
   readonly EMAIL_ADAPTER?: string | undefined;
   readonly SMTP_HOST?: string | undefined;
   readonly SMTP_PORT?: string | undefined;
   readonly PAYMENTS_ADAPTER?: string | undefined;
-  readonly ADS_ADAPTER?: string | undefined;
-  readonly UPTIME_PROBE?: string | undefined;
   readonly STRIPE_SECRET_KEY?: string | undefined;
   readonly STRIPE_WEBHOOK_SECRET?: string | undefined;
+  readonly UPTIME_PROBE?: string | undefined;
+  readonly ADS_ADAPTER?: string | undefined;
+  readonly GOOGLE_ADS_DEVELOPER_TOKEN?: string | undefined;
+  readonly GOOGLE_ADS_CLIENT_ID?: string | undefined;
+  readonly GOOGLE_ADS_CLIENT_SECRET?: string | undefined;
+  readonly GOOGLE_ADS_REFRESH_TOKEN?: string | undefined;
+  readonly GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string | undefined;
+  readonly META_ADS_ACCESS_TOKEN?: string | undefined;
+  readonly META_ADS_APP_SECRET?: string | undefined;
+  readonly COOLIFY_API_URL?: string | undefined;
+  readonly COOLIFY_API_TOKEN?: string | undefined;
+  readonly HOSTINGER_API_TOKEN?: string | undefined;
+  readonly CLOUDFLARE_API_TOKEN?: string | undefined;
+  readonly SECRETS_ENCRYPTION_KEY?: string | undefined;
   readonly NODE_ENV?: string | undefined;
   readonly ALLOW_MOCK_ADAPTERS?: string | undefined;
 }
@@ -58,28 +80,55 @@ export interface AdapterEnv {
  * adapters inside server actions. Reporting that as `mock` would be a second
  * lie on top of the first, and reporting it as `smtp` — which this guard used to
  * do — tells the operator the environment is sound when the next send will fail.
+ * `createHostingProviderFromEnv` with a malformed `COOLIFY_API_URL` is the same
+ * shape: it throws, by design, because a silent downgrade to the mock would
+ * report every site healthy for ever.
  */
 export const UNBUILDABLE = "unbuildable";
+
+/**
+ * What production does with this adapter when nothing selects it and the mock
+ * is what gets built.
+ *
+ * - `refuse`: the mock is a boot refusal unless `ALLOW_MOCK_ADAPTERS=1`. Email,
+ *   payments and uptime: every one of them has been selectable by a single
+ *   variable since it shipped, and every production deployment has carried
+ *   that variable, so an unset one is a variable lost in a redeploy.
+ * - `log`: the mock is tolerated and **warned about** at startup, through
+ *   `productionMockWarnings`. Hosting, DNS, CMS and ads: their real adapters
+ *   landed after production was already running with none of their keys set,
+ *   and a deployment whose domains are all `registrar` / `other`, or which has
+ *   no ad accounts yet, is sound without them. Refusing would have refused the
+ *   next deploy outright and taught everyone to set `ALLOW_MOCK_ADAPTERS=1`,
+ *   which disarms the whole guard. What *is* refused for these four is the
+ *   silent-downgrade case — a variable set but unusable, so the operator
+ *   believes it is live — and the `UNBUILDABLE` case.
+ */
+export type MockWhenUnset = "refuse" | "log";
 
 export interface AdapterResolution {
   /** The name used in the startup log, e.g. `email`. */
   readonly name: string;
-  /** The environment variable that selects it, or null when nothing selects it yet. */
-  readonly variable: string | null;
+  /**
+   * The environment variable(s) that select it. Comma-separated when more than
+   * one does (`dns`), and the intent variable for `ads`, whose selection is by
+   * credential — see `resolveAds`.
+   */
+  readonly variable: string;
   /** What the environment asked for. */
   readonly requested: string;
   /** What the factory will actually construct, or `UNBUILDABLE` when it will throw. */
   readonly resolved: string;
   /** Why the factory would throw, in the words of the check that would reject it. Null when it builds. */
   readonly problem: string | null;
-  /**
-   * Whether a real implementation is reachable through this variable today.
-   * `false` for the adapters that are mock-only by construction (ads, hosting,
-   * DNS, CMS): refusing production on those would refuse production outright,
-   * which would teach everyone to set `ALLOW_MOCK_ADAPTERS=1` and disarm the
-   * whole guard. They are logged instead, so they stay visible.
-   */
+  /** Extra context for a refusal or a warning — which keys are missing, say. Null when there is none. */
+  readonly note: string | null;
+  /** Whether a real implementation is reachable through `variable` today. True for every adapter now. */
   readonly hasRealImplementation: boolean;
+  /** See `MockWhenUnset`. */
+  readonly mockWhenUnset: MockWhenUnset;
+  /** What running on the mock actually does, for the refusal and the startup warning. */
+  readonly mockEffect: string;
 }
 
 /** The one opt-out, spelled exactly. Anything else is not an opt-out. */
@@ -98,28 +147,80 @@ function isProduction(env: AdapterEnv): boolean {
  * if one of them moves, this goes with it.
  */
 export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
-  const email = resolveEmail(env);
-  const payments = resolvePayments(env);
-  const uptime = resolveUptime(env);
   return [
-    { name: "email", variable: "EMAIL_ADAPTER", requested: env.EMAIL_ADAPTER ?? "mock", ...email, hasRealImplementation: true },
-    { name: "payments", variable: "PAYMENTS_ADAPTER", requested: env.PAYMENTS_ADAPTER ?? "mock", ...payments, hasRealImplementation: true },
-    { name: "uptime", variable: "UPTIME_PROBE", requested: env.UPTIME_PROBE ?? "mock", ...uptime, hasRealImplementation: true },
-    // `ads/index.ts` always returns `new MockAdsAdapter(...)`; google/meta are
-    // interface-only, and `MOCK_ADS_DROP_FROM` is passed straight through
-    // without validation, so no environment can make this one throw.
-    { name: "ads", variable: "ADS_ADAPTER", requested: env.ADS_ADAPTER ?? "mock", ...builds("mock"), hasRealImplementation: false },
-    { name: "hosting", variable: null, requested: "mock", ...builds("mock"), hasRealImplementation: false },
-    { name: "dns", variable: null, requested: "mock", ...builds("mock"), hasRealImplementation: false },
-    { name: "cms", variable: null, requested: "mock", ...builds("mock"), hasRealImplementation: false },
+    {
+      name: "email",
+      variable: "EMAIL_ADAPTER",
+      requested: env.EMAIL_ADAPTER ?? "mock",
+      ...resolveEmail(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "refuse",
+      mockEffect: "every outbound email is recorded as delivered and sent nowhere",
+    },
+    {
+      name: "payments",
+      variable: "PAYMENTS_ADAPTER",
+      requested: env.PAYMENTS_ADAPTER ?? "mock",
+      ...resolvePayments(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "refuse",
+      mockEffect: "invoices are raised against a fake ledger",
+    },
+    {
+      name: "uptime",
+      variable: "UPTIME_PROBE",
+      requested: env.UPTIME_PROBE ?? "mock",
+      ...resolveUptime(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "refuse",
+      mockEffect: "every site reports up, so no incident is ever opened",
+    },
+    {
+      name: "ads",
+      variable: "ADS_ADAPTER",
+      ...resolveAds(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "ad metrics are the deterministic mock series, not any client's real spend",
+    },
+    {
+      name: "hosting",
+      variable: "COOLIFY_API_URL",
+      ...resolveHosting(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "hosting_get_resources answers healthy numbers for every ref, so the Hosting Guard-Dog diagnoses from fiction",
+    },
+    {
+      name: "dns",
+      variable: "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN",
+      ...resolveDns(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "approved DNS changes are recorded and audited but no zone is touched",
+    },
+    {
+      name: "cms",
+      variable: "SECRETS_ENCRYPTION_KEY",
+      ...resolveCms(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "approved content changes are recorded and audited but no page is touched, and no site credential can be stored",
+    },
   ];
 }
 
 /** What one factory does with this environment: the adapter it returns, or why it throws. */
-type FactoryOutcome = Pick<AdapterResolution, "resolved" | "problem">;
+type FactoryOutcome = Pick<AdapterResolution, "resolved" | "problem" | "note">;
+/** The same, for the adapters whose `requested` is derived from more than one variable. */
+type SelectionOutcome = FactoryOutcome & Pick<AdapterResolution, "requested">;
 
-function builds(resolved: string): FactoryOutcome {
-  return { resolved, problem: null };
+function builds(resolved: string, note: string | null = null): FactoryOutcome {
+  return { resolved, problem: null, note };
+}
+
+function unbuildable(problem: string): FactoryOutcome {
+  return { resolved: UNBUILDABLE, problem, note: null };
 }
 
 /**
@@ -145,7 +246,7 @@ function resolveEmail(env: AdapterEnv): FactoryOutcome {
   // host (" ") passes there, so it passes here too — same adapter, same bug.
   const host = blankAsUnset(env.SMTP_HOST);
   if (host === undefined) {
-    return { resolved: UNBUILDABLE, problem: "SMTP_HOST is required when EMAIL_ADAPTER=smtp and is not set" };
+    return unbuildable("SMTP_HOST is required when EMAIL_ADAPTER=smtp and is not set");
   }
   // `.default(587)` applies only to `undefined`, and the factory normalises
   // `SMTP_PORT=` to unset before Zod sees it, so a variable created and left
@@ -153,10 +254,7 @@ function resolveEmail(env: AdapterEnv): FactoryOutcome {
   // value that is present and not a port is still named.
   const port = blankAsUnset(env.SMTP_PORT);
   if (port !== undefined && !coercesToPort(port)) {
-    return {
-      resolved: UNBUILDABLE,
-      problem: `SMTP_PORT=${port} is not a positive whole number (leave it unset for the default, 587)`,
-    };
+    return unbuildable(`SMTP_PORT=${port} is not a positive whole number (leave it unset for the default, 587)`);
   }
   return builds("smtp");
 }
@@ -174,6 +272,17 @@ function resolveEmail(env: AdapterEnv): FactoryOutcome {
  */
 function blankAsUnset(value: string | undefined): string | undefined {
   return value === "" ? undefined : value;
+}
+
+/**
+ * The stricter rule the newer factories apply: `value?.trim()` must be
+ * non-empty. `createHostingProviderFromEnv`, `createDnsProvidersFromEnv`,
+ * `createCmsProviderFromEnv` and the ads credential check all read a
+ * whitespace-only variable as unset, so the guard must too.
+ */
+function trimmedOrUnset(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 /** `z.coerce.number().int().positive()` — `Number(raw)`, then a positive safe integer. */
@@ -205,9 +314,114 @@ function resolveUptime(env: AdapterEnv): FactoryOutcome {
   return builds(env.UPTIME_PROBE === "http" ? "http" : "mock");
 }
 
+/**
+ * `ads/index.ts` `createAdsAdapterFromEnv`: selection is **by credential**, not
+ * by name. Google is real when all five `GOOGLE_ADS_*` keys are set, Meta when
+ * both `META_ADS_*` keys are; both together build the multi-platform router
+ * (`name: "multi"`, reported here as `google+meta`); neither builds the mock.
+ * A half-set platform is treated as unset and falls back — the same downgrade
+ * `createPaymentsAdapter` performs, and the reason this branch exists.
+ *
+ * `requested` is therefore the *intent*: every platform with at least one of
+ * its keys set, plus whatever `ADS_ADAPTER` names. `ADS_ADAPTER` no longer
+ * selects anything — the factory does not read it — but it is kept as the way
+ * to say "I mean Google", so that a deployment which lost its credentials in a
+ * redeploy is refused rather than quietly reverting to the mock series.
+ * `ADS_ADAPTER=mock` says nothing either way.
+ */
+function resolveAds(env: AdapterEnv): SelectionOutcome {
+  const platforms = [
+    { name: "google", keys: ADS_ENV_KEYS.google },
+    { name: "meta", keys: ADS_ENV_KEYS.meta },
+  ] as const;
+  const intent = trimmedOrUnset(env.ADS_ADAPTER);
+  const requested: string[] = [];
+  const resolved: string[] = [];
+  const missing: string[] = [];
+  for (const platform of platforms) {
+    const set = platform.keys.filter((key) => trimmedOrUnset(env[key]) !== undefined);
+    const complete = set.length === platform.keys.length;
+    if (set.length > 0 || intent === platform.name) requested.push(platform.name);
+    if (complete) resolved.push(platform.name);
+    else if (set.length > 0 || intent === platform.name) {
+      missing.push(...platform.keys.filter((key) => !set.includes(key)));
+    }
+  }
+  return {
+    requested: requested.length > 0 ? requested.join("+") : "mock",
+    ...builds(resolved.length > 0 ? resolved.join("+") : "mock", missing.length > 0 ? `Missing: ${missing.join(", ")}.` : null),
+  };
+}
+
+/**
+ * `coolify/index.ts` `createHostingProviderFromEnv`: the real client when both
+ * `COOLIFY_API_URL` and `COOLIFY_API_TOKEN` are non-blank after trimming, the
+ * mock otherwise. Only when both are present does the constructor parse the
+ * URL (`normaliseBaseUrl` in `coolify.ts`), and it **throws** on one that
+ * `new URL` rejects or that is not http(s) — so that is `UNBUILDABLE`, not a
+ * downgrade. A URL alone or a token alone is the downgrade case: the factory
+ * builds the mock, and `requested` says `coolify` so production refuses it.
+ */
+function resolveHosting(env: AdapterEnv): SelectionOutcome {
+  const url = trimmedOrUnset(env.COOLIFY_API_URL);
+  const token = trimmedOrUnset(env.COOLIFY_API_TOKEN);
+  if (url === undefined && token === undefined) return { requested: "mock", ...builds("mock") };
+  if (url === undefined) {
+    return { requested: "coolify", ...builds("mock", "COOLIFY_API_TOKEN is set but COOLIFY_API_URL is not.") };
+  }
+  if (token === undefined) {
+    return { requested: "coolify", ...builds("mock", "COOLIFY_API_URL is set but COOLIFY_API_TOKEN is not.") };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return { requested: "coolify", ...unbuildable(`COOLIFY_API_URL is not a valid URL: "${url}"`) };
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    return { requested: "coolify", ...unbuildable(`COOLIFY_API_URL must be http or https, got "${parsed.protocol}"`) };
+  }
+  return { requested: "coolify", ...builds("coolify") };
+}
+
+/**
+ * `dns/registry.ts` `createDnsProvidersFromEnv`: one provider per value of
+ * `domains.dns_provider`, each real when its token is set and a mock when it is
+ * not, so the resolution is the set of live halves — `hostinger+cloudflare`,
+ * `hostinger`, `cloudflare` or `mock`. There is no downgrade and no unbuildable
+ * state: a token is passed straight to a constructor that does not validate it,
+ * and a domain whose provider has no token goes to a mock the approval card
+ * names. A blank token is unset, as in the factory.
+ */
+function resolveDns(env: AdapterEnv): SelectionOutcome {
+  const live = [
+    trimmedOrUnset(env.HOSTINGER_API_TOKEN) !== undefined ? "hostinger" : null,
+    trimmedOrUnset(env.CLOUDFLARE_API_TOKEN) !== undefined ? "cloudflare" : null,
+  ].filter((name): name is string => name !== null);
+  const resolved = live.length > 0 ? live.join("+") : "mock";
+  return { requested: resolved, ...builds(resolved) };
+}
+
+/**
+ * `cms/index.ts` `createCmsProviderFromEnv`: `SECRETS_ENCRYPTION_KEY?.trim()`
+ * truthy builds the WordPress provider, anything else the mock. It never
+ * throws — a key of the wrong shape is refused by `packages/core`'s
+ * `SecretsKeyError` at the first credential read or write, which is loud and
+ * names the problem, so there is no `UNBUILDABLE` branch to mirror.
+ */
+function resolveCms(env: AdapterEnv): SelectionOutcome {
+  const resolved = trimmedOrUnset(env.SECRETS_ENCRYPTION_KEY) !== undefined ? "wordpress" : "mock";
+  return { requested: resolved, ...builds(resolved) };
+}
+
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */
 export function describeAdapters(env: AdapterEnv): Record<string, string> {
   return Object.fromEntries(resolveAdapters(env).map((a) => [a.name, a.resolved]));
+}
+
+export interface AdapterIssue {
+  readonly variable: string;
+  readonly message: string;
 }
 
 /**
@@ -218,54 +432,60 @@ export function describeAdapters(env: AdapterEnv): Record<string, string> {
  *
  * Three shapes are refused:
  *
- * 1. **A mock where a real adapter exists.** `EMAIL_ADAPTER=mock` in production
- *    reports every send as delivered; `UPTIME_PROBE=mock` reports every site up;
- *    `PAYMENTS_ADAPTER=mock` invoices against a fake ledger.
- * 2. **A silent downgrade.** The environment asked for something the factory
- *    cannot build and got the mock instead — `PAYMENTS_ADAPTER=stripe` with a
- *    key missing, `ADS_ADAPTER=google` with no client wired. This is the worse
- *    of the two, because the operator believes it is live, so it is refused for
- *    the mock-only adapters as well.
+ * 1. **A mock where the rule is `refuse`** (`MockWhenUnset`). `EMAIL_ADAPTER=mock`
+ *    in production reports every send as delivered; `UPTIME_PROBE=mock` reports
+ *    every site up; `PAYMENTS_ADAPTER=mock` invoices against a fake ledger. The
+ *    four `log` adapters are *not* refused for being unset — see `MockWhenUnset`
+ *    for why — they are warned about through `productionMockWarnings`.
+ * 2. **A silent downgrade**, for every adapter. The environment asked for
+ *    something the factory cannot build and got less — `PAYMENTS_ADAPTER=stripe`
+ *    with a key missing, `COOLIFY_API_TOKEN` without `COOLIFY_API_URL`, three of
+ *    the five `GOOGLE_ADS_*` keys. This is the worse of the two, because the
+ *    operator believes it is live, so it is refused for the `log` adapters too.
  * 3. **A real adapter that cannot be constructed** (`UNBUILDABLE`):
- *    `EMAIL_ADAPTER=smtp` with no `SMTP_HOST`. The factory throws, so nothing is
- *    downgraded and nothing is black-holed — but the process is broken, and the
- *    web app fails one send at a time rather than at boot.
+ *    `EMAIL_ADAPTER=smtp` with no `SMTP_HOST`, a `COOLIFY_API_URL` that is not
+ *    a URL. The factory throws, so nothing is downgraded and nothing is
+ *    black-holed — but the process is broken, and the web app fails one send at
+ *    a time rather than at boot.
  *
  * `ALLOW_MOCK_ADAPTERS=1` suppresses the first two and **not** the third: it
  * says "I meant the mocks", which is not something anyone can mean about a
  * configuration that throws. Refusing at boot is strictly better than the same
  * exception arriving from the first invoice send.
  */
-export function productionAdapterIssues(env: AdapterEnv): { variable: string; message: string }[] {
+export function productionAdapterIssues(env: AdapterEnv): AdapterIssue[] {
   if (!isProduction(env)) return [];
   const mocksAllowed = env.ALLOW_MOCK_ADAPTERS === ALLOW_MOCK_ADAPTERS_VALUE;
-  const issues: { variable: string; message: string }[] = [];
+  const issues: AdapterIssue[] = [];
   for (const adapter of resolveAdapters(env)) {
-    if (!adapter.variable) continue;
     if (adapter.resolved === UNBUILDABLE) {
       issues.push({
         variable: adapter.variable,
         message:
           `${adapter.variable}=${adapter.requested} is selected but the ${adapter.name} adapter cannot be built: ` +
           `${adapter.problem ?? "the factory rejects this environment"}. The factory throws rather than falling back, ` +
-          `so the worker dies at boot and the web app returns a 500 from every send. ALLOW_MOCK_ADAPTERS does not ` +
-          `cover this — fix the configuration, or set ${adapter.variable}=mock if the mock is what you meant.`,
+          `so the worker dies at boot and the web app returns a 500 from every use. ALLOW_MOCK_ADAPTERS does not ` +
+          `cover this — fix the configuration, or unset ${adapter.variable} if the mock is what you meant.`,
       });
       continue;
     }
     if (mocksAllowed) continue;
-    if (adapter.resolved !== "mock") continue;
     const opt = `Set ALLOW_MOCK_ADAPTERS=1 to say you meant it.`;
+    const note = adapter.note ? ` ${adapter.note}` : "";
     if (adapter.requested !== adapter.resolved) {
       issues.push({
         variable: adapter.variable,
         message:
-          `${adapter.variable}=${adapter.requested} is not configured and falls back to the mock ${adapter.name} adapter, ` +
-          `which is refused in production: the mock succeeds, so the failure is invisible. ${opt}`,
+          adapter.resolved === "mock"
+            ? `${adapter.variable}=${adapter.requested} is not configured and falls back to the mock ${adapter.name} adapter, ` +
+              `which is refused in production: the mock succeeds, so the failure is invisible.${note} ${opt}`
+            : `The ${adapter.name} adapter is partly configured: ${adapter.requested} was asked for but only ${adapter.resolved} ` +
+              `can be built, and the rest falls back to the mock, which is refused in production.${note} ${opt}`,
       });
       continue;
     }
-    if (adapter.hasRealImplementation) {
+    if (adapter.resolved !== "mock") continue;
+    if (adapter.hasRealImplementation && adapter.mockWhenUnset === "refuse") {
       issues.push({
         variable: adapter.variable,
         message:
@@ -275,6 +495,29 @@ export function productionAdapterIssues(env: AdapterEnv): { variable: string; me
     }
   }
   return issues;
+}
+
+/**
+ * Every adapter a production process is about to run on a mock, whether or not
+ * it was refused — one line each, for the startup log. Empty outside production.
+ *
+ * This is the other half of `MockWhenUnset`: the `log` adapters are tolerated
+ * unset because refusing them would have refused a running deployment, but a
+ * log line that says *what the mock does* is the least they owe the operator.
+ * The `refuse` adapters appear here too when `ALLOW_MOCK_ADAPTERS=1` let them
+ * through, for the same reason — the opt-out is all-or-nothing, and nothing
+ * else reminds anyone it is set.
+ */
+export function productionMockWarnings(env: AdapterEnv): AdapterIssue[] {
+  if (!isProduction(env)) return [];
+  return resolveAdapters(env)
+    .filter((adapter) => adapter.resolved === "mock")
+    .map((adapter) => ({
+      variable: adapter.variable,
+      message:
+        `${adapter.name} adapter is the MOCK (${adapter.variable} unset): ${adapter.mockEffect}. ` +
+        `Set ${adapter.variable} to go live.`,
+    }));
 }
 
 /**

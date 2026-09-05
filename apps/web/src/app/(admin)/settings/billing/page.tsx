@@ -1,4 +1,4 @@
-import { createAdsAdapter, createPaymentsAdapter, vatRateFromEnv } from "@launchos/integrations";
+import { ADS_ENV_KEYS, createAdsAdapterFromEnv, createPaymentsAdapter, vatRateFromEnv } from "@launchos/integrations";
 import type { ReactNode } from "react";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
@@ -7,12 +7,12 @@ import { requireAdmin } from "@/lib/session";
 export const dynamic = "force-dynamic";
 
 const PAYMENT_VARS = ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "STRIPE_PUBLISHABLE_KEY"] as const;
-const ADS_VARS = [
-  "GOOGLE_ADS_DEVELOPER_TOKEN",
-  "GOOGLE_ADS_CUSTOMER_ID",
-  "META_ADS_ACCESS_TOKEN",
-  "META_ADS_AD_ACCOUNT_ID",
-] as const;
+/**
+ * The keys the ads factory actually reads, from the factory's own list, so
+ * this screen cannot show "set" for a variable no adapter looks at. Per-account
+ * ids are not env — they are `ad_accounts.external_id`.
+ */
+const ADS_VARS = [...ADS_ENV_KEYS.google, ...ADS_ENV_KEYS.meta] as const;
 
 /**
  * Whether a secret is present — never its value. Reading these on the server
@@ -44,7 +44,7 @@ export default async function BillingSettingsPage() {
   await requireAdmin();
 
   const payments = createPaymentsAdapter(process.env);
-  const ads = createAdsAdapter(process.env);
+  const ads = createAdsAdapterFromEnv(process.env);
   const vatRate = vatRateFromEnv(process.env);
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
 
@@ -89,7 +89,8 @@ export default async function BillingSettingsPage() {
           </h2>
           <EnvRows names={ADS_VARS} />
           <p className="mt-3 text-meta text-muted-foreground">
-            Mock ingest is deterministic; real Google and Meta ingest needs the credentials above.
+            Each platform goes live on its own once all of its keys are set (Google needs all five, Meta both);
+            &ldquo;multi&rdquo; means both are. Mock ingest is deterministic.
           </p>
         </Panel>
       </div>

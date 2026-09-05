@@ -63,7 +63,10 @@ export async function ingestDailyMetrics(
   const failed: IngestFailure[] = [];
   for (const account of accounts) {
     try {
-      const metrics = await ads.fetchDailyMetrics(account.externalId, v.date);
+      // The platform travels with the id so the multi-platform adapter reads
+      // Google accounts from Google and Meta from Meta without guessing from
+      // the id's shape. Single-platform adapters ignore it.
+      const metrics = await ads.fetchDailyMetrics(account.externalId, v.date, account.platform);
       await db.insert(schema.adMetricSnapshots).values({
         organisationId,
         adAccountId: account.id,

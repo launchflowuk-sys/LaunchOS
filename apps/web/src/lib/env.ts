@@ -2,7 +2,12 @@
 // Next bundles for the edge runtime too, so the core barrel (and nodemailer behind
 // it) must stay out of the graph.
 import { isPublishedDefaultPassword } from "@launchos/db/passwords";
-import { DEFAULT_VAT_RATE_PERCENT, describeAdapters, productionAdapterIssues } from "@launchos/integrations";
+import {
+  DEFAULT_VAT_RATE_PERCENT,
+  describeAdapters,
+  productionAdapterIssues,
+  productionMockWarnings,
+} from "@launchos/integrations";
 import { z } from "zod";
 
 /**
@@ -131,6 +136,41 @@ export const Env = z.object({
   DATABASE_URL: z.string().optional(),
   BETTER_AUTH_SECRET: z.string().optional(),
   INBOUND_EMAIL_SECRET: z.string().optional(),
+  /**
+   * Adapter selection, declared so this schema stays the whole list of what
+   * the web process reads and so it matches `apps/worker/src/env.ts` key for
+   * key — the adapter guard reads every one of these, and the worker's Zod
+   * object would strip an undeclared one. The factories read them from
+   * `process.env` themselves; `parseEnv` hands the raw source to the guard,
+   * which treats a blank value as unset. `ADS_ADAPTER` is an intent, not a
+   * selector: the ads factory selects by credential.
+   */
+  EMAIL_ADAPTER: z.string().optional(),
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().optional(),
+  PAYMENTS_ADAPTER: z.string().optional(),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  UPTIME_PROBE: z.string().optional(),
+  ADS_ADAPTER: z.string().optional(),
+  COOLIFY_API_URL: z.string().optional(),
+  COOLIFY_API_TOKEN: z.string().optional(),
+  COOLIFY_SERVER_UUID: z.string().optional(),
+  COOLIFY_TIMEOUT_MS: z.string().optional(),
+  HOSTINGER_API_TOKEN: z.string().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
+  SECRETS_ENCRYPTION_KEY: z.string().optional(),
+  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
+  GOOGLE_ADS_CLIENT_ID: z.string().optional(),
+  GOOGLE_ADS_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ADS_REFRESH_TOKEN: z.string().optional(),
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z.string().optional(),
+  GOOGLE_ADS_API_VERSION: z.string().optional(),
+  META_ADS_ACCESS_TOKEN: z.string().optional(),
+  META_ADS_APP_SECRET: z.string().optional(),
+  META_ADS_API_VERSION: z.string().optional(),
+  META_ADS_CONVERSION_ACTIONS: z.string().optional(),
+  ALLOW_MOCK_ADAPTERS: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
 
@@ -288,6 +328,10 @@ export const env = parseEnv(process.env);
 // not print a line per worker thread.
 if (process.env.NODE_ENV !== "test" && process.env.NEXT_PHASE !== "phase-production-build") {
   console.info({ adapters: describeAdapters(process.env) }, "web adapters");
+  // And one warning per mock a production process is running on — the four
+  // the guard tolerates unset, and the refused ones ALLOW_MOCK_ADAPTERS let
+  // through. Same module, same words as the worker.
+  for (const warning of productionMockWarnings(process.env)) console.warn(warning.message);
 }
 
 /** The VAT rate the organisation charges, as a whole-number percentage. */

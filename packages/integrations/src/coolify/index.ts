@@ -123,8 +123,13 @@ export class MockHostingProvider implements HostingProvider {
   }
 }
 
-/** The environment fields hosting selection reads. */
+/**
+ * The environment fields hosting selection reads. The index signature lets a
+ * whole `process.env` be passed as well as a partial object — without it this
+ * is a weak type, and a `ProcessEnv` with no field in common is rejected.
+ */
 export interface HostingEnv {
+  readonly [key: string]: string | undefined;
   readonly COOLIFY_API_URL?: string | undefined;
   readonly COOLIFY_API_TOKEN?: string | undefined;
   readonly COOLIFY_SERVER_UUID?: string | undefined;

@@ -1,6 +1,6 @@
 import { createDb } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
-import { AnthropicLlmClient, agentRegistry } from "@launchos/agents";
+import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
 import { createEmailAdapter } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
 import { loadEnv } from "./env.js";
@@ -36,8 +36,15 @@ async function main() {
   // The Ad Performance Sentinel emails clients a portal link once a human
   // approves the send, so the registry needs the same adapter and base URL the
   // web app serves the portal from.
+  //
+  // The CMS is the one adapter this process cannot build once at startup: the
+  // real WordPress provider reads each site's credentials through a resolver
+  // bound to one organisation, and this registry serves every organisation.
+  // `scopedCmsProvider` builds it per run, from the run's own organisation, so
+  // an approved content change can only reach a site that tenant owns. With
+  // `SECRETS_ENCRYPTION_KEY` unset it is the same mock `integrations.cms` is.
   const registry = agentRegistry({
-    integrations,
+    integrations: { ...integrations, cms: scopedCmsProvider(process.env) },
     email: emailAdapter,
     portalBaseUrl: env.APP_URL,
   });

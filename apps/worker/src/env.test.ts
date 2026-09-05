@@ -163,7 +163,14 @@ describe("worker env", () => {
       const env = loadEnv({ ...production, ALLOW_FAKE_LLM: undefined } as NodeJS.ProcessEnv, logger);
       expect(env.NODE_ENV).toBe("production");
       expect(logger.info).toHaveBeenCalledWith("NODE_ENV=production");
-      expect(logger.warn).not.toHaveBeenCalled();
+      // The NODE_ENV line is not a warning here. What *is* warned about, once
+      // each, are the four adapters production tolerates on their mocks — the
+      // fixture sets none of their keys — with the consequence spelled out.
+      const warnings = logger.warn.mock.calls.map(([message]) => String(message));
+      expect(warnings).toHaveLength(4);
+      expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
+      expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
+      expect(warnings.join(" ")).not.toMatch(/NODE_ENV/);
       // Cached, so a second call neither re-parses nor re-logs.
       loadEnv({} as NodeJS.ProcessEnv, logger);
       expect(logger.info).toHaveBeenCalledTimes(1);

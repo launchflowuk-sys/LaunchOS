@@ -51,8 +51,9 @@ export class DnsProviderRegistry implements DnsProvider {
   }
 }
 
-/** The env fields DNS provider selection reads. */
+/** The env fields DNS provider selection reads. Index signature: see `HostingEnv`. */
 export interface DnsEnv {
+  readonly [key: string]: string | undefined;
   readonly HOSTINGER_API_TOKEN?: string | undefined;
   readonly CLOUDFLARE_API_TOKEN?: string | undefined;
 }

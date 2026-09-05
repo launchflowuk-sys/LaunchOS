@@ -3,9 +3,15 @@ import { recordAudit } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { cmsProviderFor, type CmsProviderFactory } from "../agents/integrations.js";
 import { defineTool } from "../kernel/types.js";
 
-export function cmsUpdateContent(cms: CmsProvider) {
+/**
+ * @param cms A provider, or a factory the tool calls with the run's own
+ * organisation — the real WordPress provider looks credentials up per site and
+ * per tenant, and only the tool context knows which tenant is running.
+ */
+export function cmsUpdateContent(cms: CmsProvider | CmsProviderFactory) {
   return defineTool({
     name: "cms_update_content",
     description: "Change one page or post's content on a client's CMS. Requires human approval.",
@@ -18,12 +24,13 @@ export function cmsUpdateContent(cms: CmsProvider) {
     // The site and client come from our rows; the replacement content is the
     // thing being released, so the approver reads it in full before deciding.
     //
-    // And the card says what approving will actually do. No real CMS client is
-    // written yet — `createIntegrations` hands this factory a `MockCmsProvider`,
-    // which records the change and reports success — so "goes live immediately"
-    // was a promise about a future deployment. The adapter is read here, at
-    // describe time, so the wording corrects itself when a real one lands.
+    // And the card says what approving will actually do. Without
+    // `SECRETS_ENCRYPTION_KEY` the provider is `MockCmsProvider`, which records
+    // the change and reports success, so "goes live immediately" would be a
+    // lie. The adapter is read here, at describe time, for the organisation
+    // that is running, so the wording is true of this deployment.
     describeApproval: async (input, ctx) => {
+      const provider = cmsProviderFor(cms, ctx);
       const [site] = await ctx.db
         .select({
           name: schema.sites.name,
@@ -41,9 +48,9 @@ export function cmsUpdateContent(cms: CmsProvider) {
           details: { path: input.path, newContentMd: input.contentMd },
         };
       }
-      const isMock = cms.name.startsWith("mock");
+      const isMock = provider.name.startsWith("mock");
       const effect = isMock
-        ? `The CMS adapter wired into this deployment is the mock (\`${cms.name}\`): approving records the change in LaunchOS and audits it, but **the page is not touched** until a real CMS provider is configured.`
+        ? `The CMS adapter wired into this deployment is the mock (\`${provider.name}\`): approving records the change in LaunchOS and audits it, but **the page is not touched** until a real CMS provider is configured.`
         : "It replaces the whole page and goes live immediately.";
       return {
         title: `Replace the content at ${input.path} on ${site.name}`,
@@ -57,13 +64,14 @@ export function cmsUpdateContent(cms: CmsProvider) {
           platform: site.platform,
           // The platform recorded on the site row, and the adapter that will
           // actually be called. They differ while the adapter is a mock.
-          adapter: cms.name,
+          adapter: provider.name,
           appliesToLiveSite: !isMock,
           newContentMd: input.contentMd,
         },
       };
     },
     execute: async (input, ctx) => {
+      const provider = cmsProviderFor(cms, ctx);
       // The site ref is read from our own records, never from the model, so an
       // approved change can only ever touch a site we manage.
       const [site] = await ctx.db
@@ -76,7 +84,7 @@ export function cmsUpdateContent(cms: CmsProvider) {
       // `siteId` travels alongside `siteRef` because the real WordPress client
       // looks its credentials up per site, and the hosting ref is Coolify's
       // name for the container, not ours for the site.
-      const result = await cms.updateContent({
+      const result = await provider.updateContent({
         siteRef: site.hostingRef,
         siteId: input.siteId,
         path: input.path,
@@ -84,7 +92,7 @@ export function cmsUpdateContent(cms: CmsProvider) {
       });
       await recordAudit(ctx.db, ctx.organisationId, {
         actorKind: "agent", actorId: "support-triage", action: "site_content.updated",
-        targetType: "site", targetId: input.siteId, after: { ...input, siteRef: site.hostingRef, provider: cms.name },
+        targetType: "site", targetId: input.siteId, after: { ...input, siteRef: site.hostingRef, provider: provider.name },
       });
       return result;
     },

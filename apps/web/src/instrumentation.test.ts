@@ -29,6 +29,23 @@ const KEYS = [
   "PAYMENTS_ADAPTER",
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
+  // The hosting, DNS, CMS and ads keys the guard reads. A developer's shell can
+  // carry a real COOLIFY_API_TOKEN (Shoji's does), and a token without its URL
+  // is exactly the half-set pair production refuses — so the "every adapter is
+  // real" case below was refused on an ambient variable until these were here.
+  "ADS_ADAPTER",
+  "GOOGLE_ADS_DEVELOPER_TOKEN",
+  "GOOGLE_ADS_CLIENT_ID",
+  "GOOGLE_ADS_CLIENT_SECRET",
+  "GOOGLE_ADS_REFRESH_TOKEN",
+  "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+  "META_ADS_ACCESS_TOKEN",
+  "META_ADS_APP_SECRET",
+  "COOLIFY_API_URL",
+  "COOLIFY_API_TOKEN",
+  "HOSTINGER_API_TOKEN",
+  "CLOUDFLARE_API_TOKEN",
+  "SECRETS_ENCRYPTION_KEY",
   "ALLOW_MOCK_ADAPTERS",
   "VAT_RATE",
   "APP_URL",

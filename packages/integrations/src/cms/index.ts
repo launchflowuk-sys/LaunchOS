@@ -56,10 +56,25 @@ export interface CmsProviderDeps {
    * Site id to live WordPress connection. Supplied by the caller — `apps/web`
    * and `apps/worker` both have a database handle and the decryption key;
    * `packages/integrations` has neither and must stay a leaf.
+   *
+   * Optional so `createIntegrations(env)` can be called without one (the agent
+   * catalogue and the tests do). Without it the real provider is still built
+   * when the key is set, and every call on it fails with `no_credentials`
+   * rather than the mock's cheerful success — see `unreachableCredentials`.
    */
-  readonly resolveSiteCredentials: ResolveSiteCredentials;
+  readonly resolveSiteCredentials?: ResolveSiteCredentials | undefined;
   readonly fetchImpl?: typeof fetch;
 }
+
+/**
+ * The resolver a process gets when it has the encryption key but handed over
+ * no way to read credentials. Every lookup answers "no connection", so the
+ * provider throws `no_credentials` on the first call: loud, and named after the
+ * real gap. The alternative — falling back to the mock — would report the page
+ * updated while touching nothing, which is the one outcome this package exists
+ * to avoid.
+ */
+const unreachableCredentials: ResolveSiteCredentials = async () => null;
 
 /**
  * The real WordPress provider when secrets can be decrypted, the mock otherwise.
@@ -67,12 +82,17 @@ export interface CmsProviderDeps {
  * There is deliberately no `CMS_ADAPTER` variable: which sites are actually
  * reachable is decided per call by whether that site has a credential row, not
  * by one global switch. `SECRETS_ENCRYPTION_KEY` is the honest gate, because
- * without it not a single credential can be read.
+ * without it not a single credential can be read. A blank key is an unset one,
+ * matching every other factory here.
+ *
+ * Never throws: a key that is set but not 32 bytes of base64 is rejected by
+ * `packages/core`'s `SecretsKeyError` at the first read or write, with the
+ * problem named, not here.
  */
-export function createCmsProviderFromEnv(env: NodeJS.ProcessEnv, deps: CmsProviderDeps): CmsProvider {
+export function createCmsProviderFromEnv(env: NodeJS.ProcessEnv, deps: CmsProviderDeps = {}): CmsProvider {
   if (!env.SECRETS_ENCRYPTION_KEY?.trim()) return new MockCmsProvider();
   return new WordPressCmsProvider({
-    resolveSiteCredentials: deps.resolveSiteCredentials,
+    resolveSiteCredentials: deps.resolveSiteCredentials ?? unreachableCredentials,
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
   });
 }

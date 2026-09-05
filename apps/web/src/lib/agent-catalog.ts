@@ -1,4 +1,4 @@
-import { agentRegistry } from "@launchos/agents/definitions";
+import { agentRegistry, scopedCmsProvider } from "@launchos/agents/definitions";
 import { createEmailAdapter } from "@launchos/channels";
 import { createIntegrations } from "@launchos/integrations";
 import { env } from "./env";
@@ -42,7 +42,7 @@ function buildCatalog(): readonly AgentCatalogEntry[] {
   // are mock-first and read only from the environment, and nothing here calls a
   // tool: the catalogue reads names and risks off the definitions and stops.
   const registry = agentRegistry({
-    integrations: createIntegrations(process.env),
+    integrations: { ...createIntegrations(process.env), cms: scopedCmsProvider(process.env) },
     email: createEmailAdapter(process.env),
     portalBaseUrl: env.APP_URL,
   });

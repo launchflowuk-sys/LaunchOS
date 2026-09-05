@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { config } from "dotenv";
-import { productionAdapterIssues } from "@launchos/integrations";
+import { productionAdapterIssues, productionMockWarnings } from "@launchos/integrations";
 import { z } from "zod";
 
 // The worker's cwd at runtime may not be the repo root (e.g. `tsx watch src/index.ts`
@@ -58,6 +58,32 @@ const EnvShape = z.object({
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.string().optional(),
   /**
+   * The real hosting, DNS, CMS and ads adapters. Same rule as the Stripe and
+   * SMTP keys above: each factory reads its own keys from `process.env`, and
+   * they are declared here so the adapter guard sees them. `ADS_ADAPTER` is
+   * now an *intent* — the ads factory selects by credential — kept so a
+   * deployment that means to run Google or Meta is refused, not quietly
+   * reverted to the mock, when its keys go missing. Blank means unset
+   * throughout (`withoutEmptyStrings` below).
+   */
+  COOLIFY_API_URL: z.string().optional(),
+  COOLIFY_API_TOKEN: z.string().optional(),
+  COOLIFY_SERVER_UUID: z.string().optional(),
+  COOLIFY_TIMEOUT_MS: z.string().optional(),
+  HOSTINGER_API_TOKEN: z.string().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
+  SECRETS_ENCRYPTION_KEY: z.string().optional(),
+  GOOGLE_ADS_DEVELOPER_TOKEN: z.string().optional(),
+  GOOGLE_ADS_CLIENT_ID: z.string().optional(),
+  GOOGLE_ADS_CLIENT_SECRET: z.string().optional(),
+  GOOGLE_ADS_REFRESH_TOKEN: z.string().optional(),
+  GOOGLE_ADS_LOGIN_CUSTOMER_ID: z.string().optional(),
+  GOOGLE_ADS_API_VERSION: z.string().optional(),
+  META_ADS_ACCESS_TOKEN: z.string().optional(),
+  META_ADS_APP_SECRET: z.string().optional(),
+  META_ADS_API_VERSION: z.string().optional(),
+  META_ADS_CONVERSION_ACTIONS: z.string().optional(),
+  /**
    * The same escape hatch as `ALLOW_FAKE_LLM`, for the adapters: a production
    * deployment that genuinely means to run on mocks (a staging resource, a dry
    * run before the SPF and DKIM records verify) says so out loud.
@@ -82,7 +108,11 @@ const EnvShape = z.object({
  *    returns a message id, so a worker without `EMAIL_ADAPTER=smtp` marks every
  *    reply, ad report and invoice email `sent` and delivers none of them. The
  *    rule itself is `productionAdapterIssues` in `packages/integrations`, so the
- *    web app applies exactly the same one.
+ *    web app applies exactly the same one. The hosting, DNS, CMS and ads
+ *    adapters are the exception by design — unset, they are tolerated and
+ *    warned about in `loadEnv` (`productionMockWarnings`), because production
+ *    was already running with none of their keys when their real clients
+ *    landed; set-but-unusable is still refused.
  */
 export const Env = EnvShape.superRefine((value, ctx) => {
   if (value.LLM === "anthropic" && !value.ANTHROPIC_API_KEY) {
@@ -182,5 +212,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env, logger: EnvLogg
   cached = parseEnv(source);
   const line = describeNodeEnv(cached.NODE_ENV);
   logger[line.level](line.message);
+  // One line per mock a production process is about to run on — the ones
+  // the guard tolerates unset, and the refused ones ALLOW_MOCK_ADAPTERS let
+  // through. Names and consequences only; never a value.
+  for (const warning of productionMockWarnings(cached)) logger.warn(warning.message);
   return cached;
 }
