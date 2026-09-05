@@ -24,7 +24,7 @@
  * live next door.
  */
 import { ADS_ENV_KEYS } from "./ads/index.js";
-import { META_SOCIAL_ENV_KEYS } from "./social/index.js";
+import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -61,6 +61,9 @@ export interface AdapterEnv {
   readonly GOOGLE_ADS_LOGIN_CUSTOMER_ID?: string | undefined;
   readonly META_ADS_ACCESS_TOKEN?: string | undefined;
   readonly META_ADS_APP_SECRET?: string | undefined;
+  readonly GBP_CLIENT_ID?: string | undefined;
+  readonly GBP_CLIENT_SECRET?: string | undefined;
+  readonly GBP_REFRESH_TOKEN?: string | undefined;
   readonly COOLIFY_API_URL?: string | undefined;
   readonly COOLIFY_API_TOKEN?: string | undefined;
   readonly HOSTINGER_API_TOKEN?: string | undefined;
@@ -210,11 +213,11 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
     },
     {
       name: "social",
-      variable: META_SOCIAL_ENV_KEYS.join(","),
+      variable: [...META_SOCIAL_ENV_KEYS, ...GBP_ENV_KEYS].join(","),
       ...resolveSocial(env),
       hasRealImplementation: true,
       mockWhenUnset: "log",
-      mockEffect: "approved Facebook and Instagram posts are marked published with a fake permalink and nothing reaches the page",
+      mockEffect: "approved Facebook, Instagram and Google Business Profile posts are marked published with a fake permalink and nothing reaches the page or profile",
     },
   ];
 }
@@ -424,21 +427,39 @@ function resolveCms(env: AdapterEnv): SelectionOutcome {
 }
 
 /**
- * `social/index.ts` `createSocialPublisherFromEnv`: the Meta publisher when
- * both `META_ADS_*` keys are non-blank, the mock otherwise — the same pair and
- * the same trim rule as the Meta half of `resolveAds`, because it is the same
- * system-user token doing a second job. One key alone is a downgrade the guard
- * refuses, exactly as `resolveAds` already does for that pair, so a token lost
- * in a redeploy cannot leave the content engine quietly "publishing" to a mock.
- * The constructor validates nothing beyond presence, so there is no
+ * `social/index.ts` `createSocialPublisherFromEnv`: selection is **by
+ * credential, per provider**, the way `resolveAds` is. Meta is real when both
+ * `META_ADS_*` keys are non-blank — the same pair and the same trim rule as the
+ * Meta half of `resolveAds`, because it is the same system-user token doing a
+ * second job — and Google Business Profile when all three `GBP_*` keys are.
+ * Both build the composite (`meta+gbp`); one builds a composite whose other
+ * half is a mock (`meta` or `gbp`); neither builds the plain mock.
+ *
+ * A provider with some but not all of its keys set is a downgrade the guard
+ * refuses, exactly as `resolveAds` does for a half-set platform, so a token
+ * lost in a redeploy cannot leave the content engine quietly "publishing" to
+ * a mock. Neither constructor validates beyond presence, so there is no
  * `UNBUILDABLE` branch.
  */
 function resolveSocial(env: AdapterEnv): SelectionOutcome {
-  const set = META_SOCIAL_ENV_KEYS.filter((key) => trimmedOrUnset(env[key]) !== undefined);
-  if (set.length === 0) return { requested: "mock", ...builds("mock") };
-  if (set.length === META_SOCIAL_ENV_KEYS.length) return { requested: "meta", ...builds("meta") };
-  const missing = META_SOCIAL_ENV_KEYS.filter((key) => !set.includes(key));
-  return { requested: "meta", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
+  const providers = [
+    { name: "meta", keys: META_SOCIAL_ENV_KEYS },
+    { name: "gbp", keys: GBP_ENV_KEYS },
+  ] as const;
+  const requested: string[] = [];
+  const resolved: string[] = [];
+  const missing: string[] = [];
+  for (const provider of providers) {
+    const set = provider.keys.filter((key) => trimmedOrUnset(env[key]) !== undefined);
+    if (set.length === 0) continue;
+    requested.push(provider.name);
+    if (set.length === provider.keys.length) resolved.push(provider.name);
+    else missing.push(...provider.keys.filter((key) => !set.includes(key)));
+  }
+  return {
+    requested: requested.length > 0 ? requested.join("+") : "mock",
+    ...builds(resolved.length > 0 ? resolved.join("+") : "mock", missing.length > 0 ? `Missing: ${missing.join(", ")}.` : null),
+  };
 }
 
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */

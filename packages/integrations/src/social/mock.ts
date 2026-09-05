@@ -3,7 +3,7 @@ import type { SocialPublishInput, SocialPublishResult, SocialPublisher } from ".
 /**
  * Records every publish and answers with a deterministic id and permalink, so
  * a test can assert on what would have gone out and the publish job can be
- * exercised end to end without a Meta app.
+ * exercised end to end without a Meta app or a Google project.
  *
  * `failNext` queues an error for the next call, which is how the worker's
  * "mark failed, retry up to three times" path gets tested.
@@ -23,10 +23,17 @@ export class MockSocialPublisher implements SocialPublisher {
     if (failure !== undefined) throw failure;
     const n = this.calls.length;
     const externalId = `mock-${input.channel}-${n}`;
-    const url =
-      input.channel === "facebook"
-        ? `https://www.facebook.com/${input.externalId}/posts/${n}`
-        : `https://www.instagram.com/p/mock-${n}/`;
-    return { externalId, url };
+    return { externalId, url: mockUrl(input, n) };
+  }
+}
+
+function mockUrl(input: SocialPublishInput, n: number): string {
+  switch (input.channel) {
+    case "facebook":
+      return `https://www.facebook.com/${input.externalId}/posts/${n}`;
+    case "instagram":
+      return `https://www.instagram.com/p/mock-${n}/`;
+    case "gbp":
+      return `https://local.google.com/place?use=posts&lpsid=mock-${n}`;
   }
 }

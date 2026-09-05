@@ -58,12 +58,15 @@ const GOOGLE = {
   GOOGLE_ADS_LOGIN_CUSTOMER_ID: "123-456-7890",
 };
 const META = { META_ADS_ACCESS_TOKEN: "EAAG", META_ADS_APP_SECRET: "app" };
+const GBP = { GBP_CLIENT_ID: "cid", GBP_CLIENT_SECRET: "sec", GBP_REFRESH_TOKEN: "1//r" };
+/** The `social` row's variable: both Meta keys and all three GBP keys. */
+const SOCIAL_VARIABLE = "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET,GBP_CLIENT_ID,GBP_CLIENT_SECRET,GBP_REFRESH_TOKEN";
 const COOLIFY = { COOLIFY_API_URL: "https://coolify.launchflow.test", COOLIFY_API_TOKEN: "tok" };
 const DNS = { HOSTINGER_API_TOKEN: "hpat_1", CLOUDFLARE_API_TOKEN: "cf_1" };
 const CMS = { SECRETS_ENCRYPTION_KEY: "a".repeat(44) };
 
 /** Every adapter real. */
-const fullyLive = { ...live, ...GOOGLE, ...META, ...COOLIFY, ...DNS, ...CMS };
+const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS };
 
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
@@ -72,7 +75,7 @@ describe("adapter guard", () => {
     });
     expect(describeAdapters(fullyLive)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
-      cms: "wordpress", social: "meta",
+      cms: "wordpress", social: "meta+gbp",
     });
     expect(describeAdapters({})).toEqual({
       email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock",
@@ -124,10 +127,10 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
-      "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET",
+      SOCIAL_VARIABLE,
     ]);
     expect(warnings[4]!.message).toMatch(/social adapter is the MOCK/);
-    expect(warnings[4]!.message).toMatch(/nothing reaches the page/);
+    expect(warnings[4]!.message).toMatch(/nothing reaches the page or profile/);
     expect(warnings[1]!.message).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
     expect(warnings[1]!.message).toMatch(/Guard-Dog diagnoses from fiction/);
     // Nothing to warn about once everything is real.
@@ -204,26 +207,42 @@ describe("cms (WordPress)", () => {
   });
 });
 
-describe("social (Meta Pages + Instagram, by credential)", () => {
-  it("is real when both Meta keys are set, and shares them with the ads adapter", () => {
+describe("social (Meta Pages + Instagram, Google Business Profile, by credential)", () => {
+  it("is real per provider, and Meta shares its keys with the ads adapter", () => {
     expect(describeAdapters({ ...live, ...META }).social).toBe("meta");
+    expect(describeAdapters({ ...live, ...GBP }).social).toBe("gbp");
+    expect(describeAdapters({ ...live, ...META, ...GBP }).social).toBe("meta+gbp");
     expect(describeAdapters({ ...live, ...GOOGLE }).social).toBe("mock");
     expect(productionAdapterIssues({ ...live, ...META })).toEqual([]);
-    expect(productionMockWarnings({ ...live, ...META }).map((w) => w.variable)).not.toContain(
-      "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET",
-    );
+    expect(productionAdapterIssues({ ...live, ...GBP })).toEqual([]);
+    expect(productionAdapterIssues({ ...live, ...META, ...GBP })).toEqual([]);
+    expect(productionMockWarnings({ ...live, ...META }).map((w) => w.variable)).not.toContain(SOCIAL_VARIABLE);
+    expect(productionMockWarnings({ ...live, ...GBP }).map((w) => w.variable)).not.toContain(SOCIAL_VARIABLE);
   });
 
-  it("refuses one key without the other as a silent downgrade, naming the missing one", () => {
+  it("refuses one Meta key without the other as a silent downgrade, naming the missing one", () => {
     const issues = productionAdapterIssues({ ...live, META_ADS_APP_SECRET: "app" });
-    expect(issues.map((i) => i.variable)).toContain("META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET");
-    expect(issues.find((i) => i.variable.startsWith("META_ADS"))!.message)
+    expect(issues.map((i) => i.variable)).toContain(SOCIAL_VARIABLE);
+    expect(issues.find((i) => i.variable === SOCIAL_VARIABLE)!.message)
       .toMatch(/falls back to the mock social adapter.*Missing: META_ADS_ACCESS_TOKEN/);
     expect(productionAdapterIssues({ ...live, META_ADS_APP_SECRET: "app", ALLOW_MOCK_ADAPTERS: "1" })).toEqual([]);
   });
 
+  it("refuses a half-set GBP the same way, and a partly configured pair when Meta is live", () => {
+    const alone = productionAdapterIssues({ ...live, GBP_CLIENT_ID: "cid", GBP_REFRESH_TOKEN: "1//r" });
+    expect(alone.find((i) => i.variable === SOCIAL_VARIABLE)!.message)
+      .toMatch(/falls back to the mock social adapter.*Missing: GBP_CLIENT_SECRET\./);
+
+    const partly = productionAdapterIssues({ ...live, ...META, GBP_CLIENT_ID: "cid" });
+    expect(partly.find((i) => i.variable === SOCIAL_VARIABLE)!.message)
+      .toMatch(/partly configured: meta\+gbp was asked for but only meta can be built.*Missing: GBP_CLIENT_SECRET, GBP_REFRESH_TOKEN\./);
+    expect(describeAdapters({ ...live, ...META, GBP_CLIENT_ID: "cid" }).social).toBe("meta");
+    expect(productionAdapterIssues({ ...live, ...META, GBP_CLIENT_ID: "cid", ALLOW_MOCK_ADAPTERS: "1" })).toEqual([]);
+  });
+
   it("reads a blank key as unset, exactly as the factory does", () => {
     expect(describeAdapters({ ...live, ...META, META_ADS_APP_SECRET: "  " }).social).toBe("mock");
+    expect(describeAdapters({ ...live, ...GBP, GBP_REFRESH_TOKEN: "" }).social).toBe("mock");
   });
 });
 
@@ -471,6 +490,12 @@ describe("every guard rule against the factory it mirrors", () => {
     { META_ADS_ACCESS_TOKEN: " EAAG ", META_ADS_APP_SECRET: " " },
     { ...META, META_ADS_API_VERSION: "v99.0" },
     { ...GOOGLE },
+    { ...GBP },
+    { ...META, ...GBP },
+    { GBP_CLIENT_ID: "cid" },
+    { GBP_CLIENT_ID: "cid", GBP_CLIENT_SECRET: "sec", GBP_REFRESH_TOKEN: "  " },
+    { ...META, GBP_CLIENT_SECRET: "sec" },
+    { ...GBP, META_ADS_ACCESS_TOKEN: "EAAG" },
   ])("social: %o", (env) => {
     expect(guard(env, "social")).toBe(named(built(createSocialPublisherFromEnv, env)));
   });
@@ -490,7 +515,7 @@ describe("every guard rule against the factory it mirrors", () => {
     expect(real.dns.for?.("cloudflare")?.name).toBe("cloudflare");
     expect(real.cms.name).toBe("wordpress");
     expect(real.ads.name).toBe("multi");
-    expect(real.social.name).toBe("meta");
+    expect(real.social.name).toBe("meta+gbp");
   });
 
   it("a real CMS provider built without a credential resolver refuses rather than pretending", async () => {
