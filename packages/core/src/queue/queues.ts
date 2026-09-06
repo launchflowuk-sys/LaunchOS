@@ -96,6 +96,7 @@
  * | `ops.brief` | none from the cron (payload `{}`); a manual "Write today's brief" sends `{ organisationId }` with `ops-brief:<org>:manual:<epochMs>` | `apps/worker/src/jobs/ops-brief.ts`, the web `/briefs` page |
  * | `push.send` | `push:<notificationId>` — one delivery per notification, fanned out to the user's devices by the job | `dispatch-event.ts` on the `push.requested` domain event `notify()` emits |
  * | `support.sla-sweep` | none — a 15-minute cron, payload `{}` | the worker's cron registration |
+ * | `billing.stripe-reconcile` | none — a daily cron at 04:10 London, payload `{}` | the worker's cron registration |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
  */
 
@@ -127,6 +128,7 @@ export const QUEUE = {
   opsBrief: "ops.brief",
   pushSend: "push.send",
   supportSlaSweep: "support.sla-sweep",
+  billingStripeReconcile: "billing.stripe-reconcile",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -177,6 +179,8 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "push.send": "short",
   // The first-response SLA sweep: a cron, payload `{}`, one job per tick.
   "support.sla-sweep": "standard",
+  // The nightly Stripe reconcile: a cron, payload `{}`, idempotent per run.
+  "billing.stripe-reconcile": "standard",
 };
 
 /**

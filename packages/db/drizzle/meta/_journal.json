@@ -127,6 +127,13 @@
       "when": 1788651459294,
       "tag": "0017_far_silverclaw",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788661053458,
+      "tag": "0018_stripe_sync",
+      "breakpoints": true
     }
   ]
 }

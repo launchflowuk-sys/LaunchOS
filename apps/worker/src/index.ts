@@ -24,6 +24,7 @@ import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-
 import { runAdsIngest } from "./jobs/ads-ingest.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
+import { STRIPE_RECONCILE_CRON, runStripeReconcile } from "./jobs/stripe-reconcile.js";
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
 import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
@@ -115,8 +116,17 @@ async function main() {
   });
 
   await boss.work<PaymentsWebhookJob>(QUEUE.paymentsWebhook, async ([job]) => {
-    const result = await handlePaymentsWebhook(db, job!.data);
+    const result = await handlePaymentsWebhook(db, job!.data, { payments: integrations.payments });
     console.info({ event: job!.data.providerEvent.type, ...result }, "payments webhook");
+  });
+
+  // The nightly Stripe reconcile: the owner's stored product selection
+  // re-applied — a new subscription on a linked package becomes a client,
+  // a status change reaches the owner's bell. Skipped on the mock adapter.
+  await boss.work(QUEUE.billingStripeReconcile, async () => {
+    await sweepOrganisations(db, "stripe reconcile", async (organisationId) => {
+      await runStripeReconcile(db, organisationId, integrations.payments, console);
+    });
   });
 
   await boss.work(QUEUE.adsIngest, async () => {
@@ -232,6 +242,7 @@ async function main() {
   // full month of ad spend and current invoice statuses.
   await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.supportSlaSweep, SLA_SWEEP_CRON, {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.billingStripeReconcile, STRIPE_RECONCILE_CRON, {}, { tz: "Europe/London" });
 
   // Everything is registered: the health endpoint may say so, and the first
   // heartbeat clears the admin banner at once rather than a minute from now.

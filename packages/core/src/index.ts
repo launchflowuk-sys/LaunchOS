@@ -181,7 +181,16 @@ export {
 } from "./ads/reports.js";
 export { recordPayment, reconcileInvoice, RecordPaymentInput } from "./billing/payments.js";
 export { findOrganisationByStripeCustomer, syncFromPaymentsEvent } from "./billing/webhook-sync.js";
-export type { SyncResult } from "./billing/webhook-sync.js";
+export type { SyncResult, SyncDeps } from "./billing/webhook-sync.js";
+export {
+  previewStripeSync, applyStripeSync, reconcileStripe, importStripeSubscription, businessCase, isSuggestedProduct, proposedClientName,
+  ApplyStripeSyncInput, STRIPE_SYNC_NOTIFICATION_KIND, STRIPE_CLIENT_CREATED_NOTIFICATION_KIND, STRIPE_STATUS_CHANGED_NOTIFICATION_KIND,
+} from "./billing/stripe-sync.js";
+export type { StripeSyncPreview, StripeSyncPreviewProduct, StripeSyncPreviewSubscription, ImportedSubscription } from "./billing/stripe-sync.js";
+export {
+  getStripeSyncSettings, setStripeSyncSettings, stripeSyncSettingsFrom, soleActiveOrganisationId,
+  StripeSyncSettings, StripeSyncSummary, STRIPE_SYNC_METADATA_KEY,
+} from "./billing/stripe-sync-settings.js";
 export {
   requestInvoiceSend, sendApprovedInvoice, INVOICE_SEND_ACTION,
   RequestInvoiceSendInput, SendApprovedInvoiceInput,

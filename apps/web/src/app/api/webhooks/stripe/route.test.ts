@@ -39,6 +39,15 @@ const fakeAdapter: PaymentsAdapter = {
   async retrieveCheckoutSession() {
     throw new Error("not used by this route");
   },
+  async retrieveCustomer() {
+    throw new Error("not used by this route");
+  },
+  async listCatalog() {
+    throw new Error("not used by this route");
+  },
+  async listSubscriptions() {
+    throw new Error("not used by this route");
+  },
   async listInvoices() {
     throw new Error("not used by this route");
   },
@@ -211,6 +220,37 @@ describe("POST /api/webhooks/stripe", () => {
       });
       const res = await POST(req(body, VALID_SIGNATURE));
       expect(((await res.json()) as { ignored?: string }).ignored).toBe("unknown customer");
+      expect(sendJobMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("falls back to the sole active organisation for a subscription event from an unknown customer, and only then", async () => {
+    await withTestDb(async (db) => {
+      currentDb = db;
+      // Rolled back with the transaction: every other organisation steps aside
+      // so this one is the single active tenant the fallback looks for.
+      await db.update(schema.organisations).set({ status: "suspended" });
+      const [org] = await db.insert(schema.organisations).values({ name: "Sole", slug: `sole-${randomUUID()}` }).returning();
+
+      const subscriptionEvent = {
+        id: "evt_sub_new", type: "customer.subscription.created",
+        data: { object: { id: "sub_new", customer: "cus_never_seen", status: "active" } },
+      };
+      const res = await POST(req(JSON.stringify(subscriptionEvent), VALID_SIGNATURE));
+      expect(res.status).toBe(200);
+      expect(sendJobMock).toHaveBeenCalledTimes(1);
+      expect(sendJobMock.mock.calls[0]![1]).toEqual({ organisationId: org!.id, providerEvent: subscriptionEvent });
+
+      // An invoice for an unknown customer is still dropped: nothing to file it against.
+      sendJobMock.mockClear();
+      const invoice = await POST(req(JSON.stringify({ id: "evt_inv", type: "invoice.paid", data: { object: { customer: "cus_never_seen" } } }), VALID_SIGNATURE));
+      expect(((await invoice.json()) as { ignored?: string }).ignored).toBe("unknown customer");
+      expect(sendJobMock).not.toHaveBeenCalled();
+
+      // A second active organisation: nothing is guessed any more.
+      await db.insert(schema.organisations).values({ name: "Second", slug: `second-${randomUUID()}` });
+      const ambiguous = await POST(req(JSON.stringify(subscriptionEvent), VALID_SIGNATURE));
+      expect(((await ambiguous.json()) as { ignored?: string }).ignored).toBe("unknown customer");
       expect(sendJobMock).not.toHaveBeenCalled();
     });
   });

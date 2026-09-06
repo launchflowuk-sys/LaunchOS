@@ -1,8 +1,10 @@
 import Stripe from "stripe";
 import {
-  addDays, type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCheckoutSession, type PaymentsCheckoutStatus, type PaymentsCustomer, type PaymentsInvoice,
-  type PaymentsInvoiceStatus, type PaymentsSubscription, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
+  addDays, isProviderId, subscriptionStatusFromProvider,
+  type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
+  type PaymentsBillingInterval, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCheckoutStatus,
+  type PaymentsCustomer, type PaymentsInvoice, type PaymentsInvoiceStatus, type PaymentsSubscription,
+  type PaymentsSubscriptionDetail, type PaymentsWebhookEvent,
 } from "./types.js";
 
 export interface StripePaymentsOptions {
@@ -11,10 +13,8 @@ export interface StripePaymentsOptions {
   termsDays?: number;
 }
 
-const SUBSCRIPTION_STATUS: Record<string, PaymentsSubscriptionStatus> = {
-  trialing: "trialing", active: "active", past_due: "past_due", unpaid: "past_due",
-  canceled: "cancelled", incomplete_expired: "cancelled", paused: "paused", incomplete: "paused",
-};
+/** Stripe's page size ceiling; every list here walks pages until `has_more` is false. */
+const PAGE_SIZE = 100;
 
 const INVOICE_STATUS: Record<string, PaymentsInvoiceStatus> = {
   draft: "draft", open: "sent", paid: "paid", uncollectible: "overdue", void: "void",
@@ -44,6 +44,43 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
       name: customer.name ?? input.name,
       ...(customer.email ? { email: customer.email } : {}),
     };
+  }
+
+  async retrieveCustomer(customerId: string): Promise<PaymentsCustomer> {
+    const customer = await this.client.customers.retrieve(customerId);
+    if (customer.deleted) throw new Error(`stripe: customer ${customerId} has been deleted`);
+    return toCustomer(customer);
+  }
+
+  /**
+   * Active recurring prices with their products, every page. The product is
+   * expanded on the price so the walk is one request per hundred prices,
+   * not one per product.
+   */
+  async listCatalog(): Promise<PaymentsCatalogItem[]> {
+    const prices = await paginate((startingAfter) => this.client.prices.list({
+      active: true, type: "recurring", limit: PAGE_SIZE, expand: ["data.product"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    }));
+    return prices.flatMap((price) => {
+      const item = toCatalogItem(price);
+      return item ? [item] : [];
+    });
+  }
+
+  /**
+   * Every subscription in every status, every page, with the customer
+   * expanded so the sync can match by email without a request per customer.
+   */
+  async listSubscriptions(): Promise<PaymentsSubscriptionDetail[]> {
+    const subscriptions = await paginate((startingAfter) => this.client.subscriptions.list({
+      status: "all", limit: PAGE_SIZE, expand: ["data.customer"],
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    }));
+    return subscriptions.flatMap((s) => {
+      const detail = toSubscriptionDetail(s);
+      return detail ? [detail] : [];
+    });
   }
 
   async createSubscription(input: CreateSubscriptionInput) {
@@ -108,9 +145,9 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
     return {
       id: s.id,
       customerId: typeof s.customer === "string" ? s.customer : s.customer.id,
-      status: SUBSCRIPTION_STATUS[s.status] ?? "paused",
-      currentPeriodStart: new Date((item?.current_period_start ?? s.start_date) * 1000),
-      currentPeriodEnd: new Date((item?.current_period_end ?? s.start_date) * 1000),
+      status: subscriptionStatusFromProvider(s.status),
+      currentPeriodStart: periodOf(s, "current_period_start"),
+      currentPeriodEnd: periodOf(s, "current_period_end"),
       amountPence: item?.price.unit_amount ?? 0,
       currency: (item?.price.currency ?? "gbp").toUpperCase(),
     };
@@ -136,6 +173,89 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
       ...(i.invoice_pdf ? { pdfUrl: i.invoice_pdf } : {}),
     };
   }
+}
+
+/** Walks a Stripe list to its end. Stripe pages are cursor-based: the last id of one page opens the next. */
+async function paginate<T extends { id: string }>(
+  page: (startingAfter: string | undefined) => Promise<{ data: T[]; has_more: boolean }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let startingAfter: string | undefined;
+  for (;;) {
+    const result = await page(startingAfter);
+    all.push(...result.data);
+    const last = result.data[result.data.length - 1];
+    if (!result.has_more || !last) return all;
+    startingAfter = last.id;
+  }
+}
+
+function toCustomer(c: Stripe.Customer): PaymentsCustomer {
+  return {
+    id: c.id,
+    name: c.name ?? "",
+    ...(c.email ? { email: c.email } : {}),
+  };
+}
+
+const BILLING_INTERVALS: ReadonlySet<string> = new Set(["day", "week", "month", "year"]);
+
+/** Null for a one-off price, a non-Stripe id, or a product that is missing or deleted. */
+function toCatalogItem(price: Stripe.Price): PaymentsCatalogItem | null {
+  if (!isProviderId("price", price.id) || !price.recurring) return null;
+  const product = price.product;
+  if (typeof product === "string" || !product || product.deleted) return null;
+  if (!isProviderId("prod", product.id) || !BILLING_INTERVALS.has(price.recurring.interval)) return null;
+  return {
+    priceId: price.id,
+    productId: product.id,
+    productName: product.name,
+    productActive: product.active,
+    amountPence: price.unit_amount ?? 0,
+    currency: price.currency.toUpperCase(),
+    interval: price.recurring.interval as PaymentsBillingInterval,
+    intervalCount: price.recurring.interval_count,
+  };
+}
+
+/**
+ * The current period as the API version in use reports it: on the first
+ * subscription item, with the subscription's own (older) top-level field as
+ * the fallback, and the start date behind both so a date always comes back.
+ */
+function periodOf(s: Stripe.Subscription, field: "current_period_start" | "current_period_end"): Date {
+  const item = s.items.data[0] as (Stripe.SubscriptionItem & Partial<Record<typeof field, number | null>>) | undefined;
+  const topLevel = (s as unknown as Partial<Record<typeof field, number | null>>)[field];
+  const seconds = item?.[field] ?? topLevel ?? s.start_date;
+  return new Date(seconds * 1000);
+}
+
+/** Null for a subscription with no Stripe-shaped price (nothing the sync could file it under). */
+function toSubscriptionDetail(s: Stripe.Subscription): PaymentsSubscriptionDetail | null {
+  const item = s.items.data[0];
+  const priceId = item?.price.id;
+  const productRef = item?.price.product;
+  const productId = typeof productRef === "string" ? productRef : productRef?.id;
+  if (!isProviderId("price", priceId) || !isProviderId("prod", productId)) return null;
+  const customer = typeof s.customer === "string" ? undefined : (s.customer.deleted ? undefined : s.customer);
+  const customerId = typeof s.customer === "string" ? s.customer : s.customer.id;
+  return {
+    id: s.id,
+    status: subscriptionStatusFromProvider(s.status),
+    providerStatus: s.status,
+    customerId,
+    ...(customer?.email ? { customerEmail: customer.email } : {}),
+    ...(customer?.name ? { customerName: customer.name } : {}),
+    priceId,
+    productId,
+    amountPence: (item?.price.unit_amount ?? 0) * (item?.quantity ?? 1),
+    currency: (item?.price.currency ?? "gbp").toUpperCase(),
+    currentPeriodStart: periodOf(s, "current_period_start"),
+    currentPeriodEnd: periodOf(s, "current_period_end"),
+    ...(s.cancel_at ? { cancelAt: new Date(s.cancel_at * 1000) } : {}),
+    ...(s.canceled_at ? { canceledAt: new Date(s.canceled_at * 1000) } : {}),
+    createdAt: new Date(s.created * 1000),
+  };
 }
 
 const CHECKOUT_STATUS: Record<string, PaymentsCheckoutStatus> = { open: "open", complete: "complete", expired: "expired" };

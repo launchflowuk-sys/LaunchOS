@@ -85,9 +85,88 @@ export interface PaymentsCheckoutSession {
   metadata: Record<string, string>;
 }
 
+export type PaymentsBillingInterval = "day" | "week" | "month" | "year";
+
+/**
+ * One active recurring Price with the Product it sells — a row of the Stripe
+ * catalogue as Settings → Billing → Stripe reviews it. One-off prices and
+ * anything whose ids are not Stripe-shaped (`price_…` / `prod_…`; a WordPress
+ * plugin has been seen writing `fluentform_…` pseudo prices) are left out.
+ */
+export interface PaymentsCatalogItem {
+  priceId: string;
+  productId: string;
+  productName: string;
+  productActive: boolean;
+  amountPence: number;
+  currency: string;
+  interval: PaymentsBillingInterval;
+  intervalCount: number;
+}
+
+/**
+ * A provider subscription with everything the sync needs to file it: who
+ * pays (customer id, email, name), what for (price and product), and where
+ * it is in its life. `status` is our vocabulary; `providerStatus` is the
+ * provider's own word, kept for the review screen and the audit trail.
+ */
+export interface PaymentsSubscriptionDetail {
+  id: string;
+  status: PaymentsSubscriptionStatus;
+  providerStatus: string;
+  customerId: string;
+  customerEmail?: string;
+  customerName?: string;
+  priceId: string;
+  productId: string;
+  amountPence: number;
+  currency: string;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  cancelAt?: Date;
+  canceledAt?: Date;
+  createdAt: Date;
+}
+
+/**
+ * Stripe's subscription statuses in our five-word vocabulary. One table for
+ * the adapter, the catalogue sync and the webhook, so a nightly reconcile and
+ * a `customer.subscription.updated` can never disagree about the same row.
+ *
+ * `unpaid` and the two `incomplete` states are cancelled here: Stripe has
+ * stopped (or never started) collecting, and a retainer nobody is paying for
+ * must not read as merely late.
+ */
+export const PROVIDER_SUBSCRIPTION_STATUS: Readonly<Record<string, PaymentsSubscriptionStatus>> = {
+  trialing: "trialing",
+  active: "active",
+  past_due: "past_due",
+  paused: "paused",
+  canceled: "cancelled",
+  unpaid: "cancelled",
+  incomplete: "cancelled",
+  incomplete_expired: "cancelled",
+};
+
+/** Unknown provider words are `paused`: the safe reading for a status we have never seen. */
+export function subscriptionStatusFromProvider(providerStatus: string): PaymentsSubscriptionStatus {
+  return PROVIDER_SUBSCRIPTION_STATUS[providerStatus] ?? "paused";
+}
+
+/** True for a Stripe-issued id of the given object family (`price_…`, `prod_…`, `cus_…`, `sub_…`). */
+export function isProviderId(prefix: "price" | "prod" | "cus" | "sub", id: string | null | undefined): id is string {
+  return typeof id === "string" && id.startsWith(`${prefix}_`);
+}
+
 export interface PaymentsAdapter {
   readonly name: "mock" | "stripe";
   createCustomer(input: CreateCustomerInput): Promise<PaymentsCustomer>;
+  /** One customer by provider id; throws for an id the provider does not know or has deleted. */
+  retrieveCustomer(customerId: string): Promise<PaymentsCustomer>;
+  /** Every active recurring price with its product, across all pages. */
+  listCatalog(): Promise<PaymentsCatalogItem[]>;
+  /** Every subscription in every status, across all pages. */
+  listSubscriptions(): Promise<PaymentsSubscriptionDetail[]>;
   createSubscription(input: CreateSubscriptionInput): Promise<{ subscription: PaymentsSubscription; invoice: PaymentsInvoice }>;
   cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription>;
   listInvoices(customerId: string): Promise<PaymentsInvoice[]>;

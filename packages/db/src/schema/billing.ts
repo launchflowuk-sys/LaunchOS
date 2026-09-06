@@ -54,6 +54,8 @@ export const subscriptions = pgTable("subscriptions", {
   clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
   packageId: uuid("package_id").references(() => packages.id, { onDelete: "set null" }),
   stripeSubscriptionId: text("stripe_subscription_id"),
+  /** The Stripe Price the subscription is on, as last reported by the sync or a webhook. */
+  stripePriceId: text("stripe_price_id"),
   status: subscriptionStatusEnum("status").default("active").notNull(),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }).notNull(),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),

@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCheckoutSession, type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
-  type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
+  type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
+  type PaymentsSubscriptionDetail, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
 export interface MockPaymentsOptions {
@@ -31,6 +31,8 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
   private readonly subscriptions = new Map<string, PaymentsSubscription>();
   private readonly invoices = new Map<string, PaymentsInvoice>();
   private readonly checkouts = new Map<string, PaymentsCheckoutSession>();
+  private catalog: readonly PaymentsCatalogItem[] = [];
+  private subscriptionDetails: readonly PaymentsSubscriptionDetail[] = [];
   private readonly vatRatePercent: number;
   private readonly termsDays: number;
 
@@ -79,6 +81,49 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
     };
     this.customers.set(customer.id, customer);
     return customer;
+  }
+
+  /**
+   * A customer this adapter issued, a seeded subscription's customer, or —
+   * for a mock id it has never seen — a reconstructed one, for the same
+   * reason `recall` tolerates unknown subscription ids. A non-mock id is
+   * refused the way Stripe refuses a customer it does not know.
+   */
+  async retrieveCustomer(customerId: string): Promise<PaymentsCustomer> {
+    const existing = this.customers.get(customerId);
+    if (existing) return existing;
+    const seeded = this.subscriptionDetails.find((s) => s.customerId === customerId);
+    if (seeded) {
+      return {
+        id: customerId,
+        name: seeded.customerName ?? "",
+        ...(seeded.customerEmail !== undefined ? { email: seeded.customerEmail } : {}),
+      };
+    }
+    if (!MockPaymentsAdapter.isMockId("cus", customerId)) {
+      throw new Error(`mock payments: ${customerId} is not a mock customer id`);
+    }
+    return { id: customerId, name: "" };
+  }
+
+  /** The seeded catalogue (`seedCatalog`); empty until a test or a dev script seeds one. */
+  async listCatalog(): Promise<PaymentsCatalogItem[]> {
+    return [...this.catalog];
+  }
+
+  /** The seeded subscriptions (`seedSubscriptions`); empty until seeded. */
+  async listSubscriptions(): Promise<PaymentsSubscriptionDetail[]> {
+    return [...this.subscriptionDetails];
+  }
+
+  /** Test affordance: what `listCatalog` returns from now on. Replaces, never appends. */
+  seedCatalog(items: readonly PaymentsCatalogItem[]): void {
+    this.catalog = [...items];
+  }
+
+  /** Test affordance: what `listSubscriptions` returns from now on. Replaces, never appends. */
+  seedSubscriptions(items: readonly PaymentsSubscriptionDetail[]): void {
+    this.subscriptionDetails = [...items];
   }
 
   async createSubscription(input: CreateSubscriptionInput) {

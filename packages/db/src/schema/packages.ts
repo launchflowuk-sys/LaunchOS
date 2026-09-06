@@ -1,4 +1,4 @@
-import { boolean, integer, jsonb, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 
 /**
@@ -37,7 +37,19 @@ export const packages = pgTable("packages", {
    * falls back to the invoice flow instead.
    */
   stripePriceId: text("stripe_price_id"),
-}, (t) => [uniqueIndex("packages_org_slug").on(t.organisationId, t.slug)]);
+  /**
+   * The Stripe Product (`prod_…`) this package mirrors. Set by the Stripe
+   * catalogue sync (Settings → Billing → Stripe); a package with one is
+   * "linked", and every subscription Stripe reports on that product files
+   * under it — including one from a customer LaunchOS has never seen, which
+   * the sync then provisions as a client. Null for a package sold only
+   * through LaunchOS's own invoices.
+   */
+  stripeProductId: text("stripe_product_id"),
+}, (t) => [
+  uniqueIndex("packages_org_slug").on(t.organisationId, t.slug),
+  index("packages_org_stripe_product").on(t.organisationId, t.stripeProductId),
+]);
 
 export const taskPhaseEnum = pgEnum("task_phase", ["onboarding", "recurring", "support"]);
 export const taskKindEnum = pgEnum("task_kind", [

@@ -1,8 +1,16 @@
+import { getStripeSyncSettings } from "@launchos/core";
 import { ADS_ENV_KEYS, createAdsAdapterFromEnv, createPaymentsAdapter, vatRateFromEnv } from "@launchos/integrations";
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { ActionForm } from "@/components/action-form";
 import { PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
+import { getDb } from "@/lib/db";
+import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { syncStripeNowAction } from "./stripe/actions";
+import { RESULT_PATH, REVIEW_PATH } from "./stripe/paths";
 
 export const dynamic = "force-dynamic";
 
@@ -41,9 +49,11 @@ function Panel({ children }: { children: ReactNode }) {
 }
 
 export default async function BillingSettingsPage() {
-  await requireAdmin();
+  const session = await requireAdmin();
 
   const payments = createPaymentsAdapter(process.env);
+  const stripeSync = await getStripeSyncSettings(getDb(), session.organisationId);
+  const last = stripeSync.lastSummary;
   const ads = createAdsAdapterFromEnv(process.env);
   const vatRate = vatRateFromEnv(process.env);
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
@@ -69,6 +79,38 @@ export default async function BillingSettingsPage() {
             Stripe is used only when the adapter, the secret key and the webhook secret are all set; anything less
             falls back to the mock rather than failing at boot.
           </p>
+        </Panel>
+
+        <Panel>
+          <h2 className="text-base font-semibold">Stripe catalogue</h2>
+          {last ? (
+            <p className="mt-3 text-sm">
+              Last run {formatDateTime(last.at)}
+              <span className="text-muted-foreground"> ({last.trigger === "import" ? "import" : last.trigger === "reconcile" ? "sync" : "webhook"})</span>:{" "}
+              <span className="tabular-nums">{last.clients.created.length}</span> client{last.clients.created.length === 1 ? "" : "s"} created,{" "}
+              <span className="tabular-nums">{last.subscriptions.created}</span> subscription{last.subscriptions.created === 1 ? "" : "s"} imported,{" "}
+              <span className="tabular-nums">{last.subscriptions.updated}</span> updated
+              {last.statusChanges.length > 0 ? <>, <span className="tabular-nums">{last.statusChanges.length}</span> status change{last.statusChanges.length === 1 ? "" : "s"}</> : null}.{" "}
+              <Link href={RESULT_PATH} className="font-medium text-primary hover:underline">See the result</Link>
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Never synced. Pull the products and subscriptions from Stripe and have them assigned to clients — new clients are created for customers LaunchOS has not seen.
+            </p>
+          )}
+          <p className="mt-1.5 text-meta text-muted-foreground">
+            The review shows what would change before anything is written. After the first import, a nightly sync at 04:10 (and every
+            Stripe subscription webhook) keeps clients, packages and subscriptions in step; &ldquo;Sync now&rdquo; runs the same pass.
+            {stripeSync.ignoredProductIds.length > 0 ? ` ${stripeSync.ignoredProductIds.length} product${stripeSync.ignoredProductIds.length === 1 ? "" : "s"} left out.` : ""}
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap max-sm:[&>*]:w-full">
+            <Button asChild>
+              <Link href={REVIEW_PATH}>Review Stripe import</Link>
+            </Button>
+            <ActionForm action={syncStripeNowAction} ariaLabel="Sync Stripe now" success="Stripe sync finished" className="contents">
+              <Button type="submit" variant="secondary" disabled={!last}>Sync now</Button>
+            </ActionForm>
+          </div>
         </Panel>
 
         <Panel>

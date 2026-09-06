@@ -1,14 +1,16 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { toCheckoutSession, type PaymentsWebhookEvent } from "@launchos/integrations";
+import {
+  isProviderId, subscriptionStatusFromProvider, toCheckoutSession,
+  type PaymentsAdapter, type PaymentsSubscriptionDetail, type PaymentsWebhookEvent,
+} from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { completeSignup, SIGNUP_MARKER, SignupRefused } from "../signup/signup.js";
 import { reconcileInvoice } from "./payments.js";
-
-type LocalSubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled" | "paused";
+import { STRIPE_CLIENT_CREATED_NOTIFICATION_KIND, STRIPE_STATUS_CHANGED_NOTIFICATION_KIND, importStripeSubscription } from "./stripe-sync.js";
 
 const StripeInvoiceObject = z.object({
   id: z.string(),
@@ -18,11 +20,68 @@ const StripeInvoiceObject = z.object({
   currency: z.string().default("gbp"),
 });
 
+const UnixSeconds = z.number().int();
+const StripePriceRef = z.object({
+  id: z.string(),
+  product: z.union([z.string(), z.object({ id: z.string() })]).nullish(),
+  unit_amount: z.number().int().nullish(),
+  currency: z.string().nullish(),
+});
 const StripeSubscriptionObject = z.object({
   id: z.string(),
-  customer: z.string(),
+  customer: z.union([z.string(), z.object({ id: z.string() })]),
   status: z.string(),
+  created: UnixSeconds.optional(),
+  start_date: UnixSeconds.nullish(),
+  current_period_start: UnixSeconds.nullish(),
+  current_period_end: UnixSeconds.nullish(),
+  cancel_at: UnixSeconds.nullish(),
+  canceled_at: UnixSeconds.nullish(),
+  items: z.object({
+    data: z.array(z.object({
+      quantity: z.number().int().nullish(),
+      current_period_start: UnixSeconds.nullish(),
+      current_period_end: UnixSeconds.nullish(),
+      price: StripePriceRef,
+    })),
+  }).optional(),
 });
+type StripeSubscriptionObject = z.infer<typeof StripeSubscriptionObject>;
+
+const SUBSCRIPTION_EVENTS = new Set(["customer.subscription.created", "customer.subscription.updated", "customer.subscription.deleted"]);
+
+/** The webhook's subscription object in the shape `listSubscriptions` returns, or null when it names no Stripe-shaped price. */
+function subscriptionDetailFromEvent(
+  object: StripeSubscriptionObject,
+  status: PaymentsSubscriptionDetail["status"],
+  customer: { email?: string | undefined; name?: string | undefined },
+): PaymentsSubscriptionDetail | null {
+  const item = object.items?.data[0];
+  const priceId = item?.price.id;
+  const productRef = item?.price.product;
+  const productId = typeof productRef === "string" ? productRef : productRef?.id;
+  if (!isProviderId("price", priceId) || !isProviderId("prod", productId)) return null;
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const seconds = (field: "current_period_start" | "current_period_end") =>
+    item?.[field] ?? object[field] ?? object.start_date ?? object.created ?? nowSeconds;
+  return {
+    id: object.id,
+    status,
+    providerStatus: object.status,
+    customerId: typeof object.customer === "string" ? object.customer : object.customer.id,
+    ...(customer.email ? { customerEmail: customer.email } : {}),
+    ...(customer.name ? { customerName: customer.name } : {}),
+    priceId,
+    productId,
+    amountPence: (item?.price.unit_amount ?? 0) * (item?.quantity ?? 1),
+    currency: (item?.price.currency ?? "gbp").toUpperCase(),
+    currentPeriodStart: new Date(seconds("current_period_start") * 1000),
+    currentPeriodEnd: new Date(seconds("current_period_end") * 1000),
+    ...(object.cancel_at ? { cancelAt: new Date(object.cancel_at * 1000) } : {}),
+    ...(object.canceled_at ? { canceledAt: new Date(object.canceled_at * 1000) } : {}),
+    createdAt: new Date((object.created ?? object.start_date ?? nowSeconds) * 1000),
+  };
+}
 
 const StripeCheckoutObject = z.object({
   id: z.string(),
@@ -34,11 +93,6 @@ const StripeCheckoutObject = z.object({
   customer_details: z.object({ email: z.string().nullish() }).nullish(),
   metadata: z.record(z.string(), z.string()).nullish(),
 });
-
-const STRIPE_TO_LOCAL_STATUS: Record<string, LocalSubscriptionStatus> = {
-  trialing: "trialing", active: "active", past_due: "past_due", unpaid: "past_due",
-  canceled: "cancelled", incomplete_expired: "cancelled", paused: "paused", incomplete: "paused",
-};
 
 export interface SyncResult {
   handled: boolean;
@@ -62,11 +116,22 @@ export async function findOrganisationByStripeCustomer(
   return row;
 }
 
+export interface SyncDeps {
+  /**
+   * For a subscription event from a customer LaunchOS has never seen: the
+   * adapter fetches the customer's email and name so the client it provisions
+   * is matched by email and named after the business, not after a `cus_` id.
+   * Without it the client is still created, from the id alone.
+   */
+  payments?: PaymentsAdapter | undefined;
+}
+
 export async function syncFromPaymentsEvent(
   db: Db,
   organisationId: string,
   event: PaymentsWebhookEvent,
   env: NodeJS.ProcessEnv = process.env,
+  deps: SyncDeps = {},
 ): Promise<SyncResult> {
   const object = (event.data as { object?: unknown }).object;
 
@@ -160,22 +225,94 @@ export async function syncFromPaymentsEvent(
     });
   }
 
-  if (event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+  if (SUBSCRIPTION_EVENTS.has(event.type)) {
     const parsed = StripeSubscriptionObject.safeParse(object);
     if (!parsed.success) return { handled: false, action: "unparseable" };
-    const status = event.type === "customer.subscription.deleted"
-      ? "cancelled"
-      : (STRIPE_TO_LOCAL_STATUS[parsed.data.status] ?? "paused");
-    const updated = await db.update(schema.subscriptions)
-      .set({ status, updatedAt: new Date() })
-      .where(and(
-        eq(schema.subscriptions.organisationId, organisationId),
-        eq(schema.subscriptions.stripeSubscriptionId, parsed.data.id),
-      ))
-      .returning({ id: schema.subscriptions.id });
-    if (updated.length === 0) return { handled: false, action: "unknown_subscription" };
-    return { handled: true, action: `subscription.${status}` };
+    return syncSubscriptionEvent(db, organisationId, event.type, parsed.data, env, deps);
   }
 
   return { handled: false, action: "ignored" };
+}
+
+/**
+ * A subscription LaunchOS already holds takes its status (and, when the
+ * event carries them, its price, period and amount) from the event. One it
+ * has never seen is provisioned — client, billing profile, subscription —
+ * when its product is linked to a package, and the owner is told there is a
+ * new client. An unlinked product is reported, not imported: linking is the
+ * owner's decision on Settings → Billing → Stripe.
+ */
+async function syncSubscriptionEvent(
+  db: Db,
+  organisationId: string,
+  eventType: string,
+  object: StripeSubscriptionObject,
+  env: NodeJS.ProcessEnv,
+  deps: SyncDeps,
+): Promise<SyncResult> {
+  const status = eventType === "customer.subscription.deleted" ? "cancelled" : subscriptionStatusFromProvider(object.status);
+  const known = await db.select({ id: schema.subscriptions.id }).from(schema.subscriptions).where(and(
+    eq(schema.subscriptions.organisationId, organisationId),
+    eq(schema.subscriptions.stripeSubscriptionId, object.id),
+  ));
+  const detail = subscriptionDetailFromEvent(object, status, {});
+
+  if (known.length > 0) {
+    // The status alone when the event carries no usable price (a hand-made
+    // test event, say); everything the event knows otherwise.
+    const imported = detail ? await importStripeSubscription(db, organisationId, detail, { actorKind: "system" }, env) : null;
+    if (!imported) {
+      await db.update(schema.subscriptions).set({ status, updatedAt: new Date() })
+        .where(eq(schema.subscriptions.id, known[0]!.id));
+    } else if (imported.statusChange) {
+      await notifyOwner(db, organisationId, {
+        kind: STRIPE_STATUS_CHANGED_NOTIFICATION_KIND,
+        title: `${imported.clientName}: subscription ${imported.statusChange.to.replace("_", " ")}`,
+        body: `Stripe reported ${object.id} as ${object.status} (was ${imported.statusChange.from.replace("_", " ")}).`,
+        link: `/clients/${imported.clientId}/billing`,
+      });
+    }
+    return { handled: true, action: `subscription.${status}` };
+  }
+
+  if (!detail) return { handled: false, action: "subscription.unmapped_price" };
+  const customer = await customerDetails(deps.payments, detail.customerId);
+  const imported = await importStripeSubscription(db, organisationId, { ...detail, ...customer }, { actorKind: "system" }, env);
+  if (!imported) {
+    console.debug(
+      { organisationId, subscriptionId: object.id, priceId: detail.priceId, productId: detail.productId },
+      "stripe subscription on a product no package is linked to; not imported",
+    );
+    return { handled: false, action: "subscription.unmapped_price" };
+  }
+  if (imported.clientCreated) {
+    await notifyOwner(db, organisationId, {
+      kind: STRIPE_CLIENT_CREATED_NOTIFICATION_KIND,
+      title: `New client from Stripe: ${imported.clientName}`,
+      body: `Stripe subscription ${object.id} (${object.status}) was filed under a new client. Check the name and add a portal login.`,
+      link: `/clients/${imported.clientId}`,
+    });
+  }
+  return { handled: true, action: "subscription.provisioned" };
+}
+
+/** The customer's email and name from the provider, or nothing when there is no adapter or the lookup fails. */
+async function customerDetails(
+  payments: PaymentsAdapter | undefined,
+  customerId: string,
+): Promise<{ customerEmail?: string; customerName?: string }> {
+  if (!payments) return {};
+  try {
+    const customer = await payments.retrieveCustomer(customerId);
+    return {
+      ...(customer.email ? { customerEmail: customer.email } : {}),
+      ...(customer.name ? { customerName: customer.name } : {}),
+    };
+  } catch (error) {
+    console.warn(
+      { customerId, error: error instanceof Error ? error.message : String(error) },
+      "stripe customer lookup failed; provisioning from the id alone",
+    );
+    return {};
+  }
 }
