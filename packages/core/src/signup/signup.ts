@@ -11,6 +11,7 @@ import { createSubscription } from "../billing/subscriptions.js";
 import { createClientUser } from "../client-users/create-client-user.js";
 import { createClient } from "../clients/create-client.js";
 import { appUrl, brandEmailContext, supportEmailFor } from "../config.js";
+import { LeadAttributionSchema } from "../leads/attribution.js";
 import { createLead, type LeadRow } from "../leads/leads.js";
 import { notifyOwner } from "../notifications/notify.js";
 
@@ -41,7 +42,12 @@ const Person = {
   phone: z.string().trim().max(40).optional(),
 };
 
-export const CreateSignupSessionInput = z.object({ packageSlug: z.string().trim().min(1).max(60), ...Person });
+export const CreateSignupSessionInput = z.object({
+  packageSlug: z.string().trim().min(1).max(60),
+  ...Person,
+  /** The campaign the buyer arrived with (the `lf_attr` cookie on `/signup`); stored on the lead like any other. */
+  attribution: LeadAttributionSchema.optional(),
+});
 export type CreateSignupSessionInput = z.input<typeof CreateSignupSessionInput>;
 
 export type SignupSessionResult =
@@ -91,6 +97,7 @@ export async function createSignupSession(
 
   const lead = await createLead(db, organisationId, {
     name: v.name, email: v.email, business: v.business, ...(v.phone ? { phone: v.phone } : {}),
+    ...(v.attribution ? { attribution: v.attribution } : {}),
     source: SIGNUP_LEAD_SOURCE, metadata: { packageId: pkg.id, packageSlug: pkg.slug }, notifyOwner: false, actorKind: "client",
   });
 

@@ -66,9 +66,10 @@ export default async function StripeResultPage() {
         actions={actions}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Packages created" value={summary.packages.created.length} />
         <Stat label="Clients created" value={summary.clients.created.length} />
+        <Stat label="Filed under existing" value={summary.clients.filed.length} />
         <Stat label="Subscriptions imported" value={summary.subscriptions.created} />
         <Stat label="Subscriptions updated" value={summary.subscriptions.updated} />
       </div>
@@ -79,6 +80,10 @@ export default async function StripeResultPage() {
 
       <Section title="Clients created" description="Named from Stripe or from what you typed on the review. Check each one and add a portal login when you are ready.">
         <NamedList rows={summary.clients.created} href={(id) => `/clients/${id}`} emptyText="No new clients this run." />
+      </Section>
+
+      <Section title="Filed under existing clients" description="Where you chose “File under” on the review: the Stripe customer is now one of the client’s payment accounts and its subscriptions sit on their Billing tab.">
+        <NamedList rows={summary.clients.filed} href={(id) => `/clients/${id}/billing`} emptyText="Nothing was filed under an existing client this run." />
       </Section>
 
       <Section title="Packages" description="Created from the ticked products, or existing packages that gained their Stripe link.">

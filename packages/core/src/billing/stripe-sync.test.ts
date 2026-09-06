@@ -156,7 +156,7 @@ describe("applyStripeSync", () => {
       // Second run: nothing to do, nothing written.
       const again = await applyStripeSync(db, organisationId, payments, { selectedProductIds: ["prod_basic", "prod_starter"], actorId: ownerUserId });
       expect(again.packages).toEqual({ created: [], linked: [] });
-      expect(again.clients).toEqual({ created: [], matched: 2 });
+      expect(again.clients).toEqual({ created: [], matched: 2, filed: [] });
       expect(again.subscriptions).toEqual({ created: 0, updated: 0, unchanged: 3, skipped: 1 });
       expect(await db.select().from(schema.clients).where(eq(schema.clients.organisationId, organisationId))).toHaveLength(3);
       expect(await audits(db, organisationId, ["stripe_sync.package_upserted", "client.created", "stripe_sync.subscription_upserted"])).toHaveLength(7);
@@ -175,7 +175,7 @@ describe("applyStripeSync", () => {
       const summary = await applyStripeSync(db, organisationId, payments, { selectedProductIds: ["prod_starter"] });
 
       expect(summary.packages).toEqual({ created: [], linked: [{ id: packageId, name: "Website + SEO + Social" }] });
-      expect(summary.clients).toEqual({ created: [], matched: 1 });
+      expect(summary.clients).toEqual({ created: [], matched: 1, filed: [] });
       const [pkg] = await db.select().from(schema.packages).where(eq(schema.packages.id, packageId));
       expect(pkg).toMatchObject({ name: "Website + SEO + Social", monthlyPricePence: 4000, stripeProductId: "prod_starter", stripePriceId: "price_starter" });
       const [profile] = await db.select().from(schema.billingProfiles).where(eq(schema.billingProfiles.clientId, clientId));
@@ -236,7 +236,8 @@ describe("reconcileStripe", () => {
       expect(summary.subscriptions).toMatchObject({ created: 1, updated: 1 });
       expect(summary.statusChanges).toEqual([expect.objectContaining({ subscriptionId: "sub_a", clientName: "First Ltd", from: "active", to: "past_due" })]);
       expect((await getStripeSyncSettings(db, organisationId)).ignoredProductIds).toEqual(["prod_starter", "prod_cabio"]);
-      expect((await db.select().from(schema.packages).where(eq(schema.packages.organisationId, organisationId))).map((p) => p.stripeProductId)).toEqual([null, "prod_basic"]);
+      // Sorted: a bare select has no order, and the heap's row order changes once other runs have deleted rows.
+      expect((await db.select().from(schema.packages).where(eq(schema.packages.organisationId, organisationId))).map((p) => p.stripeProductId).sort()).toEqual([null, "prod_basic"]);
       const bells = await notifications(db, organisationId);
       expect(bells).toHaveLength(2);
       expect(bells[1]!.title).toBe("New client from Stripe: New Client Ltd");
@@ -341,6 +342,9 @@ describe("payment accounts — filing Stripe customers under existing clients", 
 
       expect(summary.clients.created.map((c) => c.name)).toEqual(["Someone Else Ltd"]);
       expect(summary.clients.matched).toBe(2);
+      // The two the owner chose, once each — what the result page lists apart from "created".
+      expect([...summary.clients.filed].sort((a, b) => a.name.localeCompare(b.name)))
+        .toEqual([{ id: other!.id, name: "Gateway Taxis" }, { id: clientId, name: "Grays Town Taxis" }]);
       expect(summary.subscriptions).toMatchObject({ created: 3, skipped: 0 });
       const accounts = await db.select().from(schema.clientPaymentAccounts).where(eq(schema.clientPaymentAccounts.organisationId, organisationId));
       const byCustomer = new Map(accounts.map((a) => [a.externalCustomerId, a]));
@@ -385,7 +389,7 @@ describe("payment accounts — filing Stripe customers under existing clients", 
       ]);
       const summary = await reconcileStripe(db, organisationId, payments);
 
-      expect(summary.clients).toEqual({ created: [], matched: 1 });
+      expect(summary.clients).toEqual({ created: [], matched: 1, filed: [] });
       expect(summary.subscriptions).toMatchObject({ created: 1, unchanged: 1, skipped: 0 });
       const rows = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organisationId, organisationId));
       expect(rows.map((r) => r.clientId)).toEqual([clientId, clientId]);

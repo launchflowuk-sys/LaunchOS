@@ -3,6 +3,7 @@
 import { createEmailAdapter } from "@launchos/channels";
 import { createSignupSession, SignupRefused } from "@launchos/core";
 import { redirect } from "next/navigation";
+import { readAttributionCookie } from "@/lib/attribution-server";
 import { getDb } from "@/lib/db";
 import { getPayments } from "@/lib/integrations";
 import { publicOrganisationId } from "@/lib/public-organisation";
@@ -37,12 +38,18 @@ export async function startSignupAction(_previous: SignupActionResult | null, fo
   // The invoice flow creates a client, which fires `client.created` for
   // onboarding tasks; the web enqueue routes that onto pg-boss.
   installWebEnqueue();
+  // The campaign that brought them (the `lf_attr` cookie `AttributionCapture`
+  // wrote on `/signup` or a marketing page) rides on the signup lead.
+  const attribution = await readAttributionCookie();
   let url: string;
   try {
     const result = await createSignupSession(
       getDb(),
       organisationId,
-      { packageSlug: v.packageSlug, name: v.name, business: v.business, email: v.email, ...(v.phone ? { phone: v.phone } : {}) },
+      {
+        packageSlug: v.packageSlug, name: v.name, business: v.business, email: v.email,
+        ...(v.phone ? { phone: v.phone } : {}), ...(attribution ? { attribution } : {}),
+      },
       { payments: getPayments(), email: createEmailAdapter(process.env) },
     );
     url = result.url;

@@ -1,4 +1,4 @@
-import { previewStripeSync, type StripeSyncPreviewProduct, type StripeSyncPreviewSubscription } from "@launchos/core";
+import { listClients, previewStripeSync, type StripeSyncPreviewProduct, type StripeSyncPreviewSubscription } from "@launchos/core";
 import { CreditCard } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -7,13 +7,14 @@ import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
 import { getDb } from "@/lib/db";
 import { formatDate, formatMoney } from "@/lib/format";
 import { getPayments } from "@/lib/integrations";
 import { requireAdminWith } from "@/lib/permissions";
 import { importStripeAction } from "./actions";
+import { FileUnderSelect, type FileUnderOption } from "./file-under-select";
+import { initialFileUnderChoice } from "./import-form";
+import { ProductTick, ReviewFormProvider, type ReviewFormInitial } from "./review-form-state";
 
 export const dynamic = "force-dynamic";
 
@@ -29,14 +30,7 @@ const PRODUCT_COLUMNS: readonly DataListColumn<StripeSyncPreviewProduct>[] = [
     key: "tick",
     header: "Import",
     className: "w-12",
-    cell: (p) => (
-      <Checkbox
-        name="product"
-        value={p.productId}
-        defaultChecked={p.suggested}
-        aria-label={`Import ${p.productName}`}
-      />
-    ),
+    cell: (p) => <ProductTick productId={p.productId} label={`Import ${p.productName}`} />,
   },
   {
     key: "name",
@@ -73,37 +67,42 @@ const PRODUCT_COLUMNS: readonly DataListColumn<StripeSyncPreviewProduct>[] = [
   },
 ];
 
-/** The "Client" cell: who the subscription files under, or the name the import will give a new client. */
-function ClientCell({ s, firstForCustomer }: { s: StripeSyncPreviewSubscription; firstForCustomer: boolean }) {
-  if (s.matchedClientId) {
+/** A match the import will keep whatever the owner does: the customer id is already on one of our clients. */
+function matchedByCustomerId(s: StripeSyncPreviewSubscription): boolean {
+  return s.matchedBy === "payment_account" || s.matchedBy === "billing_profile";
+}
+
+/**
+ * The "Client" cell: the client the customer id already belongs to, or the
+ * owner's "File under" choice — an email match pre-selected when the preview
+ * found one, else "Create new client" with the name the import would use.
+ */
+function ClientCell({ s, firstForCustomer, clients }: { s: StripeSyncPreviewSubscription; firstForCustomer: boolean; clients: readonly FileUnderOption[] }) {
+  if (s.matchedClientId && matchedByCustomerId(s)) {
     return (
       <div className="min-w-0">
         <Link href={`/clients/${s.matchedClientId}`} className="font-medium text-primary hover:underline">{s.matchedClientName}</Link>
-        <div className="text-meta text-muted-foreground">
-          Matched by {s.matchedBy === "billing_profile" ? "Stripe customer id" : "email"}
-        </div>
+        <div className="text-meta text-muted-foreground">Matched by Stripe customer id</div>
       </div>
     );
   }
-  if (s.status === "cancelled") {
-    return <span className="text-meta">Cancelled and no client to file it under — not imported</span>;
-  }
   if (!firstForCustomer) return <span className="text-meta">Same customer as above</span>;
   return (
-    <div className="min-w-0 space-y-1">
-      <Input
-        name={`clientName:${s.customerId}`}
-        defaultValue={s.proposedClientName}
-        maxLength={200}
-        aria-label={`Client name for ${s.customerEmail ?? s.customerId}`}
-        className="min-w-48"
-      />
-      <div className="text-meta text-muted-foreground">Will create this client if its product is ticked</div>
-    </div>
+    <FileUnderSelect
+      customerId={s.customerId}
+      customerLabel={s.customerEmail ?? s.customerId}
+      matched={s.matchedClientId ? { id: s.matchedClientId, name: s.matchedClientName ?? "Matched client" } : null}
+      candidates={s.candidates.map((c) => ({ id: c.clientId, name: c.name, reason: c.reason }))}
+      clients={clients}
+      cancelled={s.status === "cancelled"}
+    />
   );
 }
 
-function subscriptionColumns(firstRowForCustomer: ReadonlySet<string>): readonly DataListColumn<StripeSyncPreviewSubscription>[] {
+function subscriptionColumns(
+  firstRowForCustomer: ReadonlySet<string>,
+  clients: readonly FileUnderOption[],
+): readonly DataListColumn<StripeSyncPreviewSubscription>[] {
   return [
     {
       key: "customer",
@@ -129,12 +128,26 @@ function subscriptionColumns(firstRowForCustomer: ReadonlySet<string>): readonly
     },
     { key: "amount", header: "Amount", numeric: true, cell: (s) => formatMoney(s.amountPence, s.currency) },
     { key: "period", header: "Period ends", hideOnMobile: true, cell: (s) => formatDate(s.currentPeriodEnd) },
-    { key: "client", header: "Client", cell: (s) => <ClientCell s={s} firstForCustomer={firstRowForCustomer.has(s.id)} /> },
+    { key: "client", header: "Client", cell: (s) => <ClientCell s={s} firstForCustomer={firstRowForCustomer.has(s.id)} clients={clients} /> },
     { key: "status", header: "Status", status: true, cell: (s) => <StatusBadge value={s.status} /> },
   ];
 }
 
-/** The first subscription row per customer carries the name input; later ones point at it. */
+/**
+ * Where every control starts, keyed the way the store keeps them. Only the
+ * first subscription per customer gets a File-under entry: that row carries
+ * the select, later rows of the same customer point at it.
+ */
+function initialReviewForm(preview: Awaited<ReturnType<typeof previewStripeSync>>, firstRows: ReadonlySet<string>): ReviewFormInitial {
+  const placeable = preview.subscriptions.filter((s) => firstRows.has(s.id) && !(s.matchedClientId && matchedByCustomerId(s)));
+  return {
+    products: Object.fromEntries(preview.products.map((p) => [p.productId, p.suggested])),
+    fileUnder: Object.fromEntries(placeable.map((s) => [s.customerId, initialFileUnderChoice(s)])),
+    clientNames: Object.fromEntries(placeable.map((s) => [s.customerId, s.proposedClientName])),
+  };
+}
+
+/** The first subscription row per customer carries the File-under select; later ones point at it. */
 function firstRowsPerCustomer(subscriptions: readonly StripeSyncPreviewSubscription[]): ReadonlySet<string> {
   const seen = new Set<string>();
   const first = new Set<string>();
@@ -150,7 +163,12 @@ export default async function StripeReviewPage({ searchParams }: PageProps<"/set
   const session = await requireAdminWith("settings");
   const params = await searchParams;
   const error = typeof params.error === "string" ? params.error : null;
-  const preview = await previewStripeSync(getDb(), session.organisationId, getPayments());
+  const [preview, book] = await Promise.all([
+    previewStripeSync(getDb(), session.organisationId, getPayments()),
+    // Alphabetical by default; archived clients are not somewhere to file new business.
+    listClients(getDb(), session.organisationId, { limit: 200 }),
+  ]);
+  const clients: FileUnderOption[] = book.filter((c) => c.status !== "archived").map((c) => ({ id: c.id, name: c.name }));
   const firstRows = firstRowsPerCustomer(preview.subscriptions);
   const suggestedCount = preview.products.filter((p) => p.suggested).length;
   const newClientCount = new Set(preview.subscriptions.filter((s) => s.willCreateClient).map((s) => s.customerId)).size;
@@ -159,7 +177,7 @@ export default async function StripeReviewPage({ searchParams }: PageProps<"/set
     <>
       <PageHeader
         title="Review Stripe import"
-        description="Tick the products that are LaunchFlow packages. Every subscription on a ticked product is filed under its client — matched by Stripe customer id or email, or created with the name shown."
+        description="Tick the products that are LaunchFlow packages. Every subscription on a ticked product is filed under its client — matched by Stripe customer id, filed under the client you choose, or created with the name shown."
         category="organisation"
         actions={
           <Button asChild variant="secondary">
@@ -177,6 +195,7 @@ export default async function StripeReviewPage({ searchParams }: PageProps<"/set
       ) : null}
 
       <form action={importStripeAction}>
+        <ReviewFormProvider initial={initialReviewForm(preview, firstRows)}>
         <Section
           title="Products"
           description={`${preview.products.length} recurring product${preview.products.length === 1 ? "" : "s"} in Stripe, ${suggestedCount} pre-ticked. Products with "LaunchFlow" in the name and the Starter, Standard and Premium plans are ticked for you; anything left unticked is remembered.`}
@@ -196,7 +215,7 @@ export default async function StripeReviewPage({ searchParams }: PageProps<"/set
         >
           <DataList
             rows={preview.subscriptions}
-            columns={subscriptionColumns(firstRows)}
+            columns={subscriptionColumns(firstRows, clients)}
             getRowKey={(s) => s.id}
             caption="Stripe subscriptions"
             empty={<EmptyState icon={CreditCard}>No subscriptions in Stripe yet.</EmptyState>}
@@ -206,6 +225,7 @@ export default async function StripeReviewPage({ searchParams }: PageProps<"/set
         <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end max-sm:[&>*]:w-full">
           <Button type="submit" disabled={preview.products.length === 0}>Import selected</Button>
         </div>
+        </ReviewFormProvider>
       </form>
     </>
   );

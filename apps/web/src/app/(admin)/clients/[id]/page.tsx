@@ -1,14 +1,17 @@
 import { getBillingProfile, getClient, listActivity, listContacts, listDomains, listSites } from "@launchos/core";
-import { Activity, Globe, Network, Users } from "lucide-react";
+import { Activity, Globe, Merge, Network, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
+import { InlineAlert } from "@/components/inline-alert";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
+import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { MeetingsStrip } from "../../meetings/meetings-strip";
@@ -51,6 +54,8 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         }
       />
 
+      <MergedBanner client={client} organisationId={session.organisationId} />
+
       <ClientTabs clientId={client.id} active={tab} />
 
       {tab === "overview" ? <OverviewTab client={client} /> : null}
@@ -62,6 +67,27 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
 type ClientRecord = NonNullable<Awaited<ReturnType<typeof getClient>>>;
 
+/** Where a merged-away duplicate's records went: core stamps `metadata.mergedInto` when it archives one. */
+function mergedIntoOf(client: ClientRecord): string | null {
+  const target = client.metadata["mergedInto"];
+  return client.status === "archived" && typeof target === "string" ? target : null;
+}
+
+async function MergedBanner({ client, organisationId }: { client: ClientRecord; organisationId: string }) {
+  const keptId = mergedIntoOf(client);
+  if (!keptId) return null;
+  const kept = await getClient(getDb(), organisationId, keptId);
+  const stamp = client.metadata["mergedAt"];
+  const mergedAt = typeof stamp === "string" ? formatDateTime(new Date(stamp)) : null;
+  return (
+    <InlineAlert tone="info" title="Merged" className="mb-6">
+      Merged into{" "}
+      <Link href={`/clients/${keptId}`} className="font-medium underline underline-offset-2">{kept?.name ?? "another client"}</Link>
+      {mergedAt ? ` on ${mergedAt}` : ""}. Its contacts, subscriptions, sites and history live there now; this record is kept as the trail.
+    </InlineAlert>
+  );
+}
+
 /**
  * The details editor, the calls booked with them, then the timeline. The
  * timeline is a list rather than a `DataList`: these are events in order,
@@ -69,7 +95,10 @@ type ClientRecord = NonNullable<Awaited<ReturnType<typeof getClient>>>;
  */
 async function OverviewTab({ client }: { client: ClientRecord }) {
   const session = await requireAdmin();
-  const events = await listActivity(getDb(), session.organisationId, { clientId: client.id });
+  const [events, permissions] = await Promise.all([
+    listActivity(getDb(), session.organisationId, { clientId: client.id }),
+    sessionPermissions(),
+  ]);
 
   return (
     <>
@@ -128,6 +157,22 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
         </ol>
       )}
     </Section>
+
+    {permissions.settings && client.status !== "archived" ? (
+      <Section title="Admin" description="Housekeeping for this record. Archive is at the top of the page.">
+        <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 text-sm">
+            <p className="font-medium">Two records for one business?</p>
+            <p className="mt-0.5 text-muted-foreground">
+              Move everything on this record — contacts, subscriptions, sites, cases, history — to the client you keep, and archive this one.
+            </p>
+          </div>
+          <Button asChild variant="secondary" className="max-sm:w-full">
+            <Link href={`/clients/${client.id}/merge`}><Merge aria-hidden />Merge into another client…</Link>
+          </Button>
+        </div>
+      </Section>
+    ) : null}
     </>
   );
 }

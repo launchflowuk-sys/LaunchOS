@@ -1,16 +1,19 @@
 "use server";
 
 import {
-  archiveClient, createClient, createContact, createDomain, createSite, deleteContact, updateClient, upsertBillingProfile,
+  archiveClient, createClient, createContact, createDomain, createSite, deleteContact, getClient, mergeClients, MergeRefused, updateClient,
+  upsertBillingProfile,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { requirePermission } from "@/lib/permissions";
 import { installWebEnqueue } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 import {
-  BillingSchema, ClientDetailsSchema, NewClientSchema, NewContactSchema, NewDomainSchema, NewSiteSchema,
-  type ActionResult, type BillingValues, type ClientDetailsValues, type NewClientValues, type NewContactValues, type NewDomainValues, type NewSiteValues,
+  BillingSchema, ClientDetailsSchema, MergeClientsSchema, NewClientSchema, NewContactSchema, NewDomainSchema, NewSiteSchema,
+  type ActionResult, type BillingValues, type ClientDetailsValues, type MergeClientsValues, type NewClientValues, type NewContactValues,
+  type NewDomainValues, type NewSiteValues,
 } from "./schemas";
 
 /** Turns a service throw into a message the caller can show, never a 500 page. */
@@ -85,6 +88,38 @@ export async function archiveClientAction(values: ArchiveClientValues): Promise<
     revalidatePath(`/clients/${parsed.data.clientId}`);
     return { status: "ok", id: client.id };
   } catch (error) {
+    return failed(error);
+  }
+}
+
+/**
+ * "Merge" on `/clients/[id]/merge`: the duplicate's records move to the kept
+ * client and the duplicate is archived with `metadata.mergedInto` (core, one
+ * transaction). Gated on `settings` — it rewrites every table that names a
+ * client, which is further than archiving reaches — and the typed name is
+ * checked here, against the database, not trusted from the form. A
+ * `MergeRefused` comes back as its own sentence; the kept client's id is
+ * the result so the form can go there.
+ */
+export async function mergeClientsAction(values: MergeClientsValues): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = MergeClientsSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid merge" };
+  const { keepId, mergeId, confirmName } = parsed.data;
+
+  try {
+    const keep = await getClient(getDb(), session.organisationId, keepId);
+    if (!keep) return { status: "error", message: "The client to keep could not be found." };
+    if (confirmName !== keep.name.trim()) {
+      return { status: "error", message: `Type the kept client's name exactly — "${keep.name}" — to confirm.` };
+    }
+    const result = await mergeClients(getDb(), session.organisationId, { keepId, mergeId, actorKind: "user", actorId: session.userId });
+    revalidatePath("/clients", "layout");
+    return { status: "ok", id: result.kept.id };
+  } catch (error) {
+    if (error instanceof MergeRefused) return { status: "error", message: error.message };
     return failed(error);
   }
 }

@@ -13,7 +13,12 @@ export const StripeSyncSummary = z.object({
   at: z.string(),
   trigger: z.enum(["import", "reconcile", "webhook"]),
   packages: z.object({ created: z.array(NamedRow), linked: z.array(NamedRow) }),
-  clients: z.object({ created: z.array(NamedRow), matched: z.number().int() }),
+  clients: z.object({
+    created: z.array(NamedRow),
+    matched: z.number().int(),
+    /** Existing clients the owner chose on the review screen ("File under"). Absent on summaries stored before it existed. */
+    filed: z.array(NamedRow).default([]),
+  }),
   subscriptions: z.object({
     created: z.number().int(),
     updated: z.number().int(),

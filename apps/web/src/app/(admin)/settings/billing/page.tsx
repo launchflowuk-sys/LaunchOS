@@ -88,6 +88,7 @@ export default async function BillingSettingsPage() {
               Last run {formatDateTime(last.at)}
               <span className="text-muted-foreground"> ({last.trigger === "import" ? "import" : last.trigger === "reconcile" ? "sync" : "webhook"})</span>:{" "}
               <span className="tabular-nums">{last.clients.created.length}</span> client{last.clients.created.length === 1 ? "" : "s"} created,{" "}
+              {last.clients.filed.length > 0 ? <><span className="tabular-nums">{last.clients.filed.length}</span> filed under existing,{" "}</> : null}
               <span className="tabular-nums">{last.subscriptions.created}</span> subscription{last.subscriptions.created === 1 ? "" : "s"} imported,{" "}
               <span className="tabular-nums">{last.subscriptions.updated}</span> updated
               {last.statusChanges.length > 0 ? <>, <span className="tabular-nums">{last.statusChanges.length}</span> status change{last.statusChanges.length === 1 ? "" : "s"}</> : null}.{" "}

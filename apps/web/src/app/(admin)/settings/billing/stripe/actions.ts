@@ -7,14 +7,10 @@ import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { getPayments } from "@/lib/integrations";
 import { requirePermission } from "@/lib/permissions";
+import { readImportForm } from "./import-form";
 import { RESULT_PATH, REVIEW_PATH } from "./paths";
 
 type ActionResult = { status: "ok" } | { status: "error"; message: string };
-
-/** The review form: `product` once per ticked product, `clientName:<customerId>` once per new client. */
-const CLIENT_NAME_FIELD = /^clientName:(.+)$/;
-const ProductIds = z.array(z.string().trim().min(1).max(200));
-const ClientName = z.string().trim().max(200);
 
 function errorMessage(error: unknown): string {
   if (error instanceof z.ZodError) return error.issues[0]?.message ?? "Invalid selection";
@@ -32,23 +28,20 @@ export async function importStripeAction(formData: FormData): Promise<void> {
   if (!gate.ok) redirect(`${REVIEW_PATH}?error=${encodeURIComponent(gate.message)}`);
   const { session } = gate;
 
-  const selected = ProductIds.safeParse(formData.getAll("product").filter((v): v is string => typeof v === "string"));
-  if (!selected.success) redirect(`${REVIEW_PATH}?error=${encodeURIComponent("Invalid product selection")}`);
-
-  const clientNames: Record<string, string> = {};
-  for (const [field, value] of formData.entries()) {
-    const match = CLIENT_NAME_FIELD.exec(field);
-    if (!match || typeof value !== "string") continue;
-    const parsed = ClientName.safeParse(value);
-    if (parsed.success && parsed.data.length > 0) clientNames[match[1]!] = parsed.data;
+  let form: ReturnType<typeof readImportForm>;
+  try {
+    form = readImportForm(formData);
+  } catch {
+    redirect(`${REVIEW_PATH}?error=${encodeURIComponent("Invalid product selection")}`);
   }
 
   // `redirect` throws, so it stays outside the try: a failure is carried out
-  // as a message and redirected after.
+  // as a message and redirected after. A "File under" pointing at a client
+  // that is not ours is one such failure — core refuses before writing.
   let failure: string | null = null;
   try {
     await applyStripeSync(getDb(), session.organisationId, getPayments(), {
-      selectedProductIds: selected.data, clientNames, actorKind: "user", actorId: session.userId,
+      ...form, actorKind: "user", actorId: session.userId,
     });
   } catch (error) {
     failure = errorMessage(error);

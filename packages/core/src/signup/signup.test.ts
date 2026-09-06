@@ -46,6 +46,18 @@ describe("createSignupSession", () => {
     });
   });
 
+  it("stores the attribution the buyer arrived with on the signup lead", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_growth");
+      const attribution = { utmSource: "google", utmMedium: "cpc", utmCampaign: "spring-launch", gclid: "abc123", landingPath: "/signup?package=growth" };
+      const result = await createSignupSession(db, orgId, { ...buyer, attribution }, { payments: new MockPaymentsAdapter() }, env);
+      const [lead] = await db.select().from(schema.leads).where(eq(schema.leads.id, result.leadId));
+      expect(lead!.metadata["attribution"]).toEqual(attribution);
+      // The package stamp is still there beside it.
+      expect(lead!.metadata["packageSlug"]).toBe("growth");
+    });
+  });
+
   it("refuses an unknown or inactive package", async () => {
     await withTestDb(async (db) => {
       const { orgId } = await seed(db, null);

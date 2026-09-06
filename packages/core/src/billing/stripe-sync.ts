@@ -342,6 +342,7 @@ async function runStripeSync(db: Db, organisationId: string, input: RunInput): P
     clients: {
       created: imported.filter((o) => o.clientCreated).map((o) => ({ id: o.clientId, name: o.clientName })),
       matched: new Set(imported.filter((o) => !o.clientCreated).map((o) => o.clientId)).size,
+      filed: uniqueClients(imported.filter((o) => o.matchedBy === "filed")),
     },
     subscriptions: {
       created: imported.filter((o) => o.row.outcome === "created").length,
@@ -359,6 +360,13 @@ async function runStripeSync(db: Db, organisationId: string, input: RunInput): P
     : (await getStripeSyncSettings(db, organisationId)).ignoredProductIds;
   await setStripeSyncSettings(db, organisationId, { ignoredProductIds, lastRunAt: summary.at, lastSummary: summary });
   return summary;
+}
+
+/** Each client once, in the order its first subscription was filed. */
+function uniqueClients(outcomes: readonly SubscriptionOutcome[]): { id: string; name: string }[] {
+  const seen = new Map<string, string>();
+  for (const o of outcomes) if (!seen.has(o.clientId)) seen.set(o.clientId, o.clientName);
+  return [...seen].map(([id, name]) => ({ id, name }));
 }
 
 function describeSummary(s: StripeSyncSummary): string {

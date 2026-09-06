@@ -121,4 +121,16 @@ export const ClientDetailsSchema = z.object({
 });
 export type ClientDetailsValues = z.input<typeof ClientDetailsSchema>;
 
+/**
+ * The merge confirm screen. `confirmName` is what the person typed to prove
+ * they read which client survives; the action compares it with the kept
+ * client's name, so the form cannot decide for itself that it matched.
+ */
+export const MergeClientsSchema = z.object({
+  keepId: z.string().uuid(),
+  mergeId: z.string().uuid(),
+  confirmName: z.string().trim().min(1, "Type the name of the client you are keeping").max(200),
+});
+export type MergeClientsValues = z.input<typeof MergeClientsSchema>;
+
 export type ActionResult = { status: "ok"; id: string } | { status: "error"; message: string };

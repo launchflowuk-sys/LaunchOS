@@ -5,7 +5,7 @@ import { withTestDb } from "@launchos/db/test";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
 import { runAgent } from "../../kernel/run-agent.js";
 import { OPS_BRIEF_HARD_MAX_WORDS } from "../../tools/ops-shared.js";
-import { OPS_BRIEF_KEY, opsBrief } from "./index.js";
+import { OPS_BRIEF_KEY, OPS_BRIEF_PROMPT, opsBrief } from "./index.js";
 
 // 07:00 London on a September morning is 06:00 UTC; the brief's date is the London one.
 const NOW = new Date("2026-09-09T06:00:00Z");
@@ -28,6 +28,11 @@ async function fixture(db: Parameters<Parameters<typeof withTestDb>[0]>[0]) {
     organisationId: org!.id, clientId: client!.id, actorKind: "client", kind: "ticket.created", title: "Case opened: Booking form broken", link: "/cases/x", createdAt: new Date(NOW.getTime() - 3 * HOUR),
   });
   await db.insert(schema.timeEntries).values({ organisationId: org!.id, userId: ownerId, startedAt: new Date(NOW.getTime() - 9 * HOUR), endedAt: new Date(NOW.getTime() - HOUR) });
+  // Two enquiries nobody has answered: one from yesterday morning (waiting over 24 h), one from an hour ago (not yet).
+  await db.insert(schema.leads).values([
+    { organisationId: org!.id, name: "Tilbury Taxis", source: "website", status: "new", createdAt: new Date(NOW.getTime() - 30 * HOUR) },
+    { organisationId: org!.id, name: "Purfleet Salon", source: "website", status: "new", createdAt: new Date(NOW.getTime() - HOUR) },
+  ]);
   return { orgId: org!.id, ownerId, clientId: client!.id };
 }
 
@@ -67,10 +72,13 @@ describe("ops-brief", () => {
       const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId));
       const snapshot = steps.find((s) => s.kind === "tool_result" && s.toolName === "ops_metrics_snapshot")!.output as {
         cases: { opened: number; resolved: number; medianFirstResponseMinutes: number }; approvals: { pending: number }; team: { hoursClocked: number };
+        leads: { awaitingReplyOver24h: number };
       };
       expect(snapshot.cases).toMatchObject({ opened: 1, resolved: 1, medianFirstResponseMinutes: 60 });
       expect(snapshot.approvals.pending).toBe(1);
       expect(snapshot.team.hoursClocked).toBe(8);
+      // The brief's "N leads waiting for a reply over 24 h": the day-old enquiry counts, the hour-old one does not.
+      expect(snapshot.leads.awaitingReplyOver24h).toBe(1);
       const activity = steps.find((s) => s.kind === "tool_result" && s.toolName === "ops_recent_activity")!.output as { timeline: { title: string; clientName: string }[] };
       expect(activity.timeline).toEqual([expect.objectContaining({ title: "Case opened: Booking form broken", clientName: "Grays CabLine" })]);
       const saved = steps.find((s) => s.kind === "tool_result" && s.toolName === "ops_save_brief")!.output as { saved: boolean; replaced: boolean; words: number };
@@ -114,6 +122,12 @@ describe("ops-brief", () => {
       expect(briefs).toHaveLength(1);
       expect(briefs[0]!.bodyMd).toBe(`${BODY}\nRevised.`);
     });
+  });
+
+  it("tells the model where the waiting-leads figure is and how to word it", () => {
+    expect(OPS_BRIEF_PROMPT).toContain("leads.awaitingReplyOver24h");
+    expect(OPS_BRIEF_PROMPT).toContain("[Leads](/leads?status=new)");
+    expect(OPS_BRIEF_PROMPT).toContain("waiting for a reply over 24 h");
   });
 
   it("its tools see only the run's organisation", async () => {

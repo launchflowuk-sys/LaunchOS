@@ -23,7 +23,7 @@ The brief is Markdown, at most ${OPS_BRIEF_MAX_WORDS} words, in British English,
 Two to four sentences on what happened: cases opened and resolved, median first response, incidents, content published or failed, agent failures. Name the client where the activity names one.
 
 ## Needs you today
-Bullets, most urgent first. Each is one action with a link in Markdown: pending approvals → [Approvals](/approvals); overdue or SLA-breached cases → [Cases](/cases); overdue tasks → [Tasks](/tasks); open incidents → [Incidents](/incidents); overdue invoices → [Invoices](/invoices); failed content → [Content](/content); failed agent runs → [Agent Runs](/agents/runs). If nothing needs him, say so in one line. Pass the same bullets to ops_save_brief as highlights, with label and link.
+Bullets, most urgent first. Each is one action with a link in Markdown: pending approvals → [Approvals](/approvals); overdue or SLA-breached cases → [Cases](/cases); overdue tasks → [Tasks](/tasks); open incidents → [Incidents](/incidents); overdue invoices → [Invoices](/invoices); failed content → [Content](/content); failed agent runs → [Agent Runs](/agents/runs); leads waiting for a reply (the snapshot's leads.awaitingReplyOver24h) → [Leads](/leads?status=new), worded "N leads waiting for a reply over 24 h". If nothing needs him, say so in one line. Pass the same bullets to ops_save_brief as highlights, with label and link.
 
 ## Team
 One or two sentences: hours clocked, who is clocked in now, anything overdue by person if the snapshot shows it.
