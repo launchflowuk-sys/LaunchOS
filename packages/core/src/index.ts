@@ -23,6 +23,12 @@ export { slugify, uniqueClientSlug } from "./clients/slug.js";
 export { mergeClients, mergePreview, MergeRefused, MergeClientsInput, MergePreviewInput } from "./clients/merge-clients.js";
 export type { MergeClientsResult, MergePreview, MergeCounts } from "./clients/merge-clients.js";
 export { MOVE_SPECS } from "./clients/merge-clients-tables.js";
+export {
+  getClientBrand, setClientBrand, clientBrandFrom,
+  ClientBrandSchema, GetClientBrandInput, SetClientBrandInput,
+  BRAND_METADATA_KEY, DEFAULT_BRAND_PRIMARY, DEFAULT_BRAND_ACCENT,
+} from "./clients/brand.js";
+export type { ClientBrand, ResolvedClientBrand } from "./clients/brand.js";
 export { createSite, CreateSiteInput } from "./sites/create-site.js";
 export { createMonitor, CreateMonitorInput } from "./monitoring/create-monitor.js";
 export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/record-check.js";
@@ -244,6 +250,8 @@ export type {
 export { spreadSlotTimes, weekdaysOf, londonAt, londonOffsetMinutes, parsePeriodKey, PUBLISH_HOUR_LONDON } from "./content/schedule.js";
 export { upsertContentBrief, getContentBrief, UpsertContentBriefInput, GetContentBriefInput } from "./content/briefs.js";
 export { setContentChannel, listContentChannels, SetContentChannelInput, ListContentChannelsInput } from "./content/channels.js";
+export { renderTemplateImage, RenderTemplateImageInput, IMAGE_TEMPLATE_SIZES } from "./content/image-template.js";
+export type { ImageTemplateSize, RenderedTemplateImage } from "./content/image-template.js";
 export {
   createContentItem, updateContentItem, getContentItem, listContentItems, cancelContentItem,
   CreateContentItemInput, UpdateContentItemInput, GetContentItemInput, ListContentItemsInput, CancelContentItemInput,

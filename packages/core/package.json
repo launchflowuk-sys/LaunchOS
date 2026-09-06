@@ -15,6 +15,21 @@
     "test": "vitest run",
     "lint": "eslint src"
   },
-  "dependencies": { "@launchos/channels": "workspace:*", "@launchos/db": "workspace:*", "@launchos/integrations": "workspace:*", "better-auth": "^1.7.2", "drizzle-orm": "^0.45.2", "zod": "^4.4.3" },
-  "devDependencies": { "@launchos/config": "workspace:*", "@types/node": "^24", "typescript": "^5", "vitest": "^3" }
+  "dependencies": {
+    "@fontsource/geist-sans": "^5.3.0",
+    "@launchos/channels": "workspace:*",
+    "@launchos/db": "workspace:*",
+    "@launchos/integrations": "workspace:*",
+    "better-auth": "^1.7.2",
+    "drizzle-orm": "^0.45.2",
+    "satori": "^0.33.4",
+    "sharp": "^0.35.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@launchos/config": "workspace:*",
+    "@types/node": "^24",
+    "typescript": "^5",
+    "vitest": "^3"
+  }
 }
