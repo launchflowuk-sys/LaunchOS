@@ -57,12 +57,17 @@ async function fixture(db: Db, options: { portalUser?: boolean } = {}) {
 }
 
 describe("the project queues", () => {
-  it("registers a worker for each of the three queues and puts the one cron on Friday, London time", async () => {
+  it("registers a worker for each of the four queues and puts the one cron on Friday, London time", async () => {
     await withTestDb(async (db) => {
       const { boss, work, schedule } = fakeBoss();
       await registerProjectJobs({ db, boss, env: process.env, logger: quiet });
+      // `delivery.send` sits here rather than with the other delivery work
+      // because this is the file that owns a project's queues, and the handover
+      // is a project's. A registration missing from this list is a button that
+      // queues a job nothing is listening to — which is exactly what the
+      // handover was before it was added.
       expect(work.mock.calls.map(([queue]) => queue).sort()).toEqual([
-        "projects.delivered", "projects.milestone-email", "projects.weekly-update",
+        "delivery.send", "projects.delivered", "projects.milestone-email", "projects.weekly-update",
       ]);
       expect(schedule.mock.calls.map(([queue, cron, , options]) => [queue, cron, options])).toEqual([
         ["projects.weekly-update", "0 16 * * 5", { tz: "Europe/London" }],
