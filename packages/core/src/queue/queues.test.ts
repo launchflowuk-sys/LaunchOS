@@ -5,6 +5,8 @@ import {
   QUEUE,
   QUEUE_POLICY,
   QUEUE_SPECS,
+  ARCHIVE_COMPLETED_AFTER_SECONDS,
+  BOSS_OPTIONS,
   dailyDedupe,
   ensureQueues,
   queueSettings,
@@ -79,3 +81,12 @@ describe("queue topology", () => {
     });
   });
 });
+
+describe("BOSS_OPTIONS", () => {
+  it("keeps the archive window at least as long as the daily dedupe window, or pg-boss refuses the Sentinel send", () => {
+    expect(ARCHIVE_COMPLETED_AFTER_SECONDS).toBeGreaterThanOrEqual(DEDUPE_WINDOW_SECONDS);
+    expect(BOSS_OPTIONS.archiveCompletedAfterSeconds).toBe(ARCHIVE_COMPLETED_AFTER_SECONDS);
+    expect(BOSS_OPTIONS.retryLimit).toBe(5);
+  });
+});
+

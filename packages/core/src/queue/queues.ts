@@ -225,6 +225,21 @@ export const QUEUE_SPECS: readonly QueueSpec[] = Object.values(QUEUE).map((name)
 export const DEDUPE_WINDOW_SECONDS = 86_400;
 
 /**
+ * How long pg-boss keeps completed and failed jobs in the live table before
+ * archiving them. pg-boss refuses any `singletonSeconds` longer than this
+ * ("throttling interval … cannot exceed archive interval"), and its default is
+ * twelve hours — half the day `dailyDedupe` asks for. That mismatch silently
+ * failed every Ad Sentinel fan-out until the worker's error alerting surfaced
+ * it on 6 Sep 2026. Two days gives the day-long window headroom either side.
+ * Both processes' constructors must use `BOSS_OPTIONS` so the setting cannot
+ * drift between web and worker.
+ */
+export const ARCHIVE_COMPLETED_AFTER_SECONDS = DEDUPE_WINDOW_SECONDS * 2;
+
+/** Constructor options every pg-boss instance in this system starts with. */
+export const BOSS_OPTIONS = { ...JOB_RETRY, archiveCompletedAfterSeconds: ARCHIVE_COMPLETED_AFTER_SECONDS } as const;
+
+/**
  * The dedupe options for a send that must not repeat within a day.
  *
  * Caveat, because the window is stronger than it looks: `job_i4` covers

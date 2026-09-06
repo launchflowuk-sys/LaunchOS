@@ -1,5 +1,5 @@
 import { notifyOwner, setEnqueue, type DomainEvent } from "@launchos/core";
-import { JOB_RETRY, QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
+import { BOSS_OPTIONS, QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
 import { getDb } from "./db";
 
@@ -24,7 +24,7 @@ function getBoss(url: string): Promise<PgBoss> {
     // here the whole interactive path (inbound/outbound mail, agent resume,
     // payments webhook, domain events) would retry twice with no delay while
     // the worker's own jobs retried five times with backoff.
-    const boss = new PgBoss({ connectionString: url, schema: "pgboss", ...JOB_RETRY });
+    const boss = new PgBoss({ connectionString: url, schema: "pgboss", ...BOSS_OPTIONS });
     boss.on("error", (e) => console.error("pg-boss error (web)", e));
     await boss.start();
     // Same topology as the worker, from the same table (@launchos/core). Both

@@ -1,4 +1,4 @@
-import { JOB_RETRY, ensureQueues } from "@launchos/core/queue";
+import { BOSS_OPTIONS, ensureQueues } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
 
 // The queue names, their dedupe policies and their retry settings live in
@@ -10,10 +10,10 @@ export { QUEUE, dailyDedupe } from "@launchos/core/queue";
 export type { QueueName } from "@launchos/core/queue";
 
 export async function createBoss(connectionString: string) {
-  // `JOB_RETRY` here is only the constructor fallback for a queue this process
+  // `BOSS_OPTIONS` here is the retry fallback plus the archive window; retry is only the constructor fallback for a queue this process
   // sends to before `ensureQueues` has reached it; the queue row set below is
   // the authority, and it is the same table the web process applies.
-  const boss = new PgBoss({ connectionString, schema: "pgboss", ...JOB_RETRY });
+  const boss = new PgBoss({ connectionString, schema: "pgboss", ...BOSS_OPTIONS });
   boss.on("error", (e) => console.error("pg-boss error", e));
   await boss.start();
   await ensureQueues(boss);
