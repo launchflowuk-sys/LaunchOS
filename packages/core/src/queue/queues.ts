@@ -143,6 +143,7 @@ export const QUEUE = {
   billingInvoiceDocuments: "billing.invoice-documents",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
+  deliverySend: "delivery.send",
   proposalsSend: "proposals.send",
   proposalsAccepted: "proposals.accepted",
   proposalsExpire: "proposals.expire",
@@ -233,6 +234,11 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // `job_i4` covers `failed`, so a window would mean a send that failed on a
   // bad minute could not be retried that day — and after 76f313a we know a
   // window must also fit inside `ARCHIVE_COMPLETED_AFTER_SECONDS`.
+  // The handover send. Keyed `delivery-send:<projectId>`, so a double press
+  // while the first is still queued is one job — and a second send once that
+  // has run is legitimate (a client who lost the email needs another), which
+  // core allows and the sign-off refusal is what finally closes.
+  "delivery.send": "short",
   "proposals.send": "standard",
   // Every send carries `proposal-accepted:<proposalId>`, so a second
   // acceptance path (the sweep and `acceptProposal` racing) collapses while

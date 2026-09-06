@@ -6,12 +6,13 @@ import type { EnablementLogger } from "./content-enablement.js";
 import { LONDON, type BossRegistrar } from "./content-jobs.js";
 import { handleProjectDelivered, type ProjectDeliveredJob } from "./case-study-launch.js";
 import { handleDeliveryFollowOn } from "./delivery-follow-on.js";
+import { handleDeliverySend, type DeliverySendJob } from "./delivery-send.js";
 import { handleMilestoneEmail, type MilestoneEmailJob } from "./project-milestone-email.js";
 import { dispatchWeeklyUpdates } from "./project-weekly-update.js";
 import type { SweepOrganisationsLogger } from "./sweep-organisations.js";
 
 /**
- * The three project queues, the one cron, and the two agents' defaults.
+ * The four project queues, the one cron, and the two agents' defaults.
  *
  * Registered together rather than inline in `main()` so a test can boot them
  * against a fake boss and assert the schedule — the kind of table that is only
@@ -70,13 +71,20 @@ export async function ensureProjectAgentsEnabled(db: Db, logger: EnablementLogge
   return { enabled: inserted.length };
 }
 
-/** Registers the three queues' workers and the Friday cron, Europe/London. */
+/** Registers the four queues' workers and the Friday cron, Europe/London. */
 export async function registerProjectJobs(deps: ProjectJobsDeps): Promise<void> {
   const { db, boss } = deps;
   const logger = deps.logger ?? console;
 
   await boss.work(QUEUE.projectsWeeklyUpdate, async () => {
     logger.info(await dispatchWeeklyUpdates({ db, boss, logger }, new Date()), "project weekly update sweep");
+  });
+
+  // The handover, sent from the one process that can print one. Queued by the
+  // admin page's Send button; see `delivery-send.ts` for why a refusal here is
+  // a log line rather than a failed job.
+  await boss.work<DeliverySendJob>(QUEUE.deliverySend, async ([job]) => {
+    logger.info(await handleDeliverySend({ db, env: deps.env, logger }, job!.data), "delivery send");
   });
 
   await boss.work<MilestoneEmailJob>(QUEUE.projectsMilestoneEmail, async ([job]) => {

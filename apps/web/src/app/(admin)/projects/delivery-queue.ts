@@ -1,7 +1,7 @@
 import { buildDeliveryReport, type DeliveryReport, projectUpdateRecipients } from "@launchos/core";
-import type { QueuePolicy } from "@launchos/core/queue";
+import { QUEUE } from "@launchos/core/queue";
 import { getDb } from "@/lib/db";
-import { sendUnlistedJob } from "@/lib/queue";
+import { sendJob } from "@/lib/queue";
 
 /**
  * Sending a handover, from a process that cannot print one.
@@ -13,27 +13,10 @@ import { sendUnlistedJob } from "@/lib/queue";
  * `proposals/send-queue.ts` does for a proposal. A render, a file write and an
  * email have no business inside the request that pressed the button.
  *
- * **The queue name is declared here rather than in core, and that is
- * temporary.** P5-core landed `renderDeliveryReport`, `sendDeliveryReport` and
- * `countersignDeliveryReport` and left the queue table to P5-worker, which is
- * being written in parallel. The choice was: cast a string to `QueueName`,
- * launch a browser from a Server Action, or say plainly what queue this send
- * needs and create it. The third is the only one of those that is both honest
- * and safe. When `packages/core/src/queue/queues.ts` names it, delete
- * `DELIVERY_SEND_QUEUE` and `sendUnlistedJob` and go back through `sendJob`.
+ * The worker consumes `delivery.send` in `apps/worker/src/jobs/delivery-send.ts`,
+ * and core's topology table names it — so the send goes through `sendJob` like
+ * every other, and this file knows a queue key rather than a queue string.
  */
-
-/** What the worker's handover job should be called. See the note above. */
-export const DELIVERY_SEND_QUEUE = "delivery.send";
-
-/**
- * `short`, because every send to it carries a key — the same rule every other
- * fully-keyed queue in `QUEUE_POLICY` follows. A duplicate is collapsed while
- * the first job is still queued; a second send once the first has run is
- * legitimate (a client who lost the email needs another one) and is core's to
- * allow, which it does.
- */
-export const DELIVERY_SEND_POLICY: QueuePolicy = "short";
 
 /** Ids only: the worker reads the rows itself, as it does for a proposal send. */
 export interface DeliverySendJob {
@@ -81,6 +64,6 @@ export async function queueDeliverySend(organisationId: string, projectId: strin
   if (refused) return { ok: false, message: refused };
 
   const job: DeliverySendJob = { organisationId, projectId, actorId };
-  await sendUnlistedJob(DELIVERY_SEND_QUEUE, DELIVERY_SEND_POLICY, job, { singletonKey: `delivery-send:${projectId}` });
+  await sendJob(QUEUE.deliverySend, job, { singletonKey: `delivery-send:${projectId}` });
   return { ok: true };
 }
