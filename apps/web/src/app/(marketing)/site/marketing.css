@@ -1,0 +1,54 @@
+/* Marketing-only styles. The app body is 14px by design (DESIGN.md: a control
+   room read at arm's length); a public page is read once by a stranger, so
+   the marketing wrapper resets to 16px and gives display headings the tighter
+   tracking the small scale never needs. Everything else — fonts, colours,
+   radii, focus, reduced motion — comes from `globals.css` untouched. */
+
+.marketing {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.marketing .display {
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  line-height: 1.05;
+  text-wrap: balance;
+}
+
+.marketing .lede {
+  text-wrap: pretty;
+}
+
+/* The mobile menu is a native disclosure: no script, works before hydration.
+   The marker is replaced by the label's own icon. */
+.marketing details.site-menu > summary {
+  list-style: none;
+}
+.marketing details.site-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.marketing details.site-menu[open] > summary .menu-closed,
+.marketing details.site-menu:not([open]) > summary .menu-open {
+  display: none;
+}
+
+/* A screenshot in a thin frame: the image is the thing, the frame is a hint
+   of a window. `aspect-ratio` reserves the space so nothing jumps on load. */
+.marketing .shot {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--primary-soft);
+}
+.marketing .shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+.marketing .shot-mobile {
+  aspect-ratio: 390 / 844;
+  max-width: 16rem;
+}

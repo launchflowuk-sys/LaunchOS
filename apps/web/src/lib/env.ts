@@ -9,6 +9,7 @@ import {
   productionMockWarnings,
 } from "@launchos/integrations";
 import { z } from "zod";
+import { appHostFromEnv, marketingHostFromEnv } from "./marketing/hosts";
 
 /**
  * The web app's environment, validated once at module load.
@@ -190,8 +191,27 @@ export const Env = z.object({
    * up must not be an open door for spam into the owner's phone.
    */
   PUBLIC_FORMS_TOKEN: z.string().optional(),
+  /**
+   * The two hostnames one container answers on. Requests arriving on
+   * `MARKETING_HOST` (or its `www.` alias) are rewritten by `src/proxy.ts`
+   * onto the marketing route group; `APP_HOST` is where the portals live and
+   * where the marketing footer's "Client login" points. Both optional: the
+   * defaults are the production names, and a local run needs neither.
+   */
+  MARKETING_HOST: z.string().optional(),
+  APP_HOST: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
+
+/** The hostname the marketing site is served on, e.g. `launchflow.co.uk`. */
+export function marketingHost(): string {
+  return marketingHostFromEnv(env);
+}
+
+/** The hostname the admin and client portals are served on, e.g. `os.launchflow.co.uk`. */
+export function appHost(): string {
+  return appHostFromEnv(env);
+}
 
 /**
  * The VAPID public key a browser subscribes with, or null when web push is

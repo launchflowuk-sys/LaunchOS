@@ -1,0 +1,50 @@
+{
+  "agent-zero": {
+    "desktop": "/work/agent-zero-desktop.jpg",
+    "mobile": "/work/agent-zero-mobile.jpg"
+  },
+  "amo-rendering": {
+    "desktop": "/work/amo-rendering-desktop.jpg",
+    "mobile": "/work/amo-rendering-mobile.jpg"
+  },
+  "bizzflow": {
+    "desktop": "/work/bizzflow-desktop.jpg",
+    "mobile": "/work/bizzflow-mobile.jpg"
+  },
+  "cabio": {
+    "desktop": "/work/cabio-desktop.jpg",
+    "mobile": "/work/cabio-mobile.jpg"
+  },
+  "farm-pizza": {
+    "desktop": "/work/farm-pizza-desktop.jpg",
+    "mobile": "/work/farm-pizza-mobile.jpg"
+  },
+  "grays-cabline": {
+    "desktop": "/work/grays-cabline-desktop.jpg",
+    "mobile": "/work/grays-cabline-mobile.jpg"
+  },
+  "grays-park-masjid": {
+    "desktop": "/work/grays-park-masjid-desktop.jpg",
+    "mobile": "/work/grays-park-masjid-mobile.jpg"
+  },
+  "lakeside-purfleet-taxis": {
+    "desktop": "/work/lakeside-purfleet-taxis-desktop.jpg",
+    "mobile": "/work/lakeside-purfleet-taxis-mobile.jpg"
+  },
+  "launchos": {
+    "desktop": "/work/launchos-desktop.jpg",
+    "mobile": "/work/launchos-mobile.jpg"
+  },
+  "nexus-education-group": {
+    "desktop": "/work/nexus-education-group-desktop.jpg",
+    "mobile": "/work/nexus-education-group-mobile.jpg"
+  },
+  "star-grooming": {
+    "desktop": "/work/star-grooming-desktop.jpg",
+    "mobile": "/work/star-grooming-mobile.jpg"
+  },
+  "takeaway-platform": {
+    "desktop": "/work/takeaway-platform-desktop.jpg",
+    "mobile": "/work/takeaway-platform-mobile.jpg"
+  }
+}
