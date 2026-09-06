@@ -54,6 +54,23 @@ export const ItemIdSchema = z.object({ itemId: z.string().uuid() });
 /** "Use this image": the post and the library asset to put on it. */
 export const PickImageSchema = z.object({ itemId: z.string().uuid(), assetId: z.string().uuid() });
 
+/** "Generate image" / "Regenerate": the post, how to draw it, and whether it replaces one. */
+export const RenderImageSchema = z.object({
+  itemId: z.string().uuid(),
+  mode: z.enum(["auto", "template", "ai"]),
+  force: z.boolean().default(false),
+});
+
+/**
+ * Asking for a picture succeeds with a sentence rather than an id: the work is
+ * queued, so there is nothing to point at yet, and what the operator needs back
+ * is what happens next. Why an AI request produced a graphic is read off the
+ * post afterwards, from `metadata.image.fellBackFrom`, not from this.
+ */
+export type RenderImageActionResult =
+  | { status: "ok"; message: string }
+  | { status: "error"; message: string };
+
 export const CancelItemSchema = z.object({
   itemId: z.string().uuid(),
   reason: z.string().trim().max(1000).optional(),

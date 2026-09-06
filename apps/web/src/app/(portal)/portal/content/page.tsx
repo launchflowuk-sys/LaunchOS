@@ -36,8 +36,26 @@ function titleOf(item: ContentItemListRow): string {
   return item.title ?? (item.body ? item.body.slice(0, 80) : `${CHANNEL_NAME[item.channel]} post`);
 }
 
+/**
+ * The post's name with its picture beside it. The client sees what is going
+ * out, image included — the thumbnail is the fastest way to tell one post from
+ * the next, and it is the only place in the portal the picture appears. There
+ * is no generate button here: the images are ours to draw.
+ */
+function PostTitle({ item }: { item: ContentItemListRow }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2.5">
+      {item.imageUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element -- our own /api/assets route or a public URL; next/image needs a known host list
+        <img src={item.imageUrl} alt="" loading="lazy" className="size-10 shrink-0 rounded-lg border object-cover" />
+      ) : null}
+      <span className="min-w-0 break-words">{titleOf(item)}</span>
+    </span>
+  );
+}
+
 const UPCOMING_COLUMNS: readonly DataListColumn<ContentItemListRow>[] = [
-  { key: "title", header: "Post", primary: true, cell: (item) => titleOf(item) },
+  { key: "title", header: "Post", primary: true, cell: (item) => <PostTitle item={item} /> },
   {
     key: "status",
     header: "Status",
@@ -57,7 +75,7 @@ const UPCOMING_COLUMNS: readonly DataListColumn<ContentItemListRow>[] = [
 ];
 
 const PUBLISHED_COLUMNS: readonly DataListColumn<ContentItemListRow>[] = [
-  { key: "title", header: "Post", primary: true, cell: (item) => titleOf(item) },
+  { key: "title", header: "Post", primary: true, cell: (item) => <PostTitle item={item} /> },
   { key: "channel", header: "Where", cell: (item) => CHANNEL_NAME[item.channel] },
   {
     key: "when",

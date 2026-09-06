@@ -1,6 +1,6 @@
 import {
-  CANCELLABLE_STATUSES, CHANNEL_LABEL, EDITABLE_STATUSES, getContentItem, listContentAssets, MAX_CONTENT_PUBLISH_ATTEMPTS,
-  monthName,
+  CANCELLABLE_STATUSES, CHANNEL_LABEL, EDITABLE_STATUSES, getContentBrief, getContentItem, listContentAssets,
+  MAX_CONTENT_PUBLISH_ATTEMPTS, monthName,
 } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { ContentStatus } from "@launchos/db/schema";
@@ -20,6 +20,8 @@ import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { cancelContentItemAction, requestContentApprovalAction } from "../actions";
+import { GenerateImage } from "../generate-image";
+import { briefImageMode, ImageProvenance } from "../image-meta";
 import { ChannelLabel, ContentStatusBadge, KIND_LABEL } from "../presentation";
 import { ImagePicker } from "./image-picker";
 import { ItemEditor } from "./item-editor";
@@ -52,8 +54,15 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
   if (!item) notFound();
 
   const isEditable = EDITABLE_STATUSES.includes(item.status) || REVISABLE_STATUSES.includes(item.status);
-  // The library is only offered while the post can still change.
-  const assets = isEditable ? await listContentAssets(db, session.organisationId, { clientId: item.clientId }) : [];
+  // The library and the generator are only offered while the post can still
+  // change. The brief comes with them: it decides what "As the brief says"
+  // will actually draw, and the control says so before it is pressed.
+  const [assets, brief] = isEditable
+    ? await Promise.all([
+        listContentAssets(db, session.organisationId, { clientId: item.clientId }),
+        getContentBrief(db, session.organisationId, { clientId: item.clientId }),
+      ])
+    : [[], undefined];
 
   const [approval] = item.approvalId
     ? await db
@@ -136,10 +145,21 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
                 <ItemEditor item={item} />
               </Section>
               <Section
-                title="Pick an image"
-                description="The client's photo library. Choosing one sets the image above; Facebook, Instagram and WordPress fetch it from here."
+                title="Image"
+                description="Draw one for this post, or pick a photo from the client's library. Facebook, Instagram and WordPress fetch whatever is set here."
               >
-                <ImagePicker itemId={item.id} clientId={item.clientId} currentImageUrl={item.imageUrl} assets={assets} />
+                <div className="rounded-xl border bg-card p-4">
+                  <ImageProvenance metadata={item.metadata} imageUrl={item.imageUrl} />
+                  <GenerateImage
+                    itemId={item.id}
+                    hasImage={Boolean(item.imageUrl)}
+                    clientOptedInToAi={briefImageMode(brief?.metadata) === "ai"}
+                    className="mt-3"
+                  />
+                </div>
+                <div className="mt-4">
+                  <ImagePicker itemId={item.id} clientId={item.clientId} currentImageUrl={item.imageUrl} assets={assets} />
+                </div>
               </Section>
             </>
           ) : (
@@ -157,8 +177,11 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
                   <p className="text-sm text-muted-foreground">No text.</p>
                 )}
                 {item.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- an external, client-owned image; next/image needs a known host list
-                  <img src={item.imageUrl} alt="" className="mt-4 max-h-80 rounded-lg border object-cover" />
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element -- an external, client-owned image; next/image needs a known host list */}
+                    <img src={item.imageUrl} alt="" className="mt-4 max-h-80 rounded-lg border object-cover" />
+                    <ImageProvenance metadata={item.metadata} imageUrl={item.imageUrl} className="mt-2" />
+                  </>
                 ) : null}
               </div>
             </Section>

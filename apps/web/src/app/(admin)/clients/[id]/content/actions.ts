@@ -1,8 +1,12 @@
 "use server";
 
-import { ContentRefused, deleteContentAsset, setContentChannel, upsertContentBrief } from "@launchos/core";
+import {
+  BRIEF_IMAGES_METADATA_KEY, ContentRefused, deleteContentAsset, recordAudit, setClientBrand, setContentChannel,
+  upsertContentBrief,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { CompositeSocialPublisher, createSocialPublisherFromEnv, GbpPublisher, hasGbpCredentials, lookupInstagramForPage, SocialApiError, SocialAuthError } from "@launchos/integrations";
+import { and, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -113,6 +117,128 @@ export async function saveContentChannelAction(formData: FormData): Promise<Acti
     return { status: "ok", id: row.id };
   } catch (error) {
     return failed(error, "Could not save the channel");
+  }
+}
+
+/** A blank colour box clears the choice back to the default; anything else must be six-digit hex. */
+const BrandColour = z.union([z.literal(""), z.string().trim().toLowerCase().regex(/^#[0-9a-f]{6}$/, "Use a six-digit hex colour such as #0969ca")]);
+
+const BrandSchema = z.object({
+  clientId: z.string().uuid(),
+  primary: BrandColour,
+  accent: BrandColour,
+  wordmark: z.string().trim().max(60, "Keep the wordmark under 60 characters"),
+  imageMode: z.enum(["template", "ai"]),
+});
+
+/**
+ * How a client's post images look, and how they are made.
+ *
+ * Two writes, one button, because it reads as one decision. The colours and the
+ * wordmark are `clients.metadata.brand`, which core owns; the opt-in is
+ * `content_briefs.metadata.images.mode`, which no core service writes yet —
+ * `upsertContentBrief` replaces the seven text fields and never touches
+ * metadata, so this merges the one key itself with jsonb `||` and audits it,
+ * the same shape `setAgentEnabled` uses. The brand write runs first: it asserts
+ * the client belongs to this organisation, so a forged id never reaches the
+ * brief.
+ */
+export async function saveClientBrandAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = BrandSchema.safeParse({
+    clientId: value(formData, "clientId"),
+    primary: value(formData, "primary")?.trim() ?? "",
+    accent: value(formData, "accent")?.trim() ?? "",
+    wordmark: value(formData, "wordmark") ?? "",
+    imageMode: value(formData, "imageMode") ?? "template",
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the brand and try again" };
+  const v = parsed.data;
+
+  try {
+    const db = getDb();
+    const client = await setClientBrand(db, session.organisationId, {
+      clientId: v.clientId,
+      // A blank box is "no choice made", which core stores as the key removed —
+      // so a later change to a default, or a rename, is picked up rather than frozen.
+      primary: v.primary || null,
+      accent: v.accent || null,
+      wordmark: v.wordmark || null,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    await setBriefImageMode(session.organisationId, session.userId, v.clientId, v.imageMode);
+    revalidatePath(`/clients/${v.clientId}/content`);
+    return { status: "ok", id: client.id };
+  } catch (error) {
+    return failed(error, "Could not save the brand");
+  }
+}
+
+/** Merges the one metadata key, leaving every other key on the brief alone. */
+async function setBriefImageMode(
+  organisationId: string,
+  userId: string,
+  clientId: string,
+  mode: "template" | "ai",
+): Promise<void> {
+  const db = getDb();
+  const patch = JSON.stringify({ [BRIEF_IMAGES_METADATA_KEY]: { mode } });
+  const where = and(
+    eq(schema.contentBriefs.organisationId, organisationId),
+    eq(schema.contentBriefs.clientId, clientId),
+  );
+  const [before] = await db.select().from(schema.contentBriefs).where(where);
+  const [after] = await db
+    .insert(schema.contentBriefs)
+    .values({ organisationId, clientId, metadata: { [BRIEF_IMAGES_METADATA_KEY]: { mode } } })
+    .onConflictDoUpdate({
+      target: [schema.contentBriefs.organisationId, schema.contentBriefs.clientId],
+      set: {
+        metadata: sql`coalesce(${schema.contentBriefs.metadata}, '{}'::jsonb) || ${patch}::jsonb`,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  await recordAudit(db, organisationId, {
+    actorKind: "user",
+    actorId: userId,
+    action: before ? "content_brief.updated" : "content_brief.created",
+    targetType: "content_brief",
+    targetId: after!.id,
+    before: before ?? null,
+    after,
+  });
+}
+
+const BrandLogoSchema = z.object({ clientId: z.string().uuid(), assetId: z.string().uuid().nullable() });
+
+/**
+ * "Use as logo" on a library tile, and the same button again to unset it.
+ * Called from a button rather than a `<form action>` so the tile can report the
+ * failure where the picture is. Core re-checks that the asset is one of this
+ * client's own images before it stores the id.
+ */
+export async function setBrandLogoAction(values: { clientId: string; assetId: string | null }): Promise<ActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = BrandLogoSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That photo could not be identified" };
+
+  try {
+    const client = await setClientBrand(getDb(), session.organisationId, {
+      clientId: parsed.data.clientId,
+      logoAssetId: parsed.data.assetId,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath(`/clients/${parsed.data.clientId}/content`);
+    return { status: "ok", id: client.id };
+  } catch (error) {
+    return failed(error, "Could not set the logo");
   }
 }
 

@@ -26,6 +26,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   content_channels: ["content channel", "content channels"],
   content_items: ["planned post", "planned posts"],
   content_assets: ["image", "images"],
+  documents: ["document", "documents"],
   content_reports: ["content report", "content reports"],
   client_reports: ["client report", "client reports"],
   client_users: ["portal login", "portal logins"],

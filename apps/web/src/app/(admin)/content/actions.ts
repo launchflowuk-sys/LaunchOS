@@ -1,10 +1,10 @@
 "use server";
 
 import {
-  cancelContentItem, ContentRefused, getContentAsset, getContentItem, planContentMonth, publicAssetUrl,
-  requestContentApproval, updateContentItem,
+  cancelContentItem, ContentRefused, getContentAsset, getContentItem, IMAGE_RENDERABLE_STATUSES, planContentMonth,
+  publicAssetUrl, requestContentApproval, updateContentItem,
 } from "@launchos/core";
-import type { QueueName } from "@launchos/core/queue";
+import { QUEUE, type QueueName } from "@launchos/core/queue";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
@@ -12,6 +12,7 @@ import { requirePermission } from "@/lib/permissions";
 import { londonInputToDate } from "./schedule-input";
 import {
   type ActionResult, CancelItemSchema, EditItemSchema, firstIssue, ItemIdSchema, MonthActionSchema, PickImageSchema,
+  RenderImageSchema, type RenderImageActionResult,
 } from "./schemas";
 
 /**
@@ -27,8 +28,12 @@ function value(formData: FormData, name: string): string | undefined {
   return typeof raw === "string" ? raw : undefined;
 }
 
-/** A refusal is a sentence written for the operator; anything else is ours to log. */
-function failed(error: unknown, fallback: string): ActionResult {
+/**
+ * A refusal is a sentence written for the operator; anything else is ours to
+ * log. Typed as the failure alone, not `ActionResult`, so it also satisfies
+ * the actions whose success carries more than an id.
+ */
+function failed(error: unknown, fallback: string): { status: "error"; message: string } {
   if (error instanceof ContentRefused) return { status: "error", message: error.message };
   console.error(fallback, error);
   return { status: "error", message: error instanceof Error ? error.message : fallback };
@@ -171,6 +176,70 @@ export async function pickContentImageAction(values: { itemId: string; assetId: 
     return { status: "ok", id: item.id };
   } catch (error) {
     return failed(error, "Could not set the image");
+  }
+}
+
+/**
+ * Asks for the post's picture — a branded graphic, or a generated photograph
+ * when the client has opted in and there is budget left.
+ *
+ * Sent to the worker rather than drawn here. Rendering a template is Satori
+ * and Sharp, and core resolves its font out of its own `node_modules`
+ * (`@fontsource/geist-sans`), which pnpm does not hoist and Next's
+ * `transpilePackages` bundle cannot reach — a render attempted in this process
+ * fails at the first font read. The worker resolves it normally, so the queue
+ * is not an optimisation here, it is where the work can actually happen.
+ *
+ * Nothing this queues leaves the building: the picture is written to our own
+ * storage volume and the `content_publish` approval is still the only outward
+ * gate. The bound on the button is spend, which core caps monthly, and the
+ * `render-image:<itemId>` key stops a double-click paying twice while the
+ * first job is still queued.
+ */
+export async function renderContentImageAction(values: {
+  itemId: string;
+  mode: "auto" | "template" | "ai";
+  force?: boolean;
+}): Promise<RenderImageActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  installWebEnqueue();
+  const parsed = RenderImageSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: firstIssue(parsed.error, "Choose how to draw the image") };
+  const v = parsed.data;
+
+  try {
+    // Read the item first: an id from another organisation is "not found"
+    // here, before a job is queued, and a post whose picture is settled says
+    // so in a sentence rather than as a silent no-op three seconds later.
+    const item = await getContentItem(getDb(), session.organisationId, { itemId: v.itemId });
+    if (!item) return { status: "error", message: "That post could not be found" };
+    if (!IMAGE_RENDERABLE_STATUSES.includes(item.status)) {
+      return { status: "error", message: `A ${item.status.replaceAll("_", " ")} post cannot have its picture changed` };
+    }
+
+    const queued = await sendJob(
+      QUEUE.contentRenderImage,
+      { organisationId: session.organisationId, itemId: v.itemId, mode: v.mode, force: v.force },
+      // The worker spells this key in `renderImageKey`; it is repeated rather
+      // than imported because nothing in `apps/*` may import from `apps/*`.
+      { singletonKey: `render-image:${v.itemId}` },
+    );
+    // `null` is pg-boss telling us an identical job is already queued, which
+    // for this button is the honest answer rather than a failure.
+    if (queued === null) return { status: "ok", message: "That picture is already being drawn." };
+    return { status: "ok", message: "Drawing the picture now — it appears here in a few seconds." };
+  } catch (error) {
+    if (error instanceof Error && /queue.*(does not exist|not found)/i.test(error.message)) {
+      return {
+        status: "error",
+        message:
+          "Drawing images is not switched on yet: the worker has no content.render-image queue. " +
+          "Pick a photo from the library for now.",
+      };
+    }
+    return failed(error, "Could not ask for the image");
   }
 }
 
