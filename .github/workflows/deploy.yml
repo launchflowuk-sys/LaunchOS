@@ -1,0 +1,91 @@
+# Deploy main to Coolify.
+#
+# Coolify is configured correctly — auto deploy is on, the source is a GitHub
+# App and the branch is main — but the push that should trigger it never
+# arrives: on 6 Sep 2026 a push to main at 17:45 UTC produced no deployment,
+# and the commit only shipped when someone pressed Redeploy at 19:00. Repairing
+# that needs the GitHub App's webhook configuration, which is not reachable
+# through the API this instance exposes.
+#
+# So the push tells Coolify itself, from a place we control and can read the
+# logs of. If the App webhook is ever fixed this becomes harmless: Coolify
+# ignores a deploy request for a commit it has already built.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   COOLIFY_API_URL    the instance root, no trailing slash
+#   COOLIFY_API_TOKEN  Coolify → Keys & Tokens → API tokens
+#
+# NOTE: while COOLIFY_API_URL is http:// the token crosses the internet in
+# cleartext on every run. Putting the instance behind HTTPS is the fix; until
+# then treat that token as low-trust and rotate it on a schedule.
+
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      resource:
+        description: Which resource to deploy
+        type: choice
+        options: [both, web, worker]
+        default: both
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Coolify deployment
+        env:
+          BASE: ${{ secrets.COOLIFY_API_URL }}
+          TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          WEB_UUID: tm9ihp9bjjjeew5g8nzuqqsg
+          WORKER_UUID: n7sb6hq1fnuvfufmvstwrotf
+          WHICH: ${{ github.event.inputs.resource || 'both' }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BASE:-}" ] || [ -z "${TOKEN:-}" ]; then
+            echo "::error::COOLIFY_API_URL and COOLIFY_API_TOKEN must both be set as repository secrets."
+            exit 1
+          fi
+
+          case "$WHICH" in
+            web)    UUIDS="$WEB_UUID" ;;
+            worker) UUIDS="$WORKER_UUID" ;;
+            *)      UUIDS="$WEB_UUID,$WORKER_UUID" ;;
+          esac
+
+          echo "Deploying $WHICH for ${GITHUB_SHA:0:8}"
+
+          # --fail-with-body so a 4xx/5xx ends the job instead of quietly
+          # reporting success, which is the failure mode this workflow exists
+          # to remove.
+          http=$(curl -sS --fail-with-body \
+            --max-time 60 \
+            -w '\n%{http_code}' \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H 'Accept: application/json' \
+            "${BASE%/}/api/v1/deploy?uuid=${UUIDS}&force=false") || {
+              echo "::error::Coolify refused the deploy request."
+              echo "$http"
+              exit 1
+            }
+
+          body=$(printf '%s' "$http" | sed '$d')
+          code=$(printf '%s' "$http" | tail -n1)
+          echo "HTTP $code"
+          echo "$body"
+
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::Unexpected status $code from Coolify."
+            exit 1
+          fi
+
+          echo "Queued. Follow the build in Coolify; this step only requests it."
