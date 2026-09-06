@@ -34,7 +34,14 @@ export type DomainEvent =
   | { name: "push.requested"; organisationId: string; notificationId: string; userId: string }
   // A new enquiry with an email address. The worker starts the Lead Qualifier
   // on it; the acknowledgement email is already queued by `createLead`.
-  | { name: "lead.created"; organisationId: string; leadId: string };
+  | { name: "lead.created"; organisationId: string; leadId: string }
+  // A promise on a build was kept. The worker emails the client the same day —
+  // a courtesy note, not an approval-gated one, for the same reason the meeting
+  // no-show note is: it says only what already happened.
+  | { name: "project.milestone_reached"; organisationId: string; projectId: string; milestoneId: string }
+  // Shoji signed a build off. What follows is the Case Study Writer's draft,
+  // and the launch screenshots the worker takes with the PDF engine's browser.
+  | { name: "project.delivered"; organisationId: string; projectId: string };
 
 export type EnqueueFn = (event: DomainEvent) => Promise<void>;
 let enqueue: EnqueueFn = async () => {}; // no-op until the worker or web sets one

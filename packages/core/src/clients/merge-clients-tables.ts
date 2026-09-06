@@ -65,6 +65,17 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // their own — they hang off the proposal — so they need no spec here and
   // follow it across without being touched.
   { key: "proposals", table: schema.proposals },
+  // A build moves whole, spine and promises with it. None of the three
+  // collide: a project is never unique per client, a phase is unique per
+  // project and the project id does not change, and a milestone is unique per
+  // nothing. `client_id` is on the phases and milestones only so that they
+  // travel with their client rather than being orphaned on the archived one.
+  { key: "projects", table: schema.projects },
+  { key: "project_phases", table: schema.projectPhases },
+  { key: "project_milestones", table: schema.projectMilestones },
+  // A case study's slug is unique per organisation, not per client, so two
+  // clients' stories can never collide on the way across.
+  { key: "case_studies", table: schema.caseStudies },
   { key: "content_reports", table: schema.contentReports, conflict: sql`k.period_key = t.period_key`, onConflict: "leave" },
   { key: "client_reports", table: schema.clientReports, conflict: sql`k.period_start = t.period_start`, onConflict: "leave" },
   { key: "client_users", table: schema.clientUsers, conflict: sql`k.user_id = t.user_id`, onConflict: "drop" },

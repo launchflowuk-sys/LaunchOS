@@ -22,3 +22,5 @@ export * from "./leads.js";
 export * from "./meetings.js";
 export * from "./documents.js";
 export * from "./proposals.js";
+export * from "./projects.js";
+export * from "./case-studies.js";

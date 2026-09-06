@@ -492,3 +492,48 @@ export {
 } from "./proposals/approval.js";
 export type { ApplyProposalSendDecisionResult } from "./proposals/approval.js";
 export { PROPOSAL_NOTICE_KIND } from "./support/courtesy-notice.js";
+export {
+  projectProgress, describeProgress, MAX_UNDELIVERED_PERCENT,
+} from "./projects/progress.js";
+export type { ProjectProgress, ProjectProgressInput, ProgressPhase, ProgressMilestone } from "./projects/progress.js";
+export {
+  ProjectRefused, STANDARD_PHASES, DateKeySchema,
+  PROJECT_TARGET_TYPE, PHASE_TARGET_TYPE, MILESTONE_TARGET_TYPE,
+  PROJECT_OPEN_STATUSES, PROJECT_CLOSED_STATUSES, PROJECT_PHASE_KEYS,
+  getProjectRow, requireProject, getProjectForProposal,
+  listProjectPhases, listProjectMilestones, requirePhaseOfProject, requireMilestoneOfProject,
+} from "./projects/shared.js";
+export type { ProjectRow, ProjectPhaseRow, ProjectMilestoneRow } from "./projects/shared.js";
+export {
+  createProject, updateProject, listProjects,
+  CreateProjectInput, UpdateProjectInput, ListProjectsInput, ProjectPhaseInput, ProjectMilestoneInput,
+  MAX_PROPOSAL_MILESTONES,
+} from "./projects/crud.js";
+export type { CreateProjectResult } from "./projects/crud.js";
+export { getProject, UNPHASED } from "./projects/get-project.js";
+export type { ProjectDetail, PhaseTaskCounts } from "./projects/get-project.js";
+export { setPhaseStatus, SetPhaseStatusInput } from "./projects/phases.js";
+export {
+  addMilestone, updateMilestone, reachMilestone,
+  AddMilestoneInput, UpdateMilestoneInput, ReachMilestoneInput,
+} from "./projects/milestones.js";
+export type { ReachMilestoneResult } from "./projects/milestones.js";
+export { deliverProject, DeliverProjectInput, PROJECT_DELIVERED_NOTIFICATION_KIND } from "./projects/deliver.js";
+export type { DeliverProjectResult } from "./projects/deliver.js";
+export {
+  CaseStudyRefused, CASE_STUDY_TARGET_TYPE, CASE_STUDY_PUBLIC_PATH, CASE_STUDY_PUBLIC_STATUSES,
+  CaseStudyBriefInput, CaseStudyScreenshotsInput, CaseStudyPoweredByInput,
+  getCaseStudy, requireCaseStudy, getCaseStudyBySlug, getCaseStudyForProject, uniqueCaseStudySlug,
+} from "./case-studies/shared.js";
+export type { CaseStudyRow } from "./case-studies/shared.js";
+export {
+  createCaseStudy, updateCaseStudy, listCaseStudies, reorderCaseStudies, ensureCaseStudyForProject,
+  CreateCaseStudyInput, UpdateCaseStudyInput, ListCaseStudiesInput, ReorderCaseStudiesInput,
+  EnsureCaseStudyForProjectInput,
+} from "./case-studies/crud.js";
+export { PORTFOLIO, PORTFOLIO_CLIENTS, PORTFOLIO_PRODUCTS, PORTFOLIO_SLUGS, CABIO } from "./case-studies/portfolio.js";
+export type { CaseStudySeed } from "./case-studies/portfolio.js";
+export { toWorkItem, toProduct, toCaseStudySeed } from "./case-studies/portfolio-view.js";
+export type { PortfolioWorkItem, PortfolioProduct, PortfolioStatus } from "./case-studies/portfolio-view.js";
+export { seedCaseStudies, SeedCaseStudiesInput } from "./case-studies/seed.js";
+export type { SeedCaseStudiesResult } from "./case-studies/seed.js";

@@ -176,6 +176,13 @@
       "when": 1788683844627,
       "tag": "0024_proposal_send_approval",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788685724368,
+      "tag": "0025_projects_case_studies",
+      "breakpoints": true
     }
   ]
 }

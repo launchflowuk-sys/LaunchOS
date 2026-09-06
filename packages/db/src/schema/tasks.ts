@@ -4,6 +4,7 @@ import { tenantColumns } from "./_shared.js";
 import { user } from "./auth.js";
 import { clients } from "./clients.js";
 import { taskKindEnum, taskPhaseEnum, taskTemplates } from "./packages.js";
+import { projectPhases, projects } from "./projects.js";
 import { sites } from "./sites.js";
 import { actorKindEnum, tickets } from "./support.js";
 
@@ -64,6 +65,15 @@ export const tasks = pgTable("tasks", {
   checklist: jsonb("checklist").$type<ChecklistItem[]>().default([]).notNull(),
   evidence: jsonb("evidence").$type<TaskEvidence>().default(TASK_EVIDENCE_DEFAULT).notNull(),
   clientVisible: boolean("client_visible").default(true).notNull(),
+  /**
+   * The build this task belongs to, and which step of it — both nullable, and
+   * both added rather than replacing anything. Most tasks have no project:
+   * onboarding, recurring care and anything raised from a support case are
+   * work for a client, not work on a build. A task that does belong to one
+   * shows on the project's spine and is counted by `getProject`.
+   */
+  projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+  phaseId: uuid("phase_id").references(() => projectPhases.id, { onDelete: "set null" }),
 }, (t) => [
   // Onboarding generation is idempotent by (client, template): re-running the
   // job after a package change tops up what is missing instead of duplicating.
@@ -75,6 +85,9 @@ export const tasks = pgTable("tasks", {
   uniqueIndex("tasks_client_recurrence_key").on(t.clientId, t.recurrenceKey),
   index("tasks_org_status_due").on(t.organisationId, t.status, t.dueAt),
   index("tasks_org_client_phase").on(t.organisationId, t.clientId, t.phase),
+  // The project page counts its tasks by phase in one grouped read; without
+  // this it is a sequential scan every time a client opens their progress page.
+  index("tasks_project_phase").on(t.projectId, t.phaseId),
 ]);
 
 export const taskComments = pgTable("task_comments", {
