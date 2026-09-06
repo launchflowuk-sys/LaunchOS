@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { createContentAsset, getContentItem, publicAssetUrl, requestContentApproval } from "@launchos/core";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -190,6 +190,8 @@ describe("content_list_assets and imageUrl on content_save_draft", () => {
 
       expect(await contentListAssets.execute({ clientId: mine.clientId }, ctx)).toEqual({ assets: [], count: 0 });
       const older = await createContentAsset(db, mine.orgId, { clientId: mine.clientId, bytes: png, mime: "image/png", originalName: "cab.png", alt: "A cab at Stansted" }, storageEnv());
+      // Both rows are written inside one transaction and share now(); date the first one back so "newest first" is testable.
+      await db.update(schema.contentAssets).set({ createdAt: sql`${schema.contentAssets.createdAt} - interval '1 second'` }).where(eq(schema.contentAssets.id, older.id));
       const newer = await createContentAsset(db, mine.orgId, { clientId: mine.clientId, bytes: png, mime: "image/jpeg", originalName: "driver.jpg", source: "client", actorKind: "client" }, storageEnv());
       await createContentAsset(db, theirs.orgId, { clientId: theirs.clientId, bytes: png, mime: "image/png", originalName: "not-mine.png" }, storageEnv());
 
@@ -198,7 +200,7 @@ describe("content_list_assets and imageUrl on content_save_draft", () => {
       expect(out.assets.map((a) => a.id)).toEqual([newer.id, older.id]);
       expect(out.assets[1]).toEqual({
         id: older.id, url: publicAssetUrl(older.id), alt: "A cab at Stansted", originalName: "cab.png", mime: "image/png",
-        source: "staff", uploadedAt: older.createdAt.toISOString(),
+        source: "staff", uploadedAt: new Date(older.createdAt.getTime() - 1000).toISOString(),
       });
       expect(out.assets[0]).toMatchObject({ source: "client", alt: null });
       // The other organisation's client, through this organisation's context: nothing, not a leak.
