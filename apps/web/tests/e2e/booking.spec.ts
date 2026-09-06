@@ -71,7 +71,12 @@ test("a stranger books a call on /book, lands on /book/done with the join link, 
 
   await page.goto("/book");
   await expect(page.getByRole("heading", { level: 1, name: "Book a call" })).toBeVisible({ timeout: COLD_COMPILE });
-  await expect(page.getByText("Powered by LaunchFlow")).toBeVisible();
+  // The site's own footer, not the app's "Powered by LaunchFlow" strip. The
+  // M2 redesign gave /book and /signup the full marketing shell so a visitor
+  // arriving from an email sees the same header and footer as the site, and on
+  // LaunchFlow's own pages the credit that belongs there is the copyright.
+  // "Powered by LaunchFlow" is what a *client's* app carries.
+  await expect(page.getByText(`© ${new Date().getFullYear()} LaunchFlow`)).toBeVisible();
 
   // The strip: at least one open day, and a time under it in the browser's zone.
   const days = page.getByRole("listbox", { name: "Day" }).getByRole("option");

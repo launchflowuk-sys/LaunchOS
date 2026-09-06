@@ -3,6 +3,7 @@ import { AttributionCapture } from "@/components/attribution-capture";
 import { appHost, marketingHost } from "@/lib/env";
 import { marketingLinks } from "@/lib/marketing/links";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marketing/site";
+import { MenuDismiss } from "./_components/menu-dismiss";
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
 import "./marketing.css";
@@ -41,6 +42,11 @@ export default async function MarketingLayout({ children }: LayoutProps<"/site">
       {/* The campaign cookie: written once, on the first page a paid or
           referred visitor lands on, and read back by the contact form. */}
       <AttributionCapture ownHosts={[marketingHost(), appHost()]} />
+      {/* The mobile menu is a native `<details>`, so it opens without a
+          script — but `open` is DOM state and this layout survives a
+          client-side navigation, which left the menu covering the page it had
+          just opened. */}
+      <MenuDismiss />
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />

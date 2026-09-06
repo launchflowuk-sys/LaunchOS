@@ -305,3 +305,49 @@ test("clicking home → work → a project → back to work leaves every section
     )
     .toEqual([]);
 });
+
+/**
+ * The mobile menu closes when you use it.
+ *
+ * It is a native `<details>` so it works with no script, but `open` is DOM
+ * state and the header lives in the layout, which React keeps across a
+ * client-side navigation. Tapping a link navigated the page underneath and
+ * left the menu sitting on top of it, so you had to close it by hand to read
+ * what you had just asked for.
+ *
+ * Both closings are checked, because they cover different journeys: the tap
+ * itself, and the pathname changing. The second one matters for the link to
+ * the page you are already on, which changes no pathname at all.
+ */
+test("the mobile menu closes when a link inside it is tapped", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: MOBILE });
+  const page = await context.newPage();
+  try {
+    await page.goto("/site");
+    await expect(page.getByRole("heading", { level: 1, name: HOME_H1 })).toBeVisible({ timeout: COLD_COMPILE });
+
+    // A `<summary>` is not a button to the accessibility tree, so it is
+    // addressed as the element it is.
+    const menu = page.locator("details.site-menu");
+    const trigger = menu.locator("> summary");
+
+    await trigger.click();
+    await expect(menu).toHaveAttribute("open", "", { timeout: COLD_COMPILE });
+
+    await menu.getByRole("link", { name: "Work" }).click();
+    await expect(page).toHaveURL(/\/site\/work$/);
+    await expect(menu).not.toHaveAttribute("open", "");
+
+    // And the page under it is actually readable, which is the point.
+    await expect(page.locator('a[href^="/site/work/"]').first()).toHaveCSS("opacity", "1", { timeout: COLD_COMPILE });
+
+    // Re-opening still works, and the link to the page we are already on
+    // closes it too — that one changes no pathname, so only the tap can.
+    await trigger.click();
+    await expect(menu).toHaveAttribute("open", "");
+    await menu.getByRole("link", { name: "Work" }).click();
+    await expect(menu).not.toHaveAttribute("open", "");
+  } finally {
+    await context.close();
+  }
+});
