@@ -4,12 +4,13 @@ import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
+import { ResetTwoFactorDialog } from "@/components/two-factor/reset-two-factor-dialog";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
-import { deactivateMemberAction } from "./actions";
+import { deactivateMemberAction, resetMemberTwoFactorAction } from "./actions";
 import { AddMemberDialog } from "./add-member-dialog";
 import { PermissionsForm } from "./permissions-form";
 import { ReissuePasswordDialog } from "./reissue-password-dialog";
@@ -21,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 type Member = Awaited<ReturnType<typeof listMembers>>[number];
 
-function columns(isOwner: boolean, currentUserId: string): readonly DataListColumn<Member>[] {
+function columns(isOwner: boolean, currentUserId: string, enforced: boolean): readonly DataListColumn<Member>[] {
   return [
     {
       key: "member",
@@ -63,6 +64,19 @@ function columns(isOwner: boolean, currentUserId: string): readonly DataListColu
           {isOwner && member.status === "active" && member.initialPasswordSetAt === null ? (
             <ReissuePasswordDialog memberId={member.id} name={member.displayName ?? member.name} />
           ) : null}
+          {/* Only where there is something to take off, and never on your own
+              row: your own second factor comes off on /account, with a session
+              cookie this action cannot rotate. Suspended members keep the
+              control — a lost authenticator still needs clearing before they
+              are let back in. */}
+          {isOwner && member.twoFactorEnabled && member.userId !== currentUserId ? (
+            <ResetTwoFactorDialog
+              userId={member.userId}
+              name={member.displayName ?? member.name}
+              action={resetMemberTwoFactorAction}
+              enforced={enforced}
+            />
+          ) : null}
           {isOwner && member.status === "active" && member.userId !== currentUserId ? (
             <form action={deactivateMemberAction} className="max-sm:w-full">
               <input type="hidden" name="memberId" value={member.id} />
@@ -98,7 +112,7 @@ export default async function TeamPage() {
 
       <DataList<Member>
         rows={members}
-        columns={columns(isOwner, session.userId)}
+        columns={columns(isOwner, session.userId, session.twoFactorRequired)}
         getRowKey={(member) => member.id}
         caption="Team members"
         empty={<EmptyState icon={UsersRound}>No members yet.</EmptyState>}

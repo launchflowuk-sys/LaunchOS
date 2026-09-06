@@ -1,6 +1,7 @@
 "use server";
 
-import { createClientUser, setClientUserStatus } from "@launchos/core";
+import { createEmailAdapter } from "@launchos/channels";
+import { createClientUser, resetTwoFactor, setClientUserStatus, TwoFactorResetRefused } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -103,5 +104,62 @@ export async function setPortalUserStatusAction(formData: FormData): Promise<Act
     // anything he can act on, so it goes to the log rather than the toast.
     console.error("setPortalUserStatusAction failed", error);
     return { status: "error", message: "That portal account could not be updated." };
+  }
+}
+
+export type ResetTwoFactorState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "done"; email: string; emailed: boolean };
+
+const ResetTwoFactorFormInput = z.object({
+  /** The `user.id`, not the `client_users` row: a second factor belongs to the account. */
+  userId: z.string().min(1),
+  password: z.string().min(1, "Enter your password."),
+});
+
+/**
+ * An owner takes a portal user's second factor off, after re-typing their own
+ * password. Clients are never *required* to hold one, so this is purely the
+ * way back for somebody who set one up and then lost both their phone and
+ * their backup codes — until now, three `delete` statements against production.
+ *
+ * `clientId` is bound by the screen rather than posted, so the path this
+ * revalidates can never come from the browser. The service does the real
+ * authorisation: it refuses a staff caller, an owner of another organisation,
+ * and a `user.id` that belongs to no account of this one, so a guessed id
+ * cannot reach across a tenant boundary.
+ */
+export async function resetPortalUserTwoFactorAction(
+  clientId: string,
+  _prev: ResetTwoFactorState,
+  formData: FormData,
+): Promise<ResetTwoFactorState> {
+  // Server Actions accept direct POSTs: authorise before reading the form.
+  const session = await requireAdmin();
+  if (session.role !== "owner") {
+    return { status: "error", message: "Only an owner can reset somebody else's two-factor." };
+  }
+
+  const parsed = ResetTwoFactorFormInput.safeParse({
+    userId: formData.get("userId"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the form." };
+
+  try {
+    const result = await resetTwoFactor(
+      getDb(),
+      session.organisationId,
+      { targetUserId: parsed.data.userId, actorId: session.userId, actorPassword: parsed.data.password },
+      { email: createEmailAdapter(process.env) },
+    );
+    revalidatePath(`/clients/${clientId}/portal-users`);
+    return { status: "done", email: result.email, emailed: result.emailed };
+  } catch (error) {
+    // Every refusal is written to be read by the person who tripped it.
+    if (error instanceof TwoFactorResetRefused) return { status: "error", message: error.message };
+    console.error("resetPortalUserTwoFactorAction failed", error);
+    return { status: "error", message: "That account's two-factor could not be reset." };
   }
 }
