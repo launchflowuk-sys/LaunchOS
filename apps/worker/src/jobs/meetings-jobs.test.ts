@@ -72,8 +72,8 @@ describe("lead.created dispatch", () => {
 
 describe("meeting jobs", () => {
   it("registers two workers and two London crons", async () => {
-    const work = vi.fn(async () => "w");
-    const schedule = vi.fn(async () => undefined);
+    const work = vi.fn<(...args: unknown[]) => Promise<string>>(async () => "w");
+    const schedule = vi.fn<(...args: unknown[]) => Promise<undefined>>(async () => undefined);
     const boss = { work, schedule, send: vi.fn() } as unknown as Parameters<typeof registerMeetingJobs>[0]["boss"];
     await registerMeetingJobs({ db: {} as never, boss, env, logger: quiet });
     expect(work.mock.calls.map((c) => c[0])).toEqual(["meetings.remind", "meetings.follow-up"]);
