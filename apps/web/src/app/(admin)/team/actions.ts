@@ -1,7 +1,9 @@
 "use server";
 
+import { createEmailAdapter } from "@launchos/channels";
 import {
-  createMember, deactivateMember, PERMISSION_KEYS, reissueOneTimePassword, setMemberPermissions,
+  createMember, deactivateMember, PERMISSION_KEYS, reissueOneTimePassword, resetTwoFactor,
+  setMemberPermissions, TwoFactorResetRefused,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -102,6 +104,61 @@ export async function reissuePasswordAction(
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not re-issue the password" };
+  }
+}
+
+export type ResetTwoFactorState =
+  | { status: "idle" }
+  | { status: "error"; message: string }
+  | { status: "done"; email: string; emailed: boolean };
+
+const ResetTwoFactorFormInput = z.object({
+  /** The `user.id`, not the membership id: a second factor belongs to the account. */
+  userId: z.string().min(1),
+  password: z.string().min(1, "Enter your password."),
+});
+
+/**
+ * An owner takes a team member's second factor off, after re-typing their own
+ * password. The recovery path for a lost phone and lost backup codes, which
+ * two-factor otherwise makes unrecoverable without SQL.
+ *
+ * The owner check here is belt to the service's braces: `resetTwoFactor`
+ * asserts it for itself and refuses everything a screen might wave through —
+ * a staff member, an owner of another organisation, a target outside this one,
+ * a wrong password, resetting yourself. Its refusals are written to be read by
+ * the person who tripped them, so they are shown verbatim; anything else is a
+ * bug and goes to the log.
+ */
+export async function resetMemberTwoFactorAction(
+  _prev: ResetTwoFactorState,
+  formData: FormData,
+): Promise<ResetTwoFactorState> {
+  // Server Actions accept direct POSTs: authorise before reading the form.
+  const session = await requireAdmin();
+  if (session.role !== "owner") {
+    return { status: "error", message: "Only an owner can reset somebody else's two-factor." };
+  }
+
+  const parsed = ResetTwoFactorFormInput.safeParse({
+    userId: formData.get("userId"),
+    password: formData.get("password"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Check the form." };
+
+  try {
+    const result = await resetTwoFactor(
+      getDb(),
+      session.organisationId,
+      { targetUserId: parsed.data.userId, actorId: session.userId, actorPassword: parsed.data.password },
+      { email: createEmailAdapter(process.env) },
+    );
+    revalidatePath("/team");
+    return { status: "done", email: result.email, emailed: result.emailed };
+  } catch (error) {
+    if (error instanceof TwoFactorResetRefused) return { status: "error", message: error.message };
+    console.error("resetMemberTwoFactorAction failed", error);
+    return { status: "error", message: "That account's two-factor could not be reset." };
   }
 }
 

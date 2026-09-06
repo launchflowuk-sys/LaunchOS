@@ -16,6 +16,8 @@ export type MemberRow = {
   status: "active" | "invited" | "suspended";
   initialPasswordSetAt: Date | null;
   createdAt: Date;
+  /** Whether this member's account holds a second factor. Drives the reset control. */
+  twoFactorEnabled: boolean;
   /** What the member may do, resolved: an owner always has all five. */
   permissions: MemberPermissions;
 };
@@ -34,6 +36,7 @@ export async function listMembers(db: Db, organisationId: string): Promise<Membe
       status: schema.organisationMembers.status,
       initialPasswordSetAt: schema.organisationMembers.initialPasswordSetAt,
       createdAt: schema.organisationMembers.createdAt,
+      twoFactorEnabled: schema.user.twoFactorEnabled,
       stored: schema.organisationMembers.permissions,
     })
     .from(schema.organisationMembers)

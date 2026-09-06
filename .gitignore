@@ -13,11 +13,22 @@ Thumbs.db
 playwright-report/
 test-results/
 *.log
-.claude/
+# Keep the session safety net (hooks + checkpoint wiring) in the repo, so a
+# fresh clone is protected too. Everything else Claude writes here is local.
+.claude/*
+!.claude/settings.json
+!.claude/launch.json
 .superpowers/
 
 # The local STORAGE_DIR. Unset, `storageRoot` falls back to ./storage relative
 # to whichever process is running, so a dev worker drops client attachments,
 # post images and rendered documents inside the repo. In production this is a
 # mounted volume; here it is scratch, and none of it belongs in git.
-storage/
+#
+# Anchored to where a process actually writes. A bare `storage/` matched at any
+# depth, which also swallowed source directories such as
+# packages/channels/src/storage/ — a new file there was silently invisible to
+# git status and would never have been committed.
+/storage/
+/apps/*/storage/
+/packages/*/storage/
