@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, gte, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
+import { type ClientPackagePressure, packageUsagePressure } from "../billing/package-usage.js";
 import { leadsAwaitingReply } from "../leads/leads.js";
 import { CLIENT_REVIEW_STALE_DAYS, staleClientReviews } from "../projects/client-review.js";
 import { FINISHED_STATUSES } from "../tasks/update-task-status.js";
@@ -75,6 +76,23 @@ export interface OpsMetricsSnapshot {
     clientReviewsUnanswered: number;
     /** Longest wait among them, in whole days. Null when there are none. */
     oldestClientReviewDays: number | null;
+  };
+  /**
+   * Renewal and upsell pressure: who has used up the package they pay for
+   * this calendar month, measured in Europe/London rather than over the
+   * brief's window because an allowance is monthly.
+   *
+   * This is a prompt for a conversation and never a message to a client —
+   * see `packages/core/src/billing/package-usage.ts` for why nothing in
+   * LaunchOS emails anybody about their limits.
+   */
+  packages: {
+    /** Clients past at least one allowance, or doing work the package never included. */
+    overLimit: number;
+    /** Clients close to an allowance but past none. `PACKAGE_ALLOWANCE_NEAR_RATIO` is what "close" means. */
+    nearLimit: number;
+    /** Both sets, over first and hardest pressed first, with the client and the allowances behind each. */
+    clients: ClientPackagePressure[];
   };
 }
 
@@ -203,7 +221,7 @@ async function teamMetrics(db: Db, org: string, from: Date, now: Date): Promise<
 export async function opsMetricsSnapshot(db: Db, organisationId: string, input: OpsMetricsInput = {}): Promise<OpsMetricsSnapshot> {
   const v = OpsMetricsInput.parse(input);
   const from = new Date(v.now.getTime() - v.hours * HOUR_MS);
-  const [cases, tasks, incidents, approvals, invoices, content, agents, team, waiting] = await Promise.all([
+  const [cases, tasks, incidents, approvals, invoices, content, agents, team, waiting, pressure] = await Promise.all([
     caseMetrics(db, organisationId, from, v.now),
     taskMetrics(db, organisationId, from, v.now),
     incidentMetrics(db, organisationId, from),
@@ -213,6 +231,7 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
     agentMetrics(db, organisationId, from),
     teamMetrics(db, organisationId, from, v.now),
     leadsAwaitingReply(db, organisationId, { hours: 24, now: v.now, limit: 200 }),
+    packageUsagePressure(db, organisationId, { now: v.now }),
   ]);
   const stale = await staleClientReviews(db, organisationId, { now: v.now, days: CLIENT_REVIEW_STALE_DAYS, limit: 50 });
   return {
@@ -222,6 +241,11 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
     projects: {
       clientReviewsUnanswered: stale.length,
       oldestClientReviewDays: stale.length === 0 ? null : Math.max(...stale.map((review) => review.daysWaiting)),
+    },
+    packages: {
+      overLimit: pressure.filter((client) => client.standing === "over").length,
+      nearLimit: pressure.filter((client) => client.standing === "near").length,
+      clients: pressure,
     },
   };
 }
