@@ -669,3 +669,12 @@ export {
 export type { CampaignIngestResult, CampaignSpend, CampaignSpendTotals } from "./ads/campaigns.js";
 export { costPerLeadByCampaign, normaliseCampaign, CostPerLeadInput } from "./leads/cost-per-lead.js";
 export type { CostPerLeadReport, CampaignCostPerLead } from "./leads/cost-per-lead.js";
+
+// The agent ledger, read-only. Until now a run could only be opened from
+// something it produced, so a run that produced nothing — the failed one —
+// had no way in.
+export {
+  listAgentRuns, listAgentKeys, agentRunHealth,
+  ListAgentRunsInput, AGENT_RUN_STATUSES, AGENT_RUN_TRIGGERS,
+} from "./agent-runs/list-runs.js";
+export type { AgentRunRow, AgentRunSummary, ListAgentRunsResult } from "./agent-runs/list-runs.js";

@@ -8,6 +8,7 @@ import {
   Clock,
   CreditCard,
   FileSignature,
+  Footprints,
   Globe,
   HardHat,
   HeartPulse,
@@ -132,6 +133,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { label: "Approvals", href: "/approvals", icon: ShieldCheck, permission: "approvals" },
       { label: "Briefs", href: "/briefs", icon: Sunrise },
+      { label: "Agent runs", href: "/agents/runs", icon: Footprints },
       { label: "Agents", href: "/settings/agents", icon: Bot, permission: "settings" },
       { label: "Email", href: "/settings/email", icon: Mail, permission: "settings" },
       { label: "Knowledge Base", href: "/knowledge", icon: BookOpen, permission: "settings" },
