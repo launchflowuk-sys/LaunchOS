@@ -7,6 +7,8 @@ export {
   staffTwoFactorRequired, staffWithoutTwoFactor, setStaffTwoFactorRequired,
   SetStaffTwoFactorRequiredInput, TwoFactorPolicyRefused,
 } from "./security/two-factor-policy.js";
+export { resetTwoFactor, ResetTwoFactorInput, TwoFactorResetRefused } from "./security/reset-two-factor.js";
+export type { ResetTwoFactorDeps, ResetTwoFactorResult } from "./security/reset-two-factor.js";
 export {
   supportEmailDomain,
   supportEmailFor,
@@ -187,6 +189,10 @@ export {
   createSubscription, cancelSubscription, activeSubscriptionForClient,
   CreateSubscriptionServiceInput, CancelSubscriptionInput,
 } from "./billing/subscriptions.js";
+export {
+  packageUsagePressure, PackageUsagePressureInput, PACKAGE_ALLOWANCE_NEAR_RATIO,
+} from "./billing/package-usage.js";
+export type { ClientPackagePressure, PackageAllowanceUsage, PackageStanding } from "./billing/package-usage.js";
 export { nextInvoiceNumber, INVOICE_NUMBER_PREFIX } from "./billing/invoice-number.js";
 export {
   createInvoiceFromSubscription, markInvoiceSent, markInvoicePaid, voidInvoice,
