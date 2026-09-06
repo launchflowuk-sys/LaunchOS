@@ -17,4 +17,6 @@ RUN pnpm --filter @launchos/worker... build
 # the resource as well (docs/DEPLOYMENT.md step 4); this makes the image correct
 # on its own, whatever the resource is missing.
 ENV NODE_ENV=production
+# Health endpoint (WORKER_HEALTH_PORT, default 3001) for the Coolify health check.
+EXPOSE 3001
 CMD ["node", "apps/worker/dist/index.js"]
