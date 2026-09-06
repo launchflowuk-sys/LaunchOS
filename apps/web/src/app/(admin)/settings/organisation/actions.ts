@@ -1,11 +1,11 @@
 "use server";
 
-import { updateOrganisation } from "@launchos/core";
+import { setAssignmentRules, updateOrganisation } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
-import { type ActionResult, readSupplierFields, UpdateOrganisationSchema } from "./schemas";
+import { type ActionResult, AssignmentRulesSchema, readSupplierFields, UpdateOrganisationSchema } from "./schemas";
 
 /**
  * Core validates the shape of the fields with legal weight (the VAT number,
@@ -53,6 +53,32 @@ export async function updateOrganisationAction(formData: FormData): Promise<Acti
     revalidatePath("/settings/organisation");
     // Every printable invoice renders these, so both print views go stale.
     revalidatePath("/invoices", "layout");
+    return { status: "ok" };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+/**
+ * How new support cases and generated tasks find an owner. Gated by
+ * `settings` (not owner-only: a manager with the settings permission may
+ * run the rota). Core merges the two rules into `organisations.metadata`,
+ * leaving the round-robin cursor alone, and audits the change.
+ */
+export async function updateAssignmentRulesAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+
+  const parsed = AssignmentRulesSchema.safeParse({
+    support: formData.get("support"),
+    tasks: formData.get("tasks"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid assignment rules" };
+
+  try {
+    await setAssignmentRules(getDb(), session.organisationId, { rules: parsed.data, actorId: session.userId });
+    revalidatePath("/settings/organisation");
     return { status: "ok" };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };

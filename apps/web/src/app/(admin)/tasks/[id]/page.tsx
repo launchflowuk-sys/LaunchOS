@@ -1,4 +1,4 @@
-import { getClient, getTask, listMembers } from "@launchos/core";
+import { getClient, getTask, listMembers, taskEvidenceStatus } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { Check } from "lucide-react";
 import Link from "next/link";
@@ -19,6 +19,8 @@ import { requireAdmin } from "@/lib/session";
 import { runningEntryFor } from "../../time/running";
 import { assignTaskAction, commentOnTaskAction, setTaskVisibilityAction, toggleChecklistAction } from "../actions";
 import { TaskStatusForm } from "../task-row-status";
+import { EvidencePanel } from "./evidence-panel";
+import { MarkDoneButton } from "./mark-done-button";
 
 export const dynamic = "force-dynamic";
 
@@ -36,11 +38,16 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
   if (!loaded) notFound();
   const { task, comments } = loaded;
 
-  const [client, members, running] = await Promise.all([
+  const [client, members, running, proof] = await Promise.all([
     getClient(getDb(), session.organisationId, task.clientId),
     listMembers(getDb(), session.organisationId),
     runningEntryFor(session),
+    // The template's proof rule, what the task carries, and what is still
+    // missing — one call, and the same check `updateTaskStatus` applies.
+    taskEvidenceStatus(getDb(), session.organisationId, task.id),
   ]);
+  const memberNames = new Map(members.map((m) => [m.userId, m.displayName ?? m.name ?? m.email]));
+  const editable = task.status !== "done" && task.status !== "cancelled";
 
   return (
     <>
@@ -52,6 +59,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
           <div className="flex w-full flex-wrap items-center gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={task.status} />
             <TaskStatusForm taskId={task.id} status={task.status} statuses={STATUSES} />
+            <MarkDoneButton taskId={task.id} status={task.status} satisfied={proof.satisfied} missing={proof.missing} />
             <TimerControls target={{ taskId: task.id }} running={running} />
           </div>
         }
@@ -99,6 +107,21 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
                 ))}
               </ul>
             )}
+          </Section>
+
+          <Section
+            title="Proof of work"
+            description="What shows the job was done: ticked proof items, a link to the delivered work, a screenshot."
+          >
+            <EvidencePanel
+              taskId={task.id}
+              evidence={proof.evidence}
+              rule={proof.rule}
+              satisfied={proof.satisfied}
+              missing={proof.missing}
+              memberNames={memberNames}
+              editable={editable}
+            />
           </Section>
 
           <Section title="Comments">

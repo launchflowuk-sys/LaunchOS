@@ -68,6 +68,7 @@ export default async function TaskTemplatesPage() {
               defaultAssigneeRole: "any",
               sortOrder: 0,
               checklist: [],
+              evidence: { required: false, kinds: [], checklist: [] },
             }}
             enums={ENUMS}
             packages={packageOptions}
@@ -139,6 +140,7 @@ export default async function TaskTemplatesPage() {
                             defaultAssigneeRole: template.defaultAssigneeRole,
                             sortOrder: template.sortOrder,
                             checklist: template.checklist,
+                            evidence: template.evidence,
                           }}
                           enums={ENUMS}
                           packages={packageOptions}

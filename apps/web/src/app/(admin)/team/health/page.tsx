@@ -1,5 +1,12 @@
-import { DEFAULT_FIRST_RESPONSE_HOURS, formatMinutes, type MemberHealth, teamHealth } from "@launchos/core";
-import { AlarmClock, HeartPulse, ListChecks, MessageSquare, Siren } from "lucide-react";
+import {
+  CSAT_LOW_SCORE,
+  csatSummary,
+  DEFAULT_FIRST_RESPONSE_HOURS,
+  formatMinutes,
+  type MemberHealth,
+  teamHealth,
+} from "@launchos/core";
+import { AlarmClock, HeartPulse, ListChecks, MessageSquare, Siren, Star } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
 import { InlineAlert } from "@/components/inline-alert";
@@ -20,7 +27,17 @@ function median(minutes: number | null): string {
   return minutes === null ? "—" : formatMinutes(minutes);
 }
 
-const COLUMNS: readonly DataListColumn<MemberHealth>[] = [
+/** A member's health line with their CSAT over the same window laid alongside. */
+type MemberRow = MemberHealth & { csatAverage: number | null; csatResponses: number };
+
+/** "4.5 (3)" — the mean and how many ratings it rests on; "—" with none. */
+function csatCell(average: number | null, responses: number) {
+  if (average === null) return "—";
+  const text = `${average.toFixed(1)} (${responses})`;
+  return average <= CSAT_LOW_SCORE ? <span className="text-danger-fg">{text}</span> : text;
+}
+
+const COLUMNS: readonly DataListColumn<MemberRow>[] = [
   {
     key: "member",
     header: "Member",
@@ -58,17 +75,27 @@ const COLUMNS: readonly DataListColumn<MemberHealth>[] = [
     className: "font-medium text-foreground",
     cell: (row) => row.hoursClocked.toFixed(1),
   },
+  { key: "csat", header: "CSAT", numeric: true, cell: (row) => csatCell(row.csatAverage, row.csatResponses) },
 ];
 
 export default async function TeamHealthPage() {
   const [session, permissions] = await Promise.all([requireAdmin(), sessionPermissions()]);
-  const health = await teamHealth(getDb(), session.organisationId, { days: WINDOW_DAYS });
+  const [health, csat] = await Promise.all([
+    teamHealth(getDb(), session.organisationId, { days: WINDOW_DAYS }),
+    csatSummary(getDb(), session.organisationId, { days: WINDOW_DAYS }),
+  ]);
+  const csatByMember = new Map(csat.members.map((m) => [m.userId, m]));
+  const withCsat = (m: MemberHealth): MemberRow => ({
+    ...m,
+    csatAverage: csatByMember.get(m.userId)?.average ?? null,
+    csatResponses: csatByMember.get(m.userId)?.responses ?? 0,
+  });
 
   // The owner and anyone with `settings` read the whole team; everyone else
   // reads their own line only — the rail hides the page for them, but a
   // typed URL still lands here.
   const seesTeam = session.role === "owner" || permissions.settings;
-  const members = seesTeam ? health.members : health.members.filter((m) => m.userId === session.userId);
+  const members = (seesTeam ? health.members : health.members.filter((m) => m.userId === session.userId)).map(withCsat);
   const { organisation } = health;
 
   const tiles: readonly StatCardProps[] = [
@@ -106,6 +133,18 @@ export default async function TeamHealthPage() {
       icon: Siren,
       attention: true,
     },
+    {
+      label: "CSAT",
+      value: csat.organisation.average === null ? "—" : csat.organisation.average.toFixed(1),
+      href: "/cases",
+      hint:
+        csat.organisation.invited === 0
+          ? "No resolved case has been asked yet"
+          : `${csat.organisation.responses} of ${csat.organisation.invited} asked replied`,
+      category: "support",
+      icon: Star,
+      attention: csat.organisation.average !== null && csat.organisation.average <= CSAT_LOW_SCORE,
+    },
   ];
 
   const insideSla = organisation.medianFirstResponseMinutes !== null && organisation.medianFirstResponseMinutes <= SLA_MINUTES;
@@ -133,7 +172,7 @@ export default async function TeamHealthPage() {
         </InlineAlert>
       )}
 
-      <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {tiles.map((tile) => (
           <StatCard key={tile.label} {...tile} />
         ))}
@@ -141,7 +180,7 @@ export default async function TeamHealthPage() {
 
       <Section
         title={seesTeam ? "By member" : "You"}
-        description="Cases counted when opened or resolved in the window; overdue tasks are as of now; hours are entries started in the window."
+        description="Cases counted when opened or resolved in the window; overdue tasks are as of now; hours are entries started in the window; CSAT is the mean client score (1–5) on cases rated in the window, with the number of ratings."
       >
         <DataList
           rows={members}

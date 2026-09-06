@@ -25,6 +25,13 @@ export const ReplySchema = z.object({
   body: z.string().trim().min(1, "Write something first").max(8000),
 });
 
+/** "Was this sorted?" — a score out of five and an optional line of comment. */
+export const RateSchema = z.object({
+  ticketId: z.string().uuid(),
+  score: z.coerce.number().int().min(1, "Choose a score").max(5, "Choose a score"),
+  comment: z.string().trim().max(2000, "Keep the comment under 2000 characters").optional(),
+});
+
 /** The first Zod issue, which is the one the field the client just touched. */
 export function firstIssue(error: z.ZodError, fallback: string): string {
   return error.issues[0]?.message ?? fallback;

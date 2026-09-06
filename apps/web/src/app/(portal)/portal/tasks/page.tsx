@@ -1,6 +1,8 @@
 import { listTasks, type TaskListRow } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { ListChecks } from "lucide-react";
+import type { TaskEvidenceChecklistItem } from "@launchos/db/schema";
+import { and, eq, inArray } from "drizzle-orm";
+import { Check, ListChecks } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PortalProgress } from "@/components/portal/portal-progress";
@@ -26,6 +28,45 @@ function progressOf(tasks: readonly TaskListRow[]): { done: number; total: numbe
 
 type TaskRow = { id: string; title: string; status: string; dueAt: Date | null };
 
+/**
+ * The proof checklists staff tick on a task, shown to the client read-only:
+ * this is the "how do I know it was actually done?" answer for somebody who
+ * cannot see the work. Only tasks that carry a checklist appear; links and
+ * screenshots stay internal (they can point at staging or at admin screens).
+ */
+function ProofChecklists({ items }: { items: readonly { id: string; title: string; checklist: readonly TaskEvidenceChecklistItem[] }[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-4 rounded-xl border bg-card p-4 sm:p-5">
+      <p className="text-sm font-semibold">Proof of work</p>
+      <ul className="mt-3 grid gap-4">
+        {items.map((task) => (
+          <li key={task.id}>
+            <p className="text-sm">{task.title}</p>
+            <ul className="mt-1.5 grid gap-1.5">
+              {task.checklist.map((item, index) => (
+                <li key={`${index}-${item.item}`} className="flex items-center gap-2 text-sm">
+                  <span
+                    aria-label={item.done ? "Done" : "Not yet"}
+                    className={
+                      item.done
+                        ? "flex size-4 shrink-0 items-center justify-center rounded-[4px] bg-success-fg text-white"
+                        : "flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input"
+                    }
+                  >
+                    {item.done ? <Check aria-hidden strokeWidth={3} className="size-3" /> : null}
+                  </span>
+                  <span className={item.done ? "text-muted-foreground" : ""}>{item.item}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const COLUMNS: readonly DataListColumn<TaskRow>[] = [
   { key: "title", header: "Job", primary: true, cell: (row) => row.title },
   { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
@@ -42,6 +83,29 @@ export default async function PortalTasksPage() {
     clientVisible: true,
     limit: 500,
   });
+
+  // The list row carries no evidence; the checklists come from the same
+  // rows, scoped again by organisation, client and visibility.
+  const evidenceRows =
+    tasks.length === 0
+      ? []
+      : await getDb()
+          .select({ id: schema.tasks.id, evidence: schema.tasks.evidence })
+          .from(schema.tasks)
+          .where(
+            and(
+              eq(schema.tasks.organisationId, session.organisationId),
+              eq(schema.tasks.clientId, session.clientId),
+              eq(schema.tasks.clientVisible, true),
+              inArray(
+                schema.tasks.id,
+                tasks.map((task) => task.id),
+              ),
+            ),
+          );
+  const checklistByTask = new Map(
+    evidenceRows.filter((row) => row.evidence.checklist.length > 0).map((row) => [row.id, row.evidence.checklist]),
+  );
 
   const groups = schema.taskPhaseEnum.enumValues
     .map((phase) => ({ phase, tasks: tasks.filter((task) => task.phase === phase) }))
@@ -67,6 +131,11 @@ export default async function PortalTasksPage() {
             <Section key={group.phase} title={label}>
               <PortalProgress label={label} done={done} total={total} className="mb-4" />
               <DataList rows={group.tasks} columns={COLUMNS} getRowKey={(row) => row.id} caption={label} />
+              <ProofChecklists
+                items={group.tasks
+                  .filter((task) => checklistByTask.has(task.id))
+                  .map((task) => ({ id: task.id, title: task.title, checklist: checklistByTask.get(task.id) ?? [] }))}
+              />
             </Section>
           );
         })

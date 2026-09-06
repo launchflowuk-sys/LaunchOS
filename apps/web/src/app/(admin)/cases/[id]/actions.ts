@@ -48,6 +48,11 @@ export async function setTicketStatus(formData: FormData): Promise<ActionResult>
   });
   if (!parsed.success) return invalid(parsed.error);
 
+  // Resolving a client-visible case queues the "Was this sorted?" email and
+  // emits `message.queued`; without the web enqueue installed the invite
+  // would sit queued until the outbound sweep.
+  installWebEnqueue();
+
   try {
     await updateTicket(getDb(), session.organisationId, {
       ticketId: parsed.data.ticketId,

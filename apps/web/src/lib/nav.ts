@@ -24,6 +24,7 @@ import {
   SquareCheckBig,
   Sunrise,
   TriangleAlert,
+  UserPlus,
   Users,
   UsersRound,
   Wallet,
@@ -66,6 +67,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     category: "delivery",
     items: [
       { label: "Clients", href: "/clients", icon: Users },
+      // New business coming in: the website form and self-serve signup land
+      // here before they are clients. The page is W3b's; the entry is here so
+      // the rail is edited in one place.
+      { label: "Leads", href: "/leads", icon: UserPlus },
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },

@@ -1,6 +1,13 @@
+import { SUPPORT_ASSIGNMENT_RULES, TASK_ASSIGNMENT_RULES } from "@launchos/core";
 import { z } from "zod";
 
 export type ActionResult = { status: "ok"; id?: string } | { status: "error"; message: string };
+
+/** The two selects on the Assignment section; both must be posted, so a partial form cannot half-change the rules. */
+export const AssignmentRulesSchema = z.object({
+  support: z.enum(SUPPORT_ASSIGNMENT_RULES, { message: "Choose how support cases are assigned" }),
+  tasks: z.enum(TASK_ASSIGNMENT_RULES, { message: "Choose how tasks are assigned" }),
+});
 
 /**
  * An emptied input means "clear this column", not "leave it alone" — a supplier

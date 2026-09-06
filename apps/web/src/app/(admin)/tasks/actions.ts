@@ -1,14 +1,15 @@
 "use server";
 
 import {
-  assignTask, commentOnTask, createTask, setTaskVisibility, toggleChecklistItem, updateTaskStatus,
+  addTaskEvidenceLink, assignTask, commentOnTask, createTask, removeTaskEvidence, setTaskVisibility,
+  tickChecklistItem, toggleChecklistItem, updateTaskStatus,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import {
-  type ActionResult, AssignTaskSchema, CommentOnTaskSchema, CreateTaskSchema, DUE_TIME_SUFFIX,
-  SetTaskVisibilitySchema, ToggleChecklistSchema, UpdateTaskStatusSchema,
+  type ActionResult, AddEvidenceLinkSchema, AssignTaskSchema, CommentOnTaskSchema, CreateTaskSchema, DUE_TIME_SUFFIX,
+  RemoveEvidenceSchema, SetTaskVisibilitySchema, TickEvidenceSchema, ToggleChecklistSchema, UpdateTaskStatusSchema,
 } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -180,6 +181,79 @@ export async function setTaskVisibilityAction(formData: FormData): Promise<Actio
     revalidatePath(`/tasks/${v.taskId}`);
     // The client Tasks tab renders the same flag, so both views stay in step.
     revalidatePath(`/clients/${task.clientId}/tasks`);
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+/**
+ * Proof of work — the evidence a template can demand before a task closes.
+ * The three actions below revalidate the task page only: the list and board
+ * do not render evidence, and `updateTaskStatusAction` is what moves a card.
+ */
+export async function tickEvidenceAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = TickEvidenceSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    index: value(formData, "index"),
+    done: value(formData, "done"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid proof item" };
+  const v = parsed.data;
+
+  try {
+    const task = await tickChecklistItem(getDb(), session.organisationId, {
+      taskId: v.taskId, index: v.index, done: v.done, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    // The client's Progress page shows the ticks too.
+    revalidatePath("/portal/tasks");
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function addEvidenceLinkAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = AddEvidenceLinkSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    url: value(formData, "url"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid link" };
+  const v = parsed.data;
+
+  try {
+    const task = await addTaskEvidenceLink(getDb(), session.organisationId, {
+      taskId: v.taskId, url: v.url, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
+    return { status: "ok", id: task.id };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+export async function removeEvidenceAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = RemoveEvidenceSchema.safeParse({
+    taskId: value(formData, "taskId"),
+    url: value(formData, "url"),
+    attachmentId: value(formData, "attachmentId"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid proof" };
+  const v = parsed.data;
+
+  try {
+    const task = await removeTaskEvidence(getDb(), session.organisationId, {
+      taskId: v.taskId,
+      ...(v.url ? { url: v.url } : {}),
+      ...(v.attachmentId ? { attachmentId: v.attachmentId } : {}),
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath(`/tasks/${v.taskId}`);
     return { status: "ok", id: task.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };

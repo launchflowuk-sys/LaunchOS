@@ -3,8 +3,10 @@
 import { createEmailAdapter } from "@launchos/channels";
 import {
   applyContentPublishDecision,
+  applyContentReportSendDecision,
   applySubscriptionChangeDecision,
   CONTENT_PUBLISH_ACTION,
+  CONTENT_REPORT_SEND_ACTION,
   decideApproval,
   INVOICE_SEND_ACTION,
   recordAudit,
@@ -182,6 +184,17 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         revalidatePath("/content");
         revalidatePath(`/content/${applied.itemId}`);
         revalidatePath(`/clients/${applied.clientId}`);
+        revalidatePath("/portal/content");
+      } else if (payload.success && payload.data.action === CONTENT_REPORT_SEND_ACTION) {
+        // A month's content report asking to be emailed to the client:
+        // approve marks it sent and queues one branded email per portal user
+        // (the enqueue installed above carries `message.queued`); reject
+        // leaves it a draft with the note on the audit row.
+        const applied = await applyContentReportSendDecision(getDb(), session.organisationId, {
+          approvalId,
+          actorId: session.userId,
+        });
+        revalidatePath(`/clients/${applied.clientId}/content`);
         revalidatePath("/portal/content");
       } else if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
         const { invoiceId } = await sendApprovedInvoice(

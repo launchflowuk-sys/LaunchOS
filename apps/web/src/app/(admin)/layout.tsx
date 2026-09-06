@@ -1,18 +1,37 @@
+import { checkWorkerDown } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, eq } from "drizzle-orm";
 import { AccountMenu } from "@/components/account-menu";
 import { AppNav, AppNavSheet } from "@/components/app-nav";
 import { ClockWidget } from "@/components/clock-widget";
 import { GlobalSearch } from "@/components/global-search";
+import { InlineAlert } from "@/components/inline-alert";
 import { NotificationsBell } from "@/components/notifications-bell";
+import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { Toaster } from "@/components/ui/sonner";
 import { getDb } from "@/lib/db";
 import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
+import { workerDownMessage } from "@/lib/worker-status";
 import { runningEntryFor } from "./time/running";
 
 // The whole admin shell reads the session, so nothing here is prerenderable.
 export const dynamic = "force-dynamic";
+
+/**
+ * Is the background worker alive? `checkWorkerDown` also raises the
+ * `worker.down` notification once per outage. A failure *reading* the
+ * heartbeat must not take the whole shell down with it, so it is logged and
+ * the banner stays quiet for that render.
+ */
+async function workerBanner(organisationId: string): Promise<string | null> {
+  try {
+    return workerDownMessage(await checkWorkerDown(getDb(), organisationId));
+  } catch (error) {
+    console.error("[layout] worker heartbeat could not be read", { organisationId, error });
+    return null;
+  }
+}
 
 export default async function AdminLayout({ children }: LayoutProps<"/">) {
   const session = await requireAdmin();
@@ -20,15 +39,17 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
   // The one number the rail carries. Approvals is where every outward action
   // stops for a human, so the count travels with the shell rather than living
   // only on the screen the owner has to remember to open.
-  // Alongside it: what this member may see (which decides the rail) and
-  // whether they are clocked in (the top bar's clock), one indexed query each.
-  const [[pending], permissions, running] = await Promise.all([
+  // Alongside it: what this member may see (which decides the rail), whether
+  // they are clocked in (the top bar's clock), and whether the worker is
+  // still checking in (the banner), one indexed query each.
+  const [[pending], permissions, running, workerDown] = await Promise.all([
     getDb()
       .select({ value: count() })
       .from(schema.approvals)
       .where(and(eq(schema.approvals.organisationId, session.organisationId), eq(schema.approvals.status, "pending"))),
     sessionPermissions(),
     runningEntryFor(session),
+    workerBanner(session.organisationId),
   ]);
   const pendingApprovals = pending?.value ?? 0;
 
@@ -70,8 +91,21 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         </header>
 
         <main className="flex-1 px-4 py-5 lg:px-8 lg:py-8 print:px-0 print:py-0">
-          <div className="mx-auto w-full min-w-0 max-w-6xl print:max-w-none">{children}</div>
+          <div className="mx-auto w-full min-w-0 max-w-6xl print:max-w-none">
+            {/* Above every screen, not only the dashboard: a worker that has
+                stopped is the one fault that silently breaks everything else
+                — mail, cron, agents, publishing — and it must be seen from
+                wherever the owner happens to be. */}
+            {workerDown ? (
+              <InlineAlert tone="danger" title="Background worker is not running" className="mb-6 print:hidden">
+                {workerDown} Check the worker service in Coolify.
+              </InlineAlert>
+            ) : null}
+            {children}
+          </div>
         </main>
+        {/* Registers public/sw.js for web push. Asks for nothing; /account holds the switch. */}
+        <ServiceWorkerRegister />
 
         <footer className="border-t bg-card px-4 py-4 text-meta text-muted-foreground sm:px-8 print:hidden">
           Powered by LaunchFlow

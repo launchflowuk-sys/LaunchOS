@@ -3,6 +3,16 @@ import { z } from "zod";
 
 export type ActionResult = { status: "ok"; id?: string } | { status: "error"; message: string };
 
+/** One item per line, trimmed, blanks dropped — the checklist and the proof checklist share it. */
+const lines = (maxItems: number) =>
+  z
+    .string()
+    .max(4000)
+    .transform((raw) => raw.split("\n").map((line) => line.trim()).filter((line) => line.length > 0))
+    .pipe(z.array(z.string().max(200)).max(maxItems));
+
+export const EVIDENCE_KINDS = ["link", "screenshot", "checklist"] as const;
+
 export const TemplateSchema = z.object({
   /** "" means "every package"; the core service takes that as a null package_id. */
   packageId: z.union([z.literal(""), z.string().uuid()]),
@@ -15,11 +25,17 @@ export const TemplateSchema = z.object({
   defaultAssigneeRole: z.enum(schema.taskAssigneeRoleEnum.enumValues),
   sortOrder: z.coerce.number().int().min(0).max(10000),
   /** One checklist item per line, so the order the operator typed is kept. */
-  checklist: z
-    .string()
-    .max(4000)
-    .transform((raw) => raw.split("\n").map((line) => line.trim()).filter((line) => line.length > 0))
-    .pipe(z.array(z.string().max(200)).max(50)),
+  checklist: lines(50),
+  /**
+   * Proof of work a task made from this template must carry before Done.
+   * `kinds` arrives as the ticked checkboxes (`getAll`), so an untouched form
+   * is an empty list rather than a missing field.
+   */
+  evidence: z.object({
+    required: z.boolean(),
+    kinds: z.array(z.enum(EVIDENCE_KINDS)).max(EVIDENCE_KINDS.length),
+    checklist: lines(50),
+  }),
 });
 
 export const TemplateIdSchema = z.object({ templateId: z.string().uuid() });
@@ -37,5 +53,11 @@ export function readTemplate(formData: FormData) {
     defaultAssigneeRole: formData.get("defaultAssigneeRole") ?? "any",
     sortOrder: formData.get("sortOrder") || 0,
     checklist: formData.get("checklist") ?? "",
+    evidence: {
+      // A checkbox posts "on" when ticked and nothing at all when not.
+      required: formData.get("evidenceRequired") === "on",
+      kinds: formData.getAll("evidenceKinds"),
+      checklist: formData.get("evidenceChecklist") ?? "",
+    },
   };
 }

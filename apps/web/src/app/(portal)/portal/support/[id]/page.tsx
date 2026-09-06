@@ -27,7 +27,16 @@ export const dynamic = "force-dynamic";
  * `@launchos/core` in a portal page would pull the whole domain layer into
  * this route. Keep the two lists in step.
  */
-const NOTICE_KINDS: readonly string[] = ["portal_reply_notice", "case_acknowledgement", "subscription_change_notice"];
+const NOTICE_KINDS: readonly string[] = [
+  "portal_reply_notice",
+  "case_acknowledgement",
+  "subscription_change_notice",
+  "csat_invite",
+  "content_report_notice",
+];
+
+/** A case the client may rate: resolved, or closed after being resolved. */
+const RATEABLE: readonly string[] = ["resolved", "closed"];
 
 export default async function PortalTicketPage({ params }: PageProps<"/portal/support/[id]">) {
   const session = await requireClient();
@@ -113,6 +122,13 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <StatusBadge value={ticket.status} />
         <StatusBadge value={ticket.severity} />
+        {/* The same page the "Was this sorted?" email links to, for a client
+            who reads the portal rather than their inbox. */}
+        {RATEABLE.includes(ticket.status) ? (
+          <Link href={`/portal/support/${ticket.id}/rate`} className="ml-auto text-sm text-primary underline underline-offset-2">
+            Rate how this was handled
+          </Link>
+        ) : null}
       </div>
 
       <MessageThread messages={visible} />

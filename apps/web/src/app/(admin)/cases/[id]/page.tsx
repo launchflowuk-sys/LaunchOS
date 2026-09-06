@@ -1,4 +1,4 @@
-import { listMembers } from "@launchos/core";
+import { CSAT_LOW_SCORE, CSAT_SCORE_LABELS, getTicketRating, listMembers } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { History, ListChecks } from "lucide-react";
@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { excludingCourtesyNotice } from "@/app/(admin)/inbox/thread-filters";
 import { ActionForm } from "@/components/action-form";
 import { EmptyState } from "@/components/empty-state";
+import { KeyValue } from "@/components/key-value";
 import { MessageThread } from "@/components/message-thread";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
@@ -95,7 +96,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
     .where(and(eq(schema.tickets.id, id), eq(schema.tickets.organisationId, session.organisationId)));
   if (!ticket) notFound();
 
-  const [messages, events, tasks, members, triageInFlight, running] = await Promise.all([
+  const [messages, events, tasks, members, triageInFlight, running, rating] = await Promise.all([
     ticket.conversationId
       ? getDb()
           .select({
@@ -148,7 +149,10 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
     listMembers(getDb(), session.organisationId),
     hasTriageInFlight(session.organisationId, ticket.id),
     runningEntryFor(session),
+    getTicketRating(getDb(), session.organisationId, { ticketId: ticket.id }),
   ]);
+  // A score at or below CSAT_LOW_SCORE is the one the owner was already told about.
+  const ratingTone = rating ? (rating.score <= CSAT_LOW_SCORE ? "danger" : rating.score === 3 ? "warn" : "success") : "neutral";
 
   const breached = !!ticket.slaDueAt && ticket.slaDueAt < new Date() && !isClosed(ticket.status);
   // A case the client raised is one they are waiting on an answer to; one we
@@ -172,6 +176,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               tone={ticket.clientVisible ? "info" : "neutral"}
             />
             {ticket.escalated ? <StatusBadge value="escalated" tone="danger" /> : null}
+            {rating ? <StatusBadge value={`Rated ${rating.score}/5`} tone={ratingTone} /> : null}
             <StatusBadge value={`SLA ${formatDateTime(ticket.slaDueAt)}`} tone={breached ? "danger" : "neutral"} />
             <TimerControls target={{ ticketId: ticket.id }} running={running} />
           </div>
@@ -241,6 +246,30 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               </Button>
             </ActionForm>
           </Section>
+
+          {rating ? (
+            <Section title="Client rating">
+              <div className={PANEL}>
+                <KeyValue
+                  items={[
+                    {
+                      label: "Score",
+                      value: `${rating.score} out of 5 — ${CSAT_SCORE_LABELS[rating.score as 1 | 2 | 3 | 4 | 5] ?? ""}`,
+                      hint: `Rated ${formatDateTime(rating.ratedAt)}`,
+                    },
+                    {
+                      label: "Their comment",
+                      value: rating.comment ? (
+                        <span className="break-words whitespace-pre-wrap">{rating.comment}</span>
+                      ) : (
+                        <span className="text-muted-foreground">No comment left.</span>
+                      ),
+                    },
+                  ]}
+                />
+              </div>
+            </Section>
+          ) : null}
 
           <Section title="Status">
             <div className={`${PANEL} flex flex-wrap gap-2`}>

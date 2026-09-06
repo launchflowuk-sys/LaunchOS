@@ -1,4 +1,11 @@
-import { supportEmailDomain } from "@launchos/core";
+import {
+  getAssignmentRules,
+  SUPPORT_ASSIGNMENT_LABELS,
+  SUPPORT_ASSIGNMENT_RULES,
+  supportEmailDomain,
+  TASK_ASSIGNMENT_LABELS,
+  TASK_ASSIGNMENT_RULES,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import Link from "next/link";
@@ -11,11 +18,13 @@ import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/native-select";
 import { Textarea } from "@/components/ui/textarea";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
+import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
-import { updateOrganisationAction } from "./actions";
+import { updateAssignmentRulesAction, updateOrganisationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -43,13 +52,16 @@ function Field({
 
 export default async function OrganisationSettingsPage() {
   const session = await requireAdmin();
-  const [organisation] = await getDb()
-    .select()
-    .from(schema.organisations)
-    .where(eq(schema.organisations.id, session.organisationId));
+  const [[organisation], permissions, assignment] = await Promise.all([
+    getDb().select().from(schema.organisations).where(eq(schema.organisations.id, session.organisationId)),
+    sessionPermissions(),
+    getAssignmentRules(getDb(), session.organisationId),
+  ]);
   if (!organisation) notFound();
 
   const isOwner = session.role === "owner";
+  // The action gates on `settings`; the form is only drawn for those who pass.
+  const canEditAssignment = isOwner || permissions.settings;
 
   return (
     <>
@@ -148,6 +160,63 @@ export default async function OrganisationSettingsPage() {
               ]}
             />
             <p className="mt-4 text-meta text-muted-foreground">Only an owner can change these.</p>
+          </div>
+        )}
+      </Section>
+
+      <Section
+        title="Assignment"
+        description="Who a new support case or a generated task lands with. The owner is always the fallback, every automatic assignment is audited, and the person assigned is told."
+      >
+        {canEditAssignment ? (
+          <ActionForm
+            action={updateAssignmentRulesAction}
+            ariaLabel="Assignment rules"
+            success="Assignment rules saved"
+            className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="assignment-support">Support cases</Label>
+                <NativeSelect id="assignment-support" name="support" defaultValue={assignment.support} className="mt-1.5">
+                  {SUPPORT_ASSIGNMENT_RULES.map((rule) => (
+                    <option key={rule} value={rule}>
+                      {SUPPORT_ASSIGNMENT_LABELS[rule]}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <p className="mt-1.5 text-meta text-muted-foreground">
+                  Only members with the support permission are considered. Cases that arrive by email are routed too.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="assignment-tasks">Generated tasks</Label>
+                <NativeSelect id="assignment-tasks" name="tasks" defaultValue={assignment.tasks} className="mt-1.5">
+                  {TASK_ASSIGNMENT_RULES.map((rule) => (
+                    <option key={rule} value={rule}>
+                      {TASK_ASSIGNMENT_LABELS[rule]}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <p className="mt-1.5 text-meta text-muted-foreground">
+                  Onboarding and recurring tasks as they are generated; content work needs the content permission.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end max-sm:[&>*]:w-full">
+              <Button type="submit">Save assignment rules</Button>
+            </div>
+          </ActionForm>
+        ) : (
+          <div className="rounded-xl border bg-card p-4 sm:p-5">
+            <KeyValue
+              columns={2}
+              items={[
+                { label: "Support cases", value: SUPPORT_ASSIGNMENT_LABELS[assignment.support] },
+                { label: "Generated tasks", value: TASK_ASSIGNMENT_LABELS[assignment.tasks] },
+              ]}
+            />
+            <p className="mt-4 text-meta text-muted-foreground">Only a member with the settings permission can change these.</p>
           </div>
         )}
       </Section>

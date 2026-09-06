@@ -54,3 +54,34 @@ export const SetTaskVisibilitySchema = z.object({
   taskId: z.string().uuid(),
   clientVisible: booleanText,
 });
+
+/** One proof-checklist item ticked or unticked; same shape as the task's own checklist. */
+export const TickEvidenceSchema = z.object({
+  taskId: z.string().uuid(),
+  index: z.coerce.number().int().min(0).max(49),
+  done: booleanText,
+});
+
+export const AddEvidenceLinkSchema = z.object({
+  taskId: z.string().uuid(),
+  url: z.string().trim().url("Enter the full link, starting with https://").max(2000),
+});
+
+/** Either a link (by its URL) or a screenshot (by its id) comes off the task. */
+export const RemoveEvidenceSchema = z
+  .object({
+    taskId: z.string().uuid(),
+    url: z.string().trim().max(2000).optional(),
+    attachmentId: z.string().trim().max(200).optional(),
+  })
+  .refine((v) => Boolean(v.url) !== Boolean(v.attachmentId), { message: "Choose what to remove" });
+
+/**
+ * The screenshot upload's ceiling, in bytes. Below core's attachment cap
+ * (10 MB) on purpose: a phone screenshot is under 2 MB and the route buffers
+ * the whole file before it looks at it.
+ */
+export const MAX_SCREENSHOT_BYTES = 8 * 1024 * 1024;
+
+/** What a screenshot may be. A PDF of the delivered page is proof too. */
+export const SCREENSHOT_MIMES: readonly string[] = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];

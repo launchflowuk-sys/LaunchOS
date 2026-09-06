@@ -1,3 +1,5 @@
+import type { Instrumentation } from "next";
+
 /**
  * Runs the web app's environment validation once, at server start.
  *
@@ -37,3 +39,21 @@ export async function register(): Promise<void> {
     await import("./instrumentation-node");
   }
 }
+
+/**
+ * Every server error Next captures — a render, a route handler, a server
+ * action — becomes a `system.error` notification for the owner, throttled by
+ * core to one per route-and-error-class per hour. The worker does the same
+ * for its jobs, so an error anywhere in the system reaches the bell (and,
+ * being urgent, the phone) without anyone watching a log.
+ *
+ * Same runtime split as `register()`, for the same reason: the reporter
+ * imports `@launchos/core`, which the Edge compilation must not resolve. The
+ * Edge runtime serves nothing here that can fail in a way worth an alert.
+ */
+export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { reportRequestError } = await import("./instrumentation-node-errors");
+    await reportRequestError(error, request, context);
+  }
+};

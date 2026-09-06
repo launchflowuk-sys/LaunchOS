@@ -1,12 +1,15 @@
-import { listMembers } from "@launchos/core";
+import { listMembers, listPushSubscriptions } from "@launchos/core";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
+import { vapidPublicKey } from "@/lib/env";
+import { formatDate, formatDateTime } from "@/lib/format";
+import { endpointHost } from "@/lib/push";
 import { requireAdmin } from "@/lib/session";
 import { ChangePasswordForm } from "./change-password-form";
+import { DeviceAlerts, type DeviceRow } from "./device-alerts";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +26,21 @@ export const dynamic = "force-dynamic";
  */
 export default async function AccountPage() {
   const session = await requireAdmin();
-  const me = (await listMembers(getDb(), session.organisationId)).find((m) => m.userId === session.userId);
+  const [members, subscriptions] = await Promise.all([
+    listMembers(getDb(), session.organisationId),
+    listPushSubscriptions(getDb(), session.organisationId, { userId: session.userId }),
+  ]);
+  const me = members.find((m) => m.userId === session.userId);
+  // Plain data for the client component: the endpoint travels so the browser
+  // can tell whether *it* is on the list; only the host is ever rendered.
+  const devices: DeviceRow[] = subscriptions.map((row) => ({
+    id: row.id,
+    endpoint: row.endpoint,
+    host: endpointHost(row.endpoint),
+    userAgent: row.userAgent,
+    since: formatDate(row.createdAt),
+    failed: row.failedAt !== null,
+  }));
 
   return (
     <>
@@ -61,6 +78,13 @@ export default async function AccountPage() {
           ) : null}
           <ChangePasswordForm />
         </div>
+      </Section>
+
+      <Section
+        title="Alerts on this device"
+        description="Urgent notifications as a system notification on this phone or computer. Each device is switched on from the device itself."
+      >
+        <DeviceAlerts vapidPublicKey={vapidPublicKey()} devices={devices} />
       </Section>
     </>
   );

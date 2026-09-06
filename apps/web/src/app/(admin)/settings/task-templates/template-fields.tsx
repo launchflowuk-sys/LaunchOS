@@ -21,7 +21,15 @@ export type TemplateDefaults = {
   defaultAssigneeRole: string;
   sortOrder: number;
   checklist: readonly string[];
+  evidence: { required: boolean; kinds: readonly string[]; checklist: readonly string[] };
 };
+
+/** The proof a template can demand, in the words the task page uses. */
+const EVIDENCE_KIND_OPTIONS = [
+  { value: "link", label: "A link to the delivered work" },
+  { value: "screenshot", label: "A screenshot" },
+  { value: "checklist", label: "Every proof item ticked" },
+] as const;
 
 function EnumSelect({
   id, name, label, value, options,
@@ -143,6 +151,51 @@ export function TemplateFields({
           <Textarea id={id("checklist")} name="checklist" rows={3} defaultValue={defaults.checklist.join("\n")} />
         </div>
       </div>
+
+      <fieldset className="grid gap-4 rounded-lg border p-4 sm:grid-cols-2">
+        <legend className="px-1 text-sm font-semibold">Proof of work</legend>
+        <div className="space-y-3">
+          <label htmlFor={id("evidenceRequired")} className="flex items-center gap-2 text-sm">
+            <input
+              id={id("evidenceRequired")}
+              type="checkbox"
+              name="evidenceRequired"
+              defaultChecked={defaults.evidence.required}
+              className="size-4 rounded-[4px] border-input accent-primary"
+            />
+            Proof required before a task can be marked done
+          </label>
+          <div className="space-y-2" role="group" aria-label="Proof needed">
+            <p className="label-caps text-muted-foreground">Proof needed</p>
+            {EVIDENCE_KIND_OPTIONS.map((option) => (
+              <label key={option.value} htmlFor={id(`evidenceKinds-${option.value}`)} className="flex items-center gap-2 text-sm">
+                <input
+                  id={id(`evidenceKinds-${option.value}`)}
+                  type="checkbox"
+                  name="evidenceKinds"
+                  value={option.value}
+                  defaultChecked={defaults.evidence.kinds.includes(option.value)}
+                  className="size-4 rounded-[4px] border-input accent-primary"
+                />
+                {option.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor={id("evidenceChecklist")}>Proof checklist (one item per line)</Label>
+          <Textarea
+            id={id("evidenceChecklist")}
+            name="evidenceChecklist"
+            rows={4}
+            defaultValue={defaults.evidence.checklist.join("\n")}
+            placeholder={"Client signed off\nLive URL checked on a phone"}
+          />
+          <p className="text-meta text-muted-foreground">
+            Copied onto every task made from this template; the client sees the ticks on their Progress page.
+          </p>
+        </div>
+      </fieldset>
     </>
   );
 }

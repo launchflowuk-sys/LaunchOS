@@ -175,8 +175,27 @@ export const Env = z.object({
   META_ADS_API_VERSION: z.string().optional(),
   META_ADS_CONVERSION_ACTIONS: z.string().optional(),
   ALLOW_MOCK_ADAPTERS: z.string().optional(),
+  /**
+   * The public half of the web-push key pair. The web app hands it to the
+   * browser on `/account` so a device can subscribe; the private half lives
+   * in the worker only (`packages/channels` push adapter) and is never read
+   * here. Optional: without it the account page says alerts are not switched
+   * on rather than offering a button that cannot work.
+   */
+  VAPID_PUBLIC_KEY: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
+
+/**
+ * The VAPID public key a browser subscribes with, or null when web push is
+ * not configured. Blank is unset, the same rule every other adapter key
+ * follows: a Coolify variable created and left empty must not reach
+ * `pushManager.subscribe` as an empty `applicationServerKey`.
+ */
+export function vapidPublicKey(): string | null {
+  const key = env.VAPID_PUBLIC_KEY?.trim() ?? "";
+  return key.length > 0 ? key : null;
+}
 
 /**
  * The three secrets the process cannot run without, and the placeholder refusal.
