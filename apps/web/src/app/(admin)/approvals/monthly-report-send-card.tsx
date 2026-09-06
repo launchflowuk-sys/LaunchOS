@@ -1,9 +1,13 @@
-import { monthlyReportDocumentHtml, monthlyReportTitle, reportMonthName } from "@launchos/core";
+import {
+  monthlyReportDocumentHtml,
+  monthlyReportMonthName,
+  MonthlyReportSendPayload,
+  monthlyReportTitle,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { FileText } from "lucide-react";
 import Link from "next/link";
-import { z } from "zod";
 import { DocumentPreview } from "@/components/document-preview";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
@@ -22,22 +26,19 @@ import { requireAdmin } from "@/lib/session";
  *
  * **The payload names the report and nothing else is trusted from it.** The
  * client, the month, the figures and the file are read from our own rows at
- * render time. This card is written against P5-worker's gate, which is being
- * built in parallel, so it deliberately requires only `reportId`: everything a
- * card of this kind could want is on the row that id points at, and a card
- * that refused to draw because a label had moved would be a card that hid a
- * real send from the person who has to release it.
+ * render time — `MonthlyReportSendPayload` is core's own schema, imported
+ * rather than re-declared here, exactly as `ProposalSendPayload` is on the
+ * card beside it, so what the gate writes and what this screen reads cannot
+ * drift.
  */
-
-const MonthlyReportSendPayload = z.object({ reportId: z.string().uuid() });
 
 export async function MonthlyReportSendRequest({ approval }: { approval: typeof schema.approvals.$inferSelect }) {
   const payload = MonthlyReportSendPayload.safeParse(approval.payload);
   if (!payload.success) {
     return (
       <InlineAlert tone="danger" title="This request cannot be shown">
-        The stored request does not name a report, so approve nothing until it has been checked from the Reports
-        screen.
+        The stored request does not match what this screen expects, so approve nothing until it has been checked from
+        the Reports screen.
       </InlineAlert>
     );
   }
@@ -60,10 +61,9 @@ export async function MonthlyReportSendRequest({ approval }: { approval: typeof 
   }
 
   const { report, clientName } = row;
-  const monthName = reportMonthName({
-    start: new Date(`${report.periodStart}T00:00:00Z`),
-    end: new Date(`${report.periodEnd}T00:00:00Z`),
-  });
+  // Core's own reading of the month, so the card, the PDF and the email
+  // heading all say the same words.
+  const monthName = monthlyReportMonthName(report);
   const rendered = report.documentId !== null;
 
   return (

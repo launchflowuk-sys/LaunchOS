@@ -1,4 +1,4 @@
-import { monthlyReportDocumentHtml, monthlyReportReference, monthlyReportTitle, reportMonthName } from "@launchos/core";
+import { monthlyReportDocumentHtml, monthlyReportMonthName, monthlyReportReference, monthlyReportTitle } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import Link from "next/link";
@@ -60,13 +60,10 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
 
   const { report, clientName } = row;
   const stats = report.stats;
-  // "August 2026", read in Europe/London as core reads it. The period columns
-  // are date keys, so midnight UTC on the first is the same London day, which
-  // is the reason this can be reconstructed here rather than stored.
-  const monthName = reportMonthName({
-    start: new Date(`${report.periodStart}T00:00:00Z`),
-    end: new Date(`${report.periodEnd}T00:00:00Z`),
-  });
+  // "August 2026", read in Europe/London by core's own function, so this
+  // screen, the PDF and the email that carries it cannot word the month
+  // differently.
+  const monthName = monthlyReportMonthName(report);
 
   const [adCurrencies, invoiceCurrencies] = await Promise.all([
     db.selectDistinct({ currency: schema.adAccounts.currency }).from(schema.adAccounts).where(and(
