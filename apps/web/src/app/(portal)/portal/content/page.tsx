@@ -1,7 +1,9 @@
-import { type ContentItemListRow, listContentItems } from "@launchos/core";
+import { type ContentItemListRow, listContentAssets, listContentItems } from "@launchos/core";
 import type { ContentChannel } from "@launchos/db/schema";
 import { ExternalLink, Newspaper } from "lucide-react";
+import { AssetGrid } from "@/components/asset-grid";
 import { DataList, type DataListColumn } from "@/components/data-list";
+import { ImageUploadForm } from "@/components/image-upload-form";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PortalForm } from "@/components/portal/portal-form";
 import { Section } from "@/components/section";
@@ -89,7 +91,7 @@ export default async function PortalContentPage() {
 
   // Both halves are scoped by the session's client: a portal user only ever
   // sees their own posts, whatever they put in the URL.
-  const [upcoming, published] = await Promise.all([
+  const [upcoming, published, photos] = await Promise.all([
     listContentItems(db, session.organisationId, {
       clientId: session.clientId,
       status: ["awaiting_approval", "approved", "scheduled", "publishing"],
@@ -102,6 +104,7 @@ export default async function PortalContentPage() {
       sort: "recent",
       limit: 100,
     }),
+    listContentAssets(db, session.organisationId, { clientId: session.clientId, limit: 60 }),
   ]);
 
   return (
@@ -134,6 +137,26 @@ export default async function PortalContentPage() {
           caption="Published posts"
           empty={<EmptyState icon={Newspaper}>Nothing has been published yet. Your first posts will be listed here.</EmptyState>}
         />
+      </Section>
+
+      <Section
+        title="Add photos"
+        description="Upload photos of your work; posts with photos do far better. We use them on your posts — the shop, the team, a job well done."
+      >
+        <div className="space-y-4">
+          <div className="max-w-2xl rounded-xl border bg-card p-5 sm:p-6">
+            <ImageUploadForm
+              endpoint="/api/portal/assets"
+              idPrefix="portal-photo"
+              ariaLabel="Add a photo"
+              submitLabel="Add photo"
+              altLabel="What is in the photo? (optional)"
+              success="Thanks — the photo is in your library and we can use it on your posts."
+              tall
+            />
+          </div>
+          <AssetGrid assets={photos} empty="No photos yet. The first one you add appears here." />
+        </div>
       </Section>
 
       <Section

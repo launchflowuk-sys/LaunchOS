@@ -36,6 +36,14 @@ export const UpdatePackageSchema = z.object({
   ...BaseFields,
   packageId: z.string().uuid(),
   active: z.boolean(),
+  // The Stripe Price the self-serve sign-up sells this package under. Blank
+  // clears it and puts the package back on the "we'll invoice you" flow.
+  stripePriceId: z
+    .string()
+    .trim()
+    .max(200)
+    .regex(/^(price_[A-Za-z0-9]+)?$/, "A Stripe price id starts with price_")
+    .transform((v) => (v.length > 0 ? v : null)),
 });
 
 /** An unticked checkbox posts nothing; an empty number input posts "". */

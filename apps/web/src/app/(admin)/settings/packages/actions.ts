@@ -53,6 +53,7 @@ export async function updatePackageAction(formData: FormData): Promise<ActionRes
     packageId: formData.get("packageId"),
     active: formData.get("active") === "on",
     includes: readIncludes(formData),
+    stripePriceId: formData.get("stripePriceId") ?? "",
   });
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid package" };
   const v = parsed.data;
@@ -67,6 +68,7 @@ export async function updatePackageAction(formData: FormData): Promise<ActionRes
       setupPricePence: v.setupPricePence,
       includes: v.includes,
       active: v.active,
+      stripePriceId: v.stripePriceId,
       actorKind: "user",
       actorId: session.userId,
     });

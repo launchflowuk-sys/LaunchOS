@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
 import { ChannelLabel } from "../../../content/presentation";
 import { saveContentChannelAction } from "./actions";
+import { GbpLocationField, InstagramIdField } from "./channel-id-fields";
 
 type SiteOption = { id: string; name: string; primaryUrl: string; platform: string };
 
@@ -41,12 +42,19 @@ export function ChannelsForm({
   clientId,
   channels,
   sites,
+  metaConfigured,
+  gbpConfigured,
 }: {
   clientId: string;
   channels: readonly ContentChannelRow[];
   sites: readonly SiteOption[];
+  /** Whether the Meta keys are set — "Detect from Facebook page" needs them. */
+  metaConfigured: boolean;
+  /** Whether the GBP keys are set — "Find my locations" needs them. */
+  gbpConfigured: boolean;
 }) {
   const byChannel = new Map(channels.map((row) => [row.channel, row]));
+  const facebookFieldId = "channel-facebook-id";
   const wordpressSites = sites.filter((site) => site.platform === "wordpress");
 
   return (
@@ -89,6 +97,22 @@ export function ChannelsForm({
                 </NativeSelect>
                 <p className="text-meta text-muted-foreground">Posts publish with the WordPress app password saved on the site.</p>
               </div>
+            ) : channel === "instagram" ? (
+              <InstagramIdField
+                fieldId={fieldId}
+                defaultValue={row?.externalId ?? ""}
+                facebookFieldId={facebookFieldId}
+                savedPageId={byChannel.get("facebook")?.externalId ?? null}
+                metaConfigured={metaConfigured}
+                {...ID_FIELD.instagram}
+              />
+            ) : channel === "gbp" ? (
+              <GbpLocationField
+                fieldId={fieldId}
+                defaultValue={row?.externalId ?? ""}
+                gbpConfigured={gbpConfigured}
+                {...ID_FIELD.gbp}
+              />
             ) : (
               <div className="min-w-0 space-y-1.5">
                 <Label htmlFor={fieldId}>{ID_FIELD[channel].label}</Label>

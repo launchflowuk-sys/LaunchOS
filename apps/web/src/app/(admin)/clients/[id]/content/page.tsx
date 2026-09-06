@@ -1,7 +1,8 @@
 import {
-  type ContentItemListRow, getClient, getContentBrief, listContentChannels, listContentItems, listSites, monthName,
-  periodKeyFor,
+  type ContentItemListRow, getClient, getContentBrief, listContentAssets, listContentChannels, listContentItems, listSites,
+  monthName, periodKeyFor,
 } from "@launchos/core";
+import { hasGbpCredentials, hasMetaSocialCredentials } from "@launchos/integrations";
 import { Newspaper } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,6 +16,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { ChannelLabel, ContentStatusBadge, KIND_LABEL } from "../../../content/presentation";
 import { ClientTabs } from "../tabs";
+import { AssetLibrary } from "./asset-library";
 import { BriefForm } from "./brief-form";
 import { ChannelsForm } from "./channels-form";
 
@@ -54,11 +56,12 @@ export default async function ClientContentPage({ params }: PageProps<"/clients/
   if (!client) notFound();
 
   const period = periodKeyFor(new Date());
-  const [{ items }, brief, channels, sites] = await Promise.all([
+  const [{ items }, brief, channels, sites, assets] = await Promise.all([
     listContentItems(db, session.organisationId, { clientId: id, periodKey: period, sort: "scheduled", limit: 100 }),
     getContentBrief(db, session.organisationId, { clientId: id }),
     listContentChannels(db, session.organisationId, { clientId: id }),
     listSites(db, session.organisationId, { clientId: id }),
+    listContentAssets(db, session.organisationId, { clientId: id }),
   ]);
 
   const allHref = { pathname: "/content", query: { period, client: id } } as const;
@@ -115,10 +118,23 @@ export default async function ClientContentPage({ params }: PageProps<"/clients/
       </Section>
 
       <Section
+        title="Image library"
+        description="Photos for this client's posts. The writer picks from these — it never invents an image — and the client can add their own from the portal. Posts with photos do far better."
+      >
+        <AssetLibrary clientId={client.id} assets={assets} />
+      </Section>
+
+      <Section
         title="Channels"
         description="Where approved posts go. A slot for a channel that is not connected fails at publish time with a message saying so."
       >
-        <ChannelsForm clientId={client.id} channels={channels} sites={sites} />
+        <ChannelsForm
+          clientId={client.id}
+          channels={channels}
+          sites={sites}
+          metaConfigured={hasMetaSocialCredentials(process.env)}
+          gbpConfigured={hasGbpCredentials(process.env)}
+        />
       </Section>
     </>
   );

@@ -63,11 +63,22 @@ export function ItemEditor({ item }: { item: ContentItemDetail }) {
         />
         <p className="text-meta text-muted-foreground">{hint.help}</p>
       </div>
+      {item.imageUrl ? (
+        <figure className="flex items-start gap-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- the post's own image URL, ours or a public one; next/image needs a known host list */}
+          <img src={item.imageUrl} alt="" className="size-24 shrink-0 rounded-lg border object-cover" />
+          <figcaption className="min-w-0 text-meta text-muted-foreground">
+            <span className="block font-medium text-foreground">Current image</span>
+            <span className="block break-all">{item.imageUrl}</span>
+            <span className="block">Pick another below, paste a URL, or clear the field to remove it.</span>
+          </figcaption>
+        </figure>
+      ) : null}
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="item-image">Image URL</Label>
           <Input id="item-image" name="imageUrl" type="url" defaultValue={item.imageUrl ?? ""} placeholder="https://…/photo.jpg" />
-          <p className="text-meta text-muted-foreground">Must be public: Facebook, Instagram and WordPress fetch it themselves.</p>
+          <p className="text-meta text-muted-foreground">Must be public: Facebook, Instagram and WordPress fetch it themselves. Or pick one from the library below.</p>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="item-link">Link</Label>

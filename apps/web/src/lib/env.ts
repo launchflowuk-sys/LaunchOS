@@ -183,6 +183,13 @@ export const Env = z.object({
    * on rather than offering a button that cannot work.
    */
   VAPID_PUBLIC_KEY: z.string().optional(),
+  /**
+   * The shared secret on `POST /api/public/leads`, the endpoint the
+   * launchflow.co.uk contact form posts to. Optional: without it the route
+   * answers 503 rather than accepting anonymous leads — a form nobody wired
+   * up must not be an open door for spam into the owner's phone.
+   */
+  PUBLIC_FORMS_TOKEN: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
 
@@ -195,6 +202,15 @@ export type Env = z.infer<typeof Env>;
 export function vapidPublicKey(): string | null {
   const key = env.VAPID_PUBLIC_KEY?.trim() ?? "";
   return key.length > 0 ? key : null;
+}
+
+/**
+ * The token the public lead form must present, or null when the endpoint is
+ * switched off. Blank is unset, as for every other optional key.
+ */
+export function publicFormsToken(): string | null {
+  const token = env.PUBLIC_FORMS_TOKEN?.trim() ?? "";
+  return token.length > 0 ? token : null;
 }
 
 /**

@@ -32,6 +32,26 @@ describe("packages", () => {
     });
   });
 
+  it("sets and clears the Stripe price id without touching the rest", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId } = await seedOrgWithClient(db);
+      const created = await createPackage(db, organisationId, { name: "Care", slug: `care-${randomUUID()}`, monthlyPricePence: 4900 });
+      expect(created.stripePriceId).toBeNull();
+
+      const priced = await updatePackage(db, organisationId, { packageId: created.id, stripePriceId: "price_123" });
+      expect(priced.stripePriceId).toBe("price_123");
+      expect(priced.monthlyPricePence).toBe(4900);
+
+      // An update that says nothing about the price id leaves it alone.
+      const renamed = await updatePackage(db, organisationId, { packageId: created.id, name: "Care Plus" });
+      expect(renamed.stripePriceId).toBe("price_123");
+
+      const cleared = await updatePackage(db, organisationId, { packageId: created.id, stripePriceId: null });
+      expect(cleared.stripePriceId).toBeNull();
+      await expect(updatePackage(db, organisationId, { packageId: created.id, stripePriceId: "" })).rejects.toThrow();
+    });
+  });
+
   it("refuses a package from another organisation", async () => {
     await withTestDb(async (db) => {
       const a = await seedOrgWithClient(db);

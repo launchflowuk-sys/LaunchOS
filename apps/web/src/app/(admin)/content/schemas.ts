@@ -51,6 +51,9 @@ export const EditItemSchema = z.object({
 
 export const ItemIdSchema = z.object({ itemId: z.string().uuid() });
 
+/** "Use this image": the post and the library asset to put on it. */
+export const PickImageSchema = z.object({ itemId: z.string().uuid(), assetId: z.string().uuid() });
+
 export const CancelItemSchema = z.object({
   itemId: z.string().uuid(),
   reason: z.string().trim().max(1000).optional(),

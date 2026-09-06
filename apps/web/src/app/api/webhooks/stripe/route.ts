@@ -1,4 +1,4 @@
-import { findOrganisationByStripeCustomer } from "@launchos/core";
+import { findOrganisationByStripeCustomer, signupOrganisationFromEvent } from "@launchos/core";
 import { QUEUE } from "@launchos/core/queue";
 import { createPaymentsAdapter, type PaymentsAdapter } from "@launchos/integrations";
 import { NextResponse } from "next/server";
@@ -55,6 +55,20 @@ function isConfigured(payments: PaymentsAdapter): boolean {
   return payments.name === "stripe" && Boolean(process.env.STRIPE_WEBHOOK_SECRET);
 }
 
+/**
+ * The organisation behind an event's Stripe customer: the customer id is the
+ * only link back to a tenant, resolved through billing_profiles.
+ * `null` when the event names no customer at all, `undefined` for a customer
+ * we have never linked (a different Stripe account, a stale test event) —
+ * both are acknowledged and dropped rather than retried forever.
+ */
+async function organisationForCustomer(data: unknown): Promise<string | null | undefined> {
+  const parsed = CustomerRef.safeParse(data);
+  if (!parsed.success) return null;
+  const owner = await findOrganisationByStripeCustomer(getDb(), parsed.data.object.customer);
+  return owner?.organisationId;
+}
+
 export async function POST(request: Request) {
   const payments = paymentsAdapter();
   if (!isConfigured(payments)) {
@@ -106,16 +120,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
 
-  const parsed = CustomerRef.safeParse(providerEvent.data);
-  if (!parsed.success) return NextResponse.json({ ok: true, ignored: "no customer on event" });
-
-  // The event carries no LaunchOS tenancy of its own — the Stripe customer id
-  // is the only link back to an organisation, resolved through
-  // billing_profiles.stripe_customer_id. An event for a customer we have
-  // never linked (a different Stripe account, a stale test event) is
-  // acknowledged and dropped rather than retried forever.
-  const owner = await findOrganisationByStripeCustomer(getDb(), parsed.data.object.customer);
-  if (!owner) return NextResponse.json({ ok: true, ignored: "unknown customer" });
+  // A self-serve signup's `checkout.session.completed` is for a brand-new
+  // customer with no billing_profiles row yet, so tenancy comes from our own
+  // metadata on the session (`launchos: "signup"` + organisationId) before
+  // the customer lookup is even tried.
+  const organisationId = signupOrganisationFromEvent(providerEvent) ?? (await organisationForCustomer(providerEvent.data));
+  if (organisationId === null) return NextResponse.json({ ok: true, ignored: "no customer on event" });
+  if (organisationId === undefined) return NextResponse.json({ ok: true, ignored: "unknown customer" });
 
   // A plain key, deliberately: it collapses a burst of identical deliveries
   // while the job is still queued, and nothing more. A `singletonSeconds`
@@ -127,7 +138,7 @@ export async function POST(request: Request) {
   // `{ handled: false, action: "duplicate" }` with the row in front of it.
   await sendJob(
     QUEUE.paymentsWebhook,
-    { organisationId: owner.organisationId, providerEvent },
+    { organisationId, providerEvent },
     { singletonKey: `stripe:${providerEvent.id}` },
   );
   return NextResponse.json({ ok: true });

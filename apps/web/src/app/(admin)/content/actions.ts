@@ -1,7 +1,8 @@
 "use server";
 
 import {
-  cancelContentItem, ContentRefused, planContentMonth, requestContentApproval, updateContentItem,
+  cancelContentItem, ContentRefused, getContentAsset, getContentItem, planContentMonth, publicAssetUrl,
+  requestContentApproval, updateContentItem,
 } from "@launchos/core";
 import type { QueueName } from "@launchos/core/queue";
 import { revalidatePath } from "next/cache";
@@ -10,7 +11,7 @@ import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requirePermission } from "@/lib/permissions";
 import { londonInputToDate } from "./schedule-input";
 import {
-  type ActionResult, CancelItemSchema, EditItemSchema, firstIssue, ItemIdSchema, MonthActionSchema,
+  type ActionResult, CancelItemSchema, EditItemSchema, firstIssue, ItemIdSchema, MonthActionSchema, PickImageSchema,
 } from "./schemas";
 
 /**
@@ -135,6 +136,41 @@ export async function saveContentItemAction(formData: FormData): Promise<ActionR
     return { status: "ok", id: item.id };
   } catch (error) {
     return failed(error, "Could not save the post");
+  }
+}
+
+/**
+ * Puts a library image on the post: `image_url` becomes the asset's public
+ * URL. The asset is looked up in this organisation first, so an id from
+ * another tenant's library (or a deleted one) is a refusal, never a URL.
+ */
+export async function pickContentImageAction(values: { itemId: string; assetId: string }): Promise<ActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = PickImageSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That image could not be identified" };
+
+  try {
+    const db = getDb();
+    const [asset, existing] = await Promise.all([
+      getContentAsset(db, session.organisationId, { assetId: parsed.data.assetId }),
+      getContentItem(db, session.organisationId, { itemId: parsed.data.itemId }),
+    ]);
+    if (!asset) return { status: "error", message: "That image is no longer in the library" };
+    if (!existing) return { status: "error", message: "That post could not be found" };
+    // A post carries its own client's photo, never another client's shopfront.
+    if (existing.clientId !== asset.clientId) return { status: "error", message: "That image belongs to another client's library" };
+    const item = await updateContentItem(db, session.organisationId, {
+      itemId: parsed.data.itemId,
+      imageUrl: publicAssetUrl(asset.id),
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidateItem(item.id, item.clientId);
+    return { status: "ok", id: item.id };
+  } catch (error) {
+    return failed(error, "Could not set the image");
   }
 }
 

@@ -1,5 +1,6 @@
 import {
-  CANCELLABLE_STATUSES, CHANNEL_LABEL, EDITABLE_STATUSES, getContentItem, MAX_CONTENT_PUBLISH_ATTEMPTS, monthName,
+  CANCELLABLE_STATUSES, CHANNEL_LABEL, EDITABLE_STATUSES, getContentItem, listContentAssets, MAX_CONTENT_PUBLISH_ATTEMPTS,
+  monthName,
 } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { ContentStatus } from "@launchos/db/schema";
@@ -20,6 +21,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { cancelContentItemAction, requestContentApprovalAction } from "../actions";
 import { ChannelLabel, ContentStatusBadge, KIND_LABEL } from "../presentation";
+import { ImagePicker } from "./image-picker";
 import { ItemEditor } from "./item-editor";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +51,10 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
   const item = await getContentItem(db, session.organisationId, { itemId: id });
   if (!item) notFound();
 
+  const isEditable = EDITABLE_STATUSES.includes(item.status) || REVISABLE_STATUSES.includes(item.status);
+  // The library is only offered while the post can still change.
+  const assets = isEditable ? await listContentAssets(db, session.organisationId, { clientId: item.clientId }) : [];
+
   const [approval] = item.approvalId
     ? await db
         .select({
@@ -60,7 +66,6 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
         .where(and(eq(schema.approvals.id, item.approvalId), eq(schema.approvals.organisationId, session.organisationId)))
     : [];
 
-  const isEditable = EDITABLE_STATUSES.includes(item.status) || REVISABLE_STATUSES.includes(item.status);
   const isCancellable = CANCELLABLE_STATUSES.includes(item.status);
   const attempts = typeof item.metadata.publishAttempts === "number" ? item.metadata.publishAttempts : 0;
   const isSuggested = item.source === "client";
@@ -126,9 +131,17 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
           ) : null}
 
           {isEditable ? (
-            <Section title="Post" description={STATUS_NOTE[item.status]}>
-              <ItemEditor item={item} />
-            </Section>
+            <>
+              <Section title="Post" description={STATUS_NOTE[item.status]}>
+                <ItemEditor item={item} />
+              </Section>
+              <Section
+                title="Pick an image"
+                description="The client's photo library. Choosing one sets the image above; Facebook, Instagram and WordPress fetch it from here."
+              >
+                <ImagePicker itemId={item.id} clientId={item.clientId} currentImageUrl={item.imageUrl} assets={assets} />
+              </Section>
+            </>
           ) : (
             <Section title="Post" description={STATUS_NOTE[item.status]}>
               <div className="rounded-xl border bg-card p-4">

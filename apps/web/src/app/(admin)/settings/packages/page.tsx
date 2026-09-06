@@ -92,6 +92,20 @@ export default async function PackagesPage() {
                     includes: pkg.includes,
                   }}
                 />
+                <div className="space-y-1.5 sm:max-w-sm">
+                  <Label htmlFor={`package-${pkg.id}-stripePriceId`}>Stripe price id</Label>
+                  <Input
+                    id={`package-${pkg.id}-stripePriceId`}
+                    name="stripePriceId"
+                    defaultValue={pkg.stripePriceId ?? ""}
+                    placeholder="price_…"
+                    maxLength={200}
+                    className="font-mono"
+                  />
+                  <p className="text-meta text-muted-foreground">
+                    Lets people buy this package on /signup by card. Leave blank and sign-up invoices them instead.
+                  </p>
+                </div>
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                   <label className="flex items-center gap-2 text-sm">
                     <input

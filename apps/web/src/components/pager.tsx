@@ -50,7 +50,7 @@ export function Pager({
   hasNext,
 }: {
   /** Typed-routes literal, so a pager can never point at a route that is gone. */
-  basePath: "/inbox" | "/cases" | "/tasks" | "/approvals" | "/clients" | "/content";
+  basePath: "/inbox" | "/cases" | "/tasks" | "/approvals" | "/clients" | "/content" | "/leads";
   query: Query;
   page: number;
   hasNext: boolean;

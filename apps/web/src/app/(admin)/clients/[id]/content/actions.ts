@@ -1,7 +1,8 @@
 "use server";
 
-import { ContentRefused, setContentChannel, upsertContentBrief } from "@launchos/core";
+import { ContentRefused, deleteContentAsset, setContentChannel, upsertContentBrief } from "@launchos/core";
 import { schema } from "@launchos/db";
+import { CompositeSocialPublisher, createSocialPublisherFromEnv, GbpPublisher, hasGbpCredentials, lookupInstagramForPage, SocialApiError, SocialAuthError } from "@launchos/integrations";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -112,5 +113,96 @@ export async function saveContentChannelAction(formData: FormData): Promise<Acti
     return { status: "ok", id: row.id };
   } catch (error) {
     return failed(error, "Could not save the channel");
+  }
+}
+
+const DeleteAssetSchema = z.object({ clientId: z.string().uuid(), assetId: z.string().uuid() });
+
+/**
+ * Removes an image from the client's library — row and file. Called from a
+ * button, not a `<form action>`, so the tile can confirm first and show the
+ * failure. Core scopes the delete by organisation; a foreign id is "not
+ * found" either way.
+ */
+export async function deleteContentAssetAction(values: { clientId: string; assetId: string }): Promise<ActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = DeleteAssetSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That photo could not be identified" };
+
+  try {
+    const removed = await deleteContentAsset(getDb(), session.organisationId, {
+      assetId: parsed.data.assetId, actorKind: "user", actorId: session.userId,
+    });
+    if (!removed) return { status: "error", message: "That photo is already gone" };
+    revalidatePath(`/clients/${parsed.data.clientId}/content`);
+    revalidatePath("/portal/content");
+    return { status: "ok", id: removed.id };
+  } catch (error) {
+    return failed(error, "Could not delete the photo");
+  }
+}
+
+export type InstagramDetectResult =
+  | { status: "found"; id: string; username: string | null }
+  | { status: "none" }
+  | { status: "error"; message: string };
+
+const PageIdSchema = z.string().trim().min(1, "Enter the Facebook Page id first").max(200).regex(/^[\w.-]+$/, "That is not a Facebook Page id");
+
+/**
+ * "Detect from Facebook page": one Graph call for the Instagram Business
+ * account connected to the Page, so the id lands in the form instead of
+ * being dug out of Meta Business Suite. Reads nothing and writes nothing —
+ * the row is saved by the ordinary channel form afterwards.
+ */
+export async function detectInstagramAction(values: { pageId: string }): Promise<InstagramDetectResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const parsed = PageIdSchema.safeParse(values.pageId);
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Enter the Facebook Page id first" };
+
+  try {
+    const account = await lookupInstagramForPage(parsed.data, process.env);
+    if (!account) return { status: "none" };
+    return { status: "found", id: account.id, username: account.username };
+  } catch (error) {
+    if (error instanceof SocialAuthError && error.status === 0) {
+      return { status: "error", message: "Waiting for Meta access: connect Meta (META_ADS_ACCESS_TOKEN and META_ADS_APP_SECRET) first." };
+    }
+    if (error instanceof SocialApiError || error instanceof TypeError) return { status: "error", message: error.message };
+    console.error("Instagram lookup failed", error);
+    return { status: "error", message: "Meta did not answer. Try again in a moment." };
+  }
+}
+
+export type GbpLocationsResult =
+  | { status: "found"; locations: { name: string; title: string; accountName: string }[] }
+  | { status: "unavailable" }
+  | { status: "error"; message: string };
+
+/**
+ * "Find my locations": every Business Profile location the connected Google
+ * account manages, in the `accounts/…/locations/…` form the channel stores.
+ * The adapter is selected the way the worker selects it — from the env, real
+ * only when the three GBP keys are set — so an unconfigured deployment says
+ * "waiting for Google API access" rather than listing a mock.
+ */
+export async function findGbpLocationsAction(): Promise<GbpLocationsResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  if (!hasGbpCredentials(process.env)) return { status: "unavailable" };
+
+  try {
+    const publisher = createSocialPublisherFromEnv(process.env);
+    const gbp = publisher instanceof CompositeSocialPublisher ? publisher.for("gbp") : null;
+    if (!(gbp instanceof GbpPublisher)) return { status: "unavailable" };
+    const locations = await gbp.listLocations();
+    return { status: "found", locations: locations.map(({ name, title, accountName }) => ({ name, title, accountName })) };
+  } catch (error) {
+    if (error instanceof SocialApiError) return { status: "error", message: error.message };
+    console.error("GBP location lookup failed", error);
+    return { status: "error", message: "Google did not answer. Try again in a moment." };
   }
 }

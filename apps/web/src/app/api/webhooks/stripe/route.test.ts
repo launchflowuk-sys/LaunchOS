@@ -180,6 +180,41 @@ describe("POST /api/webhooks/stripe", () => {
     });
   });
 
+  it("resolves a self-serve signup's checkout.session.completed from its own metadata, with no billing profile", async () => {
+    await withTestDb(async (db) => {
+      currentDb = db;
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `stripe-signup-${randomUUID()}` }).returning();
+      // A brand-new buyer: no billing_profiles row points at this customer.
+      const providerEvent = {
+        id: "evt_signup",
+        type: "checkout.session.completed",
+        data: { object: { id: "cs_1", customer: "cus_brand_new", metadata: { launchos: "signup", organisationId: org!.id } } },
+      };
+
+      const res = await POST(req(JSON.stringify(providerEvent), VALID_SIGNATURE));
+
+      expect(res.status).toBe(200);
+      expect(sendJobMock).toHaveBeenCalledTimes(1);
+      const [name, data] = sendJobMock.mock.calls[0]!;
+      expect(name).toBe("payments.webhook");
+      expect(data).toEqual({ organisationId: org!.id, providerEvent });
+    });
+  });
+
+  it("still drops a checkout.session.completed without our marker for an unknown customer", async () => {
+    await withTestDb(async (db) => {
+      currentDb = db;
+      const body = JSON.stringify({
+        id: "evt_other_checkout",
+        type: "checkout.session.completed",
+        data: { object: { id: "cs_2", customer: "cus_unknown", metadata: { somebody: "else" } } },
+      });
+      const res = await POST(req(body, VALID_SIGNATURE));
+      expect(((await res.json()) as { ignored?: string }).ignored).toBe("unknown customer");
+      expect(sendJobMock).not.toHaveBeenCalled();
+    });
+  });
+
   it("enqueues payments.webhook with a per-event singleton key when the customer is known", async () => {
     await withTestDb(async (db) => {
       currentDb = db;
