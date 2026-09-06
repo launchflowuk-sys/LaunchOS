@@ -101,6 +101,9 @@
  * | `meetings.remind` / `meetings.follow-up` | none — crons, payload `{}` | the worker's cron registration |
  * | `agent.run` | `lead-qualifier:<leadId>` | `dispatch-event.ts` on `lead.created` |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
+ * | `proposals.send` | `proposal-send:<proposalId>` from a decided approval and from the admin Send button; **none** from the two-minute tick, which is why the queue is `standard` | `apps/worker/src/jobs/proposals-send.ts`, the worker's cron, the approvals action |
+ * | `proposals.accepted` | `proposal-accepted:<proposalId>` | `acceptProposal` through `setProposalFollowOn`, and the same file's safety net |
+ * | `proposals.expire` / `proposals.nudge` | none — daily crons, payload `{}` | the worker's cron registration |
  */
 
 export type QueuePolicy = "standard" | "short" | "singleton" | "stately";
@@ -135,6 +138,10 @@ export const QUEUE = {
   billingStripeReconcile: "billing.stripe-reconcile",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
+  proposalsSend: "proposals.send",
+  proposalsAccepted: "proposals.accepted",
+  proposalsExpire: "proposals.expire",
+  proposalsNudge: "proposals.nudge",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -201,6 +208,25 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // payload `{}`; every send is stamped on the meeting, so a tick is idempotent.
   "meetings.remind": "standard",
   "meetings.follow-up": "standard",
+  // Proposals. `proposals.send` is `standard` rather than `short` because not
+  // every send to it carries a key: the two-minute tick sends `{}`, and under
+  // `short` `COALESCE(singleton_key, '')` would collapse an approved card's
+  // keyed send into a tick that happened to be queued — the same reason
+  // `domain.event` is `standard`. What keeps a proposal from going out twice
+  // is the domain layer, as it is for payments: `sendProposal` refuses
+  // anything that is not a draft, and `applyProposalSendDecision` stamps the
+  // approval at most once. Deliberately no `singletonSeconds` anywhere here:
+  // `job_i4` covers `failed`, so a window would mean a send that failed on a
+  // bad minute could not be retried that day — and after 76f313a we know a
+  // window must also fit inside `ARCHIVE_COMPLETED_AFTER_SECONDS`.
+  "proposals.send": "standard",
+  // Every send carries `proposal-accepted:<proposalId>`, so a second
+  // acceptance path (the sweep and `acceptProposal` racing) collapses while
+  // the first is still queued. The job is idempotent besides.
+  "proposals.accepted": "short",
+  // Two daily crons: payload `{}`, no key, one job per tick is the point.
+  "proposals.expire": "standard",
+  "proposals.nudge": "standard",
 };
 
 /**

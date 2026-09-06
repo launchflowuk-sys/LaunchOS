@@ -120,18 +120,43 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
     return { id: event.id, type: event.type, data: event.data as unknown as Record<string, unknown> };
   }
 
+  /**
+   * One session, whatever shape the money is.
+   *
+   * A recurring price makes it a subscription; a one-off line rides on the
+   * same session and Stripe bills it on the first invoice, which is how a
+   * proposal's "setup fee plus monthly" becomes a single thing to pay. With
+   * no recurring price at all it is a payment-mode session for the one-off
+   * alone. The metadata is copied onto whichever object the session creates,
+   * so a support lookup in the Stripe dashboard finds the LaunchOS record
+   * from either end.
+   */
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession> {
+    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [];
+    if (input.priceId) lineItems.push({ price: input.priceId, quantity: 1 });
+    if (input.oneOff) {
+      lineItems.push({
+        price_data: {
+          currency: input.oneOff.currency.toLowerCase(),
+          unit_amount: input.oneOff.amountPence,
+          product_data: { name: input.oneOff.description },
+        },
+        quantity: 1,
+      });
+    }
+    if (lineItems.length === 0) throw new Error("payments: a checkout session needs a price or a one-off amount");
+    const mode = input.priceId ? "subscription" : "payment";
     const session = await this.client.checkout.sessions.create({
-      mode: "subscription",
-      line_items: [{ price: input.priceId, quantity: 1 }],
+      mode,
+      line_items: lineItems,
       customer_email: input.customerEmail,
       success_url: input.successUrl,
       cancel_url: input.cancelUrl,
       client_reference_id: input.clientReference,
       metadata: input.metadata,
-      // The same metadata on the subscription itself, so a support lookup in
-      // the Stripe dashboard finds the LaunchOS client from either object.
-      subscription_data: { metadata: input.metadata },
+      ...(mode === "subscription"
+        ? { subscription_data: { metadata: input.metadata } }
+        : { payment_intent_data: { metadata: input.metadata } }),
     });
     return toCheckoutSession(session);
   }

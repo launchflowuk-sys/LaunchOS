@@ -5,7 +5,7 @@ import { recordAudit } from "../audit/record-audit.js";
 import { brandSupportAddress } from "../config.js";
 import { ensureLeadConversation } from "../leads/acknowledge.js";
 import { PROPOSAL_NOTICE_KIND } from "../support/courtesy-notice.js";
-import { describePricing, type ProposalTotals } from "./pricing.js";
+import { describePricing, formatPence, type ProposalTotals } from "./pricing.js";
 import { ActorKindSchema, formatValidUntil, proposalPublicUrl, type ActorKind, type ProposalRow } from "./shared.js";
 
 /**
@@ -23,7 +23,7 @@ import { ActorKindSchema, formatValidUntil, proposalPublicUrl, type ActorKind, t
 type MessageRow = typeof schema.messages.$inferSelect;
 type ConversationRow = typeof schema.conversations.$inferSelect;
 
-export type ProposalNoticeKind = "sent" | "accepted" | "declined";
+export type ProposalNoticeKind = "sent" | "accepted" | "declined" | "payment";
 
 /** `proposals.metadata.conversationId` — the thread a client's proposal emails file on. */
 export const PROPOSAL_CONVERSATION_ID = "conversationId";
@@ -151,6 +151,37 @@ export function acceptedBody(proposal: ProposalRow, totals: ProposalTotals, acce
     next,
     `Your signed copy is on the same page you accepted from: ${proposalPublicUrl(proposal, env)}`,
     `I'll be in touch shortly with the first steps.`,
+    `Shoji\nLaunchFlow`,
+  ].join("\n\n");
+}
+
+/**
+ * The payment link, sent by the follow-on job once acceptance has opened a
+ * Checkout session.
+ *
+ * Separate from the acceptance email on purpose: acceptance is one
+ * transaction and Stripe is an HTTP call to somebody else's server, so the
+ * confirmation goes out the moment they agree and this follows a second
+ * later. `acceptedBody` promises exactly this email, so the wording here has
+ * to be the other half of that sentence.
+ */
+export function paymentBody(
+  proposal: ProposalRow,
+  totals: ProposalTotals,
+  recipientName: string,
+  checkoutUrl: string,
+): string {
+  // Only ever sent when something is actually due: a monthly-on-delivery
+  // proposal opens no payment step at all, so there is no "£0.00" branch here.
+  const what = totals.recurringMonthlyPence > 0
+    ? `It takes the ${formatPence(totals.dueOnAcceptancePence)} to start and sets up the ${formatPence(totals.recurringMonthlyPence)} a month in one go, so there is nothing else to sign up for.`
+    : `It is a single payment of ${formatPence(totals.dueOnAcceptancePence)}.`;
+  return [
+    `Hi ${firstName(recipientName)},`,
+    `Here is the payment link for ${proposal.reference}.`,
+    what,
+    checkoutUrl,
+    `As soon as it clears I'll start on the first steps. Any questions, reply to this email.`,
     `Shoji\nLaunchFlow`,
   ].join("\n\n");
 }

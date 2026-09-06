@@ -9,6 +9,7 @@ import { contentWriter } from "./content-writer/index.js";
 import { hostingGuardDog } from "./hosting-guard-dog/index.js";
 import { leadQualifier } from "./lead-qualifier/index.js";
 import { opsBrief } from "./ops-brief/index.js";
+import { proposalDrafter } from "./proposal-drafter/index.js";
 import { supportTriage } from "./support-triage/index.js";
 
 /**
@@ -40,6 +41,7 @@ export function agentRegistry(deps: AgentRegistryDeps): Record<string, AgentDefi
     contentWriter(deps.integrations.imagegen),
     opsBrief(),
     leadQualifier(),
+    proposalDrafter(),
   ];
   return Object.fromEntries(defs.map((d) => [d.key, d]));
 }

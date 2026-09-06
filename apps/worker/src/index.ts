@@ -34,6 +34,7 @@ import { registerContentJobs } from "./jobs/content-jobs.js";
 import { ensureOpsBriefEnabled, registerOpsBriefJob } from "./jobs/ops-brief.js";
 import { ensureLeadQualifierEnabled } from "./jobs/lead-enablement.js";
 import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
+import { ensureProposalDrafterEnabled, registerProposalJobs } from "./jobs/proposals-jobs.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -239,6 +240,13 @@ async function main() {
   // follow-ups.
   await ensureLeadQualifierEnabled(db);
   await registerMeetingJobs({ db, boss, env: process.env });
+
+  // Proposals: the send path (the only process with a browser to render one),
+  // the follow-on a client's acceptance hands over, and the two daily sweeps.
+  // `registerProposalJobs` also installs `setProposalFollowOn`, which is what
+  // turns `acceptProposal`'s no-op hook into a real queue send.
+  await ensureProposalDrafterEnabled(db);
+  await registerProposalJobs({ db, boss, payments: integrations.payments, env: process.env });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
   // Every minute: a decided approval whose resume never arrived is an approved

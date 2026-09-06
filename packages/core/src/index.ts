@@ -482,7 +482,13 @@ export {
 } from "./proposals/sweeps.js";
 export type { ExpireProposalsResult, NudgeProposalsResult } from "./proposals/sweeps.js";
 export {
-  ensureProposalConversation, queueProposalNotice, sentBody, acceptedBody, declinedBody, PROPOSAL_CONVERSATION_ID,
+  ensureProposalConversation, queueProposalNotice, sentBody, acceptedBody, declinedBody, paymentBody, PROPOSAL_CONVERSATION_ID,
 } from "./proposals/notices.js";
 export type { ProposalNoticeKind, QueueProposalNoticeInput } from "./proposals/notices.js";
+export {
+  requestProposalApproval, applyProposalSendDecision, proposalSendsAwaitingApplication,
+  RequestProposalApprovalInput, ApplyProposalSendDecisionInput, ProposalSendPayload,
+  PROPOSAL_SEND_ACTION, PENDING_PROPOSAL_SEND_INDEX, PROPOSAL_SEND_APPLIED_AT,
+} from "./proposals/approval.js";
+export type { ApplyProposalSendDecisionResult } from "./proposals/approval.js";
 export { PROPOSAL_NOTICE_KIND } from "./support/courtesy-notice.js";

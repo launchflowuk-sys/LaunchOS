@@ -10,7 +10,7 @@ import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 import {
   CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND,
-  PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
+  PORTAL_REPLY_NOTICE_KIND, PROPOSAL_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
 } from "./courtesy-notice.js";
 
 /**
@@ -204,6 +204,31 @@ function presentationFor(
       footerNote: manageUrl && notice !== "cancelled" && notice !== "no_show"
         ? `Need to change or cancel? Use this link: ${manageUrl}`
         : "Reply to this email if you have any questions.",
+    };
+  }
+  if (kind === PROPOSAL_NOTICE_KIND) {
+    const notice = typeof message.metadata["notice"] === "string" ? message.metadata["notice"] : "sent";
+    const proposalUrl = typeof message.metadata["proposalUrl"] === "string" ? message.metadata["proposalUrl"] : undefined;
+    const checkoutUrl = typeof message.metadata["checkoutUrl"] === "string" ? message.metadata["checkoutUrl"] : undefined;
+    const headings: Record<string, string> = {
+      sent: "Your proposal is ready",
+      accepted: "That's agreed — thank you",
+      declined: "Thanks for letting us know",
+      payment: "Your payment link",
+    };
+    // The button is the one thing the client is meant to do next: read and
+    // accept it, or pay it. A declined proposal has no next step, so it has
+    // no button — chasing is Shoji's to do, not the shell's.
+    const cta = notice === "payment"
+      ? (checkoutUrl ? { label: "Pay securely", url: checkoutUrl } : undefined)
+      : notice === "declined"
+        ? undefined
+        : (proposalUrl ? { label: notice === "accepted" ? "See your signed copy" : "Read the proposal", url: proposalUrl } : undefined);
+    return {
+      preheader: preheaderFrom(message.body),
+      heading: headings[notice] ?? "Your proposal",
+      cta,
+      footerNote: "Reply to this email with any questions and it comes straight to Shoji.",
     };
   }
   if (kind === CONTENT_REPORT_NOTICE_KIND) {

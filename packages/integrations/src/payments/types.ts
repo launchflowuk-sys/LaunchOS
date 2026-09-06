@@ -59,9 +59,33 @@ export interface CreateSubscriptionInput {
  * the session (and on the `checkout.session.completed` webhook), which is how
  * `completeSignup` knows which organisation and package the buyer chose.
  */
+/**
+ * A charge with no catalogue price behind it — a proposal's setup fee, or a
+ * one-off piece of work quoted on the day. The figure comes from the accepted
+ * proposal's lines, so no Stripe Price could exist for it in advance.
+ */
+export interface CheckoutOneOffLine {
+  amountPence: number;
+  /** ISO code; lower-cased for the provider. */
+  currency: string;
+  /** What the buyer sees on the Checkout page and the receipt. */
+  description: string;
+}
+
 export interface CreateCheckoutSessionInput {
-  /** The provider price id — `packages.stripe_price_id`. */
-  priceId: string;
+  /**
+   * The provider price id — `packages.stripe_price_id`. Present for anything
+   * that recurs; absent for a purely one-off session, which is then opened in
+   * payment mode rather than subscription mode.
+   */
+  priceId?: string;
+  /**
+   * Added to the *same* session as `priceId`, which is the whole point: a
+   * setup fee plus a retainer is one Checkout the client completes once, and
+   * Stripe puts the one-off on the subscription's first invoice. Two sessions
+   * would mean two payments, and a client who paid one and abandoned the other.
+   */
+  oneOff?: CheckoutOneOffLine;
   customerEmail: string;
   successUrl: string;
   cancelUrl: string;

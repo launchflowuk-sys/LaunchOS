@@ -35,7 +35,8 @@ export class ProposalRefused extends Error {
       | "no_recipient"
       | "no_price"
       | "shape_mismatch"
-      | "expired",
+      | "expired"
+      | "already_pending",
     message: string,
   ) {
     super(message);

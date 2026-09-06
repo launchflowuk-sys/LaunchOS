@@ -13,9 +13,12 @@ export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", 
 // lets the publish job send it, carried out by `applyContentPublishDecision`.
 // `lead_reply` is the Lead Qualifier's drafted first reply to an enquiry —
 // run-less, decided on /approvals and carried out by `applyLeadReplyDecision`.
+// `proposal_send` is the Proposal Drafter's finished draft asking to go to the
+// client — run-less too, decided on /approvals, and carried out by the worker,
+// because sending renders a PDF and only `apps/worker` has a browser.
 export const approvalKindEnum = pgEnum("approval_kind", [
   "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change", "content_publish",
-  "content_report_send", "lead_reply",
+  "content_report_send", "lead_reply", "proposal_send",
 ]);
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
@@ -112,6 +115,15 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_lead_reply")
     .on(t.organisationId, sql`(${t.payload} ->> 'leadId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'lead_reply'`),
+  // At most one *pending* send request per proposal. A client must never be
+  // sent the same reference twice because the drafter was re-run while the
+  // first card was still waiting, and a proposal is frozen once sent, so the
+  // second send would be refused anyway — better it never reaches the queue.
+  // `requestProposalApproval` writes `payload.action = 'proposal_send'` beside
+  // the enum value, same one-migration reasoning as the four above.
+  uniqueIndex("approvals_pending_proposal_send")
+    .on(t.organisationId, sql`(${t.payload} ->> 'proposalId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'proposal_send'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {

@@ -176,6 +176,7 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
    * signup half-way.
    */
   async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession> {
+    if (!input.priceId && !input.oneOff) throw new Error("mock payments: a checkout session needs a price or a one-off amount");
     const id = this.id("cs");
     const session: PaymentsCheckoutSession = {
       id,
@@ -183,7 +184,15 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
       paymentStatus: "unpaid",
       url: input.successUrl.replace("{CHECKOUT_SESSION_ID}", id),
       customerEmail: input.customerEmail,
-      metadata: { ...input.metadata, priceId: input.priceId, clientReference: input.clientReference },
+      metadata: {
+        ...input.metadata,
+        ...(input.priceId ? { priceId: input.priceId } : {}),
+        // Recorded so a test can assert the setup fee actually rode along on
+        // the same session rather than being quietly dropped.
+        ...(input.oneOff ? { oneOffPence: String(input.oneOff.amountPence), oneOffDescription: input.oneOff.description } : {}),
+        mode: input.priceId ? "subscription" : "payment",
+        clientReference: input.clientReference,
+      },
     };
     this.checkouts.set(id, session);
     return session;
