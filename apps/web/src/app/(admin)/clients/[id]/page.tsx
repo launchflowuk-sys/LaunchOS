@@ -11,7 +11,9 @@ import { formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
+import { MeetingsStrip } from "../../meetings/meetings-strip";
 import { SubscriptionsSection } from "./billing/subscriptions-section";
+import { ClientDetailsForm } from "./client-details-form";
 import {
   AddContactForm, AddDomainForm, AddSiteForm, ArchiveClientButton, BillingForm, RemoveContactButton,
 } from "./forms";
@@ -51,22 +53,49 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
 
       <ClientTabs clientId={client.id} active={tab} />
 
-      {tab === "overview" ? <OverviewTab clientId={client.id} /> : null}
+      {tab === "overview" ? <OverviewTab client={client} /> : null}
       {tab === "contacts" ? <ContactsTab clientId={client.id} /> : null}
       {tab === "sites" ? <SitesTab clientId={client.id} /> : null}
     </>
   );
 }
 
+type ClientRecord = NonNullable<Awaited<ReturnType<typeof getClient>>>;
+
 /**
- * A timeline rather than a `DataList`: these are events in order, not rows to
- * compare, and every entry is one sentence with a time beside it.
+ * The details editor, the calls booked with them, then the timeline. The
+ * timeline is a list rather than a `DataList`: these are events in order,
+ * not rows to compare, and every entry is one sentence with a time beside it.
  */
-async function OverviewTab({ clientId }: { clientId: string }) {
+async function OverviewTab({ client }: { client: ClientRecord }) {
   const session = await requireAdmin();
-  const events = await listActivity(getDb(), session.organisationId, { clientId });
+  const events = await listActivity(getDb(), session.organisationId, { clientId: client.id });
 
   return (
+    <>
+    <Section title="Details" description="The name on their record, and how we reach them. Support mail keeps routing to the same address.">
+      <div className="rounded-xl border bg-card p-4">
+        <ClientDetailsForm
+          clientId={client.id}
+          defaults={{
+            name: client.name,
+            tradingName: client.tradingName ?? "",
+            email: client.email ?? "",
+            phone: client.phone ?? "",
+            websiteUrl: client.websiteUrl ?? "",
+            industry: client.industry ?? "",
+            addressLine1: client.addressLine1 ?? "",
+            addressLine2: client.addressLine2 ?? "",
+            city: client.city ?? "",
+            postcode: client.postcode ?? "",
+            notes: client.notes ?? "",
+          }}
+        />
+      </div>
+    </Section>
+
+    <MeetingsStrip organisationId={session.organisationId} clientId={client.id} />
+
     <Section title="Activity" description="Everything that has happened for this client, newest first.">
       {events.length === 0 ? (
         <EmptyState icon={Activity}>Nothing has happened yet. Add a contact, a domain or a website.</EmptyState>
@@ -99,6 +128,7 @@ async function OverviewTab({ clientId }: { clientId: string }) {
         </ol>
       )}
     </Section>
+    </>
   );
 }
 

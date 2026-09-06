@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { listLeads } from "@launchos/core";
+import { attributionOf, listLeads } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -104,6 +104,28 @@ describe("POST /api/public/leads", () => {
       const bells = await db.select().from(schema.notifications).where(eq(schema.notifications.organisationId, organisationId));
       expect(bells.map((b) => b.kind)).toContain("lead.created");
       expect(bells[0]?.link).toBe(`/leads/${lead.id}`);
+    });
+  });
+
+  it("stores the attribution the form carried, and refuses one that is not short strings", async () => {
+    await withTestDb(async (db) => {
+      currentDb = db;
+      const organisationId = await seedOrganisation(db);
+      const res = await post({
+        name: "Sam Salon",
+        email: "sam@example.test",
+        attribution: { utmSource: "google", utmMedium: "cpc", utmCampaign: "spring-launch", landingPath: "/pricing", referrer: "www.google.com" },
+      });
+      expect(res.status).toBe(200);
+      const { leads } = await listLeads(db, organisationId, { utmCampaign: "spring-launch" });
+      expect(leads).toHaveLength(1);
+      expect(attributionOf(leads[0]!.metadata)).toEqual({
+        utmSource: "google", utmMedium: "cpc", utmCampaign: "spring-launch", landingPath: "/pricing", referrer: "www.google.com",
+      });
+
+      expect((await post({ name: "Bad", attribution: { utmSource: "x".repeat(201) } })).status).toBe(400);
+      expect((await post({ name: "Bad", attribution: "google" })).status).toBe(400);
+      expect((await listLeads(db, organisationId, {})).total).toBe(1);
     });
   });
 

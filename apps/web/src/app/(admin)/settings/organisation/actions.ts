@@ -1,10 +1,11 @@
 "use server";
 
-import { setAssignmentRules, updateOrganisation } from "@launchos/core";
+import { setAssignmentRules, setBookingSettings, updateOrganisation } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
+import { readBookingForm } from "./booking-form";
 import { type ActionResult, AssignmentRulesSchema, readSupplierFields, UpdateOrganisationSchema } from "./schemas";
 
 /**
@@ -53,6 +54,30 @@ export async function updateOrganisationAction(formData: FormData): Promise<Acti
     revalidatePath("/settings/organisation");
     // Every printable invoice renders these, so both print views go stale.
     revalidatePath("/invoices", "layout");
+    return { status: "ok" };
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+}
+
+/**
+ * The hours, slot length, buffer, notice, horizon and host the public
+ * booking page offers. Gated by `settings`, like assignment. Core merges the
+ * whole set over the current one, refuses a host who is not an active
+ * member, and audits `organisation.booking_updated`; the booking page reads
+ * the result on its next load, so no revalidation of `/book` is needed.
+ */
+export async function updateBookingSettingsAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+
+  const read = readBookingForm(formData);
+  if (read.status === "error") return { status: "error", message: read.message };
+
+  try {
+    await setBookingSettings(getDb(), session.organisationId, { settings: read.settings, actorId: session.userId });
+    revalidatePath("/settings/organisation");
     return { status: "ok" };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };

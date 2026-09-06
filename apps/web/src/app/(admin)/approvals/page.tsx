@@ -19,6 +19,7 @@ import { approveApproval, rejectApproval } from "./actions";
 import { ContentPublishRequest } from "./content-publish-card";
 import { ContentReportSendRequest } from "./content-report-send-card";
 import { DecisionForm } from "./decision-form";
+import { LeadReplyRequest } from "./lead-reply-card";
 
 export const dynamic = "force-dynamic";
 
@@ -127,6 +128,9 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
   const isSubscriptionChange = approval.kind === "subscription_change";
   const isContentPublish = approval.kind === "content_publish";
   const isContentReportSend = approval.kind === "content_report_send";
+  // The drafted reply carries its own Approve/Reject: the edited body has to
+  // travel with the verdict, so the generic pair below is not drawn for it.
+  const isLeadReply = approval.kind === "lead_reply";
 
   return (
     // The id is on the card so a test can address exactly one approval: two
@@ -145,6 +149,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         {isSubscriptionChange ? <SubscriptionChangeRequest approval={approval} /> : null}
         {isContentPublish ? <ContentPublishRequest approval={approval} /> : null}
         {isContentReportSend ? <ContentReportSendRequest approval={approval} /> : null}
+        {isLeadReply ? <LeadReplyRequest approval={approval} /> : null}
 
         {description ? (
           <InlineAlert tone="warning" title="What approving does">
@@ -157,6 +162,8 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         <p className="text-meta text-muted-foreground">
           {isSubscriptionChange ? (
             "Raised by the client from their portal."
+          ) : isLeadReply ? (
+            "Drafted by the Lead Qualifier agent from the enquiry and the knowledge base."
           ) : isContentPublish && !approval.runId ? (
             "Sent for approval from the Content screen."
           ) : isContentReportSend && !approval.runId ? (
@@ -193,24 +200,26 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
           </pre>
         </Disclosure>
 
-        <div className="flex flex-col gap-4 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-end">
-          <DecisionForm
-            approvalId={approval.id}
-            action={approveApproval}
-            label="Approve"
-            variant="success"
-            withNote
-            resumesAgent={Boolean(approval.runId)}
-          />
-          <DecisionForm
-            approvalId={approval.id}
-            action={rejectApproval}
-            label="Reject"
-            variant="destructive"
-            withNote
-            resumesAgent={Boolean(approval.runId)}
-          />
-        </div>
+        {isLeadReply ? null : (
+          <div className="flex flex-col gap-4 border-t pt-4 sm:flex-row sm:flex-wrap sm:items-end">
+            <DecisionForm
+              approvalId={approval.id}
+              action={approveApproval}
+              label="Approve"
+              variant="success"
+              withNote
+              resumesAgent={Boolean(approval.runId)}
+            />
+            <DecisionForm
+              approvalId={approval.id}
+              action={rejectApproval}
+              label="Reject"
+              variant="destructive"
+              withNote
+              resumesAgent={Boolean(approval.runId)}
+            />
+          </div>
+        )}
       </div>
     </li>
   );

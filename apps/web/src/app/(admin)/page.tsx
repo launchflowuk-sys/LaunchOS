@@ -1,4 +1,4 @@
-import { latestOpsBrief, listActivity, listTasks } from "@launchos/core";
+import { latestOpsBrief, listActivity, listTasks, nextMeeting } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
 import {
@@ -10,6 +10,7 @@ import {
   Rocket,
   ShieldCheck,
   Siren,
+  Video,
 } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -19,6 +20,7 @@ import { Section } from "@/components/section";
 import { StatCard, type StatCardProps } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { formatInZone } from "@/lib/booking/slot-days";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
@@ -117,6 +119,7 @@ export default async function DashboardPage() {
     overdueQueue,
     activity,
     brief,
+    upcomingMeeting,
   ] = await Promise.all([
     db
       .select({ value: count() })
@@ -188,6 +191,7 @@ export default async function DashboardPage() {
     }),
     listActivity(db, org, { limit: ACTIVITY_LIMIT }),
     latestOpsBrief(db, org),
+    nextMeeting(db, org, now),
   ]);
 
   // Attention-first: the three counts that mean a person has to do something
@@ -259,10 +263,23 @@ export default async function DashboardPage() {
     <>
       <PageHeader title="Dashboard" description="What needs attention right now." />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
         {cards.map((card) => (
           <StatCard key={card.label} {...card} />
         ))}
+        {/* The next call in the diary, London time. A string figure rather
+            than a count; "None" when the diary is clear. Full width on a
+            phone so seven tiles do not leave an orphan. */}
+        <div className="col-span-2 md:col-span-1">
+          <StatCard
+            label="Next meeting"
+            value={upcomingMeeting ? formatInZone(upcomingMeeting.startsAt, "Europe/London", "short").replace(/ [A-Z]+$/, "") : "None"}
+            href={upcomingMeeting ? `/meetings/${upcomingMeeting.id}` : "/meetings"}
+            hint={upcomingMeeting ? `With ${upcomingMeeting.guestName}` : "Nothing booked"}
+            category="delivery"
+            icon={Video}
+          />
+        </div>
       </div>
 
       <Section title="This morning's brief" description="What the Ops Brief agent saw at 07:00, and what it says needs you.">

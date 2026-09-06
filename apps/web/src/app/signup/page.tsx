@@ -1,7 +1,9 @@
 import { listPackages } from "@launchos/core";
 import type { PackageIncludes } from "@launchos/db/schema";
+import { AttributionCapture } from "@/components/attribution-capture";
 import { InlineAlert } from "@/components/inline-alert";
 import { getDb } from "@/lib/db";
+import { appHost, marketingHost } from "@/lib/env";
 import { formatPence } from "@/lib/format";
 import { publicOrganisationId } from "@/lib/public-organisation";
 import { SignupForm, type SignupPackage } from "./signup-form";
@@ -46,6 +48,9 @@ export default async function SignupPage({ searchParams }: PageProps<"/signup">)
       title="Sign up to LaunchFlow"
       description="Pick a package, tell us who you are, and you are in. Your portal login arrives by email the moment it is done."
     >
+      {/* A paid click can land here straight from an ad; the campaign cookie
+          is written on this page too, so the sign-up's lead can carry it. */}
+      <AttributionCapture ownHosts={[marketingHost(), appHost()]} />
       {cards.length === 0 ? (
         <InlineAlert tone="info" title="Sign-up is not open just yet">
           There are no packages to choose from at the moment. Contact us and we will set you up by hand.

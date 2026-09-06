@@ -1,7 +1,7 @@
 import { listSites, listTasks } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray } from "drizzle-orm";
-import { Globe, LifeBuoy } from "lucide-react";
+import { Globe, LifeBuoy, Video } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
@@ -128,6 +128,28 @@ export default async function PortalHomePage() {
           category="delivery"
         />
       </div>
+
+      {/* A call with us, self-booked. `/book` reads the portal session on
+          the server and pre-fills the name and email from it — nothing
+          personal travels in the link. */}
+      <Section title="Talk to us" description="A short video call, at a time that suits you.">
+        <div className="flex flex-col gap-4 rounded-xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+              <Video className="size-4" strokeWidth={1.75} />
+            </span>
+            <div>
+              <p className="text-base font-semibold">Book a call</p>
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                Pick a time and we will send a Zoom link. Your details are filled in already.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="lg" className="w-full sm:w-auto">
+            <Link href="/book">Book a call</Link>
+          </Button>
+        </div>
+      </Section>
 
       <Section
         title="Your websites"

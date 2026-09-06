@@ -2,6 +2,7 @@
 
 import { createLead } from "@launchos/core";
 import { headers } from "next/headers";
+import { readAttributionCookie } from "@/lib/attribution-server";
 import { getDb } from "@/lib/db";
 import { CONTACT_EMAIL } from "@/lib/marketing/site";
 import { publicOrganisationId } from "@/lib/public-organisation";
@@ -43,6 +44,11 @@ export async function sendContactAction(_previous: ContactActionResult | null, f
   const organisationId = await publicOrganisationId();
   if (!organisationId) return { status: "error", message: `The form is not taking messages right now. Email us at ${CONTACT_EMAIL}.` };
 
+  // The campaign that brought them, from the `lf_attr` cookie the first
+  // page they landed on wrote (see `AttributionCapture`). Absent for a
+  // direct visit; the Leads page shows it as the Campaign column.
+  const attribution = await readAttributionCookie();
+
   // The owner's bell may fan out to a device (`push.requested`), which the
   // web process routes onto pg-boss only once the enqueue is installed.
   installWebEnqueue();
@@ -54,6 +60,7 @@ export async function sendContactAction(_previous: ContactActionResult | null, f
       ...(v.business ? { business: v.business } : {}),
       message: v.message,
       source: "website",
+      ...(attribution ? { attribution } : {}),
       metadata: { form: "contact", ...(v.page ? { page: v.page } : {}), address },
       actorKind: "client",
     });

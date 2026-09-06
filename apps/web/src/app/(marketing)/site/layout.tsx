@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AttributionCapture } from "@/components/attribution-capture";
+import { appHost, marketingHost } from "@/lib/env";
 import { marketingLinks } from "@/lib/marketing/links";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marketing/site";
 import { SiteFooter } from "./_components/site-footer";
@@ -30,6 +32,9 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function MarketingLayout({ children }: LayoutProps<"/site">) {
   return (
     <div className="marketing flex min-h-screen flex-1 flex-col bg-card text-foreground">
+      {/* The campaign cookie: written once, on the first page a paid or
+          referred visitor lands on, and read back by the contact form. */}
+      <AttributionCapture ownHosts={[marketingHost(), appHost()]} />
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />

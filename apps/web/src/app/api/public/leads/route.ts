@@ -76,6 +76,7 @@ export async function POST(request: Request): Promise<Response> {
       ...(body.business ? { business: body.business } : {}),
       ...(body.message ? { message: body.message } : {}),
       source: body.source,
+      ...(body.attribution ? { attribution: body.attribution } : {}),
       metadata: { ...(body.page ? { page: body.page } : {}), address },
       actorKind: "client",
     });

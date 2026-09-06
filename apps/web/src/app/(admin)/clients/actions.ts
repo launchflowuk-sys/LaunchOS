@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  archiveClient, createClient, createContact, createDomain, createSite, deleteContact, upsertBillingProfile,
+  archiveClient, createClient, createContact, createDomain, createSite, deleteContact, updateClient, upsertBillingProfile,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -9,8 +9,8 @@ import { getDb } from "@/lib/db";
 import { installWebEnqueue } from "@/lib/queue";
 import { requireAdmin } from "@/lib/session";
 import {
-  BillingSchema, NewClientSchema, NewContactSchema, NewDomainSchema, NewSiteSchema,
-  type ActionResult, type BillingValues, type NewClientValues, type NewContactValues, type NewDomainValues, type NewSiteValues,
+  BillingSchema, ClientDetailsSchema, NewClientSchema, NewContactSchema, NewDomainSchema, NewSiteSchema,
+  type ActionResult, type BillingValues, type ClientDetailsValues, type NewClientValues, type NewContactValues, type NewDomainValues, type NewSiteValues,
 } from "./schemas";
 
 /** Turns a service throw into a message the caller can show, never a 500 page. */
@@ -33,6 +33,31 @@ export async function createClientAction(values: NewClientValues): Promise<Actio
       actorId: session.userId,
     });
     revalidatePath("/clients");
+    return { status: "ok", id: client.id };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
+/**
+ * The name, trading name and contact details on the Overview tab. `slug`,
+ * `supportEmail` and `status` are not here: mail routes to the first two,
+ * and Archive is the one status change with its own button. Core audits the
+ * write as `client.updated`.
+ */
+export async function updateClientDetailsAction(values: ClientDetailsValues): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = ClientDetailsSchema.safeParse(values);
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid details" };
+
+  try {
+    const client = await updateClient(getDb(), session.organisationId, {
+      ...parsed.data,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath("/clients");
+    revalidatePath(`/clients/${client.id}`, "layout");
     return { status: "ok", id: client.id };
   } catch (error) {
     return failed(error);

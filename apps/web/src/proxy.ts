@@ -40,5 +40,5 @@ export const config = {
   // Never the app's own paths or a file with an extension — the same list
   // `marketingRewriteTarget` applies, repeated here as a constant because a
   // matcher must be statically analysable and cannot call a function.
-  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|.*\\..*).*)"],
+  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|book|.*\\..*).*)"],
 };

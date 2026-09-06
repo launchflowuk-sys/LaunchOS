@@ -79,4 +79,46 @@ export const NewDomainSchema = z.object({
 });
 export type NewDomainValues = z.input<typeof NewDomainSchema>;
 
+/**
+ * "Edit details" on the client Overview tab. An emptied input means "clear
+ * this column" (a client that drops its trading name has to be able to take
+ * it off), so every optional blank becomes `null` for core's `nullish`
+ * fields rather than `undefined` ("leave it alone"). `country` is not on the
+ * form: two letters nobody edits, and core refuses anything else.
+ */
+// `nullish` on the input side so the resolver's output (`string | null`) is
+// assignable back to the input type react-hook-form is generic over.
+const clearableText = (max: number) =>
+  z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() ? v.trim() : null))
+    .pipe(z.string().max(max).nullable());
+const clearableEmail = z
+  .string()
+  .nullish()
+  .transform((v) => (v?.trim() ? v.trim() : null))
+  .pipe(z.string().email("Enter a full email address").nullable());
+const clearableUrl = z
+  .string()
+  .nullish()
+  .transform((v) => (v?.trim() ? v.trim() : null))
+  .pipe(z.string().url("Must be a full URL, with https://").nullable());
+
+export const ClientDetailsSchema = z.object({
+  clientId: z.string().uuid(),
+  name: z.string().trim().min(1, "Name is required").max(200),
+  tradingName: clearableText(200),
+  email: clearableEmail,
+  phone: clearableText(40),
+  websiteUrl: clearableUrl,
+  industry: clearableText(100),
+  addressLine1: clearableText(200),
+  addressLine2: clearableText(200),
+  city: clearableText(100),
+  postcode: clearableText(20),
+  notes: clearableText(4000),
+});
+export type ClientDetailsValues = z.input<typeof ClientDetailsSchema>;
+
 export type ActionResult = { status: "ok"; id: string } | { status: "error"; message: string };

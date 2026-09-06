@@ -56,9 +56,12 @@ export function isMarketingHost(host: string, marketingHost: string): boolean {
 /**
  * Served as themselves on the marketing host. `/after-sign-in` and `/portal`
  * are here because `/sign-in` is: a client who signs in on the wrong host
- * must land on their portal rather than on a 404 under `/site`.
+ * must land on their portal rather than on a 404 under `/site`. `/book` is
+ * the public booking page: the acknowledgement email links to
+ * `${APP_URL}/book?lead=…`, and `launchflow.co.uk/book` must answer the same
+ * page, so it is the app's on both hosts like `/signup`.
  */
-const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal"] as const;
+const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal", "/book"] as const;
 
 /**
  * Where a path on the marketing host is actually served from: `/` → `/site`,

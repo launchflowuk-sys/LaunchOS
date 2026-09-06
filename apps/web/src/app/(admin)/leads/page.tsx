@@ -1,4 +1,4 @@
-import { type LeadRow, listLeads } from "@launchos/core";
+import { attributionOf, attributionSummary, leadCampaignCounts, type LeadRow, listLeads } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { LeadStatus } from "@launchos/db/schema";
 import { and, count, eq, isNull } from "drizzle-orm";
@@ -40,6 +40,28 @@ const COLUMNS: readonly DataListColumn<LeadRow>[] = [
   },
   { key: "status", header: "Status", status: true, cell: (row) => <LeadStatusBadge status={row.status} /> },
   { key: "source", header: "Source", cell: (row) => LEAD_SOURCE_LABEL[row.source] ?? row.source },
+  {
+    key: "campaign",
+    header: "Campaign",
+    cell: (row) => {
+      const attribution = attributionOf(row.metadata);
+      if (attribution.utmCampaign) {
+        return (
+          <>
+            <Link href={{ pathname: "/leads", query: { campaign: attribution.utmCampaign } }} className="hover:underline">
+              {attribution.utmCampaign}
+            </Link>
+            {attribution.utmSource ? (
+              <span className="block text-meta text-muted-foreground">
+                {[attribution.utmSource, attribution.utmMedium].filter(Boolean).join(" / ")}
+              </span>
+            ) : null}
+          </>
+        );
+      }
+      return <span className="text-muted-foreground">{attributionSummary(attribution) ?? "—"}</span>;
+    },
+  },
   { key: "received", header: "Received", className: "whitespace-nowrap", cell: (row) => formatDateTime(row.createdAt) },
 ];
 
@@ -60,16 +82,20 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   const params = await searchParams;
   const statusParam = typeof params.status === "string" ? params.status : "all";
   const filter: Filter = FILTERS.includes(statusParam as Filter) ? (statusParam as Filter) : "all";
+  const campaign = typeof params.campaign === "string" && params.campaign.trim().length > 0 ? params.campaign.trim().slice(0, 200) : null;
   const page = pageParam(params.page);
 
-  const [{ leads: fetched }, counts] = await Promise.all([
+  const [{ leads: fetched }, counts, campaigns] = await Promise.all([
     listLeads(getDb(), session.organisationId, {
       ...(filter === "all" ? {} : { status: filter }),
+      ...(campaign ? { utmCampaign: campaign } : {}),
       limit: PAGE_SIZE + 1,
       offset: (page - 1) * PAGE_SIZE,
     }),
     countsByStatus(session.organisationId),
+    leadCampaignCounts(getDb(), session.organisationId, { days: 30 }),
   ]);
+  const attributed = campaigns.campaigns.filter((row) => row.campaign !== null);
   const hasNext = fetched.length > PAGE_SIZE;
   const rows = hasNext ? fetched.slice(0, PAGE_SIZE) : fetched;
 
@@ -99,7 +125,39 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         ))}
       </ul>
 
+      {/* Where the last thirty days of leads came from, by UTM campaign:
+          the number that says whether an ad is earning its keep. Each pill
+          filters the list; the current one is outlined. */}
+      {attributed.length > 0 ? (
+        <div className="mb-4">
+          <p className="label-caps mb-2 text-muted-foreground">Campaigns, last {campaigns.days} days</p>
+          <ul className="flex flex-wrap gap-2" aria-label="Leads by campaign">
+            {attributed.map((row) => (
+              <li key={row.campaign}>
+                <Link
+                  href={{ pathname: "/leads", query: { status: filter, campaign: row.campaign } }}
+                  aria-current={campaign === row.campaign ? "page" : undefined}
+                  className="inline-flex items-center gap-2 rounded-full border bg-card px-3 py-1 text-sm transition-colors hover:bg-muted aria-[current=page]:border-primary aria-[current=page]:bg-primary-soft"
+                >
+                  <span>{row.campaign}</span>
+                  <span className="font-semibold tabular-nums">{row.leads}</span>
+                  {row.converted > 0 ? <span className="text-meta text-muted-foreground">{row.converted} won</span> : null}
+                </Link>
+              </li>
+            ))}
+            {campaign ? (
+              <li>
+                <Link href={{ pathname: "/leads", query: { status: filter } }} className="inline-flex items-center rounded-full border border-dashed px-3 py-1 text-sm text-muted-foreground hover:text-foreground">
+                  Clear campaign
+                </Link>
+              </li>
+            ) : null}
+          </ul>
+        </div>
+      ) : null}
+
       <form action="/leads">
+        {campaign ? <input type="hidden" name="campaign" value={campaign} /> : null}
         <FilterBar>
           <ToolbarField label="Status" htmlFor="status" className="sm:w-44">
             <NativeSelect id="status" name="status" defaultValue={filter}>
@@ -127,13 +185,15 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
           <EmptyState icon={UserPlus}>
             {page > 1
               ? "There are no leads on this page. Go back to a newer page."
-              : filter === "all"
-                ? "No leads yet. The website form and self-serve sign-ups land here."
-                : `No ${LEAD_STATUS_LABEL[filter].toLowerCase()} leads.`}
+              : campaign
+                ? `No leads from the "${campaign}" campaign${filter === "all" ? "" : ` that are ${LEAD_STATUS_LABEL[filter].toLowerCase()}`}.`
+                : filter === "all"
+                  ? "No leads yet. The website form and self-serve sign-ups land here."
+                  : `No ${LEAD_STATUS_LABEL[filter].toLowerCase()} leads.`}
           </EmptyState>
         }
       />
-      <Pager basePath="/leads" query={{ status: filter }} page={page} hasNext={hasNext} />
+      <Pager basePath="/leads" query={{ status: filter, ...(campaign ? { campaign } : {}) }} page={page} hasNext={hasNext} />
     </>
   );
 }

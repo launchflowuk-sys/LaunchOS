@@ -200,6 +200,24 @@ export const Env = z.object({
    */
   MARKETING_HOST: z.string().optional(),
   APP_HOST: z.string().optional(),
+  /**
+   * Zoom Server-to-Server OAuth, behind the public booking page. The web
+   * process creates the meeting synchronously so the join link is on
+   * `/book/done` at once, which is why the keys are needed here as well as
+   * on the worker (reschedules, cancellations, reminders). All three set →
+   * Zoom; none → the mock (the adapter guard warns in production); a partial
+   * set is refused in production as a downgrade. Declared so the guard reads
+   * them — an undeclared key is stripped and reads as unset.
+   */
+  ZOOM_ACCOUNT_ID: z.string().optional(),
+  ZOOM_CLIENT_ID: z.string().optional(),
+  ZOOM_CLIENT_SECRET: z.string().optional(),
+  /**
+   * The marketing site's public origin (default `https://launchflow.co.uk`),
+   * read by core's `marketingUrl()` for the one link a token-less lead gets
+   * instead of `/book`. Declared here so the web env list is complete.
+   */
+  MARKETING_URL: z.string().optional(),
 });
 export type Env = z.infer<typeof Env>;
 

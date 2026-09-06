@@ -2,6 +2,7 @@ import type { MemberPermissions, PermissionKey } from "@launchos/core";
 import {
   BookOpen,
   Bot,
+  CalendarClock,
   ChartColumn,
   ChartLine,
   Clock,
@@ -71,6 +72,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // here before they are clients. The page is W3b's; the entry is here so
       // the rail is edited in one place.
       { label: "Leads", href: "/leads", icon: UserPlus },
+      // Discovery calls booked through `/book`: upcoming and past, outcomes,
+      // the join link. After Leads because that is where most of them come
+      // from; the only nav entry the client-workflow work adds.
+      { label: "Meetings", href: "/meetings", icon: CalendarClock },
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },

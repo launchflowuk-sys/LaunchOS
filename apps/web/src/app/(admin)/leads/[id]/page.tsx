@@ -1,4 +1,4 @@
-import { getLead, listPackages } from "@launchos/core";
+import { attributionOf, attributionSummary, bookingLinkFor, getLead, listPackages } from "@launchos/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
@@ -13,6 +13,7 @@ import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
+import { MeetingsStrip } from "../../meetings/meetings-strip";
 import { updateLeadStatusAction } from "../actions";
 import { LeadStatusBadge } from "../lead-status-badge";
 import { LEAD_SOURCE_LABEL, LEAD_STATUS_LABEL, MANUAL_LEAD_STATUSES } from "../schemas";
@@ -27,6 +28,21 @@ function metadataRows(metadata: Record<string, unknown>): { label: string; value
   if (typeof metadata.packageSlug === "string") rows.push({ label: "Package chosen", value: metadata.packageSlug });
   if (typeof metadata.checkoutSessionId === "string") rows.push({ label: "Checkout session", value: metadata.checkoutSessionId });
   return rows;
+}
+
+/** The campaign that brought them, one row, with the rest of what the cookie carried as its hint. */
+function attributionRows(metadata: Record<string, unknown>): { label: string; value: string; hint?: string }[] {
+  const attribution = attributionOf(metadata);
+  const summary = attributionSummary(attribution);
+  if (!summary) return [];
+  const detail = [
+    attribution.utmTerm ? `term: ${attribution.utmTerm}` : null,
+    attribution.utmContent ? `content: ${attribution.utmContent}` : null,
+    attribution.landingPath ? `landed on ${attribution.landingPath}` : null,
+    attribution.gclid ? "Google Ads click id" : null,
+    attribution.fbclid ? "Facebook click id" : null,
+  ].filter((v): v is string => v !== null);
+  return [{ label: "Campaign", value: summary, ...(detail.length > 0 ? { hint: detail.join(" · ") } : {}) }];
 }
 
 export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
@@ -86,6 +102,8 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
             </div>
           </Section>
 
+          <MeetingsStrip organisationId={session.organisationId} leadId={lead.id} bookHref={bookingLinkFor(lead)} />
+
           {!isConverted ? (
             <Section
               title="Convert to client"
@@ -128,7 +146,17 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
                     ),
                   },
                   { label: "Source", value: LEAD_SOURCE_LABEL[lead.source] ?? lead.source },
+                  ...attributionRows(metadata),
                   ...metadataRows(metadata),
+                  {
+                    label: "Booking link",
+                    value: (
+                      <a href={bookingLinkFor(lead)} target="_blank" rel="noreferrer" className="break-all text-primary underline underline-offset-2">
+                        {bookingLinkFor(lead)}
+                      </a>
+                    ),
+                    hint: "In every email we send them. Pre-fills their name and email on the booking page.",
+                  },
                   { label: "Last changed", value: formatDateTime(lead.updatedAt) },
                 ]}
               />

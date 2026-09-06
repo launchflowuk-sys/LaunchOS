@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, gte, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
+import { leadsAwaitingReply } from "../leads/leads.js";
 import { FINISHED_STATUSES } from "../tasks/update-task-status.js";
 import { entryMinutes } from "./week.js";
 
@@ -54,6 +55,10 @@ export interface OpsMetricsSnapshot {
     hoursClocked: number;
     clockedInNow: number;
     byMember: { userId: string; name: string; hours: number }[];
+  };
+  leads: {
+    /** Still `new` — nobody has written back — after 24 hours. The brief's "waiting for a reply" line. */
+    awaitingReplyOver24h: number;
   };
 }
 
@@ -182,7 +187,7 @@ async function teamMetrics(db: Db, org: string, from: Date, now: Date): Promise<
 export async function opsMetricsSnapshot(db: Db, organisationId: string, input: OpsMetricsInput = {}): Promise<OpsMetricsSnapshot> {
   const v = OpsMetricsInput.parse(input);
   const from = new Date(v.now.getTime() - v.hours * HOUR_MS);
-  const [cases, tasks, incidents, approvals, invoices, content, agents, team] = await Promise.all([
+  const [cases, tasks, incidents, approvals, invoices, content, agents, team, waiting] = await Promise.all([
     caseMetrics(db, organisationId, from, v.now),
     taskMetrics(db, organisationId, from, v.now),
     incidentMetrics(db, organisationId, from),
@@ -191,6 +196,11 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
     contentMetrics(db, organisationId, from),
     agentMetrics(db, organisationId, from),
     teamMetrics(db, organisationId, from, v.now),
+    leadsAwaitingReply(db, organisationId, { hours: 24, now: v.now, limit: 200 }),
   ]);
-  return { window: { from, to: v.now, hours: v.hours }, cases, tasks, incidents, approvals, invoices, content, agents, team };
+  return {
+    window: { from, to: v.now, hours: v.hours },
+    cases, tasks, incidents, approvals, invoices, content, agents, team,
+    leads: { awaitingReplyOver24h: waiting.length },
+  };
 }

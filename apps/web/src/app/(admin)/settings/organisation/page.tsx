@@ -1,5 +1,7 @@
 import {
   getAssignmentRules,
+  getBookingSettings,
+  listMembers,
   SUPPORT_ASSIGNMENT_LABELS,
   SUPPORT_ASSIGNMENT_RULES,
   supportEmailDomain,
@@ -25,6 +27,7 @@ import { formatDateTime } from "@/lib/format";
 import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
 import { updateAssignmentRulesAction, updateOrganisationAction } from "./actions";
+import { BookingSection } from "./booking-section";
 
 export const dynamic = "force-dynamic";
 
@@ -52,12 +55,18 @@ function Field({
 
 export default async function OrganisationSettingsPage() {
   const session = await requireAdmin();
-  const [[organisation], permissions, assignment] = await Promise.all([
+  const [[organisation], permissions, assignment, booking, members] = await Promise.all([
     getDb().select().from(schema.organisations).where(eq(schema.organisations.id, session.organisationId)),
     sessionPermissions(),
     getAssignmentRules(getDb(), session.organisationId),
+    getBookingSettings(getDb(), session.organisationId),
+    listMembers(getDb(), session.organisationId),
   ]);
   if (!organisation) notFound();
+  // Whose diary the booking page fills: any active member. Core refuses the rest.
+  const hosts = members
+    .filter((member) => member.status === "active")
+    .map((member) => ({ userId: member.userId, label: member.displayName ?? member.name }));
 
   const isOwner = session.role === "owner";
   // The action gates on `settings`; the form is only drawn for those who pass.
@@ -220,6 +229,8 @@ export default async function OrganisationSettingsPage() {
           </div>
         )}
       </Section>
+
+      <BookingSection settings={booking} hosts={hosts} canEdit={canEditAssignment} />
 
       <p className="mt-8 text-sm text-muted-foreground">
         Agent enablement lives on{" "}

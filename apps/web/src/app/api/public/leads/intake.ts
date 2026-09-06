@@ -1,3 +1,4 @@
+import { LeadAttributionSchema } from "@launchos/core";
 import { z } from "zod";
 import { RateLimiter } from "@/lib/rate-limit";
 
@@ -42,6 +43,8 @@ export const PublicLeadBody = z.object({
   source: z.string().trim().min(1).max(60).default("website"),
   /** Where on the site the form was, if the plugin sends it. Kept on the lead's metadata. */
   page: OptionalText(500),
+  /** UTM tags, click ids, landing path and referrer, if the form carried them. Core's own schema, so the bounds cannot drift. */
+  attribution: LeadAttributionSchema.optional(),
 });
 
 /**

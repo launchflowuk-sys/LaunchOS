@@ -45,6 +45,9 @@ describe("marketing hosts", () => {
       "/signup/done",
       "/after-sign-in",
       "/portal/invoices",
+      "/book",
+      "/book/done",
+      "/book/r/abc123/calendar.ics",
       "/robots.txt",
       "/sitemap.xml",
       "/brand/launchflow-logo.png",
@@ -52,6 +55,7 @@ describe("marketing hosts", () => {
     for (const path of untouched) expect(marketingRewriteTarget(path), path).toBeNull();
     // A prefix match is not a segment match.
     expect(marketingRewriteTarget("/signup-bonus")).toBe("/site/signup-bonus");
+    expect(marketingRewriteTarget("/bookshop")).toBe("/site/bookshop");
   });
 
   it("prefixes links with /site everywhere except the marketing host", () => {

@@ -4,11 +4,13 @@ import { createEmailAdapter } from "@launchos/channels";
 import {
   applyContentPublishDecision,
   applyContentReportSendDecision,
+  applyLeadReplyDecision,
   applySubscriptionChangeDecision,
   CONTENT_PUBLISH_ACTION,
   CONTENT_REPORT_SEND_ACTION,
   decideApproval,
   INVOICE_SEND_ACTION,
+  LEAD_REPLY_ACTION,
   recordAudit,
   sendApprovedInvoice,
   SUBSCRIPTION_CHANGE_ACTION,
@@ -196,6 +198,20 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         });
         revalidatePath(`/clients/${applied.clientId}/content`);
         revalidatePath("/portal/content");
+      } else if (payload.success && payload.data.action === LEAD_REPLY_ACTION) {
+        // The Lead Qualifier's drafted reply. Approve sends the card's
+        // textarea — the edited body, or the draft untouched — from the
+        // support mailbox with the booking link appended, and moves the lead
+        // to `contacted`; reject sends nothing and leaves the note on the
+        // timeline. The queued message goes out on the enqueue installed above.
+        const body = formData.get("body");
+        const applied = await applyLeadReplyDecision(getDb(), session.organisationId, {
+          approvalId,
+          actorId: session.userId,
+          ...(typeof body === "string" && body.trim().length > 0 ? { body } : {}),
+        });
+        revalidatePath("/leads");
+        revalidatePath(`/leads/${applied.leadId}`);
       } else if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
         const { invoiceId } = await sendApprovedInvoice(
           getDb(),
