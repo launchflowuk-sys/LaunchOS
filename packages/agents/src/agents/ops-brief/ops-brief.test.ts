@@ -111,7 +111,7 @@ describe("ops-brief", () => {
       });
       expect(result.status).toBe("completed");
 
-      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId));
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId)).orderBy(schema.agentSteps.seq);
       const outputs = steps.filter((s) => s.kind === "tool_result" && s.toolName === "ops_save_brief").map((s) => s.output as { saved: boolean; reason?: string; replaced?: boolean });
       expect(outputs[0]).toMatchObject({ saved: false });
       expect(outputs[0]!.reason).toMatch(/words/);
@@ -128,6 +128,16 @@ describe("ops-brief", () => {
     expect(OPS_BRIEF_PROMPT).toContain("leads.awaitingReplyOver24h");
     expect(OPS_BRIEF_PROMPT).toContain("[Leads](/leads?status=new)");
     expect(OPS_BRIEF_PROMPT).toContain("waiting for a reply over 24 h");
+  });
+
+  it("tells the model to report package limits and forbids it turning one into an action", () => {
+    expect(OPS_BRIEF_PROMPT).toContain("packages section");
+    expect(OPS_BRIEF_PROMPT).toContain('standing "over"');
+    expect(OPS_BRIEF_PROMPT).toContain('standing "near"');
+    expect(OPS_BRIEF_PROMPT).toContain("allowed 0");
+    // Shoji's rule: a brief line, never a client email, and never a suggested next step.
+    expect(OPS_BRIEF_PROMPT).toContain("Do not suggest an upgrade");
+    expect(OPS_BRIEF_PROMPT).toContain("nothing in LaunchOS ever writes to a client about their limits");
   });
 
   it("its tools see only the run's organisation", async () => {
