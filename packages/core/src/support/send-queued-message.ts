@@ -10,7 +10,8 @@ import { notifyOwner } from "../notifications/notify.js";
 import { PROJECT_PORTAL_PATH } from "../projects/shared.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 import {
-  CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND,
+  CASE_ACKNOWLEDGEMENT_KIND, CLIENT_REPORT_NOTICE_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND,
+  DELIVERY_NOTICE_KIND, LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND,
   PORTAL_REPLY_NOTICE_KIND, PROJECT_MILESTONE_NOTICE_KIND, PROJECT_UPDATE_NOTICE_KIND, PROPOSAL_NOTICE_KIND,
   SUBSCRIPTION_CHANGE_NOTICE_KIND,
 } from "./courtesy-notice.js";
@@ -244,6 +245,30 @@ function presentationFor(
       heading: message.subject ?? (milestone ? "Another step done" : "Your project update"),
       cta: projectId ? { label: "See your progress", url: `${appUrl}${PROJECT_PORTAL_PATH}/${projectId}` } : undefined,
       footerNote: "Reply to this email with any questions and it comes straight to Shoji.",
+    };
+  }
+  if (kind === DELIVERY_NOTICE_KIND) {
+    // The button is the sign-off page, not the PDF: reading the report is the
+    // means, signing it off is the thing the client is being asked to do. The
+    // document link is in the body for anyone who would rather open the PDF
+    // first, and both are in `metadata` for a sender that grows attachments.
+    const signOffUrl = typeof message.metadata["signOffUrl"] === "string" ? message.metadata["signOffUrl"] : undefined;
+    return {
+      preheader: "Your build is finished — here is everything about it.",
+      heading: message.subject ?? "Your handover",
+      cta: signOffUrl ? { label: "Read it and sign off", url: signOffUrl } : undefined,
+      footerNote: "Anything in it that looks wrong? Reply to this email and it comes straight to Shoji.",
+    };
+  }
+  if (kind === CLIENT_REPORT_NOTICE_KIND) {
+    const month = typeof message.metadata["monthName"] === "string" ? message.metadata["monthName"] : "last month";
+    const documentUrl = typeof message.metadata["documentUrl"] === "string" ? message.metadata["documentUrl"] : undefined;
+    return {
+      preheader: `Your ${month} in one page.`,
+      heading: `Your account report for ${month}`,
+      cta: documentUrl
+        ? { label: "Open your report", url: documentUrl }
+        : { label: "See your reports", url: `${appUrl}/portal/reports` },
     };
   }
   if (kind === CONTENT_REPORT_NOTICE_KIND) {

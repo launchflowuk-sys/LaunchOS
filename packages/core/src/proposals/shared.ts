@@ -1,9 +1,9 @@
-import { randomBytes } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, desc, eq, isNull, like } from "drizzle-orm";
 import { z } from "zod";
 import { appUrl } from "../config.js";
+import { mintPublicToken, normalisePublicToken } from "../documents/acceptance.js";
 import { zonedParts, zonedTimeToUtc } from "../meetings/time.js";
 
 /**
@@ -11,6 +11,15 @@ import { zonedParts, zonedTimeToUtc } from "../meetings/time.js";
  * for "what a proposal is" rather than two.
  */
 export { PROPOSAL_DECIDED_STATUSES, PROPOSAL_LIVE_STATUSES } from "@launchos/db/schema";
+
+/**
+ * The drawn signature and its safe markup come from the shared acceptance
+ * module: a proposal and a delivery sign-off are one mechanism on two tables,
+ * and the SVG path grammar is the rule that must never exist twice. Re-exported
+ * under the names this folder has always published so nothing downstream had
+ * to change.
+ */
+export { MAX_SIGNATURE_CHARS, SIGNATURE_VIEWBOX, SignaturePathSchema, signatureSvgMarkup } from "../documents/acceptance.js";
 
 export type ProposalRow = typeof schema.proposals.$inferSelect;
 export type ProposalLineRow = typeof schema.proposalLines.$inferSelect;
@@ -51,67 +60,23 @@ export class ProposalRefused extends Error {
 export const PROPOSAL_PUBLIC_PATH = "/p";
 
 /**
- * The token in the URL, and the only key a client holds.
- *
- * 24 random bytes — 192 bits — base64url, which is 32 characters. Unguessable
- * in the only sense that matters: an attacker who can try a million a second
- * is still 10^40 years from the first hit, so the token is the authorisation
- * and nothing else needs to be.
- *
- * Not a signed, expiring token like a document's, and for a reason. A document
- * link is minted per email and can be re-minted; a proposal's URL is the
- * client's bookmark while they think it over and forward it to a business
- * partner, so it has to keep working. What ends it is `valid_until`, which is
- * a business fact printed on the document, not a cryptographic one.
+ * The token in the URL, and the only key a client holds. Minted by the shared
+ * acceptance module, so a proposal's token and a delivery report's are the
+ * same 192 bits of the same alphabet — see `documents/acceptance.ts` for why
+ * it is not a signed, expiring link.
  */
 export function mintProposalToken(): string {
-  return randomBytes(24).toString("base64url");
+  return mintPublicToken();
 }
-
-/** The shortest and longest a token can legitimately be — junk never reaches a query. */
-const TOKEN_MIN = 16;
-const TOKEN_MAX = 128;
 
 /** A trimmed token, or null when the string could not be one. */
 export function normaliseProposalToken(token: string): string | null {
-  const trimmed = token.trim();
-  if (trimmed.length < TOKEN_MIN || trimmed.length > TOKEN_MAX) return null;
-  return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : null;
+  return normalisePublicToken(token);
 }
 
 /** Where the client reads it. */
 export function proposalPublicUrl(proposal: Pick<ProposalRow, "publicToken">, env: NodeJS.ProcessEnv = process.env): string {
   return `${appUrl(env)}${PROPOSAL_PUBLIC_PATH}/${encodeURIComponent(proposal.publicToken)}`;
-}
-
-/**
- * The drawn signature, as SVG path data and nothing else.
- *
- * A signature arrives from a public page with no session, and ends up inside
- * an HTML document we hand to Chromium and then keep as evidence. Storing a
- * whole `<svg>` element would mean trusting a stranger's markup in a renderer
- * — so only the `d` attribute of a single path is accepted, matched against
- * the SVG path grammar, and `signatureSvgMarkup` below builds the element
- * around it. There is no character in this set that can open a tag.
- */
-const SIGNATURE_PATH = /^[MmLlHhVvCcSsQqTtAaZz0-9.,\s+-]*$/;
-/** Long enough for a careful signature at canvas resolution; a megabyte is a payload. */
-export const MAX_SIGNATURE_CHARS = 100_000;
-/**
- * The box the capture canvas normalises to, so every stored signature scales
- * the same way in a document. The public page's contract, not a suggestion.
- */
-export const SIGNATURE_VIEWBOX = "0 0 600 200";
-
-export const SignaturePathSchema = z
-  .string()
-  .trim()
-  .max(MAX_SIGNATURE_CHARS)
-  .refine((value) => SIGNATURE_PATH.test(value), "a signature must be SVG path data");
-
-/** The safe `<svg>` for a stored path. Built here so no caller improvises one. */
-export function signatureSvgMarkup(path: string): string {
-  return `<svg viewBox="${SIGNATURE_VIEWBOX}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Signature"><path d="${path}" fill="none" stroke="#0f172a" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 /**

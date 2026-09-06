@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
+import { documents } from "./documents.js";
 import { packages } from "./packages.js";
 
 // The entire "financial details" surface. No card numbers, no bank details:
@@ -106,6 +107,15 @@ export const invoices = pgTable("invoices", {
   currency: text("currency").default("GBP").notNull(),
   stripeInvoiceId: text("stripe_invoice_id"),
   pdfUrl: text("pdf_url"),
+  /**
+   * The invoice as a PDF on LaunchFlow's headed paper, rendered on send and
+   * kept. `pdf_url` above is Stripe's own hosted copy for an invoice Stripe
+   * raised; this is ours, read through the same signed link every other
+   * document uses. A real column rather than only `documents.subject_id`
+   * because the invoice is the owning row and one lookup should answer "where
+   * is its PDF", exactly as `proposals.document_id` does.
+   */
+  documentId: uuid("document_id").references(() => documents.id, { onDelete: "set null" }),
   lineItems: jsonb("line_items").$type<InvoiceLineItem[]>().default([]).notNull(),
 }, (t) => [
   uniqueIndex("invoices_org_number").on(t.organisationId, t.number),

@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { createEmailAdapter, renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
-import { addMonths, type PaymentsAdapter, type PaymentsCheckoutSession, type PaymentsWebhookEvent } from "@launchos/integrations";
+import { addMonths, type PaymentsAdapter, type PaymentsCheckoutSession } from "@launchos/integrations";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
@@ -373,17 +373,4 @@ async function sendWelcomeEmail(email: EmailAdapter, env: NodeJS.ProcessEnv, inp
     logoUrl: brand.logoUrl, appUrl: brand.appUrl, supportEmail: brand.supportEmail,
   });
   await email.send({ to: input.to, from: env.MAIL_FROM ?? supportEmailFor("hello", env), subject: "Welcome to LaunchFlow — your portal login", text, html });
-}
-
-/**
- * For the Stripe webhook route: a `checkout.session.completed` for a brand
- * new customer has no `billing_profiles` row to resolve tenancy from, so the
- * organisation comes from our own metadata on the session instead. Null for
- * anything that is not a LaunchOS signup.
- */
-export function signupOrganisationFromEvent(event: PaymentsWebhookEvent): string | null {
-  if (event.type !== "checkout.session.completed") return null;
-  const object = (event.data as { object?: { metadata?: unknown } }).object;
-  const meta = z.object({ launchos: z.literal(SIGNUP_MARKER), organisationId: z.string().uuid() }).safeParse(object?.metadata);
-  return meta.success ? meta.data.organisationId : null;
 }

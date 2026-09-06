@@ -78,6 +78,20 @@ export const PROJECT_UPDATE_NOTICE_KIND = "project_update_notice";
 export const PROJECT_MILESTONE_NOTICE_KIND = "project_milestone_notice";
 
 /**
+ * `metadata.kind` on the handover email that carries a finished build's
+ * delivery report out (`sendDeliveryReport`). `metadata.projectId` names the
+ * build and `metadata.signOffUrl` is the page the client signs it off on.
+ */
+export const DELIVERY_NOTICE_KIND = "delivery_notice";
+
+/**
+ * `metadata.kind` on the monthly account report email, once Shoji has approved
+ * sending it. `metadata.reportId` names the `client_reports` row and
+ * `metadata.documentId` the PDF it carries.
+ */
+export const CLIENT_REPORT_NOTICE_KIND = "client_report_notice";
+
+/**
  * Every kind of message that is a record of an email we sent *about* a thread
  * rather than a turn in it. All of them are `outbound` rows written by the
  * system, and all of them must be invisible to every reader of the thread —
@@ -96,6 +110,8 @@ export const COURTESY_NOTICE_KINDS = [
   PROPOSAL_NOTICE_KIND,
   PROJECT_UPDATE_NOTICE_KIND,
   PROJECT_MILESTONE_NOTICE_KIND,
+  DELIVERY_NOTICE_KIND,
+  CLIENT_REPORT_NOTICE_KIND,
 ] as const;
 
 export type CourtesyNoticeKind = (typeof COURTESY_NOTICE_KINDS)[number];

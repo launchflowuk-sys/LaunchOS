@@ -1,4 +1,4 @@
-import { findOrganisationByStripeCustomer, signupOrganisationFromEvent, soleActiveOrganisationId } from "@launchos/core";
+import { checkoutOrganisationFromEvent, findOrganisationByStripeCustomer, soleActiveOrganisationId } from "@launchos/core";
 import { QUEUE } from "@launchos/core/queue";
 import { createPaymentsAdapter, type PaymentsAdapter } from "@launchos/integrations";
 import { NextResponse } from "next/server";
@@ -134,11 +134,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid signature" }, { status: 400 });
   }
 
-  // A self-serve signup's `checkout.session.completed` is for a brand-new
+  // A `checkout.session.completed` we opened ourselves — a self-serve signup
+  // or the payment link from an accepted proposal — is often for a brand-new
   // customer with no billing_profiles row yet, so tenancy comes from our own
-  // metadata on the session (`launchos: "signup"` + organisationId) before
-  // the customer lookup is even tried.
-  const byCustomer = signupOrganisationFromEvent(providerEvent) ?? (await organisationForCustomer(providerEvent.data));
+  // metadata on the session (`launchos` + organisationId) before the customer
+  // lookup is even tried.
+  const byCustomer = checkoutOrganisationFromEvent(providerEvent) ?? (await organisationForCustomer(providerEvent.data));
   const organisationId = byCustomer === undefined ? await organisationForSubscriptionEvent(providerEvent.type) : byCustomer;
   if (organisationId === null) return NextResponse.json({ ok: true, ignored: "no customer on event" });
   if (organisationId === undefined) return NextResponse.json({ ok: true, ignored: "unknown customer" });

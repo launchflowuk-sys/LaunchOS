@@ -8,6 +8,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { PROPOSAL_CHECKOUT_MARKER, completeProposalCheckout } from "../proposals/checkout.js";
+import { ProposalRefused } from "../proposals/shared.js";
 import { completeSignup, SIGNUP_MARKER, SignupRefused } from "../signup/signup.js";
 import { findClientByStripeCustomer } from "./payment-accounts.js";
 import { reconcileInvoice } from "./payments.js";
@@ -113,6 +115,30 @@ export async function findOrganisationByStripeCustomer(
   return findClientByStripeCustomer(db, stripeCustomerId);
 }
 
+/**
+ * The organisation behind a Checkout session we opened ourselves.
+ *
+ * `checkout.session.completed` can arrive for a customer no billing profile
+ * has ever seen — a self-serve signup provisions the client *from* this event,
+ * and a proposal's payment link may be the first time that person has paid us
+ * at all — so the customer lookup has nothing to resolve and the tenancy has
+ * to come from our own metadata on the session.
+ *
+ * One function for both markers rather than one each: the route must recognise
+ * every session LaunchOS mints, and a second copy of this is how the next
+ * marker gets forgotten — which is precisely how a proposal's payment came to
+ * be dropped as an unknown customer. Null for anything that is not ours.
+ */
+export function checkoutOrganisationFromEvent(event: PaymentsWebhookEvent): string | null {
+  if (event.type !== "checkout.session.completed") return null;
+  const object = (event.data as { object?: { metadata?: unknown } }).object;
+  const meta = z.object({
+    launchos: z.enum([SIGNUP_MARKER, PROPOSAL_CHECKOUT_MARKER]),
+    organisationId: z.string().uuid(),
+  }).safeParse(object?.metadata);
+  return meta.success ? meta.data.organisationId : null;
+}
+
 export interface SyncDeps {
   /**
    * For a subscription event from a customer LaunchOS has never seen: the
@@ -133,14 +159,30 @@ export async function syncFromPaymentsEvent(
   const object = (event.data as { object?: unknown }).object;
 
   // A self-serve signup paid through Checkout. The route resolved tenancy
-  // from our metadata (`signupOrganisationFromEvent`); `completeSignup`
+  // from our metadata (`checkoutOrganisationFromEvent`); `completeSignup`
   // checks it again and is idempotent by session, so a redelivery is a
   // `signup.duplicate`, never a second client.
   if (event.type === "checkout.session.completed") {
     const parsed = StripeCheckoutObject.safeParse(object);
     if (!parsed.success) return { handled: false, action: "unparseable" };
-    if (parsed.data.metadata?.["launchos"] !== SIGNUP_MARKER) return { handled: false, action: "ignored" };
+    const marker = parsed.data.metadata?.["launchos"];
+    if (marker !== SIGNUP_MARKER && marker !== PROPOSAL_CHECKOUT_MARKER) return { handled: false, action: "ignored" };
     const session = toCheckoutSession(parsed.data as unknown as Parameters<typeof toCheckoutSession>[0]);
+
+    // A payment from an accepted proposal. Same treatment as a signup and for
+    // the same reason: the client paid, so the customer, the subscription and
+    // the proposal all have to say so. Idempotent by session id, because
+    // Stripe redelivers.
+    if (marker === PROPOSAL_CHECKOUT_MARKER) {
+      try {
+        const result = await completeProposalCheckout(db, organisationId, { session });
+        return { handled: true, action: result.alreadyRecorded ? "proposal.duplicate" : "proposal.paid" };
+      } catch (error) {
+        if (error instanceof ProposalRefused) return { handled: false, action: `proposal.${error.reason}` };
+        throw error;
+      }
+    }
+
     try {
       const result = await completeSignup(db, organisationId, { session }, {}, env);
       return { handled: true, action: result.alreadyCompleted ? "signup.duplicate" : "signup.completed" };

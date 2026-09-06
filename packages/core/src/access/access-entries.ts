@@ -58,6 +58,17 @@ export const ACCESS_KIND_LABELS: Readonly<Record<AccessKind, string>> = {
 /** The audit target type every entry action is recorded under. */
 export const ACCESS_TARGET_TYPE = "client_access_entry";
 
+/**
+ * Where a client is sent to ask about their logins.
+ *
+ * The vault itself is an admin surface — a client reading their delivery
+ * report is told *that* we hold the keys and *which* keys we hold, never a
+ * credential, and the portal is where they ask for one. Point this at
+ * `/portal/access` the day that page exists; it is deliberately one constant
+ * so nothing has to hunt for a hard-coded path.
+ */
+export const ACCESS_PORTAL_PATH = "/portal";
+
 const actor = {
   actorKind: z.enum(["user", "client", "agent", "system"]).default("user"),
   actorId: z.string().optional(),
@@ -341,4 +352,58 @@ export async function listAccessEntries(db: Db, organisationId: string, clientId
     .where(and(eq(e.organisationId, organisationId), eq(e.clientId, clientId)))
     .orderBy(asc(e.sort), asc(e.label), asc(e.createdAt));
   return rows.map((row) => ({ ...row, hasSecret: Boolean(row.hasSecret) }));
+}
+
+/** One way in, named but not opened: what a client may be shown on paper. */
+export interface AccessLocation {
+  kind: AccessKind;
+  /** What the Access tab calls this kind — "Dashboard", "Server". */
+  kindLabel: string;
+  label: string;
+  /** The address, if it is a URL. Never a credential. */
+  url: string | null;
+  /** The machine, if it is a host. `host:port` where a port is set. */
+  host: string | null;
+  siteName: string | null;
+  /** Whether a password is held here at all — never the password. */
+  hasSecret: boolean;
+}
+
+/**
+ * The client's own list of what we hold the keys to, for the delivery report.
+ *
+ * **This is the projection with the secrets designed out of it, not filtered
+ * out of it.** The select names four columns and a boolean; `secret_ciphertext`
+ * is not among them, and neither are `username` or `notes` — a username is
+ * half a credential, and `notes` is the one free-text field somebody might
+ * have pasted a password into despite the form saying not to. A template
+ * cannot leak a field the query never fetched, which is why this lives here,
+ * in the file that owns the vault's rules, rather than as a `.map()` over
+ * `listAccessEntries` somewhere a mistake would be one property name away.
+ */
+export async function listAccessLocations(db: Db, organisationId: string, clientId: string): Promise<AccessLocation[]> {
+  const e = schema.clientAccessEntries;
+  const rows = await db
+    .select({
+      kind: e.kind,
+      label: e.label,
+      url: e.url,
+      host: e.host,
+      port: e.port,
+      siteName: schema.sites.name,
+      hasSecret: sql<boolean>`${e.secretCiphertext} is not null`,
+    })
+    .from(e)
+    .leftJoin(schema.sites, eq(schema.sites.id, e.siteId))
+    .where(and(eq(e.organisationId, organisationId), eq(e.clientId, clientId)))
+    .orderBy(asc(e.sort), asc(e.label), asc(e.createdAt));
+  return rows.map((row) => ({
+    kind: row.kind,
+    kindLabel: ACCESS_KIND_LABELS[row.kind],
+    label: row.label,
+    url: row.url,
+    host: row.host ? (row.port ? `${row.host}:${row.port}` : row.host) : null,
+    siteName: row.siteName,
+    hasSecret: Boolean(row.hasSecret),
+  }));
 }

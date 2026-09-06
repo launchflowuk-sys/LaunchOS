@@ -1,6 +1,8 @@
+import { sql } from "drizzle-orm";
 import { boolean, date, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
+import { documents } from "./documents.js";
 import { proposals } from "./proposals.js";
 
 export const projectStatusEnum = pgEnum("project_status", [
@@ -85,8 +87,28 @@ export const projects = pgTable("projects", {
    */
   targetDate: date("target_date", { mode: "string" }),
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+  /**
+   * The delivery report the client was sent — what was built, where it lives,
+   * what the care plan covers. One per project: re-rendering before sign-off
+   * replaces it, because until they have signed there is only ever one current
+   * version of the document they are being asked to agree to.
+   */
+  deliveryReportDocumentId: uuid("delivery_report_document_id").references(() => documents.id, { onDelete: "set null" }),
+  /**
+   * The key to the public sign-off page, minted when the report is first
+   * rendered. Same shape and same reasoning as `proposals.public_token`: the
+   * client has no login, so the token *is* the authorisation, and it has to
+   * keep working while they read the report and show it to a partner. The
+   * document's own signed link expires; this does not, because what ends it is
+   * the sign-off itself.
+   */
+  signOffToken: text("sign_off_token"),
+  signOffSentAt: timestamp("sign_off_sent_at", { withTimezone: true }),
 }, (t) => [
   uniqueIndex("projects_proposal").on(t.proposalId),
+  // Across every organisation, like a proposal's token: the public page finds
+  // the project by token before it knows which tenant it belongs to.
+  uniqueIndex("projects_sign_off_token").on(t.signOffToken).where(sql`${t.signOffToken} is not null`),
   index("projects_org_status_created").on(t.organisationId, t.status, t.createdAt),
   index("projects_org_client").on(t.organisationId, t.clientId),
 ]);

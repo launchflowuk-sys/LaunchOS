@@ -150,6 +150,10 @@ export function renderDocumentHtml(input: DocumentHtmlInput): string {
       th { text-align: left; font-weight: 600; color: ${BRAND.muted}; border-bottom: 1px solid ${BRAND.hairline}; padding: 6pt 0; }
       td { border-bottom: 1px solid ${BRAND.hairline}; padding: 6pt 0; vertical-align: top; }
       .numeric { text-align: right; white-space: nowrap; }
+      /* A second line inside a cell — a milestone's detail under its title. In
+         the chrome rather than inline in one document's body, so the third
+         document kind that needs a quieter line uses this one. */
+      .muted { color: ${BRAND.muted}; }
       .total td { border-bottom: none; border-top: 2px solid ${BRAND.navy}; font-weight: 700; color: ${BRAND.navy}; }
       .note { margin-top: 16pt; padding-top: 10pt; border-top: 1px solid ${BRAND.hairline}; font-family: ${UI_FONT}; font-size: 8.5pt; line-height: 1.6; color: ${BRAND.muted}; }
     </style>

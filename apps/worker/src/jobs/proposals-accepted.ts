@@ -1,4 +1,5 @@
 import {
+  PROPOSAL_CHECKOUT_MARKER,
   PROPOSAL_SIGNED_DOCUMENT_KIND,
   ProjectRefused,
   createProject,
@@ -51,8 +52,13 @@ export const CHECKOUT_URL = "checkoutUrl";
  */
 export const PROJECT_TASKS_AT = "projectTasksAt";
 
-/** `metadata.launchos` on the Checkout session — what marks it as a proposal's, not a signup's. */
-export const PROPOSAL_CHECKOUT_MARKER = "proposal";
+/**
+ * `metadata.launchos` on the Checkout session — what marks it as a proposal's,
+ * not a signup's. Re-exported from core, which is where the webhook reads it:
+ * the value this job stamps and the value the webhook matches on have to be
+ * one constant, or a payment goes unrecognised exactly as it did before P5.
+ */
+export { PROPOSAL_CHECKOUT_MARKER } from "@launchos/core";
 
 export const PROPOSAL_PAID_UP_NOTIFICATION_KIND = "proposal.payment_step";
 

@@ -94,6 +94,8 @@ export {
 export type { AccessEntryRow, AccessKind } from "./access/access-entries.js";
 export { revealAccessSecret, RevealAccessSecretInput } from "./access/reveal-access-secret.js";
 export type { RevealedAccessSecret } from "./access/reveal-access-secret.js";
+export { listAccessLocations, ACCESS_PORTAL_PATH } from "./access/access-entries.js";
+export type { AccessLocation } from "./access/access-entries.js";
 export { accessLog, ACCESS_LOG_LIMIT } from "./access/access-log.js";
 export type { AccessLogRow } from "./access/access-log.js";
 export type { SiteListRow } from "./sites/list-sites.js";
@@ -199,7 +201,7 @@ export {
   saveDraftAdReport, approveAdReport, sendAdReport, SaveDraftAdReportInput, AdReportActionInput,
 } from "./ads/reports.js";
 export { recordPayment, reconcileInvoice, RecordPaymentInput } from "./billing/payments.js";
-export { findOrganisationByStripeCustomer, syncFromPaymentsEvent } from "./billing/webhook-sync.js";
+export { findOrganisationByStripeCustomer, checkoutOrganisationFromEvent, syncFromPaymentsEvent } from "./billing/webhook-sync.js";
 export type { SyncResult, SyncDeps } from "./billing/webhook-sync.js";
 export {
   previewStripeSync, applyStripeSync, reconcileStripe, importStripeSubscription, businessCase, isSuggestedProduct, proposedClientName,
@@ -237,6 +239,18 @@ export type { ApplySubscriptionChangeDecisionResult } from "./billing/subscripti
 export { decideApproval, DecideApprovalInput } from "./approvals/decide-approval.js";
 export type { ApprovalRow, DecideApprovalResult } from "./approvals/decide-approval.js";
 export { buildClientReport, monthPeriod } from "./reports/build-client-report.js";
+export type { ReportActor } from "./reports/build-client-report.js";
+// P5c — the monthly account report: the client report, compiled into one PDF.
+export {
+  buildMonthlyReport, renderMonthlyReport, londonMonthPeriod, reportMonthName,
+  monthlyReportDocumentHtml, monthlyReportRenderInput, monthlyReportReference, monthlyReportTitle,
+  BuildMonthlyReportInput, RenderMonthlyReportInput,
+  MONTHLY_REPORT_DOCUMENT_KIND, MONTHLY_REPORT_SUBJECT_TYPE, CLIENT_REPORT_TARGET_TYPE, REPORT_TIME_ZONE,
+} from "./reports/monthly-report.js";
+export type {
+  MonthlyReportResult, RenderMonthlyReportResult, MonthlyReportDeps, MonthlyReportDocumentInput,
+} from "./reports/monthly-report.js";
+export { documentBodyFromMarkdown } from "./reports/markdown-document.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";
 export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";
 export { listClientReports, getClientReport, ListClientReportsInput } from "./reports/list-client-reports.js";
@@ -407,7 +421,7 @@ export {
 } from "./meetings/reminders.js";
 export type { ReminderSweepResult, FollowUpSweepResult } from "./meetings/reminders.js";
 export {
-  createSignupSession, completeSignup, signupOrganisationFromEvent, SignupRefused, CreateSignupSessionInput, CompleteSignupInput,
+  createSignupSession, completeSignup, SignupRefused, CreateSignupSessionInput, CompleteSignupInput,
   SIGNUP_MARKER, SIGNUP_LEAD_SOURCE, SIGNUP_COMPLETED_NOTIFICATION_KIND, SIGNUP_CLAIM_TTL_MS,
 } from "./signup/signup.js";
 export type { SignupDeps, SignupSessionResult, CompleteSignupResult } from "./signup/signup.js";
@@ -471,6 +485,12 @@ export {
 export type { ProposalViewResult, DeclineProposalResult } from "./proposals/public.js";
 export { acceptProposal, AcceptProposalInput, PROPOSAL_ACCEPTED_NOTIFICATION_KIND } from "./proposals/accept.js";
 export type { AcceptProposalResult } from "./proposals/accept.js";
+// The other end of the payment link an accepted proposal opens.
+export {
+  completeProposalCheckout, CompleteProposalCheckoutInput,
+  PROPOSAL_CHECKOUT_MARKER, PROPOSAL_PAID_NOTIFICATION_KIND, CHECKOUT_PAID_AT, CHECKOUT_PAID_SESSION_ID,
+} from "./proposals/checkout.js";
+export type { CompleteProposalCheckoutResult } from "./proposals/checkout.js";
 export {
   setProposalFollowOn, queueProposalFollowOn, PROPOSAL_ACCEPTED_JOB, FOLLOW_ON_QUEUED_AT,
 } from "./proposals/follow-on.js";
@@ -491,7 +511,10 @@ export {
   PROPOSAL_SEND_ACTION, PENDING_PROPOSAL_SEND_INDEX, PROPOSAL_SEND_APPLIED_AT,
 } from "./proposals/approval.js";
 export type { ApplyProposalSendDecisionResult } from "./proposals/approval.js";
-export { PROPOSAL_NOTICE_KIND, PROJECT_UPDATE_NOTICE_KIND, PROJECT_MILESTONE_NOTICE_KIND } from "./support/courtesy-notice.js";
+export {
+  PROPOSAL_NOTICE_KIND, PROJECT_UPDATE_NOTICE_KIND, PROJECT_MILESTONE_NOTICE_KIND,
+  DELIVERY_NOTICE_KIND, CLIENT_REPORT_NOTICE_KIND,
+} from "./support/courtesy-notice.js";
 export {
   projectProgress, describeProgress, MAX_UNDELIVERED_PERCENT,
 } from "./projects/progress.js";
@@ -567,3 +590,40 @@ export type { CaseStudyMaterial, CaseStudyMaterialPhase, CaseStudyMaterialMilest
 export {
   publishCaseStudy, unpublishCaseStudy, whyNotPublishable, PublishCaseStudyInput, REQUIRED_BRIEF_SECTIONS,
 } from "./case-studies/publish.js";
+// P5 — the one acceptance mechanism, shared by proposals and delivery sign-off.
+// `SignaturePathSchema`, `SIGNATURE_VIEWBOX`, `MAX_SIGNATURE_CHARS` and
+// `signatureSvgMarkup` are already exported through `proposals/shared.js`,
+// which re-exports them from here — one export, whichever path a caller found
+// them by.
+export { mintPublicToken, normalisePublicToken, AGREEMENT_EVIDENCE_FIELDS } from "./documents/acceptance.js";
+// P5a — the delivery report and its sign-off.
+export {
+  DeliveryRefused, DELIVERY_TARGET_TYPE, DELIVERY_SUBJECT_TYPE, DELIVERY_DOCUMENT_KIND,
+  DELIVERY_PUBLIC_PATH, SIGN_OFF_TARGET_TYPE,
+  mintSignOffToken, normaliseSignOffToken, deliverySignOffUrl, getDeliverySignOff, getProjectBySignOffToken,
+} from "./delivery/shared.js";
+export type { DeliverySignOffRow } from "./delivery/shared.js";
+export { buildDeliveryReport, BuildDeliveryReportInput } from "./delivery/report.js";
+export type {
+  DeliveryReport, DeliveryReportPhase, DeliveryReportMilestone, DeliveryReportSite,
+  DeliveryReportMonitor, DeliveryReportCare,
+} from "./delivery/report.js";
+export {
+  deliveryReportHtml, deliveryReportDocumentHtml, deliveryReportRenderInput,
+  deliveryReportReference, deliveryReportTitle,
+} from "./delivery/document.js";
+export {
+  renderDeliveryReport, sendDeliveryReport, countersignDeliveryReport, deliveryNoticeBody,
+  RenderDeliveryReportInput, SendDeliveryReportInput,
+} from "./delivery/send.js";
+export type { DeliveryDeps, RenderDeliveryReportResult, SendDeliveryReportResult } from "./delivery/send.js";
+export {
+  signOffDelivery, getPublicDeliveryReport, SignOffDeliveryInput, DELIVERY_SIGNED_OFF_NOTIFICATION_KIND,
+} from "./delivery/sign-off.js";
+export type { SignOffDeliveryResult } from "./delivery/sign-off.js";
+// P5b — the invoice PDF.
+export {
+  invoiceDocumentHtml, invoiceRenderInput, invoiceDocumentInput, invoiceDocumentTitle,
+  ensureInvoiceDocument, EnsureInvoiceDocumentInput, INVOICE_DOCUMENT_KIND, INVOICE_SUBJECT_TYPE,
+} from "./billing/invoice-document.js";
+export type { InvoiceDocumentInput, InvoiceDocumentDeps } from "./billing/invoice-document.js";

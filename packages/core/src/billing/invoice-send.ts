@@ -9,6 +9,8 @@ import { recordAudit } from "../audit/record-audit.js";
 import { brandEmailContext, supportEmailFor } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
+import { signedDocumentUrl } from "../documents/document-link.js";
+import { ensureInvoiceDocument, type InvoiceDocumentDeps } from "./invoice-document.js";
 import { isSendableStatus, sendTargetStatus } from "./invoices.js";
 
 /** Marks an approvals row as an invoice send rather than an agent tool call. */
@@ -107,6 +109,7 @@ export async function sendApprovedInvoice(
   email: EmailAdapter,
   portalBaseUrl: string,
   env: NodeJS.ProcessEnv = process.env,
+  deps: InvoiceDocumentDeps = {},
 ): Promise<SendApprovedInvoiceResult> {
   const v = SendApprovedInvoiceInput.parse(input);
   await assertOwned(db, organisationId, schema.approvals, v.approvalId);
@@ -124,6 +127,13 @@ export async function sendApprovedInvoice(
   }
 
   const { invoice, clientName, to } = claim;
+  // The PDF, when this process can make one. `apps/web` has no Chromium, so a
+  // send from a Server Action passes no renderer and links whatever document
+  // the invoice already carries — which is why the worker renders it. Never
+  // fatal: an invoice email that reaches the client without its attachment is
+  // far better than one that does not reach them at all, and the claim above
+  // has already been spent.
+  const documentUrl = await invoicePdfUrl(db, organisationId, invoice.id, deps, env);
   const link = `${portalBaseUrl.replace(/\/$/, "")}/portal/invoices/${invoice.id}`;
   const amount = `£${(invoice.totalPence / 100).toFixed(2)}`;
   const due = ukLongDate(invoice.dueAt);
@@ -139,9 +149,12 @@ export async function sendApprovedInvoice(
     paragraphs: [
       `Hello ${clientName},`,
       `Invoice ${invoice.number} for ${amount} is ready. It is due on ${due}.`,
+      ...(documentUrl ? [`Here is the PDF: ${documentUrl}`] : []),
     ],
     cta: { label: "View invoice", url: link },
-    footerNote: "You can view, print and save this invoice as a PDF from the portal.",
+    footerNote: documentUrl
+      ? "The PDF link works for the next few days; your invoices are always in the portal."
+      : "You can view, print and save this invoice as a PDF from the portal.",
     logoUrl: brand.logoUrl,
     appUrl: brand.appUrl,
     supportEmail: brand.supportEmail,
@@ -321,4 +334,40 @@ async function recordSendFailure(
     body: `Sending to ${to} failed: ${message}. The approval is spent — request a new send to try again.`,
     link: `/invoices/${invoice.id}`,
   });
+}
+
+/**
+ * The signed link to this invoice's own PDF, or null when there is not one and
+ * this process cannot make one.
+ *
+ * Rendering is attempted only when a renderer was passed, and a failure is
+ * logged rather than thrown: by the time this runs the approval is spent and
+ * the transition is committed, so throwing would turn a missing attachment
+ * into a lost email and a wasted approval.
+ */
+async function invoicePdfUrl(
+  db: Db,
+  organisationId: string,
+  invoiceId: string,
+  deps: InvoiceDocumentDeps,
+  env: NodeJS.ProcessEnv,
+): Promise<string | null> {
+  try {
+    // No renderer means no browser in this process — so the invoice keeps
+    // whatever PDF it already has and nothing tries to launch Chromium out of
+    // a Next.js Server Action, where `playwright` is not even a dependency.
+    if (!deps.render) {
+      const [row] = await db.select({ documentId: schema.invoices.documentId }).from(schema.invoices)
+        .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.organisationId, organisationId)));
+      return row?.documentId ? signedDocumentUrl({ organisationId, documentId: row.documentId }, env) : null;
+    }
+    const document = await ensureInvoiceDocument(db, organisationId, { invoiceId, actorKind: "system" }, deps, env);
+    return signedDocumentUrl({ organisationId, documentId: document.id }, env);
+  } catch (error) {
+    console.warn(
+      { organisationId, invoiceId, error: error instanceof Error ? error.message : String(error) },
+      "invoice PDF not available for this send; the email goes with the portal link only",
+    );
+    return null;
+  }
 }

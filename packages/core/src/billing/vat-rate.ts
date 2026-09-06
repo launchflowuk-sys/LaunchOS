@@ -33,6 +33,23 @@ function standardRatePercent(env: NodeJS.ProcessEnv): number {
 }
 
 /**
+ * The rate an invoice was actually raised at, read back off its own figures.
+ *
+ * A document must print the rate *that invoice* carries, not the rate the
+ * organisation charges today: a re-rendered 2025 invoice cannot start claiming
+ * 2026's rate, and `vatRateForOrganisation` is deliberately about now. The
+ * only honest source is the pair of amounts on the row.
+ *
+ * Rounded to two decimals so 20% prints as `20` rather than `19.999…`, and
+ * `0` when there is nothing to divide by — a zero-rated or zero-value invoice
+ * has no rate to state.
+ */
+export function vatRatePercentCharged(subtotalPence: number, vatPence: number): number {
+  if (subtotalPence <= 0 || vatPence <= 0) return 0;
+  return Math.round((vatPence / subtotalPence) * 10_000) / 100;
+}
+
+/**
  * The VAT rate this organisation may raise an invoice at.
  *
  * Registration decides it, not configuration. A supplier with no VAT number on

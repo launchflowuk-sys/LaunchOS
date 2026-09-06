@@ -4,7 +4,11 @@ import type { ClientReportStats } from "@launchos/db/schema";
 import { and, count, eq, gte, inArray, lt, ne, notInArray, sql } from "drizzle-orm";
 import type { RecordAuditInput } from "../audit/record-audit.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { zonedDateKey } from "../meetings/time.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
+import {
+  collectContentStats, collectIncidentStats, collectPaymentStats, collectSatisfactionStats,
+} from "./monthly-collectors.js";
 
 export interface ReportPeriod {
   start: Date;
@@ -26,7 +30,18 @@ export function monthPeriod(now: Date): ReportPeriod {
   return { start, end };
 }
 
-const isoDay = (value: Date) => value.toISOString().slice(0, 10);
+/**
+ * Every date in a report is read in London, because the business is in Essex
+ * and the client reads "August" as August here. It matters at exactly one
+ * instant a year's worth of reports: in British Summer Time a calendar month
+ * begins at 23:00 UTC the evening before, so a UTC day-key would file the
+ * London month of August under `2026-07-31`.
+ */
+export const REPORT_TIME_ZONE = "Europe/London";
+
+const isoDay = (value: Date) => zonedDateKey(value, REPORT_TIME_ZONE);
+/** `YYYY-MM` for the month a period covers — how `content_reports` keys a month. */
+const periodKeyOf = (period: ReportPeriod) => isoDay(period.start).slice(0, 7);
 const pounds = (pence: number) => `£${(pence / 100).toFixed(2)}`;
 
 /** Neither outstanding work nor delivered work: excluded from both task counters. */
@@ -298,8 +313,16 @@ export async function buildClientReport(
     const adStats = await collectAdStats(tx, organisationId, clientId, period);
     const invoiceStats = await collectInvoiceStats(tx, organisationId, clientId, period);
     const currency = await collectCurrency(tx, organisationId, clientId, period);
+    // The four the monthly account report added. Same transaction, same
+    // snapshot: a webhook committing mid-build must not land in one number and
+    // not the others.
+    const incidentStats = await collectIncidentStats(tx, organisationId, clientId, period);
+    const contentStats = await collectContentStats(tx, organisationId, clientId, periodKeyOf(period));
+    const satisfactionStats = await collectSatisfactionStats(tx, organisationId, clientId, period);
+    const paymentStats = await collectPaymentStats(tx, organisationId, clientId, period);
     const stats: ClientReportStats = {
       ...taskStats, ...uptimeStats, ...ticketStats, ...adStats, ...invoiceStats, ...currency,
+      ...incidentStats, ...contentStats, ...satisfactionStats, ...paymentStats,
     };
 
     const summaryMd = renderSummary(client!.name, period, stats);
@@ -326,6 +349,16 @@ function renderSummary(clientName: string, period: ReportPeriod, stats: ClientRe
     "## Support",
     `- ${stats.ticketsOpened} requests raised, ${stats.ticketsResolved} resolved.`,
   ];
+  if (stats.satisfaction) {
+    lines.push(`- Rated ${stats.satisfaction.averageScore} out of 5 across ${stats.satisfaction.responses} response${stats.satisfaction.responses === 1 ? "" : "s"}.`);
+  }
+  if (stats.incidents && (stats.incidents.opened > 0 || stats.incidents.openAtPeriodEnd > 0)) {
+    lines.push(
+      "",
+      "## Incidents",
+      `- ${stats.incidents.opened} raised, ${stats.incidents.resolved} resolved${stats.incidents.openAtPeriodEnd > 0 ? `, ${stats.incidents.openAtPeriodEnd} still open at the end of the month` : ""}.`,
+    );
+  }
   if (stats.ads) {
     lines.push(
       "",
@@ -334,10 +367,20 @@ function renderSummary(clientName: string, period: ReportPeriod, stats: ClientRe
       `- Return on ad spend ${stats.ads.roas.toFixed(2)}x.`,
     );
   }
+  if (stats.content) {
+    lines.push(
+      "",
+      "## Content",
+      `- ${stats.content.published} of ${stats.content.planned} planned posts published.`,
+    );
+  }
   lines.push(
     "",
     "## Billing",
     `- ${stats.invoices.issued} invoices issued, ${pounds(stats.invoices.paidPence)} paid, ${pounds(stats.invoices.outstandingPence)} outstanding.`,
   );
+  if (stats.payments && stats.payments.received > 0) {
+    lines.push(`- ${pounds(stats.payments.receivedPence)} received across ${stats.payments.received} payment${stats.payments.received === 1 ? "" : "s"}.`);
+  }
   return lines.join("\n");
 }

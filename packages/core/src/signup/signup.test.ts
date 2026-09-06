@@ -7,7 +7,8 @@ import { MockPaymentsAdapter } from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { syncFromPaymentsEvent } from "../billing/webhook-sync.js";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
-import { completeSignup, createSignupSession, SignupRefused, signupOrganisationFromEvent } from "./signup.js";
+import { checkoutOrganisationFromEvent } from "../billing/webhook-sync.js";
+import { completeSignup, createSignupSession, SignupRefused } from "./signup.js";
 
 afterEach(() => setEnqueue(async () => {}));
 
@@ -168,8 +169,8 @@ describe("completeSignup", () => {
           metadata: { launchos: "signup", organisationId: orgId, packageId: pkg.id, email: "aisha@khandental.test", name: "Aisha", business: "Khan Dental" },
         } },
       };
-      expect(signupOrganisationFromEvent(event)).toBe(orgId);
-      expect(signupOrganisationFromEvent({ id: "evt_2", type: "invoice.paid", data: { object: { metadata: event.data.object.metadata } } })).toBeNull();
+      expect(checkoutOrganisationFromEvent(event)).toBe(orgId);
+      expect(checkoutOrganisationFromEvent({ id: "evt_2", type: "invoice.paid", data: { object: { metadata: event.data.object.metadata } } })).toBeNull();
 
       const first = await syncFromPaymentsEvent(db, orgId, event, { ...env, EMAIL_ADAPTER: "mock" });
       expect(first).toEqual({ handled: true, action: "signup.completed" });
