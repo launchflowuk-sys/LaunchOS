@@ -31,6 +31,12 @@ export const packages = pgTable("packages", {
   currency: text("currency").default("GBP").notNull(),
   includes: jsonb("includes").$type<PackageIncludes>().default(PACKAGE_INCLUDES_DEFAULT).notNull(),
   active: boolean("active").default(true).notNull(),
+  /**
+   * The Stripe Price (`price_…`) a self-serve signup subscribes to. Null means
+   * the package cannot be bought through Checkout and `createSignupSession`
+   * falls back to the invoice flow instead.
+   */
+  stripePriceId: text("stripe_price_id"),
 }, (t) => [uniqueIndex("packages_org_slug").on(t.organisationId, t.slug)]);
 
 export const taskPhaseEnum = pgEnum("task_phase", ["onboarding", "recurring", "support"]);
@@ -44,6 +50,24 @@ export type TaskPhase = (typeof taskPhaseEnum.enumValues)[number];
 export type TaskKind = (typeof taskKindEnum.enumValues)[number];
 export type TaskRecurrence = (typeof taskRecurrenceEnum.enumValues)[number];
 export type TaskAssigneeRole = (typeof taskAssigneeRoleEnum.enumValues)[number];
+
+/** The kinds of proof a template can demand before a task may be closed. */
+export const TASK_EVIDENCE_KINDS = ["link", "screenshot", "checklist"] as const;
+export type TaskEvidenceKind = (typeof TASK_EVIDENCE_KINDS)[number];
+
+/**
+ * What a template requires as proof of work. `checklist` here is the *proof*
+ * checklist ("Screenshot attached to the client's Facebook page", "Link posted
+ * in the group") and is separate from the template's ordinary work
+ * `checklist`; it is copied onto `tasks.evidence.checklist` at generation.
+ */
+export type TaskTemplateEvidence = {
+  required: boolean;
+  kinds: TaskEvidenceKind[];
+  checklist: string[];
+};
+
+export const TASK_TEMPLATE_EVIDENCE_DEFAULT: TaskTemplateEvidence = { required: false, kinds: [], checklist: [] };
 
 /**
  * A blueprint row. `package_id` null means "applies to every package".
@@ -63,4 +87,5 @@ export const taskTemplates = pgTable("task_templates", {
   defaultAssigneeRole: taskAssigneeRoleEnum("default_assignee_role").default("any").notNull(),
   sortOrder: integer("sort_order").default(0).notNull(),
   checklist: jsonb("checklist").$type<string[]>().default([]).notNull(),
+  evidence: jsonb("evidence").$type<TaskTemplateEvidence>().default(TASK_TEMPLATE_EVIDENCE_DEFAULT).notNull(),
 });

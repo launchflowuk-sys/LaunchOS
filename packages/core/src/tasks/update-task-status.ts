@@ -5,6 +5,7 @@ import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
+import { assertTaskEvidence } from "./evidence.js";
 
 /** Statuses that mean "no longer on anybody's plate". */
 export const FINISHED_STATUSES = ["done", "cancelled"] as const;
@@ -22,6 +23,10 @@ export async function updateTaskStatus(db: Db, organisationId: string, input: Up
   const where = and(eq(schema.tasks.id, v.taskId), eq(schema.tasks.organisationId, organisationId));
   const [before] = await db.select().from(schema.tasks).where(where);
   if (!before) throw new Error(`task ${v.taskId} not found in organisation`);
+  // Proof of work before a task can close: throws `TaskEvidenceMissing`, naming
+  // what is still needed, when the template requires evidence the task lacks.
+  // A task already done is re-saved freely (nothing changes).
+  if (v.status === "done" && before.status !== "done") await assertTaskEvidence(db, organisationId, before);
 
   const result = await db.transaction(async (tx) => {
     const [task] = await tx.update(schema.tasks).set({

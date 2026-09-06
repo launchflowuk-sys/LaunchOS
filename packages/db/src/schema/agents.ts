@@ -13,6 +13,7 @@ export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", 
 // lets the publish job send it, carried out by `applyContentPublishDecision`.
 export const approvalKindEnum = pgEnum("approval_kind", [
   "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change", "content_publish",
+  "content_report_send",
 ]);
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
@@ -97,6 +98,12 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_content_publish")
     .on(t.organisationId, sql`(${t.payload} ->> 'itemId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'content_publish'`),
+  // At most one *pending* send per content report — `requestContentReportSend`
+  // writes `payload.action = 'content_report_send'` beside the enum value, for
+  // the same one-migration reason as the two above.
+  uniqueIndex("approvals_pending_content_report_send")
+    .on(t.organisationId, sql`(${t.payload} ->> 'reportId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'content_report_send'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {

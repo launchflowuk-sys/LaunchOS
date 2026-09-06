@@ -7,6 +7,7 @@ import { emit } from "../events/emit.js";
 import {
   assertClientInOrganisation, assertOrgMember, assertOwned, assertSiteBelongsToClient, assertSiteInOrganisation,
 } from "../tenancy/assert-owned.js";
+import { TaskEvidenceInput } from "./evidence.js";
 
 export const CreateTaskInput = z.object({
   clientId: z.string().uuid(),
@@ -23,6 +24,8 @@ export const CreateTaskInput = z.object({
   descriptionMd: z.string().max(20000).optional(),
   recurrenceKey: z.string().max(120).optional(),
   checklist: z.array(z.object({ label: z.string().min(1).max(200), done: z.boolean().default(false) })).max(50).default([]),
+  /** Proof of work; the generators pass `evidenceFromTemplate(template)`. */
+  evidence: TaskEvidenceInput.default({ links: [], attachments: [], checklist: [] }),
   clientVisible: z.boolean().default(true),
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
   actorId: z.string().optional(),
@@ -66,6 +69,7 @@ export async function createTask(db: Db, organisationId: string, input: CreateTa
       ticketId: v.ticketId ?? null,
       recurrenceKey: v.recurrenceKey ?? null,
       checklist: v.checklist,
+      evidence: v.evidence,
       clientVisible: v.clientVisible,
       createdByKind: v.actorKind,
       createdById: v.actorId ?? null,

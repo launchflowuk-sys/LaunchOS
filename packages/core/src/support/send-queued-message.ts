@@ -8,7 +8,9 @@ import { recordAudit } from "../audit/record-audit.js";
 import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
-import { CASE_ACKNOWLEDGEMENT_KIND, PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND } from "./courtesy-notice.js";
+import {
+  CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
+} from "./courtesy-notice.js";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -148,6 +150,23 @@ function presentationFor(
       preheader: approved ? "LaunchFlow has approved your plan change request." : "LaunchFlow has answered your plan change request.",
       heading: approved ? "Your request has been approved" : "Your request has been declined",
       cta: { label: "View your plan", url: `${appUrl}/portal/plan` },
+    };
+  }
+  if (kind === CSAT_INVITE_KIND) {
+    const ticketId = typeof message.metadata["ticketId"] === "string" ? message.metadata["ticketId"] : context?.ticketId;
+    return {
+      preheader: "Your case has been resolved — how did we do?",
+      heading: "Was this sorted?",
+      cta: ticketId ? { label: "Rate your experience", url: `${appUrl}/portal/support/${ticketId}/rate` } : undefined,
+      footerNote: "If it is not actually sorted, reply on the case in your portal and we will pick it straight back up.",
+    };
+  }
+  if (kind === CONTENT_REPORT_NOTICE_KIND) {
+    const month = typeof message.metadata["monthName"] === "string" ? message.metadata["monthName"] : "this month";
+    return {
+      preheader: `What LaunchFlow published for you in ${month}.`,
+      heading: `Your content for ${month}`,
+      cta: { label: "See your posts", url: `${appUrl}/portal/content` },
     };
   }
   return {

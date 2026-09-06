@@ -26,7 +26,12 @@ export type DomainEvent =
       decision: "approved" | "rejected";
       note?: string;
     }
-  | { name: "payments.webhook"; organisationId: string; providerEvent: PaymentsWebhookEvent };
+  | { name: "payments.webhook"; organisationId: string; providerEvent: PaymentsWebhookEvent }
+  // An urgent notification for a user who has push subscriptions. The worker
+  // turns it into a `push.send` job keyed `push:<notificationId>`; the job
+  // reads the row back, so a notification whose transaction rolled back is a
+  // no-op there, never a stray alert.
+  | { name: "push.requested"; organisationId: string; notificationId: string; userId: string };
 
 export type EnqueueFn = (event: DomainEvent) => Promise<void>;
 let enqueue: EnqueueFn = async () => {}; // no-op until the worker or web sets one

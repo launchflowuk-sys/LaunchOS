@@ -29,6 +29,16 @@ export async function listNotifications(db: Db, organisationId: string, input: L
     .limit(v.limit);
 }
 
+/** One notification by id, for the worker's `push.send` job. Null when it does not exist in this organisation. */
+export async function getNotification(db: Db, organisationId: string, notificationId: string) {
+  const [row] = await db
+    .select()
+    .from(schema.notifications)
+    .where(and(eq(schema.notifications.id, notificationId), eq(schema.notifications.organisationId, organisationId)))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function countUnreadNotifications(db: Db, organisationId: string, userId: string): Promise<number> {
   const [row] = await db
     .select({ value: count() })

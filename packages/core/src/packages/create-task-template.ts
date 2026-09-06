@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { TaskTemplateEvidenceInput } from "../tasks/evidence.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 
 export const TaskTemplateFields = z.object({
@@ -15,6 +16,8 @@ export const TaskTemplateFields = z.object({
   defaultAssigneeRole: z.enum(schema.taskAssigneeRoleEnum.enumValues).default("any"),
   sortOrder: z.number().int().min(0).max(10000).default(0),
   checklist: z.array(z.string().min(1).max(200)).max(50).default([]),
+  /** Proof of work a task made from this template must carry before it can close. */
+  evidence: TaskTemplateEvidenceInput.default({ required: false, kinds: [], checklist: [] }),
 });
 
 export const CreateTaskTemplateInput = TaskTemplateFields.extend({
@@ -29,7 +32,7 @@ export async function createTaskTemplate(db: Db, organisationId: string, input: 
   const [template] = await db.insert(schema.taskTemplates).values({
     organisationId, packageId: v.packageId ?? null, phase: v.phase, kind: v.kind, title: v.title,
     descriptionMd: v.descriptionMd ?? null, offsetDays: v.offsetDays, recurrence: v.recurrence,
-    defaultAssigneeRole: v.defaultAssigneeRole, sortOrder: v.sortOrder, checklist: v.checklist,
+    defaultAssigneeRole: v.defaultAssigneeRole, sortOrder: v.sortOrder, checklist: v.checklist, evidence: v.evidence,
   }).returning();
   await recordAudit(db, organisationId, {
     actorKind: v.actorKind, actorId: v.actorId, action: "task_template.created",

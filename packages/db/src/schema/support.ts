@@ -1,5 +1,6 @@
-import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
+import { user } from "./auth.js";
 import { clients } from "./clients.js";
 import { sites } from "./sites.js";
 
@@ -93,3 +94,21 @@ export const ticketEvents = pgTable("ticket_events", {
   actorId: text("actor_id"),
   data: jsonb("data").$type<Record<string, unknown>>().default({}).notNull(),
 });
+
+/**
+ * How a client rated the handling of one case, from the "Was this sorted?"
+ * email sent when it is resolved. One rating per ticket — a second click on
+ * a different score replaces the first. `client_user_id` is the portal user
+ * who clicked; the score is 1 (very poor) to 5 (excellent).
+ */
+export const ticketRatings = pgTable("ticket_ratings", {
+  ...tenantColumns(),
+  ticketId: uuid("ticket_id").notNull().references(() => tickets.id, { onDelete: "cascade" }),
+  clientUserId: text("client_user_id").references(() => user.id, { onDelete: "set null" }),
+  score: integer("score").notNull(),
+  comment: text("comment"),
+  ratedAt: timestamp("rated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("ticket_ratings_ticket").on(t.ticketId),
+  index("ticket_ratings_org_rated").on(t.organisationId, t.ratedAt),
+]);

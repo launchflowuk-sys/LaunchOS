@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
-  type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
+  type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
+  type PaymentsCheckoutSession, type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
   type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
@@ -30,6 +30,7 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
   private readonly customers = new Map<string, PaymentsCustomer>();
   private readonly subscriptions = new Map<string, PaymentsSubscription>();
   private readonly invoices = new Map<string, PaymentsInvoice>();
+  private readonly checkouts = new Map<string, PaymentsCheckoutSession>();
   private readonly vatRatePercent: number;
   private readonly termsDays: number;
 
@@ -119,6 +120,65 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
     const parsed = JSON.parse(rawBody) as Partial<PaymentsWebhookEvent>;
     if (!parsed.id || !parsed.type) throw new Error("mock payments: webhook body needs id and type");
     return { id: parsed.id, type: parsed.type, data: parsed.data ?? {} };
+  }
+
+  /**
+   * A "hosted page" that is really the success URL with the session id filled
+   * in, so a local signup lands on `/signup/done` exactly as a real one would.
+   * The session is `open` until `completeCheckout` (below) or a retrieve of an
+   * id this process has never seen, which — like `recall` — is reconstructed
+   * as complete rather than refused, so a dev-server restart cannot strand a
+   * signup half-way.
+   */
+  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession> {
+    const id = this.id("cs");
+    const session: PaymentsCheckoutSession = {
+      id,
+      status: "open",
+      paymentStatus: "unpaid",
+      url: input.successUrl.replace("{CHECKOUT_SESSION_ID}", id),
+      customerEmail: input.customerEmail,
+      metadata: { ...input.metadata, priceId: input.priceId, clientReference: input.clientReference },
+    };
+    this.checkouts.set(id, session);
+    return session;
+  }
+
+  /**
+   * Retrieving a session is the buyer coming back from the "hosted page", so
+   * an open session is completed on the way out: `/signup/done` then sees a
+   * paid session exactly as it would from Stripe. An id this process never
+   * saw is reconstructed as complete for the same reason `recall` tolerates
+   * unknown subscription ids.
+   */
+  async retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession> {
+    const existing = this.checkouts.get(sessionId);
+    if (existing && existing.status !== "open") return existing;
+    if (!existing && !MockPaymentsAdapter.isMockId("cs", sessionId)) {
+      throw new Error(`mock payments: ${sessionId} is not a mock checkout session id`);
+    }
+    return this.completeCheckout(sessionId);
+  }
+
+  /**
+   * Test affordance, and what a mock signup's `/signup/done` relies on: marks
+   * the session paid with a customer and a subscription behind it, the way
+   * Stripe's `checkout.session.completed` would report it.
+   */
+  completeCheckout(sessionId: string, overrides: Partial<PaymentsCheckoutSession> = {}): PaymentsCheckoutSession {
+    const existing = this.checkouts.get(sessionId);
+    const completed: PaymentsCheckoutSession = {
+      id: sessionId,
+      status: "complete",
+      paymentStatus: "paid",
+      customerId: existing?.customerId ?? this.id("cus"),
+      subscriptionId: existing?.subscriptionId ?? this.id("sub"),
+      ...(existing?.customerEmail !== undefined ? { customerEmail: existing.customerEmail } : {}),
+      metadata: existing?.metadata ?? {},
+      ...overrides,
+    };
+    this.checkouts.set(sessionId, completed);
+    return completed;
   }
 
   /** Test affordance: bills the next period and returns the new invoice. */

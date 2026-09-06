@@ -5,9 +5,11 @@ import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { getPackage } from "../packages/list-packages.js";
 import { listTaskTemplates } from "../packages/list-task-templates.js";
+import { autoAssignTask, taskAssignmentOn } from "../assignment/auto-assign.js";
 import { findOwnerUserId, pickLeastLoadedStaff } from "./assignee.js";
 import { createTask } from "./create-task.js";
 import { dueWithinPeriod, periodBounds } from "./dates.js";
+import { evidenceFromTemplate } from "./evidence.js";
 
 /**
  * Postgres `unique_violation`: the row another run already created.
@@ -62,6 +64,9 @@ export async function generateRecurringTasks(db: Db, organisationId: string, inp
   let created = 0;
   let skipped = 0;
   const failures: { clientId: string; error: unknown }[] = [];
+  // See generateOnboardingTasks: with the rule on, `autoAssignTask` routes
+  // every new task and the template defaults are not consulted.
+  const autoAssign = await taskAssignmentOn(db, organisationId);
 
   for (const client of clients) {
     try {
@@ -86,7 +91,7 @@ export async function generateRecurringTasks(db: Db, organisationId: string, inp
           if (existing) { skipped += 1; continue; }
 
           try {
-            await createTask(db, organisationId, {
+            const task = await createTask(db, organisationId, {
               clientId: client.id,
               templateId: template.id,
               title: quantity > 1 ? `${template.title} ${n}/${quantity}` : template.title,
@@ -94,12 +99,14 @@ export async function generateRecurringTasks(db: Db, organisationId: string, inp
               phase: "recurring",
               descriptionMd: template.descriptionMd ?? undefined,
               dueAt: dueWithinPeriod(period, n, quantity),
-              assigneeUserId: await assigneeFor(db, organisationId, template.defaultAssigneeRole),
+              assigneeUserId: autoAssign ? undefined : await assigneeFor(db, organisationId, template.defaultAssigneeRole),
               checklist: template.checklist.map((label) => ({ label, done: false })),
+              evidence: evidenceFromTemplate(template),
               recurrenceKey,
               actorKind: "system",
             });
             created += 1;
+            if (autoAssign) await autoAssignTask(db, organisationId, { taskId: task.id, role: template.defaultAssigneeRole });
           } catch (error) {
             // A concurrent run already claimed this (client, recurrence_key)
             // slot — that is a successful outcome for us too.

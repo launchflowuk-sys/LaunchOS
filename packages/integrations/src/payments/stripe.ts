@@ -1,8 +1,8 @@
 import Stripe from "stripe";
 import {
-  addDays, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCustomer, type PaymentsInvoice, type PaymentsInvoiceStatus,
-  type PaymentsSubscription, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
+  addDays, type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
+  type PaymentsCheckoutSession, type PaymentsCheckoutStatus, type PaymentsCustomer, type PaymentsInvoice,
+  type PaymentsInvoiceStatus, type PaymentsSubscription, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
 export interface StripePaymentsOptions {
@@ -83,6 +83,26 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
     return { id: event.id, type: event.type, data: event.data as unknown as Record<string, unknown> };
   }
 
+  async createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession> {
+    const session = await this.client.checkout.sessions.create({
+      mode: "subscription",
+      line_items: [{ price: input.priceId, quantity: 1 }],
+      customer_email: input.customerEmail,
+      success_url: input.successUrl,
+      cancel_url: input.cancelUrl,
+      client_reference_id: input.clientReference,
+      metadata: input.metadata,
+      // The same metadata on the subscription itself, so a support lookup in
+      // the Stripe dashboard finds the LaunchOS client from either object.
+      subscription_data: { metadata: input.metadata },
+    });
+    return toCheckoutSession(session);
+  }
+
+  async retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession> {
+    return toCheckoutSession(await this.client.checkout.sessions.retrieve(sessionId));
+  }
+
   private toSubscription(s: Stripe.Subscription): PaymentsSubscription {
     const item = s.items.data[0];
     return {
@@ -116,4 +136,34 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
       ...(i.invoice_pdf ? { pdfUrl: i.invoice_pdf } : {}),
     };
   }
+}
+
+const CHECKOUT_STATUS: Record<string, PaymentsCheckoutStatus> = { open: "open", complete: "complete", expired: "expired" };
+const CHECKOUT_PAYMENT_STATUS: Record<string, PaymentsCheckoutSession["paymentStatus"]> = {
+  paid: "paid", unpaid: "unpaid", no_payment_required: "no_payment_required",
+};
+
+function idOf(ref: string | { id: string } | null | undefined): string | undefined {
+  if (!ref) return undefined;
+  return typeof ref === "string" ? ref : ref.id;
+}
+
+/**
+ * The shape a `checkout.session.completed` webhook object has as well, so
+ * core's `syncFromPaymentsEvent` reads the event through this same mapping.
+ */
+export function toCheckoutSession(s: Stripe.Checkout.Session): PaymentsCheckoutSession {
+  const customerId = idOf(s.customer);
+  const subscriptionId = idOf(s.subscription);
+  const customerEmail = s.customer_details?.email ?? s.customer_email ?? undefined;
+  return {
+    id: s.id,
+    status: CHECKOUT_STATUS[s.status ?? "open"] ?? "open",
+    paymentStatus: CHECKOUT_PAYMENT_STATUS[s.payment_status ?? "unpaid"] ?? "unpaid",
+    ...(s.url ? { url: s.url } : {}),
+    ...(customerId !== undefined ? { customerId } : {}),
+    ...(subscriptionId !== undefined ? { subscriptionId } : {}),
+    ...(customerEmail ? { customerEmail } : {}),
+    metadata: Object.fromEntries(Object.entries(s.metadata ?? {}).map(([k, v]) => [k, String(v)])),
+  };
 }

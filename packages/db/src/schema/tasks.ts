@@ -16,6 +16,33 @@ export type TaskPriority = (typeof taskPriorityEnum.enumValues)[number];
 /** One line of a task's checklist. Stored as jsonb so a task stays one row. */
 export type ChecklistItem = { label: string; done: boolean };
 
+/** One proof line, ticked by a named person at a known time. */
+export type TaskEvidenceChecklistItem = { item: string; done: boolean; doneBy?: string | undefined; doneAt?: string | undefined };
+
+/** A screenshot (or any file) attached as proof — stored under STORAGE_DIR like an inbound attachment. */
+export type TaskEvidenceAttachment = {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  url: string;
+  uploadedBy?: string | undefined;
+  uploadedAt: string;
+};
+
+/**
+ * The proof of work on a task: links to what was delivered, screenshots, and
+ * the ticked proof checklist copied from the template. `updateTaskStatus`
+ * refuses `done` while the template's `evidence.required` is unmet.
+ */
+export type TaskEvidence = {
+  links: string[];
+  attachments: TaskEvidenceAttachment[];
+  checklist: TaskEvidenceChecklistItem[];
+};
+
+export const TASK_EVIDENCE_DEFAULT: TaskEvidence = { links: [], attachments: [], checklist: [] };
+
 export const tasks = pgTable("tasks", {
   ...tenantColumns(),
   clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
@@ -35,6 +62,7 @@ export const tasks = pgTable("tasks", {
   ticketId: uuid("ticket_id").references(() => tickets.id, { onDelete: "set null" }),
   recurrenceKey: text("recurrence_key"),
   checklist: jsonb("checklist").$type<ChecklistItem[]>().default([]).notNull(),
+  evidence: jsonb("evidence").$type<TaskEvidence>().default(TASK_EVIDENCE_DEFAULT).notNull(),
   clientVisible: boolean("client_visible").default(true).notNull(),
 }, (t) => [
   // Onboarding generation is idempotent by (client, template): re-running the

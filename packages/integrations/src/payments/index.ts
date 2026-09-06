@@ -4,7 +4,7 @@ import type { PaymentsAdapter } from "./types.js";
 
 export * from "./types.js";
 export { MockPaymentsAdapter } from "./mock.js";
-export { StripePaymentsAdapter } from "./stripe.js";
+export { StripePaymentsAdapter, toCheckoutSession } from "./stripe.js";
 
 /** UK standard rate, used whenever `VAT_RATE` is unset or unusable. */
 export const DEFAULT_VAT_RATE_PERCENT = 20;

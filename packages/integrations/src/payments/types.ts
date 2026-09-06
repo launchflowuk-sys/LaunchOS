@@ -54,6 +54,37 @@ export interface CreateSubscriptionInput {
   periodStart: Date;
 }
 
+/**
+ * A hosted Checkout page for a self-serve signup. `metadata` is echoed back on
+ * the session (and on the `checkout.session.completed` webhook), which is how
+ * `completeSignup` knows which organisation and package the buyer chose.
+ */
+export interface CreateCheckoutSessionInput {
+  /** The provider price id — `packages.stripe_price_id`. */
+  priceId: string;
+  customerEmail: string;
+  successUrl: string;
+  cancelUrl: string;
+  /** A short reference shown in the provider dashboard (the lead id, say). */
+  clientReference: string;
+  metadata: Record<string, string>;
+}
+
+export type PaymentsCheckoutStatus = "open" | "complete" | "expired";
+
+export interface PaymentsCheckoutSession {
+  id: string;
+  status: PaymentsCheckoutStatus;
+  /** `paid` once the first payment settled; `unpaid` while open or for a failed card. */
+  paymentStatus: "paid" | "unpaid" | "no_payment_required";
+  /** The hosted page to send the buyer to. Absent once the session is no longer open. */
+  url?: string;
+  customerId?: string;
+  subscriptionId?: string;
+  customerEmail?: string;
+  metadata: Record<string, string>;
+}
+
 export interface PaymentsAdapter {
   readonly name: "mock" | "stripe";
   createCustomer(input: CreateCustomerInput): Promise<PaymentsCustomer>;
@@ -61,6 +92,8 @@ export interface PaymentsAdapter {
   cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription>;
   listInvoices(customerId: string): Promise<PaymentsInvoice[]>;
   webhookVerify(rawBody: string, signature: string): PaymentsWebhookEvent;
+  createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession>;
+  retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession>;
 }
 
 export const PAYMENT_TERMS_DEFAULT_DAYS = 14;

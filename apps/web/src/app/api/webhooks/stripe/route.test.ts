@@ -33,6 +33,12 @@ const fakeAdapter: PaymentsAdapter = {
   async cancelSubscription() {
     throw new Error("not used by this route");
   },
+  async createCheckoutSession() {
+    throw new Error("not used by this route");
+  },
+  async retrieveCheckoutSession() {
+    throw new Error("not used by this route");
+  },
   async listInvoices() {
     throw new Error("not used by this route");
   },

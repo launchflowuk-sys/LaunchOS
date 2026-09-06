@@ -1,10 +1,11 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { PaymentsWebhookEvent } from "@launchos/integrations";
+import { toCheckoutSession, type PaymentsWebhookEvent } from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { completeSignup, SIGNUP_MARKER, SignupRefused } from "../signup/signup.js";
 import { reconcileInvoice } from "./payments.js";
 
 type LocalSubscriptionStatus = "trialing" | "active" | "past_due" | "cancelled" | "paused";
@@ -21,6 +22,17 @@ const StripeSubscriptionObject = z.object({
   id: z.string(),
   customer: z.string(),
   status: z.string(),
+});
+
+const StripeCheckoutObject = z.object({
+  id: z.string(),
+  status: z.string().nullish(),
+  payment_status: z.string().nullish(),
+  customer: z.union([z.string(), z.object({ id: z.string() })]).nullish(),
+  subscription: z.union([z.string(), z.object({ id: z.string() })]).nullish(),
+  customer_email: z.string().nullish(),
+  customer_details: z.object({ email: z.string().nullish() }).nullish(),
+  metadata: z.record(z.string(), z.string()).nullish(),
 });
 
 const STRIPE_TO_LOCAL_STATUS: Record<string, LocalSubscriptionStatus> = {
@@ -54,8 +66,27 @@ export async function syncFromPaymentsEvent(
   db: Db,
   organisationId: string,
   event: PaymentsWebhookEvent,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<SyncResult> {
   const object = (event.data as { object?: unknown }).object;
+
+  // A self-serve signup paid through Checkout. The route resolved tenancy
+  // from our metadata (`signupOrganisationFromEvent`); `completeSignup`
+  // checks it again and is idempotent by session, so a redelivery is a
+  // `signup.duplicate`, never a second client.
+  if (event.type === "checkout.session.completed") {
+    const parsed = StripeCheckoutObject.safeParse(object);
+    if (!parsed.success) return { handled: false, action: "unparseable" };
+    if (parsed.data.metadata?.["launchos"] !== SIGNUP_MARKER) return { handled: false, action: "ignored" };
+    const session = toCheckoutSession(parsed.data as unknown as Parameters<typeof toCheckoutSession>[0]);
+    try {
+      const result = await completeSignup(db, organisationId, { session }, {}, env);
+      return { handled: true, action: result.alreadyCompleted ? "signup.duplicate" : "signup.completed" };
+    } catch (error) {
+      if (error instanceof SignupRefused) return { handled: false, action: `signup.${error.reason}` };
+      throw error;
+    }
+  }
 
   if (event.type === "invoice.paid" || event.type === "invoice.payment_failed") {
     const parsed = StripeInvoiceObject.safeParse(object);

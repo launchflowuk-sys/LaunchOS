@@ -5,9 +5,11 @@ import { and, eq } from "drizzle-orm";
 import { recordActivity } from "../activity/record-activity.js";
 import { listTaskTemplates } from "../packages/list-task-templates.js";
 import { assertClientInOrganisation } from "../tenancy/assert-owned.js";
+import { autoAssignTask, taskAssignmentOn } from "../assignment/auto-assign.js";
 import { findOwnerUserId, pickLeastLoadedStaff } from "./assignee.js";
 import { createTask } from "./create-task.js";
 import { addDays } from "./dates.js";
+import { evidenceFromTemplate } from "./evidence.js";
 
 /**
  * Postgres `unique_violation`: the row another run already created.
@@ -56,8 +58,12 @@ export async function generateOnboardingTasks(db: Db, organisationId: string, cl
   const alreadyGenerated = new Set(existing.map((r) => r.templateId).filter((v): v is string => v !== null));
 
   const pending = templates.filter((t) => !alreadyGenerated.has(t.id));
-  const ownerUserId = pending.some((t) => t.defaultAssigneeRole === "owner") ? await findOwnerUserId(db, organisationId) : null;
-  const staffUserId = pending.some((t) => t.defaultAssigneeRole === "staff") ? await pickLeastLoadedStaff(db, organisationId) : null;
+  // With the organisation's task assignment rule on, every task is routed by
+  // `autoAssignTask` after it is created (audited, and the assignee is told);
+  // the template defaults below apply only when the rule is off.
+  const autoAssign = await taskAssignmentOn(db, organisationId);
+  const ownerUserId = !autoAssign && pending.some((t) => t.defaultAssigneeRole === "owner") ? await findOwnerUserId(db, organisationId) : null;
+  const staffUserId = !autoAssign && pending.some((t) => t.defaultAssigneeRole === "staff") ? await pickLeastLoadedStaff(db, organisationId) : null;
   const assigneeFor = (role: TaskAssigneeRole) =>
     (role === "owner" ? ownerUserId : role === "staff" ? staffUserId : null) ?? undefined;
 
@@ -74,8 +80,13 @@ export async function generateOnboardingTasks(db: Db, organisationId: string, cl
         dueAt: addDays(client.createdAt, template.offsetDays),
         assigneeUserId: assigneeFor(template.defaultAssigneeRole),
         checklist: template.checklist.map((label) => ({ label, done: false })),
+        evidence: evidenceFromTemplate(template),
         actorKind: "system",
       }));
+      if (autoAssign) {
+        const task = created[created.length - 1]!;
+        await autoAssignTask(db, organisationId, { taskId: task.id, role: template.defaultAssigneeRole });
+      }
     } catch (error) {
       // A concurrent run (another worker, a retried request) created this
       // template's task first — that is a successful outcome for us too.

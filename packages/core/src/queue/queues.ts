@@ -94,6 +94,8 @@
  * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
  * | `content.draft` | `content-draft:<clientId>:<periodKey>` + `singletonSeconds` (an Opus-priced writer run, like the Sentinel); a manual "Draft with AI" appends `:manual:<epochMs>` | `apps/worker/src/jobs/content-plan-month.ts`, C4's client content tab |
  * | `ops.brief` | none from the cron (payload `{}`); a manual "Write today's brief" sends `{ organisationId }` with `ops-brief:<org>:manual:<epochMs>` | `apps/worker/src/jobs/ops-brief.ts`, the web `/briefs` page |
+ * | `push.send` | `push:<notificationId>` — one delivery per notification, fanned out to the user's devices by the job | `dispatch-event.ts` on the `push.requested` domain event `notify()` emits |
+ * | `support.sla-sweep` | none — a 15-minute cron, payload `{}` | the worker's cron registration |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
  */
 
@@ -123,6 +125,8 @@ export const QUEUE = {
   contentPublishDue: "content.publish-due",
   contentReport: "content.report",
   opsBrief: "ops.brief",
+  pushSend: "push.send",
+  supportSlaSweep: "support.sla-sweep",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -167,6 +171,12 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // day's brief is one row per organisation per date regardless of how many
   // times the job runs (`createOpsBrief` replaces in place).
   "ops.brief": "standard",
+  // Web push: every send carries `push:<notificationId>`, so a notification
+  // written twice in quick succession (a retried transaction) reaches the
+  // phone once.
+  "push.send": "short",
+  // The first-response SLA sweep: a cron, payload `{}`, one job per tick.
+  "support.sla-sweep": "standard",
 };
 
 /**

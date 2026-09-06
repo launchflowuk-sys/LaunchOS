@@ -25,6 +25,19 @@ export const CASE_ACKNOWLEDGEMENT_KIND = "case_acknowledgement";
 export const SUBSCRIPTION_CHANGE_NOTICE_KIND = "subscription_change_notice";
 
 /**
+ * `metadata.kind` on the "Was this sorted?" email `queueCsatInvite` writes the
+ * moment a client-visible case is resolved. Five score links, one page.
+ */
+export const CSAT_INVITE_KIND = "csat_invite";
+
+/**
+ * `metadata.kind` on the email that carries a month's content report to the
+ * client's portal users once the owner approved sending it
+ * (`applyContentReportSendDecision`).
+ */
+export const CONTENT_REPORT_NOTICE_KIND = "content_report_notice";
+
+/**
  * Every kind of message that is a record of an email we sent *about* a thread
  * rather than a turn in it. All of them are `outbound` rows written by the
  * system, and all of them must be invisible to every reader of the thread —
@@ -36,6 +49,8 @@ export const COURTESY_NOTICE_KINDS = [
   PORTAL_REPLY_NOTICE_KIND,
   CASE_ACKNOWLEDGEMENT_KIND,
   SUBSCRIPTION_CHANGE_NOTICE_KIND,
+  CSAT_INVITE_KIND,
+  CONTENT_REPORT_NOTICE_KIND,
 ] as const;
 
 export type CourtesyNoticeKind = (typeof COURTESY_NOTICE_KINDS)[number];

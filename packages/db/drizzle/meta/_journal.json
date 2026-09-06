@@ -120,6 +120,13 @@
       "when": 1788634774792,
       "tag": "0016_thick_jack_flag",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788651459294,
+      "tag": "0017_far_silverclaw",
+      "breakpoints": true
     }
   ]
 }

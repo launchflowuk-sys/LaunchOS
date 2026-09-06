@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { approvals } from "./agents.js";
 import { user } from "./auth.js";
@@ -108,6 +108,9 @@ export const contentAssets = pgTable("content_assets", {
   /** Relative to STORAGE_DIR. */
   path: text("path").notNull(),
   mime: text("mime").notNull(),
+  sizeBytes: integer("size_bytes").default(0).notNull(),
+  /** The name the file had when it was uploaded — a label, never a path. */
+  originalName: text("original_name"),
   alt: text("alt"),
   source: contentAssetSourceEnum("source").default("staff").notNull(),
   uploadedByUserId: text("uploaded_by_user_id").references(() => user.id, { onDelete: "set null" }),

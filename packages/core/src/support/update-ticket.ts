@@ -3,6 +3,8 @@ import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { queueCsatInvite } from "../csat/invite.js";
+import { emit } from "../events/emit.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 import { slaDueAt, type Severity } from "./sla.js";
 
@@ -27,7 +29,12 @@ export type UpdateTicketInput = z.input<typeof UpdateTicketInput>;
 
 const CLOSING = new Set(["resolved", "closed"]);
 
-export async function updateTicket(db: Db, organisationId: string, input: UpdateTicketInput) {
+export async function updateTicket(
+  db: Db,
+  organisationId: string,
+  input: UpdateTicketInput,
+  env: NodeJS.ProcessEnv = process.env,
+) {
   const v = UpdateTicketInput.parse(input);
   await assertOwned(db, organisationId, schema.tickets, v.ticketId);
 
@@ -35,7 +42,7 @@ export async function updateTicket(db: Db, organisationId: string, input: Update
 
   // The row, its ticket_events entry and its audit row move together: a status
   // change with no event behind it is a case history that quietly lies.
-  return db.transaction(async (txRaw) => {
+  const { ticket, invites } = await db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
     const [before] = await tx.select().from(schema.tickets).where(where);
     if (!before) throw new Error(`ticket ${v.ticketId} not found in organisation`);
@@ -66,6 +73,18 @@ export async function updateTicket(db: Db, organisationId: string, input: Update
       actorKind: v.actorKind, actorId: v.actorId, action: "ticket.updated",
       targetType: "ticket", targetId: v.ticketId, before, after,
     });
-    return after!;
+
+    // "Was this sorted?" the moment a client-visible case is resolved — once
+    // per case, in the same transaction, so the resolution and the question
+    // land together. `queueCsatInvite` stamps the ticket; the stamp is not on
+    // `after` (written before it), so the row returned carries it too.
+    const resolvedNow = v.status === "resolved" && before.status !== "resolved";
+    const invites = resolvedNow ? await queueCsatInvite(tx, organisationId, { ticket: after! }, env) : [];
+    const [stamped] = invites.length > 0 ? await tx.select().from(schema.tickets).where(where) : [after!];
+    return { ticket: stamped!, invites };
   });
+
+  // After commit: the worker must never be handed a message id the transaction rolled back.
+  for (const invite of invites) await emit({ name: "message.queued", organisationId, messageId: invite.id });
+  return ticket;
 }

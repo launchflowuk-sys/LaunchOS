@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
+import { autoAssignTicket } from "../assignment/auto-assign.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { emit } from "../events/emit.js";
 import { assertClientInOrganisation, assertSiteInOrganisation } from "../tenancy/assert-owned.js";
@@ -108,16 +109,26 @@ export async function createTicketInTx(
   await tx.insert(schema.ticketEvents).values({ organisationId, ticketId: ticket!.id, kind: "created", actorKind: v.actorKind, actorId: v.actorId ?? null });
   await recordAudit(tx, organisationId, { actorKind: v.actorKind, actorId: v.actorId, action: "ticket.created", targetType: "ticket", targetId: ticket!.id, after: ticket });
 
+  // Auto-assignment, when the organisation has switched it on. A no-op with
+  // the rule off. Routing failing must never cost the case itself: the error
+  // is logged and the ticket opens unassigned, exactly as it would have with
+  // the rule off.
+  const routed = await autoAssignTicket(tx, organisationId, { ticketId: ticket!.id, actorKind: "system" }).catch((error: unknown) => {
+    console.error({ organisationId, ticketId: ticket!.id, error: error instanceof Error ? error.message : String(error) }, "auto-assignment failed; ticket left unassigned");
+    return null;
+  });
+  const assigned = routed ? { ...ticket!, assignedUserId: routed.assignedUserId } : ticket!;
+
   // A client who raised this hears back straight away — "we've got it, here is
   // the reference" — from the same transaction, so the case and the promise
   // land together. Nothing for a case staff, a monitor or an agent opened.
   const acknowledgement = await queueCaseAcknowledgement(
     tx,
     organisationId,
-    { ticket: ticket!, conversation: linked ?? conversation, actorKind: v.actorKind, actorId: v.actorId },
+    { ticket: assigned, conversation: linked ?? conversation, actorKind: v.actorKind, actorId: v.actorId },
     env,
   );
-  return { ticket: ticket!, conversation: linked ?? conversation, acknowledgement };
+  return { ticket: assigned, conversation: linked ?? conversation, acknowledgement };
 }
 
 export async function createTicket(
