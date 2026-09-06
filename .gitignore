@@ -15,3 +15,9 @@ test-results/
 *.log
 .claude/
 .superpowers/
+
+# The local STORAGE_DIR. Unset, `storageRoot` falls back to ./storage relative
+# to whichever process is running, so a dev worker drops client attachments,
+# post images and rendered documents inside the repo. In production this is a
+# mounted volume; here it is scratch, and none of it belongs in git.
+storage/
