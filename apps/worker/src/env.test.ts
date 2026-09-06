@@ -167,8 +167,9 @@ describe("worker env", () => {
       // each, are the four adapters production tolerates on their mocks — the
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
-      // hosting, dns, cms, ads, social and, since web push landed, push.
-      expect(warnings).toHaveLength(6);
+      // hosting, dns, cms, ads, social, push and, since the booking page, meetings.
+      expect(warnings).toHaveLength(7);
+      expect(warnings.some((w) => w.startsWith("meetings adapter is the MOCK"))).toBe(true);
       expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
       expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
@@ -201,6 +202,16 @@ describe("worker env", () => {
         .toThrow(/VAPID_SUBJECT is required/);
       expect(() => parseEnv({ ...production, VAPID_PUBLIC_KEY: "BPublic" }))
         .toThrow(/falls back to the mock push adapter.*Missing: VAPID_PRIVATE_KEY/);
+    });
+
+    it("carries the Zoom keys and MARKETING_URL through; a partial Zoom set is refused in production", () => {
+      const env = parseEnv({ ...ok, ZOOM_ACCOUNT_ID: "acc", ZOOM_CLIENT_ID: "cid", ZOOM_CLIENT_SECRET: "sec", MARKETING_URL: "https://launchflow.test" });
+      expect(env).toMatchObject({ ZOOM_ACCOUNT_ID: "acc", ZOOM_CLIENT_ID: "cid", ZOOM_CLIENT_SECRET: "sec", MARKETING_URL: "https://launchflow.test" });
+      expect(parseEnv(ok).MARKETING_URL).toBe("https://launchflow.co.uk");
+      expect(() => parseEnv({ ...ok, MARKETING_URL: "not a url" })).toThrow();
+      expect(() => parseEnv({ ...production, ZOOM_ACCOUNT_ID: "acc", ZOOM_CLIENT_ID: "cid", ZOOM_CLIENT_SECRET: "sec" })).not.toThrow();
+      expect(() => parseEnv({ ...production, ZOOM_ACCOUNT_ID: "acc" }))
+        .toThrow(/falls back to the mock meetings adapter.*Missing: ZOOM_CLIENT_ID, ZOOM_CLIENT_SECRET/);
     });
   });
 });

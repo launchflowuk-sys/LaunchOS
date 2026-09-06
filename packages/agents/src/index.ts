@@ -25,6 +25,7 @@ export {
   MAX_KNOWLEDGE_SEARCHES,
 } from "./agents/content-writer/index.js";
 export { opsBrief, OPS_BRIEF_KEY, OPS_BRIEF_PROMPT, OPS_BRIEF_CRON, OPS_BRIEF_MAX_WORDS } from "./agents/ops-brief/index.js";
+export { leadQualifier, LEAD_QUALIFIER_KEY, LEAD_QUALIFIER_PROMPT } from "./agents/lead-qualifier/index.js";
 export { uptimeCheckSite } from "./tools/uptime-check-site.js";
 export { hostingGetResources } from "./tools/hosting-get-resources.js";
 export { incidentsUpdate } from "./tools/incidents-update.js";
@@ -52,3 +53,7 @@ export { opsMetricsSnapshotTool } from "./tools/ops-metrics-snapshot.js";
 export { opsRecentActivity } from "./tools/ops-recent-activity.js";
 export { opsSaveBrief } from "./tools/ops-save-brief.js";
 export { OPS_BRIEF_HARD_MAX_WORDS, wordCount } from "./tools/ops-shared.js";
+export { leadGet } from "./tools/lead-get.js";
+export { packagesList, poundsFromPence } from "./tools/lead-packages-list.js";
+export { leadDraftReply, LEAD_REPLY_MAX_WORDS } from "./tools/lead-draft-reply.js";
+export type { LeadDraftReplyResult } from "./tools/lead-draft-reply.js";

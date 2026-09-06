@@ -134,6 +134,13 @@
       "when": 1788661053458,
       "tag": "0018_stripe_sync",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788664199260,
+      "tag": "0019_meetings",
+      "breakpoints": true
     }
   ]
 }

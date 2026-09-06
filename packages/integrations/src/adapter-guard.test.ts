@@ -72,21 +72,23 @@ const CMS = { SECRETS_ENCRYPTION_KEY: "a".repeat(44) };
 const PUSH = { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "mailto:shoji@launchflow.test" };
 /** The `push` row's variable: the two VAPID keys. */
 const PUSH_VARIABLE = "VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY";
+const MEETINGS_VARIABLE = "ZOOM_ACCOUNT_ID,ZOOM_CLIENT_ID,ZOOM_CLIENT_SECRET";
+const ZOOM = { ZOOM_ACCOUNT_ID: "acc", ZOOM_CLIENT_ID: "cid", ZOOM_CLIENT_SECRET: "sec" };
 
 /** Every adapter real. */
-const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH };
+const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH, ...ZOOM };
 
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
     expect(describeAdapters(live)).toEqual({
-      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock",
+      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
     });
     expect(describeAdapters(fullyLive)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
-      cms: "wordpress", social: "meta+gbp", push: "web-push",
+      cms: "wordpress", social: "meta+gbp", push: "web-push", meetings: "zoom",
     });
     expect(describeAdapters({})).toEqual({
-      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock",
+      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
     });
   });
 
@@ -135,7 +137,7 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
-      SOCIAL_VARIABLE, PUSH_VARIABLE,
+      SOCIAL_VARIABLE, PUSH_VARIABLE, MEETINGS_VARIABLE,
     ]);
     expect(warnings[5]!.message).toMatch(/push adapter is the MOCK/);
     expect(warnings[5]!.message).toMatch(/never reach a phone/);

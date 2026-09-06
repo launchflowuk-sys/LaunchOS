@@ -9,8 +9,17 @@ import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.
 import { notifyOwner } from "../notifications/notify.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 import {
-  CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
+  CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND,
+  PORTAL_REPLY_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
 } from "./courtesy-notice.js";
+
+/**
+ * `metadata.kind` on the Lead Qualifier's approved first reply. Not a courtesy
+ * notice — it *is* the answer — but it goes to somebody with no portal and no
+ * case, so its shell differs from a support reply: the button is the booking
+ * link the body already carries, and there is no "sign in to reply" note.
+ */
+export const LEAD_REPLY_KIND = "lead_reply";
 
 export const SendQueuedMessageInput = z.object({ messageId: z.string().uuid() });
 export type SendQueuedMessageInput = z.input<typeof SendQueuedMessageInput>;
@@ -73,7 +82,8 @@ async function claim(db: Db, organisationId: string, messageId: string): Promise
 }
 
 interface ConversationContext {
-  clientId: string;
+  /** Null on a lead thread — a prospect who is not yet a client. */
+  clientId: string | null;
   subject: string;
   ticketId: string | null;
 }
@@ -159,6 +169,41 @@ function presentationFor(
       heading: "Was this sorted?",
       cta: ticketId ? { label: "Rate your experience", url: `${appUrl}/portal/support/${ticketId}/rate` } : undefined,
       footerNote: "If it is not actually sorted, reply on the case in your portal and we will pick it straight back up.",
+    };
+  }
+  if (kind === LEAD_ACKNOWLEDGEMENT_KIND || kind === LEAD_REPLY_KIND) {
+    const bookingUrl = typeof message.metadata["bookingUrl"] === "string" ? message.metadata["bookingUrl"] : undefined;
+    return {
+      preheader: kind === LEAD_REPLY_KIND ? preheaderFrom(message.body) : "Thanks for getting in touch — here is what happens next.",
+      heading: kind === LEAD_REPLY_KIND ? (message.subject ?? caseHeading) : "We've got your enquiry",
+      cta: bookingUrl ? { label: "Book a call", url: bookingUrl } : undefined,
+      footerNote: inbound
+        ? "Reply to this email and it comes straight to Shoji."
+        : "Reply to this email and it comes straight to us.",
+    };
+  }
+  if (kind === MEETING_NOTICE_KIND) {
+    const notice = typeof message.metadata["notice"] === "string" ? message.metadata["notice"] : "confirmation";
+    const joinUrl = typeof message.metadata["joinUrl"] === "string" ? message.metadata["joinUrl"] : undefined;
+    const manageUrl = typeof message.metadata["manageUrl"] === "string" ? message.metadata["manageUrl"] : undefined;
+    const bookingUrl = typeof message.metadata["bookingUrl"] === "string" ? message.metadata["bookingUrl"] : undefined;
+    const headings: Record<string, string> = {
+      confirmation: "Your call is booked",
+      reminder: "Your call is coming up",
+      rescheduled: "Your call has moved",
+      cancelled: "Your call has been cancelled",
+      no_show: "Sorry we missed you",
+    };
+    const cta = notice === "cancelled" || notice === "no_show"
+      ? (bookingUrl ? { label: "Book another time", url: bookingUrl } : undefined)
+      : (joinUrl ? { label: "Join the call", url: joinUrl } : undefined);
+    return {
+      preheader: preheaderFrom(message.body),
+      heading: headings[notice] ?? "Your call",
+      cta,
+      footerNote: manageUrl && notice !== "cancelled" && notice !== "no_show"
+        ? `Need to change or cancel? Use this link: ${manageUrl}`
+        : "Reply to this email if you have any questions.",
     };
   }
   if (kind === CONTENT_REPORT_NOTICE_KIND) {
@@ -260,7 +305,7 @@ async function announceSendFailure(db: Db, organisationId: string, message: Mess
   const title = `A reply to ${to} was never sent`;
   const body = `${MAX_SEND_ATTEMPTS} send attempts failed and the message has been given up on. Last error: ${truncate(lastError, MAX_ERROR_CHARS)}`;
   await recordActivity(db, organisationId, {
-    ...(conversation ? { clientId: conversation.clientId } : {}),
+    ...(conversation?.clientId ? { clientId: conversation.clientId } : {}),
     actorKind: "system",
     kind: "message.send_failed",
     title,

@@ -31,7 +31,10 @@ export type DomainEvent =
   // turns it into a `push.send` job keyed `push:<notificationId>`; the job
   // reads the row back, so a notification whose transaction rolled back is a
   // no-op there, never a stray alert.
-  | { name: "push.requested"; organisationId: string; notificationId: string; userId: string };
+  | { name: "push.requested"; organisationId: string; notificationId: string; userId: string }
+  // A new enquiry with an email address. The worker starts the Lead Qualifier
+  // on it; the acknowledgement email is already queued by `createLead`.
+  | { name: "lead.created"; organisationId: string; leadId: string };
 
 export type EnqueueFn = (event: DomainEvent) => Promise<void>;
 let enqueue: EnqueueFn = async () => {}; // no-op until the worker or web sets one

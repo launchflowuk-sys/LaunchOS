@@ -131,7 +131,7 @@ export async function replyAsClient(db: Db, organisationId: string, input: Reply
     }
 
     await recordActivity(tx, organisationId, {
-      clientId: conversation.clientId,
+      ...(conversation.clientId ? { clientId: conversation.clientId } : {}),
       actorKind: "client",
       actorId: v.actorId,
       kind: "support.portal_reply",

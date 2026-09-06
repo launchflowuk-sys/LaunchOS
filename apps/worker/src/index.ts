@@ -31,6 +31,8 @@ import { runOutboundSweep } from "./jobs/outbound-sweep.js";
 import { ensureContentWriterEnabled } from "./jobs/content-enablement.js";
 import { registerContentJobs } from "./jobs/content-jobs.js";
 import { ensureOpsBriefEnabled, registerOpsBriefJob } from "./jobs/ops-brief.js";
+import { ensureLeadQualifierEnabled } from "./jobs/lead-enablement.js";
+import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -223,6 +225,14 @@ async function main() {
     email: emailAdapter,
     env: process.env,
   });
+
+  // The Lead Qualifier drafts a first reply to every enquiry that arrives on
+  // its own (dispatch-event routes `lead.created`); on by default like the
+  // writer, gated by the `lead_reply` approval card. The meeting crons send
+  // the guest's reminders and the host's 15-minute alert, then the morning
+  // follow-ups.
+  await ensureLeadQualifierEnabled(db);
+  await registerMeetingJobs({ db, boss, env: process.env });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
   // Every minute: a decided approval whose resume never arrived is an approved

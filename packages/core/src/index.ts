@@ -307,10 +307,66 @@ export {
 } from "./heartbeat/alerts.js";
 export type { WorkerStatus, SystemErrorNote } from "./heartbeat/alerts.js";
 export {
-  createLead, listLeads, getLead, updateLeadStatus, convertLeadToClient,
-  CreateLeadInput, ListLeadsInput, UpdateLeadStatusInput, ConvertLeadToClientInput, LEAD_STATUSES, LEAD_NOTIFICATION_KIND,
+  createLead, listLeads, getLead, getLeadWithAttribution, updateLeadStatus, markLeadContacted, convertLeadToClient,
+  leadCampaignCounts, leadsAwaitingReply,
+  CreateLeadInput, ListLeadsInput, UpdateLeadStatusInput, ConvertLeadToClientInput, LeadCampaignCountsInput, LeadsAwaitingReplyInput,
+  LEAD_STATUSES, LEAD_NOTIFICATION_KIND,
 } from "./leads/leads.js";
-export type { LeadRow } from "./leads/leads.js";
+export type { LeadRow, LeadCampaignCount } from "./leads/leads.js";
+
+// ---- Client workflow (X1): lead acknowledgement, attribution, qualifier reply, meetings ----
+export {
+  LeadAttributionSchema, ATTRIBUTION_METADATA_KEY, attributionOf, attributionSummary, compactAttribution, hasAttribution,
+} from "./leads/attribution.js";
+export type { LeadAttribution } from "./leads/attribution.js";
+export {
+  bookingLinkFor, bookingTokenOf, mintBookingToken, findLeadByBookingToken, findLeadByBookingTokenIn, ensureBookingToken, marketingUrl,
+  BOOKING_TOKEN_KEY, BOOKING_PATH, DEFAULT_MARKETING_URL,
+} from "./leads/booking-link.js";
+export {
+  queueLeadAcknowledgement, ensureLeadConversation, leadAcknowledgementBody,
+  LEAD_ACKNOWLEDGED_AT, LEAD_CONVERSATION_ID, ACKNOWLEDGED_LEAD_SOURCES,
+} from "./leads/acknowledge.js";
+export type { QueueLeadAcknowledgementInput } from "./leads/acknowledge.js";
+export {
+  requestLeadReply, applyLeadReplyDecision, listLeadMessages, leadReplyBody, LeadReplyRefused,
+  RequestLeadReplyInput, ApplyLeadReplyDecisionInput, LeadReplyPayload, LEAD_REPLY_ACTION, PENDING_LEAD_REPLY_INDEX,
+} from "./leads/reply.js";
+export type { ApplyLeadReplyDecisionResult } from "./leads/reply.js";
+export { LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND } from "./support/courtesy-notice.js";
+export { LEAD_REPLY_KIND } from "./support/send-queued-message.js";
+export {
+  BookingSettingsSchema, DEFAULT_BOOKING_SETTINGS, BOOKING_METADATA_KEY, DAY_KEYS,
+  bookingSettingsFrom, getBookingSettings, setBookingSettings, defaultHostUserId, resolveBookingHost, SetBookingSettingsInput,
+} from "./meetings/settings.js";
+export type { BookingSettings, BookingHours, BookingWindow, DayKey } from "./meetings/settings.js";
+export {
+  isValidTimeZone, zonedParts, offsetMinutes, zonedTimeToUtc, zonedDateKey, zonedTimeKey, formatInZone, zoneAbbreviation, addDaysToKey, keyOfParts,
+} from "./meetings/time.js";
+export type { ZonedParts } from "./meetings/time.js";
+export { availableSlots, isSlotAvailable, slotStartsFromSettings, collides, AvailableSlotsInput } from "./meetings/slots.js";
+export type { Slot, AvailableSlotsResult } from "./meetings/slots.js";
+export { buildIcs, icsDate, icsText, foldLine } from "./meetings/ics.js";
+export type { IcsEventInput } from "./meetings/ics.js";
+export {
+  bookMeeting, meetingIcs, meetingIcsByToken, mintRescheduleToken, MeetingRefused, BookMeetingInput, MEETING_BOOKED_NOTIFICATION_KIND,
+} from "./meetings/book.js";
+export type { MeetingDeps, BookMeetingResult } from "./meetings/book.js";
+export {
+  meetingManageUrl, meetingIcsUrl, rebookUrl, describeMeetingTime, ensureMeetingConversation, queueMeetingNotice, MEETING_CONVERSATION_ID,
+} from "./meetings/notices.js";
+export type { MeetingRow, MeetingNoticeKind, QueueMeetingNoticeInput } from "./meetings/notices.js";
+export {
+  getMeeting, getMeetingByToken, listMeetings, nextMeeting, rescheduleMeeting, cancelMeeting, markMeetingOutcome, meetingsNeedingOutcome,
+  ListMeetingsInput, RescheduleMeetingInput, CancelMeetingInput, MarkMeetingOutcomeInput,
+  MEETING_RESCHEDULED_NOTIFICATION_KIND, MEETING_CANCELLED_NOTIFICATION_KIND, NO_SHOW_EMAILED_AT,
+} from "./meetings/manage.js";
+export {
+  sendMeetingReminders, followUpMeetings,
+  MEETING_STARTING_NOTIFICATION_KIND, MEETING_OUTCOME_NOTIFICATION_KIND,
+  REMINDED_24H_AT, REMINDED_1H_AT, HOST_ALERTED_AT, OUTCOME_NUDGED_AT, REMINDER_24H_MS, REMINDER_1H_MS, HOST_ALERT_MS,
+} from "./meetings/reminders.js";
+export type { ReminderSweepResult, FollowUpSweepResult } from "./meetings/reminders.js";
 export {
   createSignupSession, completeSignup, signupOrganisationFromEvent, SignupRefused, CreateSignupSessionInput, CompleteSignupInput,
   SIGNUP_MARKER, SIGNUP_LEAD_SOURCE, SIGNUP_COMPLETED_NOTIFICATION_KIND, SIGNUP_CLAIM_TTL_MS,

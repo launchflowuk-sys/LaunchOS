@@ -110,6 +110,18 @@ const EnvShape = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().optional(),
+  /**
+   * Zoom Server-to-Server OAuth, behind the booking page. Read by
+   * `createMeetingsAdapterFromEnv` in `packages/integrations` from
+   * `process.env`; declared here so the adapter guard sees them. All three →
+   * Zoom; none → the mock, tolerated with a warning; one or two → refused in
+   * production as a silent downgrade.
+   */
+  ZOOM_ACCOUNT_ID: z.string().optional(),
+  ZOOM_CLIENT_ID: z.string().optional(),
+  ZOOM_CLIENT_SECRET: z.string().optional(),
+  /** The marketing site, for the one link a token-less lead is sent to (`bookingLinkFor`). */
+  MARKETING_URL: z.string().url().default("https://launchflow.co.uk"),
 });
 
 /**

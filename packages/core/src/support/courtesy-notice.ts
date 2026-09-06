@@ -38,6 +38,21 @@ export const CSAT_INVITE_KIND = "csat_invite";
 export const CONTENT_REPORT_NOTICE_KIND = "content_report_notice";
 
 /**
+ * `metadata.kind` on the "We've got your enquiry" email `queueLeadAcknowledgement`
+ * writes the moment a lead arrives from the website, a signup or a funnel.
+ * Carries the booking link; never a reply.
+ */
+export const LEAD_ACKNOWLEDGEMENT_KIND = "lead_acknowledgement";
+
+/**
+ * `metadata.kind` on a meeting email: the booking confirmation, a reminder,
+ * a reschedule or cancellation notice, the "sorry we missed you". All from
+ * `packages/core/src/meetings`; `metadata.meetingId` names the meeting and
+ * `metadata.notice` says which of them it is.
+ */
+export const MEETING_NOTICE_KIND = "meeting_notice";
+
+/**
  * Every kind of message that is a record of an email we sent *about* a thread
  * rather than a turn in it. All of them are `outbound` rows written by the
  * system, and all of them must be invisible to every reader of the thread —
@@ -51,6 +66,8 @@ export const COURTESY_NOTICE_KINDS = [
   SUBSCRIPTION_CHANGE_NOTICE_KIND,
   CSAT_INVITE_KIND,
   CONTENT_REPORT_NOTICE_KIND,
+  LEAD_ACKNOWLEDGEMENT_KIND,
+  MEETING_NOTICE_KIND,
 ] as const;
 
 export type CourtesyNoticeKind = (typeof COURTESY_NOTICE_KINDS)[number];

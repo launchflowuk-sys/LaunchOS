@@ -1,4 +1,5 @@
-import { ensureEmailIdentity, type DomainEvent } from "@launchos/core";
+import { LEAD_QUALIFIER_KEY } from "@launchos/agents";
+import { ensureEmailIdentity, getLead, type DomainEvent } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import type PgBoss from "pg-boss";
 import { QUEUE } from "../boss.js";
@@ -9,6 +10,9 @@ import type { OutboundMessageJob } from "./outbound-message.js";
 import type { GenerateOnboardingJob } from "./task-generation.js";
 import type { PaymentsWebhookJob } from "./payments-webhook.js";
 import type { PushSendJob } from "./push-send.js";
+
+/** The lead sources the qualifier answers. `manual`, `signup` and `booking` are deliberately absent — see the branch below. */
+export const QUALIFIED_LEAD_SOURCES: readonly string[] = ["website", "funnel", "api", "referral"];
 
 /** The only pg-boss surface this needs — narrow enough to fake in tests. */
 export type BossSender = Pick<PgBoss, "send">;
@@ -87,6 +91,22 @@ export async function dispatchEvent(deps: DispatchEventDeps, event: DomainEvent)
     // also cover `failed` and so block the redelivery that is the only
     // recovery path a failed sync has — see packages/core/src/queue/queues.ts.
     await boss.send(QUEUE.paymentsWebhook, job, { singletonKey: `stripe:${event.providerEvent.id}` });
+    return;
+  }
+  if (event.name === "lead.created") {
+    // The Lead Qualifier drafts a first reply for an enquiry that arrived on
+    // its own — the website form, a funnel, the public API — and has an
+    // address to answer. A `manual` lead is Shoji's own note; a `signup` lead
+    // is mid-Checkout and gets the welcome email instead; a `booking` lead
+    // just booked a call and got the confirmation. None of those wants a
+    // "thanks for your enquiry" draft on top.
+    const lead = await getLead(db, event.organisationId, event.leadId);
+    if (!lead || !lead.email || !QUALIFIED_LEAD_SOURCES.includes(lead.source)) {
+      console.info({ leadId: event.leadId, source: lead?.source ?? null, hasEmail: !!lead?.email }, "lead.created: qualifier not started");
+      return;
+    }
+    const job: AgentRunJob = { agentKey: LEAD_QUALIFIER_KEY, organisationId: event.organisationId, trigger: "event", payload: { leadId: lead.id } };
+    await boss.send(QUEUE.agentRun, job, { singletonKey: `lead-qualifier:${lead.id}` });
     return;
   }
   if (event.name === "push.requested") {

@@ -178,11 +178,15 @@ async function healRedelivery(
     : undefined;
   if (linked) return { conversation, message: duplicate, ticket: linked, matched };
 
+  // An email thread always belongs to a client (a lead thread is opened by
+  // the lead workflow, never by inbound mail), so a missing client here is a
+  // broken row rather than a case to heal.
+  if (!conversation.clientId) throw new Error(`conversation ${conversation.id} has no client to open a ticket for`);
   const healed = await db.transaction(async (txRaw) =>
     createTicketInTx(
       txRaw as unknown as Db,
       organisationId,
-      ticketInput(conversation.clientId, conversation.id, conversation.subject, inbound),
+      ticketInput(conversation.clientId!, conversation.id, conversation.subject, inbound),
       env,
     ),
   );

@@ -173,10 +173,15 @@ export async function replyToConversation(db: Db, organisationId: string, input:
   const internal = v.internal || v.actorKind === "client";
   const outbound = !internal;
 
-  const [identity] = await db
-    .select()
-    .from(schema.emailIdentities)
-    .where(and(eq(schema.emailIdentities.organisationId, organisationId), eq(schema.emailIdentities.clientId, conversation.clientId)));
+  // A lead thread (no client yet) has no support identity; its replies go
+  // out from the brand mailbox, which `queueLeadReply` handles. Here that
+  // simply reads as "no identity".
+  const [identity] = conversation.clientId
+    ? await db
+        .select()
+        .from(schema.emailIdentities)
+        .where(and(eq(schema.emailIdentities.organisationId, organisationId), eq(schema.emailIdentities.clientId, conversation.clientId)))
+    : [];
 
   // Mail needs somebody to address it to. An email thread without one is a
   // broken thread and still throws; a portal thread has none by design.
@@ -204,7 +209,7 @@ export async function replyToConversation(db: Db, organisationId: string, input:
 
   // Read before the transaction: a missing address is a skipped notice, not a
   // failed reply, so it must not be able to roll the reply back.
-  const noticeTo = outbound && !byEmail && identity
+  const noticeTo = outbound && !byEmail && identity && conversation.clientId
     ? await noticeAddress(db, organisationId, conversation.clientId)
     : null;
 
@@ -292,7 +297,7 @@ export async function replyToConversation(db: Db, organisationId: string, input:
       }
 
       await recordActivity(tx, organisationId, {
-        clientId: conversation.clientId,
+        ...(conversation.clientId ? { clientId: conversation.clientId } : {}),
         actorKind: v.actorKind,
         actorId: v.actorId,
         kind: "support.portal_reply_sent",

@@ -11,9 +11,11 @@ export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", 
 // decided like any other, then carried out by `applySubscriptionChangeDecision`.
 // `content_publish` is a content item asking to go out: approving it is what
 // lets the publish job send it, carried out by `applyContentPublishDecision`.
+// `lead_reply` is the Lead Qualifier's drafted first reply to an enquiry —
+// run-less, decided on /approvals and carried out by `applyLeadReplyDecision`.
 export const approvalKindEnum = pgEnum("approval_kind", [
   "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change", "content_publish",
-  "content_report_send",
+  "content_report_send", "lead_reply",
 ]);
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
@@ -104,6 +106,12 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_content_report_send")
     .on(t.organisationId, sql`(${t.payload} ->> 'reportId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'content_report_send'`),
+  // At most one *pending* drafted reply per lead — a re-run of the qualifier
+  // must not stack two cards for one enquiry. `requestLeadReply` writes
+  // `payload.action = 'lead_reply'` beside the enum value, same reasoning.
+  uniqueIndex("approvals_pending_lead_reply")
+    .on(t.organisationId, sql`(${t.payload} ->> 'leadId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'lead_reply'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {

@@ -1,7 +1,9 @@
-import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { boolean, check, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { user } from "./auth.js";
 import { clients } from "./clients.js";
+import { leads } from "./leads.js";
 import { sites } from "./sites.js";
 
 export const channelEnum = pgEnum("channel", ["portal", "email", "whatsapp", "internal"]);
@@ -20,7 +22,13 @@ export interface TicketTriage { category: string; severity: string; summary: str
 
 export const conversations = pgTable("conversations", {
   ...tenantColumns(),
-  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+  // Nullable since the lead workflow: a thread with a prospect who is not yet
+  // a client hangs off `lead_id` instead. Exactly one of the two is set — the
+  // check below — so every thread still has somebody to write to. Every
+  // reader that joins clients keeps its inner join and simply never sees a
+  // lead thread; the lead page shows those.
+  clientId: uuid("client_id").references(() => clients.id, { onDelete: "cascade" }),
+  leadId: uuid("lead_id").references(() => leads.id, { onDelete: "cascade" }),
   siteId: uuid("site_id").references(() => sites.id, { onDelete: "set null" }),
   subject: text("subject").notNull(),
   channel: channelEnum("channel").default("internal").notNull(),
@@ -34,6 +42,8 @@ export const conversations = pgTable("conversations", {
   participantEmail: text("participant_email"),
 }, (t) => [
   uniqueIndex("conversations_org_thread_key").on(t.organisationId, t.externalThreadKey),
+  index("conversations_org_lead").on(t.organisationId, t.leadId),
+  check("conversations_client_or_lead", sql`${t.clientId} is not null or ${t.leadId} is not null`),
 ]);
 
 export const messages = pgTable("messages", {

@@ -26,6 +26,7 @@
  */
 import { ADS_ENV_KEYS } from "./ads/index.js";
 import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
+import { ZOOM_ENV_KEYS } from "./meetings/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -73,6 +74,9 @@ export interface AdapterEnv {
   readonly VAPID_PUBLIC_KEY?: string | undefined;
   readonly VAPID_PRIVATE_KEY?: string | undefined;
   readonly VAPID_SUBJECT?: string | undefined;
+  readonly ZOOM_ACCOUNT_ID?: string | undefined;
+  readonly ZOOM_CLIENT_ID?: string | undefined;
+  readonly ZOOM_CLIENT_SECRET?: string | undefined;
   readonly NODE_ENV?: string | undefined;
   readonly ALLOW_MOCK_ADAPTERS?: string | undefined;
 }
@@ -239,6 +243,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "urgent alerts (incidents, failed payments, SLA breaches, a worker outage) never reach a phone; the bell in the portal still rings",
+    },
+    {
+      name: "meetings",
+      variable: ZOOM_ENV_KEYS.join(","),
+      ...resolveMeetings(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "booked calls get a join link on meet.launchflow.example that opens nothing; no Zoom meeting is created",
     },
   ];
 }
@@ -510,6 +522,23 @@ function resolvePush(env: AdapterEnv): SelectionOutcome {
     return { requested: "web-push", ...unbuildable(`VAPID_SUBJECT must be a mailto: address or an https: URL, got ${JSON.stringify(subject)}`) };
   }
   return { requested: "web-push", ...builds("web-push") };
+}
+
+/**
+ * `meetings/index.ts` `createMeetingsAdapterFromEnv`: Zoom when all three
+ * `ZOOM_*` keys are non-blank after trimming, the mock otherwise. One or two
+ * of the three is the downgrade case — `requested` says `zoom` so production
+ * refuses it. The constructor validates presence only, so there is no
+ * `UNBUILDABLE` branch; a wrong secret fails at the first booking.
+ */
+function resolveMeetings(env: AdapterEnv): SelectionOutcome {
+  const set = ZOOM_ENV_KEYS.filter((key) => trimmedOrUnset(env[key]) !== undefined);
+  if (set.length === 0) return { requested: "mock", ...builds("mock") };
+  if (set.length < ZOOM_ENV_KEYS.length) {
+    const missing = ZOOM_ENV_KEYS.filter((key) => !set.includes(key));
+    return { requested: "zoom", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
+  }
+  return { requested: "zoom", ...builds("zoom") };
 }
 
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */

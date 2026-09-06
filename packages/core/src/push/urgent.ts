@@ -20,6 +20,10 @@ export const URGENT_NOTIFICATION_KINDS = [
   "worker.down",
   "system.error",
   "lead.created",
+  // A call somebody just booked, and a call starting in fifteen minutes —
+  // both are the phone's business, not the bell's.
+  "meeting.booked",
+  "meeting.starting",
 ] as const;
 
 export type UrgentNotificationKind = (typeof URGENT_NOTIFICATION_KINDS)[number];
