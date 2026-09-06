@@ -90,7 +90,14 @@ export async function csatSummary(db: Db, organisationId: string, input: CsatSum
     .from(schema.organisationMembers)
     .innerJoin(schema.user, eq(schema.organisationMembers.userId, schema.user.id))
     .where(and(eq(schema.organisationMembers.organisationId, organisationId), eq(schema.organisationMembers.status, "active")))
-    .orderBy(asc(schema.organisationMembers.createdAt), asc(schema.organisationMembers.id));
+    // Owner first, then by when they joined; the name breaks a same-transaction
+    // tie so the order never depends on a random id.
+    .orderBy(
+      sql`case when ${schema.organisationMembers.role} = 'owner' then 0 else 1 end`,
+      asc(schema.organisationMembers.createdAt),
+      asc(schema.user.name),
+      asc(schema.organisationMembers.id),
+    );
 
   return {
     window: { from, to, days: v.days },
