@@ -148,7 +148,11 @@ export async function teamHealth(db: Db, organisationId: string, input: TeamHeal
       .from(schema.organisationMembers)
       .innerJoin(schema.user, eq(schema.user.id, schema.organisationMembers.userId))
       .where(and(eq(schema.organisationMembers.organisationId, organisationId), eq(schema.organisationMembers.status, "active")))
-      .orderBy(asc(schema.organisationMembers.createdAt)),
+      // Joined-date order, then name — the same tie-break `teamTimesheets`
+      // needs and for the same reason: members added in one transaction share
+      // `now()` to the microsecond, so without it Postgres may return them in
+      // any order and the team list reshuffles between page loads.
+      .orderBy(asc(schema.organisationMembers.createdAt), asc(schema.user.name)),
     countsByAssignee(db, organisationId, from),
     overdueTasksByAssignee(db, organisationId, v.now),
     minutesByUser(db, organisationId, from, v.now),

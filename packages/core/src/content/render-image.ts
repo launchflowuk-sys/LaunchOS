@@ -10,7 +10,9 @@ import { recordAudit } from "../audit/record-audit.js";
 import { clientBrandFrom, type ResolvedClientBrand } from "../clients/brand.js";
 import { IMAGE_METADATA_KEY, estimatePence, imagegenSpentThisMonth, monthlyCapPence } from "./image-budget.js";
 import { headlineFrom, kickerFrom } from "./image-headline.js";
-import { renderTemplateImage, type ImageTemplateSize } from "./image-template.js";
+// Type-only, deliberately. The module itself is loaded where it is used, a
+// few lines further down: see `drawTemplate`.
+import type { ImageTemplateSize } from "./image-template.js";
 import { ActorKindSchema, ContentRefused, excerpt, type ContentItemRow } from "./shared.js";
 
 /**
@@ -324,7 +326,23 @@ type Subject = {
   logo: { bytes: Uint8Array<ArrayBuffer>; mime: string } | undefined;
 };
 
+/**
+ * Imported here rather than at the top of the file, and it is not a style
+ * choice.
+ *
+ * `image-template.ts` resolves its font through `createRequire(import.meta.url)`,
+ * and `import.meta` is a *syntax* error outside an ES module — it fails at
+ * parse time, so guarding the call would not help. Exported from core's barrel
+ * it made `@launchos/core` unloadable in any CommonJS context, which took out
+ * every Playwright spec that imports core, and it dragged Satori and Sharp —
+ * one of them a native module — into the Next bundle for pages that never draw
+ * a graphic.
+ *
+ * A dynamic import defers all of that to the one process that actually renders,
+ * where ESM is a given. Nothing else in core touches this module.
+ */
 async function drawTemplate(subject: Subject): Promise<{ bytes: Uint8Array<ArrayBuffer>; mime: string }> {
+  const { renderTemplateImage } = await import("./image-template.js");
   const kicker = kickerFrom(subject.area);
   return renderTemplateImage({
     headline: subject.headline,

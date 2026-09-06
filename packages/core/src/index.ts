@@ -280,8 +280,11 @@ export type {
 export { spreadSlotTimes, weekdaysOf, londonAt, londonOffsetMinutes, parsePeriodKey, PUBLISH_HOUR_LONDON } from "./content/schedule.js";
 export { upsertContentBrief, getContentBrief, UpsertContentBriefInput, GetContentBriefInput } from "./content/briefs.js";
 export { setContentChannel, listContentChannels, SetContentChannelInput, ListContentChannelsInput } from "./content/channels.js";
-export { renderTemplateImage, RenderTemplateImageInput, IMAGE_TEMPLATE_SIZES } from "./content/image-template.js";
-export type { ImageTemplateSize, RenderedTemplateImage } from "./content/image-template.js";
+// `image-template.js` is deliberately absent from this barrel. It uses
+// `import.meta`, which cannot be parsed outside an ES module, so exporting it
+// here made the whole of core unloadable in a CommonJS context. It is reached
+// through `renderContentImage`, which imports it dynamically; nothing outside
+// core needs it directly.
 export { headlineFrom, kickerFrom } from "./content/image-headline.js";
 export {
   estimatePence, imagegenSpentThisMonth, monthlyCapPence,
