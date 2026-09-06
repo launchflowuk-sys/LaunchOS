@@ -1,7 +1,7 @@
 import { getClient, getSite, getSiteCmsCredentialStatus, isEncryptionConfigured, listDnsRecords, listDomains } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
-import { Activity, Network, ShieldAlert, TableProperties } from "lucide-react";
+import { Activity, KeyRound, Network, ShieldAlert, TableProperties } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -140,9 +140,15 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
           <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={site.status} />
             {client ? (
-              <Button asChild variant="secondary">
-                <Link href={`/clients/${client.id}`}>{client.name}</Link>
-              </Button>
+              <>
+                {/* The client's vault: dashboard logins, the server it runs on, the database. */}
+                <Button asChild variant="secondary">
+                  <Link href={`/clients/${client.id}/access`}><KeyRound aria-hidden />Access details</Link>
+                </Button>
+                <Button asChild variant="secondary">
+                  <Link href={`/clients/${client.id}`}>{client.name}</Link>
+                </Button>
+              </>
             ) : null}
           </div>
         }

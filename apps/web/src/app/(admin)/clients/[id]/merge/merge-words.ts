@@ -14,6 +14,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   payments: ["payment", "payments"],
   sites: ["site", "sites"],
   domains: ["domain", "domains"],
+  client_access_entries: ["access entry", "access entries"],
   conversations: ["conversation", "conversations"],
   tickets: ["case", "cases"],
   tasks: ["task", "tasks"],

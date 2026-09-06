@@ -4,6 +4,7 @@ export * from "./clients.js";
 export * from "./packages.js";
 export * from "./tasks.js";
 export * from "./sites.js";
+export * from "./access.js";
 export * from "./billing.js";
 export * from "./activity.js";
 export * from "./support.js";

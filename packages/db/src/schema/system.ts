@@ -21,9 +21,10 @@ export const clientUserStatusEnum = pgEnum("client_user_status", ["active", "sus
  * What a staff member may open and do in the admin portal. Each key gates one
  * area: `support` (cases and the inbox), `content` (the content engine),
  * `billing` (invoices, subscriptions, packages), `settings` (organisation,
- * team, agents, email) and `approvals` (deciding what the agents queue).
+ * team, agents, email), `approvals` (deciding what the agents queue) and
+ * `access` (revealing and editing the passwords in a client's access vault).
  * Stored on `organisation_members.permissions`; null means the role default
- * (`defaultPermissions` in core), and an owner resolves to all five whatever
+ * (`defaultPermissions` in core), and an owner resolves to all six whatever
  * is stored.
  */
 export type MemberPermissions = {
@@ -32,6 +33,7 @@ export type MemberPermissions = {
   billing: boolean;
   settings: boolean;
   approvals: boolean;
+  access: boolean;
 };
 
 export const organisationMembers = pgTable("organisation_members", {

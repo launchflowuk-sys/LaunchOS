@@ -16,15 +16,15 @@ import {
 
 describe("permissions (pure)", () => {
   it("owner defaults to everything; staff to everything except settings", () => {
-    expect(defaultPermissions("owner")).toEqual({ support: true, content: true, billing: true, settings: true, approvals: true });
-    expect(defaultPermissions("staff")).toEqual({ support: true, content: true, billing: true, settings: false, approvals: true });
+    expect(defaultPermissions("owner")).toEqual({ support: true, content: true, billing: true, settings: true, approvals: true, access: true });
+    expect(defaultPermissions("staff")).toEqual({ support: true, content: true, billing: true, settings: false, approvals: true, access: true });
   });
 
-  it("an owner resolves to all five whatever is stored; staff overlay only the keys that are booleans", () => {
-    expect(resolvePermissions("owner", { support: false, settings: false })).toEqual(defaultPermissions("owner"));
+  it("an owner resolves to all six whatever is stored; staff overlay only the keys that are booleans", () => {
+    expect(resolvePermissions("owner", { support: false, settings: false, access: false })).toEqual(defaultPermissions("owner"));
     expect(resolvePermissions("staff", null)).toEqual(defaultPermissions("staff"));
-    expect(resolvePermissions("staff", { billing: false, settings: true })).toEqual({
-      support: true, content: true, billing: false, settings: true, approvals: true,
+    expect(resolvePermissions("staff", { billing: false, settings: true, access: false })).toEqual({
+      support: true, content: true, billing: false, settings: true, approvals: true, access: false,
     });
     // A stored value that is not a boolean (a corrupt column) reads as the default.
     expect(resolvePermissions("staff", { support: "no" as unknown as boolean })).toEqual(defaultPermissions("staff"));
@@ -45,7 +45,7 @@ describe("permissions (db)", () => {
       const after = await setMemberPermissions(db, organisationId, {
         memberId: staff.id, permissions: { billing: false, settings: true }, actorId: ownerUserId,
       });
-      expect(after.permissions).toEqual({ support: true, content: true, billing: false, settings: true, approvals: true });
+      expect(after.permissions).toEqual({ support: true, content: true, billing: false, settings: true, approvals: true, access: true });
 
       const reread = await getMemberPermissions(db, organisationId, { userId: staffUserId });
       expect(reread?.permissions).toEqual(after.permissions);

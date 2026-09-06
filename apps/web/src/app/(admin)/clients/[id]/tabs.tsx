@@ -5,19 +5,20 @@ import { cn } from "@/lib/utils";
 export type ClientTabKey = "overview" | "contacts" | "sites";
 
 /**
- * Tasks, Support, Portal users, Invoices and Reports are routes of their own
+ * Access, Tasks, Support, Portal users, Invoices and Reports are routes of their own
  * rather than `?tab=` sections: each owns its own queries, forms and server
  * actions, which would push the detail page well past the file-size rule.
  */
-export type ClientTabRoute = "tasks" | "content" | "support" | "portal-users" | "invoices" | "reports";
+export type ClientTabRoute = "access" | "tasks" | "content" | "support" | "portal-users" | "invoices" | "reports";
 export type ClientTabActive = ClientTabKey | ClientTabRoute;
 
-const ROUTES: readonly ClientTabRoute[] = ["tasks", "content", "support", "portal-users", "invoices", "reports"];
+const ROUTES: readonly ClientTabRoute[] = ["access", "tasks", "content", "support", "portal-users", "invoices", "reports"];
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "contacts", label: "Contacts & Billing" },
   { key: "sites", label: "Sites & Domains" },
+  { key: "access", label: "Access" },
   { key: "tasks", label: "Tasks" },
   { key: "content", label: "Content" },
   { key: "support", label: "Support" },
@@ -37,7 +38,7 @@ function hrefFor(clientId: string, key: ClientTabActive): string {
 
 /**
  * Links rather than a Radix `Tabs` list: each tab is a real navigation with its
- * own URL, and half of them are routes of their own. Eight labels never fit one
+ * own URL, and half of them are routes of their own. Ten labels never fit one
  * phone width, so the row scrolls sideways inside itself instead of wrapping to
  * three lines.
  */

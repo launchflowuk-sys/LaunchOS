@@ -40,6 +40,7 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   { key: "payments", table: schema.payments },
   { key: "sites", table: schema.sites },
   { key: "domains", table: schema.domains },
+  { key: "client_access_entries", table: schema.clientAccessEntries },
   { key: "conversations", table: schema.conversations },
   { key: "tickets", table: schema.tickets },
   {

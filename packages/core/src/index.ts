@@ -80,6 +80,16 @@ export {
   SetSiteCmsCredentialInput,
 } from "./sites/site-credentials.js";
 export type { SiteCmsCredential, SiteCmsCredentialStatus } from "./sites/site-credentials.js";
+export {
+  createAccessEntry, updateAccessEntry, deleteAccessEntry, listAccessEntries,
+  CreateAccessEntryInput, UpdateAccessEntryInput, DeleteAccessEntryInput,
+  ACCESS_KINDS, ACCESS_KIND_LABELS, ACCESS_TARGET_TYPE,
+} from "./access/access-entries.js";
+export type { AccessEntryRow, AccessKind } from "./access/access-entries.js";
+export { revealAccessSecret, RevealAccessSecretInput } from "./access/reveal-access-secret.js";
+export type { RevealedAccessSecret } from "./access/reveal-access-secret.js";
+export { accessLog, ACCESS_LOG_LIMIT } from "./access/access-log.js";
+export type { AccessLogRow } from "./access/access-log.js";
 export type { SiteListRow } from "./sites/list-sites.js";
 export {
   createDomain, updateDomain, deleteDomain, listDomains, getDomain,

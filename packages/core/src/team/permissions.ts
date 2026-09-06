@@ -8,7 +8,7 @@ import { recordAudit } from "../audit/record-audit.js";
 export type { MemberPermissions };
 
 /** Every area a permission gates, in the order the Team screen lists them. */
-export const PERMISSION_KEYS = ["support", "content", "billing", "settings", "approvals"] as const;
+export const PERMISSION_KEYS = ["support", "content", "billing", "settings", "approvals", "access"] as const;
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
 
 export const PERMISSION_LABELS: Readonly<Record<PermissionKey, string>> = {
@@ -17,6 +17,7 @@ export const PERMISSION_LABELS: Readonly<Record<PermissionKey, string>> = {
   billing: "Billing — invoices, subscriptions and packages",
   settings: "Settings — organisation, team, agents and email",
   approvals: "Approvals — deciding what the agents queue",
+  access: "Access — revealing and editing the passwords in a client's access vault",
 };
 
 type MemberRole = "owner" | "staff";
@@ -26,6 +27,11 @@ type MemberRole = "owner" | "staff";
  * everything, and a staff member everything except change the organisation's
  * settings — which is where members, agents and email live, and the one area
  * that should take a deliberate grant.
+ *
+ * `access` — the client vault's passwords — is on for staff by default: the
+ * vault exists so the team can get onto a client's server without asking, and
+ * every reveal is recorded against the person who made it. An owner who wants
+ * it narrower unticks it on the Team screen.
  */
 export function defaultPermissions(role: MemberRole): MemberPermissions {
   return {
@@ -34,11 +40,12 @@ export function defaultPermissions(role: MemberRole): MemberPermissions {
     billing: true,
     settings: role === "owner",
     approvals: true,
+    access: true,
   };
 }
 
 /**
- * The permissions a member actually has. An owner resolves to all five
+ * The permissions a member actually has. An owner resolves to all six
  * whatever is stored — the stored object is never consulted — so nobody can
  * lock the owner out of Settings by editing a jsonb column. A staff member
  * gets the default with whatever has been stored laid over it, key by key, so
@@ -94,6 +101,7 @@ export const SetMemberPermissionsInput = z.object({
     billing: z.boolean().optional(),
     settings: z.boolean().optional(),
     approvals: z.boolean().optional(),
+    access: z.boolean().optional(),
   }),
   actorId: z.string().min(1),
 });
