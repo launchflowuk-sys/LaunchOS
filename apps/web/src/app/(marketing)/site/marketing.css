@@ -211,6 +211,15 @@
   padding: 0 1.75rem;
   font-size: 1rem;
 }
+/* Hero call to action: on a phone the blue button shrinks a touch so it and
+   "Explore our work" share one line, as in the reference. */
+@media (max-width: 639px) {
+  .marketing .hero-actions .btn-lg {
+    min-height: 2.75rem;
+    padding: 0 1.25rem;
+    font-size: 0.9375rem;
+  }
+}
 .marketing .btn-block {
   width: 100%;
 }

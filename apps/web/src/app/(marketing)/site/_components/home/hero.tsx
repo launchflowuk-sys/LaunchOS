@@ -59,7 +59,7 @@ export function Hero({ contactHref, workHref }: { contactHref: string; workHref:
           <p className="lede hero-in mt-7 text-lg" style={{ "--d": "520ms" } as React.CSSProperties}>
             Websites, apps and software for businesses with somewhere to go. Designed, built and looked after by LaunchFlow.
           </p>
-          <div className="hero-in mt-9 flex flex-col items-start gap-5 sm:flex-row sm:items-center" style={{ "--d": "640ms" } as React.CSSProperties}>
+          <div className="hero-in hero-actions mt-9 flex flex-row flex-wrap items-center gap-x-4 gap-y-3 sm:gap-5" style={{ "--d": "640ms" } as React.CSSProperties}>
             <Btn href={contactHref} tone="blue" size="lg">
               Let&rsquo;s build something
             </Btn>
