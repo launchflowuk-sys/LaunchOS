@@ -40,7 +40,9 @@ export function zoomStartTime(date: Date): string {
 /**
  * Zoom, through a Server-to-Server OAuth app: `ZOOM_ACCOUNT_ID`,
  * `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`. The app needs the scopes
- * `meeting:write:admin`, `meeting:read:admin` and `user:read:admin`. Tokens
+ * `meeting:write:meeting:admin`, `meeting:read:meeting:admin`,
+ * `meeting:update:meeting:admin` and `meeting:delete:meeting:admin` (Zoom's
+ * granular scopes; the classic `meeting:write:admin` no longer exists). Tokens
  * come from `POST /oauth/token?grant_type=account_credentials&account_id=…`
  * with Basic `client:secret`, last an hour and are cached until a minute
  * before expiry. Meetings are created under `users/me` — the app's owner —
