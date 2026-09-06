@@ -124,6 +124,13 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_content_report_send")
     .on(t.organisationId, sql`(${t.payload} ->> 'reportId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'content_report_send'`),
+  // And the same for the monthly account report, which shares the `report_send`
+  // enum value and is told apart by `payload.action`. Without it the 07:45 cron
+  // on the 1st is guarded only by a read-then-insert, and two ticks that overlap
+  // raise two cards for one month.
+  uniqueIndex("approvals_pending_monthly_report_send")
+    .on(t.organisationId, sql`(${t.payload} ->> 'reportId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'monthly_report_send'`),
   // At most one *pending* drafted reply per lead — a re-run of the qualifier
   // must not stack two cards for one enquiry. `requestLeadReply` writes
   // `payload.action = 'lead_reply'` beside the enum value, same reasoning.

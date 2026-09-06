@@ -5,12 +5,14 @@ import {
   applyContentPublishDecision,
   applyContentReportSendDecision,
   applyLeadReplyDecision,
+  applyMonthlyReportSendDecision,
   applySubscriptionChangeDecision,
   CONTENT_PUBLISH_ACTION,
   CONTENT_REPORT_SEND_ACTION,
   decideApproval,
   INVOICE_SEND_ACTION,
   LEAD_REPLY_ACTION,
+  MONTHLY_REPORT_SEND_ACTION,
   PROPOSAL_SEND_ACTION,
   ProposalSendPayload,
   recordAudit,
@@ -201,6 +203,21 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         });
         revalidatePath(`/clients/${applied.clientId}/content`);
         revalidatePath("/portal/content");
+      } else if (payload.success && payload.data.action === MONTHLY_REPORT_SEND_ACTION) {
+        // The month's account report, compiled and rendered by the worker at
+        // 07:45 on the 1st and waiting to be read by a person. Approve
+        // publishes it — which is what puts it in the portal — and queues one
+        // branded email per portal address carrying the signed link to the
+        // PDF; reject leaves it a draft so it can be corrected and re-raised.
+        // Both verdicts go through here: the reject path is what records that
+        // a person looked and said no, rather than the card simply going quiet.
+        const applied = await applyMonthlyReportSendDecision(getDb(), session.organisationId, {
+          approvalId,
+          actorId: session.userId,
+        });
+        revalidatePath(`/clients/${applied.clientId}`);
+        revalidatePath("/portal/documents");
+        revalidatePath("/portal");
       } else if (payload.success && payload.data.action === LEAD_REPLY_ACTION) {
         // The Lead Qualifier's drafted reply. Approve sends the card's
         // textarea — the edited body, or the draft untouched — from the

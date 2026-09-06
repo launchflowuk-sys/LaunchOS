@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "approvals_pending_monthly_report_send" ON "approvals" USING btree ("organisation_id",("payload" ->> 'reportId')) WHERE "approvals"."status" = 'pending' and "approvals"."payload" ->> 'action' = 'monthly_report_send';

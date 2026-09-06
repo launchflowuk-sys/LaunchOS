@@ -43,21 +43,10 @@ export const MONTHLY_REPORT_SEND_KIND = "report_send" as const;
 /** `payload.action`, written beside the kind so a card can be routed without reading the enum. */
 export const MONTHLY_REPORT_SEND_ACTION = "monthly_report_send";
 /**
- * The partial unique index that would keep pending sends to one per report.
- *
- * **Not created yet.** It belongs on `approvals` next to
- * `approvals_pending_content_report_send`, in the same shape:
- *
- * ```
- * uniqueIndex("approvals_pending_monthly_report_send")
- *   .on(t.organisationId, sql`(${t.payload} ->> 'reportId')`)
- *   .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'monthly_report_send'`)
- * ```
- *
- * `packages/db` was held by another task while this landed, so the guard below
- * is a conditional insert instead. The `isUniqueViolation` catch is already
- * written, so adding the index changes nothing here but the failure mode of a
- * true race — from two cards to one refusal.
+ * The partial unique index keeping pending sends to one per report. It sits on
+ * `approvals` beside `approvals_pending_content_report_send`, in the same
+ * shape, and is what turns a true race between two 07:45 ticks from two cards
+ * into one refusal the `isUniqueViolation` catch below already handles.
  */
 export const PENDING_MONTHLY_REPORT_SEND_INDEX = "approvals_pending_monthly_report_send";
 
@@ -220,8 +209,8 @@ export async function requestMonthlyReportSend(
       return row!;
     });
   } catch (error) {
-    // Once `approvals_pending_monthly_report_send` exists this is the only
-    // guard that matters; until then it is unreachable and harmless.
+    // `approvals_pending_monthly_report_send` is the guard that actually holds;
+    // the read above only turns the common case into a tidy refusal.
     if (isUniqueViolation(error)) throw new ReportRefused("already_pending", "A send for this report is already waiting for a decision.");
     throw error;
   }
