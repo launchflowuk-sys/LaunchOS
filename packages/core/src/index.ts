@@ -252,7 +252,15 @@ export type {
 } from "./reports/monthly-report.js";
 export { documentBodyFromMarkdown } from "./reports/markdown-document.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";
-export { publishClientReport, PublishClientReportInput } from "./reports/publish.js";
+export { publishClientReport, publishClientReportTx, PublishClientReportInput } from "./reports/publish.js";
+// The `report_send` gate: nothing reaches a client until a person has read it.
+export {
+  requestMonthlyReportSend, applyMonthlyReportSendDecision, monthlyReportSendDecided,
+  monthlyReportSendSummary, monthlyReportEmailBody, monthlyReportMonthName, ReportRefused,
+  RequestMonthlyReportSendInput, ApplyMonthlyReportSendDecisionInput, MonthlyReportSendPayload,
+  MONTHLY_REPORT_SEND_ACTION, MONTHLY_REPORT_SEND_KIND, PENDING_MONTHLY_REPORT_SEND_INDEX,
+} from "./reports/report-send.js";
+export type { ApplyMonthlyReportSendDecisionResult, ReportRefusalReason } from "./reports/report-send.js";
 export { listClientReports, getClientReport, ListClientReportsInput } from "./reports/list-client-reports.js";
 export {
   ContentRefused, CHANNEL_LABEL, KIND_FOR_CHANNEL, TASK_KIND_FOR_CHANNEL, EDITABLE_STATUSES, CANCELLABLE_STATUSES,

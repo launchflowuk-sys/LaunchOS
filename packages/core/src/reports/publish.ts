@@ -34,40 +34,53 @@ export type PublishClientReportInput = z.input<typeof PublishClientReportInput>;
  */
 export async function publishClientReport(db: Db, organisationId: string, input: PublishClientReportInput) {
   const v = PublishClientReportInput.parse(input);
+  return db.transaction(async (transaction) => publishClientReportTx(transaction as unknown as Db, organisationId, v));
+}
 
-  return db.transaction(async (transaction) => {
-    const tx = transaction as unknown as Db;
-    await assertOwned(tx, organisationId, schema.clientReports, v.reportId);
+/**
+ * The same publish, inside a transaction the caller already owns.
+ *
+ * It exists for exactly one caller: `applyMonthlyReportSendDecision`, which
+ * has to claim the approval, publish the report and queue the client's email
+ * in one transaction — a crash between them would otherwise leave mail queued
+ * about a report still marked draft. Splitting it here rather than repeating
+ * the conditional UPDATE there keeps one definition of what publishing is.
+ */
+export async function publishClientReportTx(
+  tx: Db,
+  organisationId: string,
+  v: { reportId: string; actorId: string },
+) {
+  await assertOwned(tx, organisationId, schema.clientReports, v.reportId);
 
-    const [after] = await tx.update(schema.clientReports)
-      .set({ status: "published", publishedAt: new Date(), updatedAt: new Date() })
-      .where(and(
-        eq(schema.clientReports.id, v.reportId),
-        eq(schema.clientReports.organisationId, organisationId),
-        ne(schema.clientReports.status, "published"),
-      ))
-      .returning();
+  const [after] = await tx.update(schema.clientReports)
+    .set({ status: "published", publishedAt: new Date(), updatedAt: new Date() })
+    .where(and(
+      eq(schema.clientReports.id, v.reportId),
+      eq(schema.clientReports.organisationId, organisationId),
+      ne(schema.clientReports.status, "published"),
+    ))
+    .returning();
 
-    if (!after) {
-      const [existing] = await tx.select().from(schema.clientReports).where(and(
-        eq(schema.clientReports.id, v.reportId),
-        eq(schema.clientReports.organisationId, organisationId),
-      ));
-      return existing!;
-    }
+  if (!after) {
+    const [existing] = await tx.select().from(schema.clientReports).where(and(
+      eq(schema.clientReports.id, v.reportId),
+      eq(schema.clientReports.organisationId, organisationId),
+    ));
+    return existing!;
+  }
 
-    // Only what the RETURNING contract actually proves about the prior state:
-    // the update fired, so the row was not `published`, and `draft` is the only
-    // other value `client_report_status` allows.
-    const before = { id: after.id, status: "draft" as const };
-    await recordAudit(tx, organisationId, {
-      actorKind: "user", actorId: v.actorId, action: "client_report.published",
-      targetType: "client_report", targetId: v.reportId, before, after,
-    });
-    await recordActivity(tx, organisationId, {
-      clientId: after.clientId, actorKind: "user", actorId: v.actorId, kind: "client_report.published",
-      title: `Report for ${after.periodStart} published`, link: `/reports/${after.id}`,
-    });
-    return after;
+  // Only what the RETURNING contract actually proves about the prior state:
+  // the update fired, so the row was not `published`, and `draft` is the only
+  // other value `client_report_status` allows.
+  const before = { id: after.id, status: "draft" as const };
+  await recordAudit(tx, organisationId, {
+    actorKind: "user", actorId: v.actorId, action: "client_report.published",
+    targetType: "client_report", targetId: v.reportId, before, after,
   });
+  await recordActivity(tx, organisationId, {
+    clientId: after.clientId, actorKind: "user", actorId: v.actorId, kind: "client_report.published",
+    title: `Report for ${after.periodStart} published`, link: `/reports/${after.id}`,
+  });
+  return after;
 }

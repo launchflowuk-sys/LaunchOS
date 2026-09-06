@@ -26,6 +26,7 @@ import { runAdsIngest } from "./jobs/ads-ingest.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { STRIPE_RECONCILE_CRON, runStripeReconcile } from "./jobs/stripe-reconcile.js";
+import { INVOICE_DOCUMENTS_CRON, runInvoiceDocuments } from "./jobs/invoice-documents.js";
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
 import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
@@ -138,6 +139,15 @@ async function main() {
     });
   });
 
+  // Every invoice's PDF, drawn here because this is the only process with a
+  // browser: `apps/web`'s send passes no renderer on purpose and only links a
+  // document that already exists. Idempotent per invoice.
+  await boss.work(QUEUE.billingInvoiceDocuments, async () => {
+    await sweepOrganisations(db, "invoice documents", async (organisationId) => {
+      await runInvoiceDocuments(db, organisationId, { env: process.env });
+    });
+  });
+
   await boss.work(QUEUE.adsIngest, async () => {
     const now = new Date();
     await sweepOrganisations(db, "ads ingest", async (organisationId) => {
@@ -152,10 +162,12 @@ async function main() {
     });
   });
 
+  // The 1st: compile last month, render the PDF, and put a `report_send` card
+  // in front of Shoji. Nothing here emails a client — see ./jobs/reports-monthly.ts.
   await boss.work(QUEUE.reportsMonthly, async () => {
     const now = new Date();
     await sweepOrganisations(db, "monthly reports", async (organisationId) => {
-      console.info(await runMonthlyReports(db, organisationId, { now }), "monthly reports");
+      await runMonthlyReports(db, organisationId, { now });
     });
   });
 
@@ -277,6 +289,7 @@ async function main() {
   await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.supportSlaSweep, SLA_SWEEP_CRON, {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.billingStripeReconcile, STRIPE_RECONCILE_CRON, {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.billingInvoiceDocuments, INVOICE_DOCUMENTS_CRON, {}, { tz: "Europe/London" });
 
   // Everything is registered: the health endpoint may say so, and the first
   // heartbeat clears the admin banner at once rather than a minute from now.

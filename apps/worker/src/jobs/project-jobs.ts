@@ -5,6 +5,7 @@ import { QUEUE } from "../boss.js";
 import type { EnablementLogger } from "./content-enablement.js";
 import { LONDON, type BossRegistrar } from "./content-jobs.js";
 import { handleProjectDelivered, type ProjectDeliveredJob } from "./case-study-launch.js";
+import { handleDeliveryFollowOn } from "./delivery-follow-on.js";
 import { handleMilestoneEmail, type MilestoneEmailJob } from "./project-milestone-email.js";
 import { dispatchWeeklyUpdates } from "./project-weekly-update.js";
 import type { SweepOrganisationsLogger } from "./sweep-organisations.js";
@@ -82,7 +83,15 @@ export async function registerProjectJobs(deps: ProjectJobsDeps): Promise<void> 
     logger.info(await handleMilestoneEmail({ db, logger }, job!.data), "milestone email");
   });
 
+  // Two halves, in this order and in one job.
+  //
+  // The follow-on is what the client was promised — the countersigned copy of
+  // what they signed, and the care plan starting — so it goes first; the
+  // screenshots and the story are ours, take twenty seconds and reach somebody
+  // else's server. Both halves are idempotent, so a retry after either fails
+  // repeats neither.
   await boss.work<ProjectDeliveredJob>(QUEUE.projectsDelivered, async ([job]) => {
+    logger.info(await handleDeliveryFollowOn({ db, boss, env: deps.env, logger }, job!.data), "delivery follow-on");
     logger.info(await handleProjectDelivered({ db, boss, env: deps.env, logger }, job!.data), "project delivered");
   });
 

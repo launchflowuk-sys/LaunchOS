@@ -8,15 +8,20 @@ import { handleAgentRun, type AgentRunDeps } from "./agent-run.js";
  * Keyed `content-draft:<clientId>:<periodKey>` under a one-day window by the
  * cron fan-out (an Opus-priced run, the same reasoning as the Sentinel); a
  * manual send appends `:manual:<epochMs>` so an operator's "draft now" is
- * never deduped away.
+ * never deduped away. The delivery follow-on sends one too, under the cron's
+ * own key, so a build handed over on the 1st cannot pay for the run twice.
  */
 export interface ContentDraftJob {
   organisationId: string;
   clientId: string;
   /** `YYYY-MM`. */
   periodKey: string;
-  /** How the run started; defaults to `cron`, the fan-out. The UI sends `manual`. */
-  trigger?: "cron" | "manual";
+  /**
+   * How the run started; defaults to `cron`, the fan-out. The UI sends
+   * `manual`, and the delivery follow-on sends `event` — the run record has to
+   * be able to say a signature started this one rather than a clock.
+   */
+  trigger?: "cron" | "event" | "manual";
 }
 
 /**

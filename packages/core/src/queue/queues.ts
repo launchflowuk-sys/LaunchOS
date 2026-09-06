@@ -98,6 +98,7 @@
  * | `push.send` | `push:<notificationId>` — one delivery per notification, fanned out to the user's devices by the job | `dispatch-event.ts` on the `push.requested` domain event `notify()` emits |
  * | `support.sla-sweep` | none — a 15-minute cron, payload `{}` | the worker's cron registration |
  * | `billing.stripe-reconcile` | none — a daily cron at 04:10 London, payload `{}` | the worker's cron registration |
+ * | `billing.invoice-documents` | none — a two-minute cron, payload `{}` | the worker's cron registration |
  * | `meetings.remind` / `meetings.follow-up` | none — crons, payload `{}` | the worker's cron registration |
  * | `agent.run` | `lead-qualifier:<leadId>` | `dispatch-event.ts` on `lead.created` |
  * | `domain.event` | none — hence `standard` | `apps/web/src/lib/queue.ts` |
@@ -139,6 +140,7 @@ export const QUEUE = {
   pushSend: "push.send",
   supportSlaSweep: "support.sla-sweep",
   billingStripeReconcile: "billing.stripe-reconcile",
+  billingInvoiceDocuments: "billing.invoice-documents",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
   proposalsSend: "proposals.send",
@@ -210,6 +212,12 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "support.sla-sweep": "standard",
   // The nightly Stripe reconcile: a cron, payload `{}`, idempotent per run.
   "billing.stripe-reconcile": "standard",
+  // The invoice PDF sweep: a cron, payload `{}`, one job per tick. What must
+  // not happen twice is a *render*, and `ensureInvoiceDocument` guarantees that
+  // at the domain layer through `invoices.document_id IS NULL` — the loser of a
+  // race is handed the winner's document. Deliberately no `singletonSeconds`:
+  // the sweep has to be able to run again in two minutes for the next invoice.
+  "billing.invoice-documents": "standard",
   // Meetings: reminders every ten minutes, follow-ups daily. Both crons with
   // payload `{}`; every send is stamped on the meeting, so a tick is idempotent.
   "meetings.remind": "standard",
