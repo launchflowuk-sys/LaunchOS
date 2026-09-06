@@ -256,7 +256,7 @@ describe("the public page", () => {
       expect(second).toMatchObject({ firstView: false });
       expect(second!.proposal.firstViewedAt?.toISOString()).toBe(NOW.toISOString());
 
-      const bells = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "proposal.viewed"));
+      const bells = await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "proposal.viewed")));
       expect(bells).toHaveLength(1);
 
       // Junk and unknown tokens are nothing, not an error.
@@ -344,7 +344,7 @@ describe("acceptance", () => {
       const queued = await notices(db, organisationId);
       expect(queued.filter((n) => n.notice === "accepted")).toHaveLength(1);
       expect(queued.find((n) => n.notice === "accepted")!.body).toContain("payment link");
-      const bells = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "proposal.accepted"));
+      const bells = await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "proposal.accepted")));
       expect(bells).toHaveLength(1);
 
       expect(jobs).toEqual([{
@@ -355,7 +355,7 @@ describe("acceptance", () => {
       expect(typeof after!.metadata["followOnQueuedAt"]).toBe("string");
       expect(await proposalsAwaitingFollowOn(db, organisationId)).toEqual([]);
 
-      const audits = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "proposal.accepted"));
+      const audits = await db.select().from(schema.auditLog).where(and(eq(schema.auditLog.organisationId, organisationId), eq(schema.auditLog.action, "proposal.accepted")));
       expect(audits).toHaveLength(1);
     });
   });
@@ -380,7 +380,7 @@ describe("acceptance", () => {
       const rows = await db.select().from(schema.proposalAcceptances).where(eq(schema.proposalAcceptances.proposalId, proposal.id));
       expect(rows).toHaveLength(1);
       expect((await notices(db, organisationId)).filter((n) => n.notice === "accepted")).toHaveLength(1);
-      expect(await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "proposal.accepted"))).toHaveLength(1);
+      expect(await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "proposal.accepted")))).toHaveLength(1);
       expect(jobs).toHaveLength(1);
     });
   });
@@ -462,7 +462,7 @@ describe("the daily sweeps", () => {
       const nudged = await nudgeUnopenedProposals(db, organisationId, { now: new Date("2026-09-11T09:00:00Z") });
       expect(nudged.nudged.map((p) => p.id)).toEqual([standing.id]);
       expect((await nudgeUnopenedProposals(db, organisationId, { now: new Date("2026-09-12T09:00:00Z") })).nudged).toEqual([]);
-      const bells = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "proposal.unopened"));
+      const bells = await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "proposal.unopened")));
       expect(bells).toHaveLength(1);
     });
   });

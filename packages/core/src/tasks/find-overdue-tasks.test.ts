@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
 import { addStaffMember, seedOrgWithClient } from "./test-fixtures.js";
 import { createTask } from "./create-task.js";
@@ -37,17 +37,17 @@ describe("overdue tasks", () => {
       });
 
       expect(await notifyOverdueTasks(db, organisationId, { now: NOW })).toEqual({ overdue: 1, notified: 1 });
-      const notifications = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "task.overdue"));
+      const notifications = await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "task.overdue")));
       expect(notifications.map((n) => n.userId).sort()).toEqual([ownerUserId, staffId].sort());
       expect(events.filter((e) => e.name === "task.overdue")).toEqual([{ name: "task.overdue", organisationId, taskId: task.id }]);
 
       // Same London day: no second notification.
       expect(await notifyOverdueTasks(db, organisationId, { now: new Date("2026-10-14T20:00:00.000Z") })).toEqual({ overdue: 1, notified: 0 });
-      expect(await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "task.overdue"))).toHaveLength(2);
+      expect(await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "task.overdue")))).toHaveLength(2);
 
       // Next day: chased again.
       expect(await notifyOverdueTasks(db, organisationId, { now: new Date("2026-10-15T08:00:00.000Z") })).toEqual({ overdue: 1, notified: 1 });
-      expect(await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "task.overdue"))).toHaveLength(4);
+      expect(await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "task.overdue")))).toHaveLength(4);
 
       const [row] = await db.select().from(schema.tasks).where(eq(schema.tasks.id, task.id));
       expect((row!.metadata as { lastOverdueNotifiedOn?: string }).lastOverdueNotifiedOn).toBe("2026-10-15");
@@ -78,7 +78,7 @@ describe("overdue tasks", () => {
 
       expect(await notifyOverdueTasks(db, organisationId, { now: NOW })).toEqual({ overdue: 2, notified: 2 });
 
-      const notifications = await db.select().from(schema.notifications).where(eq(schema.notifications.kind, "task.overdue"));
+      const notifications = await db.select().from(schema.notifications).where(and(eq(schema.notifications.organisationId, organisationId), eq(schema.notifications.kind, "task.overdue")));
       expect(notifications).toHaveLength(2);
       expect(notifications.every((n) => n.userId === ownerUserId)).toBe(true);
       expect(events.filter((e) => e.name === "task.overdue").map((e) => (e as { taskId: string }).taskId).sort())

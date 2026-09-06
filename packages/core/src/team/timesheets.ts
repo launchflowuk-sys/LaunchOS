@@ -150,7 +150,11 @@ export async function teamTimesheets(db: Db, organisationId: string, input: Team
       .from(schema.organisationMembers)
       .innerJoin(schema.user, eq(schema.user.id, schema.organisationMembers.userId))
       .where(and(eq(schema.organisationMembers.organisationId, organisationId), eq(schema.organisationMembers.status, "active")))
-      .orderBy(asc(schema.organisationMembers.createdAt)),
+      // Joined-date order, then name. The tie-break is not cosmetic: members
+      // added in one transaction share `now()` to the microsecond, so without
+      // it Postgres is free to return them in any order and the team timesheet
+      // reshuffles between page loads.
+      .orderBy(asc(schema.organisationMembers.createdAt), asc(schema.user.name)),
     entriesInWeek(db, organisationId, week),
   ]);
 

@@ -85,6 +85,7 @@ import {
   buildClientReport, createAdAccount, createInvoiceFromSubscription, createKnowledgeArticle,
   createSubscription, ensureEmailIdentity, ingestDailyMetrics,
   ingestInboundEmail, markInvoiceSent, monthPeriod, publishClientReport, recordPayment,
+  seedCaseStudies,
 } from "@launchos/core";
 import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
@@ -581,6 +582,13 @@ export async function runSeed(db: Db, config: SeedConfig): Promise<void> {
 
   const clientUser = await seedClientUser(db, organisation.id, grays.id, config.clientUser);
   console.log("client user   ", clientUser.id, `${config.clientUser.email} client_admin`);
+
+  // Migration 0025 seeds the portfolio into every organisation that existed
+  // when it ran; this organisation is created afterwards, so without this line
+  // a freshly seeded database serves an empty Work page. Idempotent by slug,
+  // so a re-seed never reverts a story that has since been rewritten.
+  const portfolio = await seedCaseStudies(db, organisation.id);
+  console.log("case studies  ", `${portfolio.inserted.length} written, ${portfolio.skipped} already present`);
 
   const billing = await seedBillingAndAds(db, organisation.id, seededClients);
   // What this run created, not a constant: a second seed prints zeros, which
