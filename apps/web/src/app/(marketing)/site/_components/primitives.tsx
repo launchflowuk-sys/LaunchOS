@@ -1,140 +1,205 @@
+import { ArrowRight, ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-/** The page column: the same width as the admin workspace, generous side padding. */
+/** The page column: 1216px at most, generous side padding, never wider than the phone. */
 export function Container({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("mx-auto w-full max-w-6xl px-4 sm:px-6", className)}>{children}</div>;
+  return <div className={cn("mx-auto w-full max-w-[76rem] px-5 sm:px-8", className)}>{children}</div>;
+}
+
+/** The ↗ that every action carries. `.arrow` is what the hover nudge targets. */
+export function Arrow({ className, kind = "up" }: { className?: string; kind?: "up" | "right" }) {
+  const Icon = kind === "up" ? ArrowUpRight : ArrowRight;
+  return <Icon aria-hidden className={cn("arrow size-4", className)} strokeWidth={2} />;
 }
 
 /**
- * A page opener: one heading, one lead paragraph, nothing else. Marketing
- * pages have exactly one `h1` and it is this.
+ * The small uppercase label above a heading. With `index` it reads
+ * "01 / SELECTED WORK"; with `line` it carries the short hairline before it.
  */
-export function PageIntro({ title, lede, children }: { title: string; lede?: string; children?: ReactNode }) {
-  return (
-    <Container className="pt-14 pb-10 sm:pt-20 sm:pb-14">
-      <h1 className="display max-w-3xl text-4xl sm:text-5xl">{title}</h1>
-      {lede ? <p className="lede mt-5 max-w-2xl text-lg text-muted-foreground sm:text-xl">{lede}</p> : null}
-      {children}
-    </Container>
-  );
-}
-
-/** A run of a page: a heading, optionally a line under it, then the content. */
-export function Block({
-  title,
-  lede,
+export function Eyebrow({
   children,
+  index,
+  line = false,
   className,
-  id,
+  as: Tag = "p",
 }: {
-  title?: string;
-  lede?: string;
   children: ReactNode;
-  className?: string;
-  id?: string;
+  index?: string | undefined;
+  line?: boolean;
+  className?: string | undefined;
+  as?: "p" | "span" | "div";
 }) {
-  return (
-    <section id={id} className={cn("py-12 sm:py-16", className)}>
-      <Container>
-        {title ? (
-          <div className="mb-8 max-w-2xl sm:mb-10">
-            <h2 className="display text-2xl sm:text-3xl">{title}</h2>
-            {lede ? <p className="lede mt-3 text-base text-muted-foreground sm:text-lg">{lede}</p> : null}
-          </div>
-        ) : null}
-        {children}
-      </Container>
-    </section>
-  );
+  if (index) {
+    return (
+      <Tag className={cn("eyebrow eyebrow-index", className)}>
+        <b>{index}</b>
+        <span aria-hidden>/</span>
+        <span>{children}</span>
+      </Tag>
+    );
+  }
+  return <Tag className={cn("eyebrow", line && "eyebrow-line", className)}>{children}</Tag>;
 }
 
-/** The one place the navy from the admin rail appears on the public site: the closing invitation. */
-export function CtaBand({
-  title,
-  lede,
-  primary,
-  secondary,
-}: {
-  title: string;
-  lede: string;
-  primary: { label: string; href: string };
-  secondary?: { label: string; href: string };
-}) {
-  return (
-    <section className="bg-sidebar text-sidebar-accent-foreground">
-      <Container className="py-14 sm:py-20">
-        <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-2xl">
-            <h2 className="display text-3xl sm:text-4xl">{title}</h2>
-            <p className="lede mt-4 text-base text-sidebar-foreground sm:text-lg">{lede}</p>
-          </div>
-          <div className="flex flex-col gap-3 sm:flex-row lg:shrink-0">
-            <Link
-              href={primary.href}
-              className={cn(
-                buttonVariants({ size: "lg" }),
-                "border-white bg-white text-sidebar hover:bg-white/90 focus-visible:outline-sidebar-ring",
-              )}
-            >
-              {primary.label}
-            </Link>
-            {secondary ? (
-              <Link
-                href={secondary.href}
-                className={cn(
-                  buttonVariants({ variant: "ghost", size: "lg" }),
-                  "border-sidebar-border text-sidebar-accent-foreground hover:bg-sidebar-accent focus-visible:outline-sidebar-ring",
-                )}
-              >
-                {secondary.label}
-              </Link>
-            ) : null}
-          </div>
-        </div>
-      </Container>
-    </section>
-  );
-}
+type Tone = "ink" | "blue" | "white" | "white-solid";
 
-/** A small uppercase tag — sector, stack, kind. Never a button. */
-export function Tag({ children, className }: { children: ReactNode; className?: string }) {
-  return (
-    <span className={cn("inline-flex items-center rounded-full border bg-background px-2.5 py-0.5 text-meta font-medium text-muted-foreground", className)}>
-      {children}
-    </span>
-  );
-}
+const TONE: Record<Tone, string> = {
+  ink: "btn-ink",
+  blue: "btn-blue",
+  white: "btn-white",
+  "white-solid": "btn-white-solid",
+};
 
-/** A primary or secondary link styled as a button, for server components. */
-export function LinkButton({
+/**
+ * The pill button, as a link. Primary is ink; the hero and the CTA panel
+ * choose blue and white. Every one carries the ↗ unless told otherwise.
+ */
+export function Btn({
   href,
   children,
-  variant = "primary",
-  size = "lg",
-  className,
+  tone = "ink",
+  size = "md",
+  arrow = true,
   external = false,
+  className,
+  ariaLabel,
 }: {
   href: string;
   children: ReactNode;
-  variant?: "primary" | "secondary" | "ghost";
+  tone?: Tone;
   size?: "md" | "lg";
-  className?: string;
+  arrow?: boolean;
   external?: boolean;
+  className?: string | undefined;
+  ariaLabel?: string | undefined;
 }) {
-  const classes = cn(buttonVariants({ variant, size }), className);
+  const classes = cn("btn", TONE[tone], size === "lg" && "btn-lg", className);
+  const content = (
+    <>
+      {children}
+      {arrow ? <Arrow /> : null}
+    </>
+  );
+  if (external) {
+    return (
+      <a href={href} className={classes} rel="noopener" aria-label={ariaLabel}>
+        {content}
+      </a>
+    );
+  }
+  return (
+    <Link href={href} className={classes} aria-label={ariaLabel}>
+      {content}
+    </Link>
+  );
+}
+
+/** A text link with the arrow: ink at rest, blue on hover. */
+export function TextLink({
+  href,
+  children,
+  kind = "up",
+  tone = "ink",
+  external = false,
+  className,
+}: {
+  href: string;
+  children: ReactNode;
+  kind?: "up" | "right";
+  tone?: "ink" | "quiet" | "white";
+  external?: boolean | undefined;
+  className?: string | undefined;
+}) {
+  const classes = cn("tlink", tone === "quiet" && "tlink-quiet", tone === "white" && "tlink-white", className);
+  const content = (
+    <>
+      {children}
+      <Arrow kind={kind} />
+    </>
+  );
   if (external) {
     return (
       <a href={href} className={classes} rel="noopener">
-        {children}
+        {content}
       </a>
     );
   }
   return (
     <Link href={href} className={classes}>
-      {children}
+      {content}
     </Link>
   );
+}
+
+/**
+ * A section opener: the index eyebrow, a two-line heading, and — beside it on
+ * a desktop — an aside paragraph with a link. The pattern every home section
+ * and every inner page opens with.
+ */
+export function SectionHead({
+  index,
+  eyebrow,
+  title,
+  aside,
+  link,
+  align = "left",
+  className,
+  level = 2,
+  id,
+}: {
+  index?: string;
+  eyebrow: string;
+  title: ReactNode;
+  aside?: ReactNode;
+  link?: { label: string; href: string; external?: boolean };
+  align?: "left" | "right";
+  className?: string;
+  level?: 1 | 2;
+  id?: string;
+}) {
+  const Heading = level === 1 ? "h1" : "h2";
+  const headingClass = level === 1 ? "h-page mt-5" : "h-section mt-5";
+  return (
+    <div className={cn("grid gap-8 lg:grid-cols-12 lg:items-end", className)}>
+      <div className={cn("lg:col-span-7", align === "right" && "lg:col-start-6 lg:text-right")} data-reveal>
+        <Eyebrow index={index}>{eyebrow}</Eyebrow>
+        <Heading id={id} className={headingClass}>{title}</Heading>
+      </div>
+      {aside || link ? (
+        <div className={cn("lg:col-span-5", align === "right" && "lg:col-start-1 lg:row-start-1")} data-reveal>
+          {aside ? <p className="lede">{aside}</p> : null}
+          {link ? (
+            <div className={cn(aside ? "mt-5" : "")}>
+              <TextLink href={link.href} external={link.external}>
+                {link.label}
+              </TextLink>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Two lines of a heading, the second on its own row. */
+export function Lines({ first, second, secondClass }: { first: ReactNode; second: ReactNode; secondClass?: string }) {
+  return (
+    <>
+      {first}
+      <br />
+      <span className={secondClass}>{second}</span>
+    </>
+  );
+}
+
+/** A small uppercase tag — sector, stack, status. Never a button. */
+export function Pill({ children, tone = "default", className }: { children: ReactNode; tone?: "default" | "live" | "tint"; className?: string }) {
+  return <span className={cn("pill", tone === "live" && "pill-live", tone === "tint" && "pill-tint", className)}>{children}</span>;
+}
+
+/** The blue-tinted chip: a stack item, a service point. */
+export function Chip({ children }: { children: ReactNode }) {
+  return <li className="chip">{children}</li>;
 }

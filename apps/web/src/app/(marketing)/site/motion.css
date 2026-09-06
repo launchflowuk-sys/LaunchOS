@@ -1,0 +1,127 @@
+/* Every animation on the public site, in one file. Each is authored once and
+   named for what it does; `prefers-reduced-motion: reduce` switches all of it
+   off at the end of the file (the global rule in globals.css shortens the
+   durations too, so a reveal that is still pending resolves instantly). */
+
+/* Scroll reveal: fade and a 16px rise, 500ms, once, staggered 60ms per
+   sibling by the observer in `motion-root.tsx`. The elements start hidden so
+   the entrance is real; a `<noscript>` in the layout undoes that for a page
+   with no script. Nothing above the fold carries `data-reveal`. */
+.marketing [data-reveal] {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity 0.5s var(--ease),
+    transform 0.5s var(--ease);
+}
+.marketing [data-reveal].is-in {
+  opacity: 1;
+  transform: none;
+}
+
+/* The hero: each headline word rises in turn (80ms apart), the rest of the
+   column follows, the screenshot panel fades up. Pure CSS from the first
+   paint — no script has to arrive for the first screen to move. */
+@keyframes m-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.marketing .hw {
+  display: inline-block;
+  animation: m-rise 0.6s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+.marketing .hero-in {
+  animation: m-rise 0.7s var(--ease) both;
+  animation-delay: var(--d, 0ms);
+}
+
+/* The screenshot stack floats on a slow loop; the note card bobs on its own
+   beat; the big CTA arrow drifts. */
+@keyframes m-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+.marketing .float {
+  animation: m-float 6s ease-in-out infinite;
+}
+.marketing .float-late {
+  animation-delay: -2.4s;
+}
+.marketing .bob {
+  animation: m-float 5s ease-in-out infinite;
+  animation-delay: -1.2s;
+}
+@keyframes m-drift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  50% {
+    transform: translate(10px, -12px);
+  }
+}
+.marketing .drift {
+  animation: m-drift 7s ease-in-out infinite;
+}
+
+/* Mouse parallax: `motion-root.tsx` writes `--px` / `--py` in [-1, 1] on the
+   `[data-parallax]` container (desktop pointers only); each layer moves by
+   its own depth. */
+.marketing [data-parallax] {
+  --px: 0;
+  --py: 0;
+}
+.marketing .plx {
+  transform: translate(calc(var(--px) * var(--depth, 10) * 1px), calc(var(--py) * var(--depth, 10) * 1px));
+  transition: transform 0.6s var(--ease);
+  will-change: transform;
+}
+
+/* Route change: a short fade in from `template.tsx`. */
+@keyframes m-route {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.marketing .route-enter {
+  animation: m-route 0.3s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketing [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .marketing .hw,
+  .marketing .hero-in,
+  .marketing .float,
+  .marketing .bob,
+  .marketing .drift,
+  .marketing .route-enter {
+    animation: none;
+  }
+  .marketing .plx {
+    transform: none;
+    transition: none;
+  }
+  .marketing .btn:hover,
+  .marketing .tilt:hover .shot img {
+    transform: none;
+  }
+}

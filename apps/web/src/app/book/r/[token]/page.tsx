@@ -1,4 +1,5 @@
 import { availableSlots, getMeetingByToken, meetingIcsUrl, rebookUrl, resolveBookingHost } from "@launchos/core";
+import type { Metadata } from "next";
 import { CalendarPlus, Video } from "lucide-react";
 import Link from "next/link";
 import { InlineAlert } from "@/components/inline-alert";
@@ -6,11 +7,16 @@ import { KeyValue } from "@/components/key-value";
 import { Button } from "@/components/ui/button";
 import { formatInZone, zoneCity } from "@/lib/booking/slot-days";
 import { getDb } from "@/lib/db";
-import { SignupShell } from "../../../signup/signup-shell";
+import { PublicShell } from "../../../(marketing)/site/_components/public-shell";
 import { bookingHostLabel } from "../../context";
 import { CancelForm, RescheduleForm } from "./manage-form";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Your call with LaunchFlow",
+  robots: { index: false, follow: false },
+};
 
 /**
  * The guest's own page for a booking: move it or cancel it. The token in
@@ -28,16 +34,16 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
   const meeting = await getMeetingByToken(db, token);
   if (!meeting) {
     return (
-      <SignupShell narrow title="Your call" description="Nothing to show.">
+      <PublicShell narrow title="Your call" description="Nothing to show.">
         <InlineAlert tone="info" title="We could not find that booking">
           Use the link in your confirmation email, or book again.
         </InlineAlert>
         <div className="mt-5 flex justify-center">
-          <Button asChild size="lg" variant="secondary">
+          <Button asChild size="lg" variant="secondary" className="btn btn-white">
             <Link href="/book">Book a call</Link>
           </Button>
         </div>
-      </SignupShell>
+      </PublicShell>
     );
   }
 
@@ -60,23 +66,23 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           : "This call was cancelled."
         : "This call has already happened.";
     return (
-      <SignupShell narrow title="Your call" description={guestTime}>
+      <PublicShell narrow title="Your call" description={guestTime}>
         <InlineAlert tone={justCancelled ? "success" : "info"} title={meeting.status === "cancelled" ? "Cancelled" : "Finished"}>
           {words}
         </InlineAlert>
         <div className="mt-5 flex justify-center">
-          <Button asChild size="lg">
+          <Button asChild size="lg" className="btn btn-ink">
             <Link href={rebookPath}>Book another time</Link>
           </Button>
         </div>
-      </SignupShell>
+      </PublicShell>
     );
   }
 
   return (
-    <SignupShell title="Your call with LaunchFlow" description="Move it to another time, or cancel it, from here.">
+    <PublicShell title="Your call with LaunchFlow" description="Move it to another time, or cancel it, from here.">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]">
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           <RescheduleForm
             token={meeting.rescheduleToken}
             picker={{
@@ -91,8 +97,8 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           <CancelForm token={meeting.rescheduleToken} />
         </div>
 
-        <div className="rounded-xl border bg-card p-5 shadow-sm sm:p-6">
-          <h2 className="text-base font-semibold">Booked for</h2>
+        <div className="card p-6 sm:p-7">
+          <h2 className="h-line">Booked for</h2>
           <div className="mt-4">
             <KeyValue
               items={[
@@ -103,13 +109,13 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
             />
           </div>
           <div className="mt-5 flex flex-col gap-2">
-            <Button asChild>
+            <Button asChild className="btn btn-ink">
               <a href={meeting.joinUrl} target="_blank" rel="noreferrer">
                 <Video aria-hidden className="size-4" />
                 Join the call
               </a>
             </Button>
-            <Button asChild variant="secondary">
+            <Button asChild variant="secondary" className="btn btn-white">
               <a href={new URL(meetingIcsUrl(meeting)).pathname}>
                 <CalendarPlus aria-hidden className="size-4" />
                 Add to calendar
@@ -118,6 +124,6 @@ export default async function ManageBookingPage({ params, searchParams }: PagePr
           </div>
         </div>
       </div>
-    </SignupShell>
+    </PublicShell>
   );
 }

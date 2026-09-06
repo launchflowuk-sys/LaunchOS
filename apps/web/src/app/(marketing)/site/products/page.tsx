@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { ExternalLink } from "lucide-react";
 import { marketingLinks } from "@/lib/marketing/links";
 import { PRODUCTS } from "@/lib/marketing/products";
 import { STATUS_LABEL } from "@/lib/marketing/work";
-import { CtaBand, LinkButton, PageIntro, Tag } from "../_components/primitives";
+import { CtaBlock } from "../_components/cta-block";
+import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
 import { Shot } from "../_components/shot";
 
 export const metadata: Metadata = {
@@ -19,56 +19,63 @@ export default async function ProductsPage() {
 
   return (
     <>
-      <PageIntro
-        title="Our own products."
-        lede="We started building these because we needed them in our own businesses. Each one is live, hosted on our servers, and available to other operators."
-      />
+      <Container className="pt-14 pb-16 sm:pt-20 sm:pb-20">
+        <SectionHead
+          level={1}
+          index="03"
+          eyebrow="Made by LaunchFlow"
+          title={<Lines first="We're builders." second="And business owners." />}
+          aside="We started building these because we needed them in our own businesses. Each one is hosted on our servers, and available to other operators."
+        />
+      </Container>
 
-      <div className="border-t">
+      <div className="hairline">
         {PRODUCTS.map((product, index) => {
           const flip = index % 2 === 1;
           return (
-            <section key={product.slug} id={product.slug} className={flip ? "bg-background" : undefined} aria-labelledby={`${product.slug}-title`}>
-              <div className="mx-auto grid w-full max-w-6xl gap-8 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-2 lg:items-center lg:gap-14">
-                <div className={flip ? "lg:order-2" : undefined}>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {product.status !== "live" ? <Tag>{STATUS_LABEL[product.status]}</Tag> : <Tag className="border-success-border bg-success-bg text-success-fg">Live</Tag>}
+            <section key={product.slug} id={product.slug} className={flip ? "section-off" : undefined} aria-labelledby={`${product.slug}-title`}>
+              <Container className="grid gap-10 py-16 sm:py-20 lg:grid-cols-12 lg:items-center lg:gap-16">
+                <div className={flip ? "lg:col-span-6 lg:order-2" : "lg:col-span-6"} data-reveal>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <p className="eyebrow">{product.category}</p>
+                    <Pill tone={product.status === "live" ? "live" : "default"}>{STATUS_LABEL[product.status]}</Pill>
                   </div>
-                  <h2 id={`${product.slug}-title`} className="display mt-3 text-2xl sm:text-3xl">
+                  <h2 id={`${product.slug}-title`} className="h-section mt-5">
                     {product.name}
                   </h2>
-                  <p className="mt-2 text-lg font-medium text-muted-foreground">{product.tagline}</p>
-                  <p className="mt-4 text-base leading-relaxed">{product.description}</p>
-                  <ul className="mt-5 grid gap-2 sm:grid-cols-2">
+                  <p className="mt-3 text-lg font-medium text-[var(--mute-2)]">{product.tagline}</p>
+                  <p className="body mt-5 max-w-[56ch] leading-relaxed">{product.description}</p>
+                  <ul className="mt-6 flex flex-wrap gap-2">
                     {product.facts.map((fact) => (
-                      <li key={fact} className="flex items-start gap-2 text-sm">
-                        <span aria-hidden className="mt-2 size-1.5 shrink-0 rounded-full bg-primary" />
-                        <span>{fact}</span>
+                      <li key={fact} className="chip">
+                        {fact}
                       </li>
                     ))}
                   </ul>
-                  <div className="mt-6">
-                    <LinkButton href={product.url} external variant="secondary" size="md">
+                  <div className="mt-8">
+                    <Btn href={product.url} external tone="white">
                       {product.domain}
-                      <ExternalLink aria-hidden />
-                    </LinkButton>
+                    </Btn>
                   </div>
                 </div>
-                <div className={flip ? "lg:order-1" : undefined}>
-                  <Shot src={product.screenshots.desktop} alt={`${product.name} website`} name={product.name} priority={index === 0} />
+                <div className={flip ? "lg:col-span-6 lg:order-1" : "lg:col-span-6"} data-reveal>
+                  <a href={product.url} rel="noopener" className="tilt block rounded-2xl" aria-label={`${product.name} at ${product.domain}`}>
+                    <Shot src={product.screenshots.desktop} alt={`${product.name} website`} name={product.name} priority={index === 0} chip inner />
+                  </a>
                 </div>
-              </div>
+              </Container>
             </section>
           );
         })}
       </div>
 
-      <CtaBand
-        title="Want one of these for your business?"
-        lede="Most of them are a subscription. Tell us which one and we will get you set up, or build you the thing that is missing."
-        primary={{ label: "Talk to us", href: href("/contact") }}
-        secondary={{ label: "See pricing", href: href("/pricing") }}
-      />
+      <div className="pt-20 sm:pt-28">
+        <CtaBlock
+          title={<Lines first="Want one of these" second="for your business?" />}
+          body="Most of them are a subscription. Tell us which one and we will get you set up, or build you the thing that is missing."
+          primary={{ label: "Tell us what you need", href: href("/contact") }}
+        />
+      </div>
     </>
   );
 }

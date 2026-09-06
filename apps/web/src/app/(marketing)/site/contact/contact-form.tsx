@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleCheck } from "lucide-react";
+import { ArrowUpRight, CircleCheck } from "lucide-react";
 import { useActionState } from "react";
 import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
@@ -24,11 +24,11 @@ export function ContactForm({ page }: { page: string }) {
 
   if (state?.status === "ok") {
     return (
-      <div role="status" className="rounded-xl border border-success-border bg-success-bg p-6 text-success-fg">
+      <div role="status" className="rounded-2xl border border-success-border bg-success-bg p-6 text-success-fg">
         <div className="flex items-start gap-3">
           <CircleCheck aria-hidden className="mt-0.5 size-5 shrink-0" />
           <div>
-            <p className="text-base font-semibold">Thanks, your message is in.</p>
+            <p className="h-line">Thanks, your message is in.</p>
             <p className="mt-1 text-sm">{REPLY_PROMISE}</p>
           </div>
         </div>
@@ -37,7 +37,7 @@ export function ContactForm({ page }: { page: string }) {
   }
 
   return (
-    <form action={formAction} aria-label="Contact" className="space-y-5 rounded-xl border bg-card p-6 shadow-sm sm:p-8">
+    <form action={formAction} aria-label="Contact" className="card space-y-6 p-6 sm:p-9">
       <input type="hidden" name="page" value={page} />
       {/* The honeypot: out of sight, out of the tab order, never announced. */}
       <div aria-hidden="true" className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden">
@@ -53,7 +53,7 @@ export function ContactForm({ page }: { page: string }) {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="contact-message" className="text-sm">
+        <Label htmlFor="contact-message" className="text-[0.9375rem] font-medium">
           What do you need?
         </Label>
         <Textarea
@@ -63,7 +63,7 @@ export function ContactForm({ page }: { page: string }) {
           rows={6}
           maxLength={4000}
           placeholder="A booking system for my salon, a new website, an app — a couple of lines is plenty."
-          className="min-h-36 text-base"
+          className="field"
         />
       </div>
 
@@ -74,9 +74,10 @@ export function ContactForm({ page }: { page: string }) {
       ) : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-meta text-muted-foreground">{REPLY_PROMISE} No mailing list, no follow-up sequence.</p>
-        <Button type="submit" size="lg" loading={pending} className="w-full sm:w-auto">
+        <p className="text-sm text-[var(--mute)]">{REPLY_PROMISE} No mailing list, no follow-up sequence.</p>
+        <Button type="submit" size="lg" loading={pending} className="btn btn-ink w-full sm:w-auto">
           Send message
+          <ArrowUpRight aria-hidden className="arrow size-4" strokeWidth={2} />
         </Button>
       </div>
     </form>
@@ -102,11 +103,11 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-sm">
+      <Label htmlFor={id} className="text-[0.9375rem] font-medium">
         {label}
-        {hint ? <span className="font-normal text-muted-foreground">{hint}</span> : null}
+        {hint ? <span className="font-normal text-[var(--mute)]">{hint}</span> : null}
       </Label>
-      <Input id={id} name={name} type={type} autoComplete={autoComplete} required={required} className="h-11 text-base" />
+      <Input id={id} name={name} type={type} autoComplete={autoComplete} required={required} className="field" />
     </div>
   );
 }

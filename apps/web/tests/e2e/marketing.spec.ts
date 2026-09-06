@@ -18,9 +18,22 @@ import { signIn } from "./sign-in";
 const COLD_COMPILE = 120_000;
 const MOBILE = { width: 390, height: 844 };
 const MARKETING_HOST = process.env.MARKETING_HOST?.trim() || "launchflow.co.uk";
+const HOME_H1 = /Built to work\.\s*Designed to\s*stand out\./;
 
-/** Every marketing page, for the width check. */
-const PAGES = ["/site", "/site/work", "/site/work/grays-cabline", "/site/products", "/site/services", "/site/pricing", "/site/about", "/site/contact", "/site/privacy"];
+/** Every public page, for the width check: the site, and the two public flows outside it. */
+const PAGES = [
+  "/site",
+  "/site/work",
+  "/site/work/grays-cabline",
+  "/site/products",
+  "/site/services",
+  "/site/pricing",
+  "/site/about",
+  "/site/contact",
+  "/site/privacy",
+  "/book",
+  "/signup",
+];
 
 const OUT_DIR = resolve(process.cwd(), "../../.superpowers");
 
@@ -33,26 +46,44 @@ test.afterAll(async () => {
   await db.delete(schema.leads).where(eq(schema.leads.business, BUSINESS));
 });
 
-test("home renders under /site with host-aware links", async ({ page }) => {
+test("home renders under /site with host-aware links and the eight sections", async ({ page }) => {
   await page.goto("/site");
-  await expect(page.getByRole("heading", { level: 1, name: "We build the software we run our own businesses on." })).toBeVisible({ timeout: COLD_COMPILE });
+  await expect(page.getByRole("heading", { level: 1, name: HOME_H1 })).toBeVisible({ timeout: COLD_COMPILE });
   await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Work" })).toHaveAttribute("href", "/site/work");
-  await expect(page.getByRole("link", { name: "Client portal login" })).toHaveAttribute("href", /\/sign-in$/);
-  await expect(page.getByRole("heading", { name: "Recent work" })).toBeVisible();
-  await expect(page.getByText("Powered by LaunchFlow")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Client login" }).first()).toHaveAttribute("href", /\/sign-in$/);
+  await expect(page.getByRole("link", { name: "Client portal" })).toHaveAttribute("href", /\/sign-in$/);
+  for (const heading of [/Good things,\s*built for real people\./, /Every piece\.\s*One partner\./, /We're builders\.\s*And business owners\./, /We know what it takes\./, /Let's make\s*your next move\./]) {
+    await expect(page.getByRole("heading", { level: 2, name: heading })).toBeAttached();
+  }
+  await expect(page.getByRole("contentinfo")).toContainText("LaunchFlow");
+  await expect(page).toHaveTitle(/LaunchFlow/);
 });
 
-test("a work brief renders with its sections and live link", async ({ page }) => {
+test("the services accordion is ARIA-correct and one row is open at a time", async ({ page }) => {
+  await page.goto("/site");
+  const first = page.getByRole("button", { name: /Web applications/ });
+  const second = page.getByRole("button", { name: /Mobile apps/ });
+  await expect(first).toHaveAttribute("aria-expanded", "true", { timeout: COLD_COMPILE });
+  await expect(second).toHaveAttribute("aria-expanded", "false");
+  await second.scrollIntoViewIfNeeded();
+  await second.click();
+  await expect(second).toHaveAttribute("aria-expanded", "true");
+  await expect(first).toHaveAttribute("aria-expanded", "false");
+  const panelId = await second.getAttribute("aria-controls");
+  await expect(page.locator(`#${panelId}`)).toHaveAttribute("role", "region");
+});
+
+test("a work brief renders with the big screenshot, its sections and the live link", async ({ page }) => {
   await page.goto("/site/work/grays-cabline");
   await expect(page.getByRole("heading", { level: 1, name: "Grays CabLine" })).toBeVisible({ timeout: COLD_COMPILE });
   for (const section of ["The client", "The problem", "What we built", "Results"]) {
-    await expect(page.getByRole("heading", { name: section })).toBeVisible();
+    await expect(page.getByRole("heading", { name: section })).toBeAttached();
   }
   await expect(page.getByRole("link", { name: /Visit grayscabline\.co\.uk/ })).toHaveAttribute("href", "https://grayscabline.co.uk");
+  await expect(page).toHaveTitle("Grays CabLine — LaunchFlow");
   // The screenshot the capture script wrote, or the placeholder — never a broken image.
   const images = page.locator("main img");
   for (const image of await images.all()) {
-    // The phone shot is rendered twice — beside the desktop one at `lg`, below the brief under it — and only one is shown.
     if (!(await image.isVisible())) continue;
     await image.scrollIntoViewIfNeeded();
     await expect.poll(() => image.evaluate((el: HTMLImageElement) => el.complete && el.naturalWidth > 0)).toBe(true);
@@ -68,10 +99,10 @@ test("an unknown work slug is a 404", async ({ page }) => {
 
 test("pricing lists the seeded package and sends sign-up to /signup", async ({ page }) => {
   await page.goto("/site/pricing");
-  await expect(page.getByRole("heading", { level: 1, name: "Plain monthly pricing." })).toBeVisible({ timeout: COLD_COMPILE });
+  await expect(page.getByRole("heading", { level: 1, name: /Simple monthly care\./ })).toBeVisible({ timeout: COLD_COMPILE });
   await expect(page.getByRole("heading", { name: "Website Care" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Get started with Website Care" })).toHaveAttribute("href", /\/signup\?package=website-care$/);
-  await expect(page.getByRole("link", { name: "Talk to us" }).first()).toHaveAttribute("href", "/site/contact");
+  await expect(page.getByRole("link", { name: /Let.s talk/ }).first()).toHaveAttribute("href", "/site/contact");
 });
 
 test("the contact form writes a lead the owner sees on /leads", async ({ page }) => {
@@ -114,13 +145,14 @@ test("the honeypot drops a bot's post without a lead", async ({ page }) => {
   expect(rows).toHaveLength(0);
 });
 
-test("every page fits a 390px phone with no sideways scroll", async ({ page }) => {
-  // Nine routes, each compiled on first visit by the dev server.
-  test.setTimeout(COLD_COMPILE * 3);
+test("every public page fits a 390px phone with no sideways scroll and says LaunchFlow", async ({ page }) => {
+  // Eleven routes, each compiled on first visit by the dev server.
+  test.setTimeout(COLD_COMPILE * 4);
   await page.setViewportSize(MOBILE);
   for (const path of PAGES) {
     await page.goto(path);
     await expect(page.locator("h1").first()).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page, `${path} title`).toHaveTitle(/LaunchFlow/);
     const widths = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, body: document.body.scrollWidth }));
     expect(widths.scroll, `${path} scrolls sideways`).toBeLessThanOrEqual(MOBILE.width);
     expect(widths.body, `${path} body overflows`).toBeLessThanOrEqual(MOBILE.width);
@@ -131,12 +163,37 @@ test("every page fits a 390px phone with no sideways scroll", async ({ page }) =
   await expect(page.getByRole("link", { name: "Products" }).first()).toBeVisible();
 });
 
+test("reduced motion shows every section at rest; otherwise sections reveal on scroll", async ({ browser }) => {
+  const calm = await browser.newContext({ reducedMotion: "reduce" });
+  const page = await calm.newPage();
+  try {
+    await page.goto("/site");
+    await expect(page.getByRole("heading", { level: 1, name: HOME_H1 })).toBeVisible({ timeout: COLD_COMPILE });
+    const opacity = await page.locator("[data-reveal]").last().evaluate((el) => getComputedStyle(el).opacity);
+    expect(opacity).toBe("1");
+  } finally {
+    await calm.close();
+  }
+  const lively = await browser.newContext();
+  const moving = await lively.newPage();
+  try {
+    await moving.goto("/site");
+    const last = moving.locator("[data-reveal]").last();
+    await expect(last).toHaveCSS("opacity", "0", { timeout: COLD_COMPILE });
+    await last.scrollIntoViewIfNeeded();
+    await expect(last).toHaveClass(/is-in/);
+    await expect(last).toHaveCSS("opacity", "1");
+  } finally {
+    await lively.close();
+  }
+});
+
 test("on the marketing host the pages answer at / and links lose the /site prefix", async ({ browser }) => {
   const context = await browser.newContext({ extraHTTPHeaders: { "x-forwarded-host": MARKETING_HOST } });
   const page = await context.newPage();
   try {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1, name: "We build the software we run our own businesses on." })).toBeVisible({ timeout: COLD_COMPILE });
+    await expect(page.getByRole("heading", { level: 1, name: HOME_H1 })).toBeVisible({ timeout: COLD_COMPILE });
     await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Work" })).toHaveAttribute("href", "/work");
     await page.goto("/work/grays-cabline");
     await expect(page.getByRole("heading", { level: 1, name: "Grays CabLine" })).toBeVisible({ timeout: COLD_COMPILE });
@@ -157,14 +214,27 @@ test("on the app host robots disallows everything and the marketing pages say no
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
 });
 
-test("home page screenshots for the design review", async ({ page }) => {
+test("home and work-brief screenshots for the design review", async ({ browser }) => {
+  // Reduced motion, so every scroll-revealed section is at rest in a full-page capture.
   await mkdir(OUT_DIR, { recursive: true });
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/site");
-  await expect(page.locator("h1")).toBeVisible({ timeout: COLD_COMPILE });
-  await page.screenshot({ path: resolve(OUT_DIR, "marketing-home-desktop.png"), fullPage: true });
-  await page.setViewportSize(MOBILE);
-  await page.goto("/site");
-  await expect(page.locator("h1")).toBeVisible();
-  await page.screenshot({ path: resolve(OUT_DIR, "marketing-home-mobile.png"), fullPage: true });
+  const shots = [
+    ["home", "/site"],
+    ["work", "/site/work/grays-cabline"],
+  ] as const;
+  for (const [name, path] of shots) {
+    for (const [label, viewport] of [
+      ["desktop", { width: 1440, height: 900 }],
+      ["mobile", MOBILE],
+    ] as const) {
+      const context = await browser.newContext({ viewport, reducedMotion: "reduce" });
+      const page = await context.newPage();
+      try {
+        await page.goto(path, { waitUntil: "networkidle" });
+        await expect(page.locator("h1")).toBeVisible({ timeout: COLD_COMPILE });
+        await page.screenshot({ path: resolve(OUT_DIR, `marketing-v2-${name}-${label}.png`), fullPage: true });
+      } finally {
+        await context.close();
+      }
+    }
+  }
 });

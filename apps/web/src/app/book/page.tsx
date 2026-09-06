@@ -2,7 +2,7 @@ import { availableSlots } from "@launchos/core";
 import type { Metadata } from "next";
 import { InlineAlert } from "@/components/inline-alert";
 import { getDb } from "@/lib/db";
-import { SignupShell } from "../signup/signup-shell";
+import { PublicShell } from "../(marketing)/site/_components/public-shell";
 import { BookingForm } from "./booking-form";
 import { bookingHostLabel, resolveBookingContext } from "./context";
 
@@ -25,11 +25,11 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   const context = await resolveBookingContext(leadToken);
   if (!context) {
     return (
-      <SignupShell narrow title="Book a call" description="A short video call to talk through what you need.">
+      <PublicShell narrow title="Book a call" description="A short video call to talk through what you need.">
         <InlineAlert tone="info" title="Booking is not open just yet">
           Reply to our email and we will find a time by hand.
         </InlineAlert>
-      </SignupShell>
+      </PublicShell>
     );
   }
 
@@ -43,7 +43,7 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
   const greeting = context.name ? `Hello ${context.name.split(/\s+/)[0]}, pick a time that suits you.` : "Pick a time that suits you.";
 
   return (
-    <SignupShell
+    <PublicShell
       title="Book a call"
       description={`${greeting} A ${slots.slotMinutes}-minute video call on Zoom to talk through what you need — no cost, no obligation.`}
     >
@@ -58,6 +58,6 @@ export default async function BookPage({ searchParams }: PageProps<"/book">) {
         defaults={{ name: context.name, email: context.email }}
         leadToken={context.leadToken}
       />
-    </SignupShell>
+    </PublicShell>
   );
 }

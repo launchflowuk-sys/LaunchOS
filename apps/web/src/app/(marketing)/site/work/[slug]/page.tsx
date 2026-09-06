@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
-import { ArrowLeft, ArrowRight, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marketingLinks } from "@/lib/marketing/links";
 import { findWork, STATUS_LABEL, WORK, WORK_SLUGS } from "@/lib/marketing/work";
-import { Container, CtaBand, LinkButton, Tag } from "../../_components/primitives";
+import { CtaBlock } from "../../_components/cta-block";
+import { Arrow, Btn, Container, Eyebrow, Lines, Pill } from "../../_components/primitives";
 import { Shot } from "../../_components/shot";
 
 export function generateStaticParams(): { slug: string }[] {
@@ -35,6 +36,7 @@ const SECTIONS = [
   ["results", "Results"],
 ] as const;
 
+/** The brief: the big screenshot first, then the four questions, the facts beside them, and the next project. */
 export default async function WorkDetailPage({ params }: PageProps<"/site/work/[slug]">) {
   const { slug } = await params;
   const item = findWork(slug);
@@ -49,126 +51,118 @@ export default async function WorkDetailPage({ params }: PageProps<"/site/work/[
   return (
     <>
       <Container className="pt-10 sm:pt-14">
-        <Link href={href("/work")} className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground">
-          <ArrowLeft aria-hidden className="size-4" />
+        <Link href={href("/work")} className="tlink tlink-quiet text-sm">
+          <ArrowLeft aria-hidden className="size-4" strokeWidth={2} />
           All work
         </Link>
-        <div className="mt-6 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex flex-wrap items-center gap-2">
-              <Tag>{item.sector}</Tag>
-              <Tag>{STATUS_LABEL[item.status]}</Tag>
-              {item.charity ? <Tag className="border-success-border bg-success-bg text-success-fg">Built free, as charity</Tag> : null}
+        <div className="mt-8 grid gap-8 lg:grid-cols-12 lg:items-end">
+          <div className="lg:col-span-8">
+            <Eyebrow index={String(index + 1).padStart(2, "0")}>
+              {item.sector} · {item.year}
+            </Eyebrow>
+            <h1 className="h-page mt-5">{item.name}</h1>
+            <p className="lede mt-5 text-lg">{item.summary}</p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <Pill tone={item.status === "live" ? "live" : "default"}>{STATUS_LABEL[item.status]}</Pill>
+              {item.charity ? <Pill tone="tint">Built free, as charity</Pill> : null}
             </div>
-            <h1 className="display mt-4 text-4xl sm:text-5xl">{item.name}</h1>
-            <p className="lede mt-4 text-lg text-muted-foreground sm:text-xl">{item.summary}</p>
           </div>
           {item.url && host ? (
-            <div className="shrink-0">
-              <LinkButton href={item.url} external variant="secondary">
+            <div className="lg:col-span-4 lg:justify-self-end">
+              <Btn href={item.url} external tone="white">
                 Visit {host}
-                <ExternalLink aria-hidden />
-              </LinkButton>
+              </Btn>
             </div>
           ) : null}
         </div>
       </Container>
 
       <Container className="mt-10 sm:mt-14">
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_16rem] lg:items-start">
-          <Shot src={item.screenshots.desktop} alt={`${item.name} on a desktop`} name={item.name} priority sizes="(min-width: 1024px) 70vw, 100vw" />
-          <div className="hidden lg:block">
-            <Shot src={item.screenshots.mobile} alt={`${item.name} on a phone`} name={item.name} kind="mobile" sizes="16rem" />
-          </div>
-        </div>
+        <Shot src={item.screenshots.desktop} alt={`${item.name} on a desktop`} name={item.name} priority inner sizes="(min-width: 1280px) 1216px, 100vw" />
       </Container>
 
-      <Container className="py-12 sm:py-16">
-        <div className="grid gap-12 lg:grid-cols-[minmax(0,7fr)_minmax(0,4fr)] lg:gap-16">
-          <article className="space-y-10">
+      <Container className="py-14 sm:py-20">
+        <div className="grid gap-12 lg:grid-cols-12 lg:gap-16">
+          <article className="space-y-12 lg:col-span-7">
             {SECTIONS.map(([key, title]) => (
-              <section key={key}>
-                <h2 className="text-xl font-semibold sm:text-2xl">{title}</h2>
-                <p className="mt-3 text-base leading-relaxed sm:text-lg">{item.brief[key]}</p>
+              <section key={key} data-reveal>
+                <h2 className="h-sub">{title}</h2>
+                <p className="body mt-4 text-[1.0625rem] leading-relaxed">{item.brief[key]}</p>
               </section>
             ))}
           </article>
 
-          <aside className="rounded-2xl border bg-background p-6 lg:sticky lg:top-24">
-            <dl className="space-y-5 text-sm">
-              <div>
-                <dt className="label-caps text-muted-foreground">Client</dt>
-                <dd className="mt-1 font-medium">{item.client}</dd>
-              </div>
-              <div>
-                <dt className="label-caps text-muted-foreground">Sector</dt>
-                <dd className="mt-1 font-medium">{item.sector}</dd>
-              </div>
-              <div>
-                <dt className="label-caps text-muted-foreground">Year</dt>
-                <dd className="mt-1 font-medium tabular-nums">{item.year}</dd>
-              </div>
-              <div>
-                <dt className="label-caps text-muted-foreground">Status</dt>
-                <dd className="mt-1 font-medium">{STATUS_LABEL[item.status]}</dd>
-              </div>
-              <div>
-                <dt className="label-caps text-muted-foreground">Stack</dt>
-                <dd className="mt-2 flex flex-wrap gap-1.5">
-                  {item.stack.map((tech) => (
-                    <Tag key={tech} className="bg-card">
-                      {tech}
-                    </Tag>
-                  ))}
-                </dd>
-              </div>
-              {item.url && host ? (
+          <aside className="lg:col-span-5" data-reveal>
+            <div className="card p-6 sm:p-8 lg:sticky lg:top-24">
+              <dl className="space-y-5 text-[0.9375rem]">
+                <Fact label="Client">{item.client}</Fact>
+                <Fact label="Sector">{item.sector}</Fact>
+                <Fact label="Year">
+                  <span className="tabular">{item.year}</span>
+                </Fact>
+                <Fact label="Status">{STATUS_LABEL[item.status]}</Fact>
                 <div>
-                  <dt className="label-caps text-muted-foreground">Live site</dt>
-                  <dd className="mt-1">
-                    <a href={item.url} rel="noopener" className="font-medium text-primary hover:underline">
-                      {host}
-                    </a>
+                  <dt className="eyebrow">Stack</dt>
+                  <dd className="mt-3 flex flex-wrap gap-2">
+                    {item.stack.map((tech) => (
+                      <span key={tech} className="chip">
+                        {tech}
+                      </span>
+                    ))}
                   </dd>
                 </div>
+                {item.url && host ? (
+                  <Fact label="Live site">
+                    <a href={item.url} rel="noopener" className="link-blue">
+                      {host}
+                    </a>
+                  </Fact>
+                ) : null}
+              </dl>
+              {item.screenshots.mobile ? (
+                <div className="mt-8 border-t border-[var(--line)] pt-8">
+                  <p className="eyebrow">On a phone</p>
+                  <div className="mt-4">
+                    <Shot src={item.screenshots.mobile} alt={`${item.name} on a phone`} name={item.name} kind="mobile" sizes="16rem" />
+                  </div>
+                </div>
               ) : null}
-            </dl>
+            </div>
           </aside>
         </div>
 
-        {item.screenshots.mobile ? (
-          <div className="mt-12 lg:hidden">
-            <h2 className="text-xl font-semibold">On a phone</h2>
-            <div className="mt-4">
-              <Shot src={item.screenshots.mobile} alt={`${item.name} on a phone`} name={item.name} kind="mobile" sizes="16rem" />
-            </div>
-          </div>
-        ) : null}
-
-        <nav aria-label="More work" className="mt-14 grid gap-4 border-t pt-8 sm:grid-cols-2">
-          <Link href={href(`/work/${previous.slug}`)} className="group rounded-xl border bg-card p-5 hover:border-primary/60">
-            <p className="flex items-center gap-1.5 text-meta font-medium text-muted-foreground">
-              <ArrowLeft aria-hidden className="size-3.5" />
+        <nav aria-label="More work" className="mt-16 grid gap-4 border-t border-[var(--line)] pt-8 sm:grid-cols-2">
+          <Link href={href(`/work/${previous.slug}`)} className="card card-hover group p-6">
+            <p className="tlink tlink-quiet text-sm">
+              <ArrowLeft aria-hidden className="size-4" strokeWidth={2} />
               Previous
             </p>
-            <p className="mt-1 font-semibold group-hover:underline">{previous.name}</p>
+            <p className="h-card mt-2 transition-colors group-hover:text-[var(--blue)]">{previous.name}</p>
           </Link>
-          <Link href={href(`/work/${next.slug}`)} className="group rounded-xl border bg-card p-5 text-right hover:border-primary/60">
-            <p className="flex items-center justify-end gap-1.5 text-meta font-medium text-muted-foreground">
+          <Link href={href(`/work/${next.slug}`)} className="card card-hover group p-6 text-right">
+            <p className="tlink tlink-quiet justify-end text-sm">
               Next
-              <ArrowRight aria-hidden className="size-3.5" />
+              <Arrow kind="right" />
             </p>
-            <p className="mt-1 font-semibold group-hover:underline">{next.name}</p>
+            <p className="h-card mt-2 transition-colors group-hover:text-[var(--blue)]">{next.name}</p>
           </Link>
         </nav>
       </Container>
 
-      <CtaBand
-        title="Need something like this?"
-        lede="Tell us about your business and we will tell you what we would build, and what it would cost."
-        primary={{ label: "Talk to us", href: href("/contact") }}
-        secondary={{ label: "All work", href: href("/work") }}
+      <CtaBlock
+        title={<Lines first="Need something" second="like this?" />}
+        body="Tell us about your business and we will tell you what we would build, and what it would cost."
+        primary={{ label: "Tell us about your project", href: href("/contact") }}
       />
     </>
+  );
+}
+
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <dt className="eyebrow">{label}</dt>
+      <dd className="mt-1.5 font-medium">{children}</dd>
+    </div>
   );
 }

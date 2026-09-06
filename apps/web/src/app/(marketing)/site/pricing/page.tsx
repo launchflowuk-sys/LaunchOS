@@ -3,7 +3,8 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 import { marketingLinks } from "@/lib/marketing/links";
 import { pricingPackages } from "@/lib/marketing/packages";
-import { Block, Container, CtaBand, LinkButton, PageIntro } from "../_components/primitives";
+import { CtaBlock } from "../_components/cta-block";
+import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -31,22 +32,28 @@ const QUESTIONS = [
   },
 ] as const;
 
+/** Plans from the database, cheapest first; the fullest is the one with the ink button. */
 export default async function PricingPage() {
   const [{ href, signup }, packages] = await Promise.all([marketingLinks(), pricingPackages()]);
+  const recommended = packages.length > 1 ? packages.length - 1 : -1;
 
   return (
     <>
-      <PageIntro
-        title="Plain monthly pricing."
-        lede="Pick a plan, sign up in two minutes, and your portal login arrives by email. Bigger builds are quoted after a short call."
-      />
+      <Container className="pt-14 pb-14 sm:pt-20 sm:pb-16">
+        <SectionHead
+          level={1}
+          eyebrow="A plan that fits"
+          title={<Lines first="Simple monthly care." second="Custom builds, clearly quoted." secondClass="quiet" />}
+          aside="Pick a plan, sign up in two minutes, and your portal login arrives by email. Bigger builds are quoted after a short call."
+        />
+      </Container>
 
-      <Container className="pb-12 sm:pb-16">
+      <Container className="pb-16 sm:pb-20">
         {packages.length === 0 ? (
-          <div className="rounded-xl border bg-background p-8 text-center">
-            <p className="text-lg font-semibold">Plans are being updated.</p>
-            <p className="mt-2 text-muted-foreground">
-              <Link href={href("/contact")} className="font-medium text-primary hover:underline">
+          <div className="card p-8 text-center" data-reveal>
+            <p className="h-card">Plans are being updated.</p>
+            <p className="body mt-2">
+              <Link href={href("/contact")} className="link-blue">
                 Talk to us
               </Link>{" "}
               and we will set you up by hand.
@@ -54,76 +61,82 @@ export default async function PricingPage() {
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-2">
-            {packages.map((pkg, index) => (
-              <article
-                key={pkg.slug}
-                className={
-                  index === packages.length - 1 && packages.length > 1
-                    ? "flex flex-col rounded-2xl border-2 border-primary bg-card p-6 shadow-sm sm:p-8"
-                    : "flex flex-col rounded-2xl border bg-card p-6 shadow-sm sm:p-8"
-                }
-              >
-                <h2 className="text-xl font-semibold">{pkg.name}</h2>
-                {pkg.description ? <p className="mt-2 text-muted-foreground">{pkg.description}</p> : null}
-                <p className="mt-6 flex items-baseline gap-1.5">
-                  <span className="display text-4xl tabular-nums" data-numeric>
-                    {pkg.monthlyPrice}
-                  </span>
-                  <span className="text-muted-foreground">a month</span>
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {pkg.setupPrice ? `${pkg.setupPrice} set-up, once.` : "No set-up fee."} Prices exclude VAT.
-                </p>
-                <ul className="mt-6 space-y-2.5 border-t pt-6">
-                  {pkg.includes.map((line) => (
-                    <li key={line} className="flex items-start gap-2.5 text-sm">
-                      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.25} />
-                      <span>{line}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-8 pt-2">
-                  <LinkButton href={signup(pkg.slug)} external className="w-full">
-                    Get started with {pkg.name}
-                  </LinkButton>
-                </div>
-              </article>
-            ))}
+            {packages.map((pkg, index) => {
+              const isRecommended = index === recommended;
+              return (
+                <article key={pkg.slug} className={isRecommended ? "card flex flex-col border-[var(--ink)] p-6 sm:p-9" : "card flex flex-col p-6 sm:p-9"} data-reveal>
+                  <div className="flex items-start justify-between gap-4">
+                    <h2 className="h-sub">{pkg.name}</h2>
+                    {isRecommended ? <Pill tone="tint">Most complete</Pill> : null}
+                  </div>
+                  {pkg.description ? <p className="body mt-3">{pkg.description}</p> : null}
+                  <p className="mt-8 flex items-baseline gap-2">
+                    <span className="figure" data-numeric>
+                      {pkg.monthlyPrice}
+                    </span>
+                    <span className="text-[var(--mute)]">a month</span>
+                  </p>
+                  <p className="mt-2 text-sm text-[var(--mute)]">{pkg.setupPrice ? `${pkg.setupPrice} set-up, once.` : "No set-up fee."} Prices exclude VAT.</p>
+                  <ul className="mt-8 flex-1 space-y-3 border-t border-[var(--line)] pt-8">
+                    {pkg.includes.map((line) => (
+                      <li key={line} className="flex items-start gap-3 text-[0.9375rem]">
+                        <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-[var(--tint)] text-[var(--blue)]">
+                          <Check aria-hidden className="size-3" strokeWidth={3} />
+                        </span>
+                        <span>{line}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-10">
+                    <Btn href={signup(pkg.slug)} external tone={isRecommended ? "ink" : "white"} size="lg" className="btn-block" ariaLabel={`Get started with ${pkg.name}`}>
+                      Get started
+                    </Btn>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         )}
 
-        <div className="mt-8 rounded-xl border bg-background p-6 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:p-8">
+        <div className="mt-8 flex flex-col gap-6 rounded-2xl border border-[var(--line)] bg-[var(--off)] px-6 py-6 sm:flex-row sm:items-center sm:justify-between sm:px-8" data-reveal>
           <div>
-            <h2 className="text-xl font-semibold">Need something custom?</h2>
-            <p className="mt-1 text-muted-foreground">
-              A booking system, a dispatch platform, an app on the stores. Tell us the problem and we will quote it.
-            </p>
+            <p className="h-card">Need something custom?</p>
+            <p className="body mt-1">A booking system, a dispatch platform, an app on the stores. Tell us the problem and we will quote it.</p>
           </div>
-          <div className="mt-4 shrink-0 sm:mt-0">
-            <LinkButton href={href("/contact")} variant="secondary" className="w-full sm:w-auto">
-              Talk to us
-            </LinkButton>
-          </div>
+          <Btn href={href("/contact")} tone="white" className="shrink-0">
+            Let&rsquo;s talk
+          </Btn>
         </div>
       </Container>
 
-      <Block title="Questions people ask" className="border-t bg-background">
-        <dl className="grid gap-x-12 gap-y-8 md:grid-cols-2">
-          {QUESTIONS.map((item) => (
-            <div key={item.q}>
-              <dt className="text-base font-semibold">{item.q}</dt>
-              <dd className="mt-2 text-muted-foreground">{item.a}</dd>
-            </div>
-          ))}
-        </dl>
-      </Block>
+      <section className="section-off" aria-labelledby="faq-title">
+        <Container className="grid gap-10 py-20 sm:py-24 lg:grid-cols-12">
+          <h2 id="faq-title" className="h-section lg:col-span-5" data-reveal>
+            <Lines first="Questions" second="people ask." secondClass="quiet" />
+          </h2>
+          <div className="border-t border-[#cfd7e1] lg:col-span-7">
+            {QUESTIONS.map((item) => (
+              <details key={item.q} className="faq group border-b border-[#cfd7e1]" data-reveal>
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 py-5 text-[1.0625rem] font-medium [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <span aria-hidden className="grid size-8 shrink-0 place-items-center rounded-full border border-[#cfd7e1] transition-transform duration-300 group-open:rotate-45">
+                    +
+                  </span>
+                </summary>
+                <p className="body max-w-[60ch] pb-6">{item.a}</p>
+              </details>
+            ))}
+          </div>
+        </Container>
+      </section>
 
-      <CtaBand
-        title="Ready when you are."
-        lede="Sign up now and your portal is live in minutes, or ask us anything first."
-        primary={{ label: "Talk to us", href: href("/contact") }}
-        secondary={{ label: "See our work", href: href("/work") }}
-      />
+      <div className="pt-20 sm:pt-28">
+        <CtaBlock
+          title={<Lines first="Ready when" second="you are." />}
+          body="Sign up now and your portal is live in minutes, or ask us anything first."
+          primary={{ label: "Ask us anything", href: href("/contact") }}
+        />
+      </div>
     </>
   );
 }

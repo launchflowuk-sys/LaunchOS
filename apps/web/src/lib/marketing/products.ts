@@ -17,6 +17,12 @@ export type Product = {
   description: string;
   /** Two to four short facts. */
   facts: readonly string[];
+  /** The market it serves, as the small label above the name: TRANSPORT, VOICE AI. */
+  category: string;
+  /** One sentence for a card, shorter than `description`. */
+  oneLine: string;
+  /** On the home page grid. Four at most; the rest are listed as "also taking shape". */
+  flagship: boolean;
   status: WorkStatus;
   screenshots: WorkScreenshots;
 };
@@ -36,6 +42,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "The dispatch platform our own taxi firm runs on, sold to other operators as a subscription. Each operator gets their own branded booking site and subdomain, a dispatch office, drivers on the app, and pricing by distance, time or fixed fare with night and zone surcharges. Built to compete with the incumbents on price and on speed.",
     facts: ["iOS and Android apps live", "Embeddable booking widget", "Card payments and subscription billing", "Runs Grays CabLine and Grays Taxis 247"],
+    category: "Transport",
+    oneLine: "The dispatch platform our own taxi firm runs on, sold to other UK operators as a subscription.",
+    flagship: true,
     status: "live",
     screenshots: shots("cabio"),
   },
@@ -48,6 +57,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "Answers a business's inbound calls, holds a natural conversation, quotes a price and writes the booking into the back office. Calls arrive over Twilio and are routed to the right business by the number dialled, so many businesses share one platform. Operators choose whether the agent answers first or their phone rings first, by schedule.",
     facts: ["Claude for the conversation", "Twilio, Deepgram and ElevenLabs", "Pushes bookings into Cabio and other dispatch systems", "Operator app on both stores"],
+    category: "Voice AI",
+    oneLine: "Answers a business’s calls, quotes a price and writes the booking into the back office.",
+    flagship: true,
     status: "live",
     screenshots: shots("agent-zero"),
   },
@@ -60,6 +72,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "Connects a business's Gmail, Microsoft 365 or IMAP mailbox, classifies what comes in and drafts a reply in that business's voice — queued for one-click approval, or sent automatically under rules the owner sets. Self-hosted, so client email never leaves our server. Mailbox credentials are encrypted at rest.",
     facts: ["Gmail, Microsoft 365 and IMAP", "Multi-business from the ground up", "Approve or auto-send by rule", "Companion app in progress"],
+    category: "Inbox AI",
+    oneLine: "Reads a business’s inbox and drafts the reply in its own voice, for one-click approval.",
+    flagship: false,
     status: "in-build",
     screenshots: shots("lima"),
   },
@@ -72,6 +87,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "One platform that gives a rendering, roofing or landscaping firm a complete website under their own brand, a CRM for leads, quotes and projects, and a portal where homeowners follow their job. One deployment serves every tenant, and one owner can run several businesses from a single login.",
     facts: ["Website, CRM and customer portal", "Render visualiser and cost calculator", "AMO Rendering and AMO Services live", "Google Ads run alongside"],
+    category: "For the trades",
+    oneLine: "A complete website, CRM and customer portal for a trade firm, under its own brand.",
+    flagship: true,
     status: "live",
     screenshots: shots("bizzflow"),
   },
@@ -84,6 +102,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "The system this agency runs on, and the website you are reading. Clients sign in to raise support cases, see the plan they are on, approve the month's content, read reports and pay invoices. Behind it, AI agents watch uptime, triage support and write content — and nothing reaches a client without a human approving it.",
     facts: ["Support, plan, content and invoices in one place", "Uptime monitoring and incidents", "Ad reports every month", "Every agent action approved by a person"],
+    category: "Client experience",
+    oneLine: "The portal every LaunchFlow client gets: support, plan, content, reports and invoices.",
+    flagship: true,
     status: "live",
     screenshots: shots("launchos"),
   },
@@ -96,6 +117,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "Mobile-first landing funnels for paid ads: five or six screens, one question each, with the contact step in the middle rather than the end so a visitor who leaves early still leaves a name and a number. Each client is a single config file. Answers are scored and a hot lead emails the owner straight away.",
     facts: ["Config-driven, no CMS", "Contact captured mid-funnel", "Lead scoring and instant alerts", "First funnel built for KD Essex"],
+    category: "Paid ads",
+    oneLine: "One-question-per-screen landing funnels that keep the lead even when the visitor leaves early.",
+    flagship: false,
     status: "in-build",
     screenshots: shots("funnel-engine"),
   },
@@ -108,6 +132,9 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "A storefront, kitchen screen and back office for a takeaway, with Apple Pay and Google Pay, automated win-back and quiet-night campaigns, abandoned-basket recovery and search built in. Everything per shop is configuration, so the next shop is a folder and a deploy. Farm Pizza is the first tenant.",
     facts: ["Next.js and Stripe", "Kitchen pass screen", "Marketing automations built in", "Customer app specified"],
+    category: "Food ordering",
+    oneLine: "Direct ordering, a kitchen screen and marketing automations, without the aggregator’s cut.",
+    flagship: false,
     status: "in-testing",
     screenshots: shots("takeaway-platform"),
   },
@@ -120,7 +147,13 @@ export const PRODUCTS: readonly Product[] = [
     description:
       "A public profile in a searchable directory, an enquiry inbox, a booking tracker with recurring sessions and conflict detection, parent and child records, and reviews — for self-employed nannies and registered childminders who keep their full rate.",
     facts: ["Enquiry to booking in one click", "Weekly and fortnightly recurrence", "Audit trail on every booking", "Payments being wired up"],
+    category: "Childcare",
+    oneLine: "A commission-free back office and directory profile for nannies and childminders.",
+    flagship: false,
     status: "in-testing",
     screenshots: shots("yournanny"),
   },
 ] as const;
+
+export const FLAGSHIP_PRODUCTS: readonly Product[] = PRODUCTS.filter((product) => product.flagship).slice(0, 4);
+export const UPCOMING_PRODUCTS: readonly Product[] = PRODUCTS.filter((product) => !product.flagship);

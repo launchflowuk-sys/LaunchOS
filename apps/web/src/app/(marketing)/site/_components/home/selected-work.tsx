@@ -1,0 +1,27 @@
+import { FEATURED_WORK } from "@/lib/marketing/work";
+import { Container, Lines, SectionHead } from "../primitives";
+import { WorkCard } from "../work-card";
+
+/** 01 / SELECTED WORK — three featured projects from the data file. */
+export function SelectedWork({ href }: { href: (path: string) => string }) {
+  const items = FEATURED_WORK.slice(0, 3);
+  return (
+    <section aria-labelledby="work-title" className="py-20 sm:py-28">
+      <Container>
+        <SectionHead
+          id="work-title"
+          index="01"
+          eyebrow="Selected work"
+          title={<Lines first="Good things," second="built for real people." />}
+          aside="Every project here is a real business — a taxi firm, a groomer, a salon — with a brief you can read and a live site you can visit."
+          link={{ label: "See all projects", href: href("/work") }}
+        />
+        <div className="mt-14 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {items.map((item) => (
+            <WorkCard key={item.slug} item={item} href={href(`/work/${item.slug}`)} />
+          ))}
+        </div>
+      </Container>
+    </section>
+  );
+}

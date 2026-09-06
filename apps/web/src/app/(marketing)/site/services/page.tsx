@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { Check } from "lucide-react";
 import { marketingLinks } from "@/lib/marketing/links";
 import { SERVICES } from "@/lib/marketing/services";
-import { CtaBand, PageIntro } from "../_components/primitives";
+import { CtaBlock } from "../_components/cta-block";
+import { Container, Lines, SectionHead } from "../_components/primitives";
 
 export const metadata: Metadata = {
   title: "Services",
@@ -17,48 +17,46 @@ export default async function ServicesPage() {
 
   return (
     <>
-      <PageIntro
-        title="One team for the whole job."
-        lede="From the first sketch to the servers it runs on. You deal with one person, and that person has built and hosted everything on this page."
-      />
+      <Container className="pt-14 pb-16 sm:pt-20 sm:pb-20">
+        <SectionHead
+          level={1}
+          index="02"
+          eyebrow="What we do"
+          title={<Lines first="Every piece." second="One partner." />}
+          aside="From the first sketch to the servers it runs on. You deal with one person, and that person has built and hosted everything on this page."
+        />
+      </Container>
 
-      <div className="border-t">
-        {SERVICES.map((service, index) => (
-          <section
-            key={service.slug}
-            id={service.slug}
-            className={index % 2 === 1 ? "bg-background" : undefined}
-            aria-labelledby={`${service.slug}-title`}
-          >
-            <div className="mx-auto grid w-full max-w-6xl gap-6 px-4 py-12 sm:px-6 sm:py-16 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-12">
-              <div>
-                <p className="text-meta font-semibold tabular-nums text-primary">{String(index + 1).padStart(2, "0")}</p>
-                <h2 id={`${service.slug}-title`} className="display mt-2 text-2xl sm:text-3xl">
-                  {service.name}
-                </h2>
-                <p className="lede mt-3 text-base text-muted-foreground sm:text-lg">{service.summary}</p>
+      <Container className="pb-20 sm:pb-28">
+        <ol className="border-t border-[var(--line)]">
+          {SERVICES.map((service, index) => (
+            <li key={service.slug} id={service.slug} className="grid gap-6 border-b border-[var(--line)] py-12 sm:py-14 lg:grid-cols-12 lg:gap-12" data-reveal>
+              <div className="lg:col-span-5">
+                <p className="eyebrow eyebrow-index">
+                  <b>{String(index + 1).padStart(2, "0")}</b>
+                </p>
+                <h2 className="h-sub mt-3">{service.name}</h2>
+                <p className="lede mt-3">{service.summary}</p>
               </div>
-              <div>
-                <p className="text-base leading-relaxed">{service.detail}</p>
-                <ul className="mt-6 grid gap-2.5 sm:grid-cols-2">
+              <div className="lg:col-span-7">
+                <p className="body max-w-[60ch] text-[1.0625rem] leading-relaxed">{service.detail}</p>
+                <ul className="mt-6 flex flex-wrap gap-2">
                   {service.points.map((point) => (
-                    <li key={point} className="flex items-start gap-2.5 text-sm">
-                      <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" strokeWidth={2.25} />
-                      <span>{point}</span>
+                    <li key={point} className="chip">
+                      {point}
                     </li>
                   ))}
                 </ul>
               </div>
-            </div>
-          </section>
-        ))}
-      </div>
+            </li>
+          ))}
+        </ol>
+      </Container>
 
-      <CtaBand
-        title="Not sure which of these you need?"
-        lede="Most people are not. Tell us the problem and we will tell you the smallest thing that fixes it."
-        primary={{ label: "Talk to us", href: href("/contact") }}
-        secondary={{ label: "See pricing", href: href("/pricing") }}
+      <CtaBlock
+        title={<Lines first="Not sure which" second="of these you need?" />}
+        body="Most people are not. Tell us the problem and we will tell you the smallest thing that fixes it."
+        primary={{ label: "Tell us what you need", href: href("/contact") }}
       />
     </>
   );

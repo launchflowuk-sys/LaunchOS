@@ -1,27 +1,444 @@
-/* Marketing-only styles. The app body is 14px by design (DESIGN.md: a control
-   room read at arm's length); a public page is read once by a stranger, so
-   the marketing wrapper resets to 16px and gives display headings the tighter
-   tracking the small scale never needs. Everything else — fonts, colours,
-   radii, focus, reduced motion — comes from `globals.css` untouched. */
+/* The public site's own system. Scoped under `.marketing` so the admin and
+   portal shells never see it. The shadcn tokens are re-pointed here, so the
+   few shared components a public page uses (Input, Button, InlineAlert) take
+   the ink-and-blue palette without a class at every call site.
+
+   Palette: ink #141B29 (text, the dark section, the primary button), blue
+   #0969CA (the one accent: highlighted word, eyebrows, the CTA panel),
+   muted #606B7C / #4D5C70, hairlines #E3E7ED, blue tints #EDF5FB / #EAF1FA,
+   page white, off-white section #F5F7FA. No purple, no gradients. */
 
 .marketing {
+  --ink: #141b29;
+  --ink-2: #1f2839;
+  --blue: #0969ca;
+  --blue-deep: #0757a8;
+  --mute: #606b7c;
+  --mute-2: #4d5c70;
+  --line: #e3e7ed;
+  --tint: #edf5fb;
+  --tint-2: #eaf1fa;
+  --fill: #f2f7fc;
+  --off: #f5f7fa;
+  --paper: #ffffff;
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: var(--paper);
+  --card-foreground: var(--ink);
+  --primary: var(--blue);
+  --primary-foreground: #ffffff;
+  --primary-soft: var(--tint);
+  --secondary: var(--off);
+  --secondary-foreground: var(--ink);
+  --muted: var(--off);
+  --muted-foreground: var(--mute);
+  --accent: var(--tint-2);
+  --accent-foreground: var(--ink);
+  --border: var(--line);
+  --input: var(--line);
+  --ring: var(--blue);
+  --radius: 0.75rem;
+
+  font-family: var(--font-geist-sans), Inter, system-ui, sans-serif;
   font-size: 1rem;
   line-height: 1.6;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
 }
 
-.marketing .display {
-  font-weight: 600;
-  letter-spacing: -0.025em;
+/* ---- Type ------------------------------------------------------------- */
+
+.marketing .h-display {
+  font-size: clamp(2.75rem, 1.35rem + 5.6vw, 5.4375rem);
+  font-weight: 570;
+  letter-spacing: -0.06em;
+  line-height: 1.02;
+  text-wrap: balance;
+}
+.marketing .h-page {
+  font-size: clamp(2.5rem, 1.4rem + 4vw, 4.5rem);
+  font-weight: 540;
+  letter-spacing: -0.05em;
+  line-height: 1.04;
+  text-wrap: balance;
+}
+.marketing .h-section {
+  font-size: clamp(2.125rem, 1.2rem + 3vw, 3.5rem);
+  font-weight: 500;
+  letter-spacing: -0.04em;
   line-height: 1.05;
   text-wrap: balance;
 }
-
+.marketing .h-sub {
+  font-size: clamp(1.5rem, 1.1rem + 1.4vw, 2.125rem);
+  font-weight: 520;
+  letter-spacing: -0.03em;
+  line-height: 1.12;
+  text-wrap: balance;
+}
+.marketing .h-card {
+  font-size: 1.25rem;
+  font-weight: 560;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.marketing .h-line {
+  font-size: 1.0625rem;
+  font-weight: 560;
+  letter-spacing: -0.01em;
+}
+.marketing .accent {
+  color: var(--blue);
+}
+.marketing .quiet {
+  color: var(--mute-2);
+}
+.marketing .muted {
+  color: var(--mute);
+}
 .marketing .lede {
+  font-size: 1.0625rem;
+  line-height: 1.6;
+  color: var(--mute);
+  max-width: 52ch;
   text-wrap: pretty;
 }
+.marketing .body {
+  color: var(--mute-2);
+  text-wrap: pretty;
+}
+.marketing .eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--blue);
+  line-height: 1.2;
+}
+.marketing .eyebrow-line::before {
+  content: "";
+  width: 1.25rem;
+  height: 1px;
+  background: currentColor;
+  flex: none;
+}
+.marketing .eyebrow-index {
+  color: var(--mute);
+}
+.marketing .eyebrow-index b {
+  font-weight: 600;
+  color: var(--blue);
+}
+.marketing .figure {
+  font-size: clamp(3rem, 2rem + 4vw, 5rem);
+  font-weight: 540;
+  letter-spacing: -0.05em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.marketing .tabular {
+  font-variant-numeric: tabular-nums;
+}
 
-/* The mobile menu is a native disclosure: no script, works before hydration.
-   The marker is replaced by the label's own icon. */
+/* ---- Buttons and links ------------------------------------------------ */
+
+.marketing .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0 1.375rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 540;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 0.25s var(--ease),
+    background-color 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+.marketing .btn:hover {
+  transform: translateY(-2px);
+}
+.marketing .btn:disabled,
+.marketing .btn[aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.marketing .btn-ink {
+  background: var(--ink);
+  color: #fff;
+}
+.marketing .btn-ink:hover {
+  background: var(--ink-2);
+}
+.marketing .btn-blue {
+  background: var(--blue);
+  color: #fff;
+}
+.marketing .btn-blue:hover {
+  background: var(--blue-deep);
+}
+.marketing .btn-white {
+  background: #fff;
+  color: var(--ink);
+  border-color: var(--line);
+}
+.marketing .btn-white:hover {
+  background: var(--fill);
+  border-color: #cfd7e1;
+}
+.marketing .btn-white-solid {
+  background: #fff;
+  color: var(--ink);
+}
+.marketing .btn-white-solid:hover {
+  background: var(--tint);
+}
+.marketing .btn-lg {
+  min-height: 3.25rem;
+  padding: 0 1.75rem;
+  font-size: 1rem;
+}
+.marketing .btn-block {
+  width: 100%;
+}
+.marketing .arrow {
+  display: inline-block;
+  transition: transform 0.25s var(--ease);
+}
+.marketing .btn:hover .arrow,
+.marketing .tlink:hover .arrow,
+.marketing .tilt:hover .arrow {
+  transform: translate(3px, -1px);
+}
+.marketing .tlink {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 540;
+  color: var(--ink);
+  transition: color 0.2s;
+}
+.marketing .tlink:hover {
+  color: var(--blue);
+}
+.marketing .tlink-quiet {
+  color: var(--mute-2);
+}
+.marketing .tlink-white,
+.marketing .tlink-white:hover {
+  color: #fff;
+}
+.marketing .tlink-white:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.marketing .link-blue {
+  color: var(--blue);
+  font-weight: 520;
+}
+.marketing .link-blue:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* ---- Surfaces --------------------------------------------------------- */
+
+.marketing .card {
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--paper);
+}
+.marketing .card-hover {
+  transition:
+    background-color 0.25s,
+    border-color 0.25s;
+}
+.marketing .card-hover:hover {
+  background: var(--fill);
+  border-color: #cfd7e1;
+}
+.marketing .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 0.75rem;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  color: var(--mute-2);
+  line-height: 1.2;
+}
+.marketing .pill-live {
+  border-color: #c9e6d5;
+  background: #eefbf3;
+  color: #1d6b43;
+}
+.marketing .pill-live::before {
+  content: "";
+  width: 0.375rem;
+  height: 0.375rem;
+  border-radius: 999px;
+  background: #22a35c;
+}
+.marketing .pill-tint {
+  background: var(--tint);
+  border-color: transparent;
+  color: var(--blue-deep);
+}
+.marketing .chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--tint);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.marketing .hairline {
+  border-top: 1px solid var(--line);
+}
+.marketing .section-off {
+  background: var(--off);
+}
+.marketing .section-ink {
+  background: var(--ink);
+  color: #fff;
+}
+.marketing .section-ink .h-section,
+.marketing .section-ink .h-sub {
+  color: #fff;
+}
+.marketing .section-ink .body,
+.marketing .section-ink .lede {
+  color: #aab3c1;
+}
+.marketing .section-ink :focus-visible,
+.marketing .cta-panel :focus-visible {
+  outline-color: #fff;
+}
+.marketing .section-ink .chip {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+.marketing .section-ink .eyebrow-index {
+  color: #8e98a8;
+}
+.marketing .section-ink .eyebrow-index b {
+  color: #6fb3f2;
+}
+
+/* A screenshot in a frame: the image is the thing, the frame a hint of a
+   window. `aspect-ratio` reserves the space so nothing jumps on load. */
+.marketing .shot {
+  position: relative;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  background: var(--tint);
+}
+.marketing .shot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  transition: transform 0.5s var(--ease);
+}
+.marketing .shot-mobile {
+  aspect-ratio: 390 / 844;
+  max-width: 16rem;
+}
+.marketing .shot-inner {
+  padding: 0.5rem;
+  border-radius: 1rem;
+  background: var(--tint);
+  border: 1px solid var(--line);
+}
+.marketing .shot-inner .shot {
+  border-color: #d9e5f0;
+}
+.marketing .tilt:hover .shot img,
+.marketing .tilt:focus-visible .shot img {
+  transform: rotate(-2deg) translate(-4px, -3px) scale(1.04);
+}
+.marketing .shot-chip {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(20, 27, 41, 0.08);
+}
+.marketing .shot-placeholder {
+  display: flex;
+  align-items: flex-end;
+  padding: 1.25rem;
+}
+
+/* ---- Header ----------------------------------------------------------- */
+
+.marketing .site-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--line);
+}
+.marketing .nav-link {
+  position: relative;
+  display: inline-block;
+  padding: 0.5rem 0.125rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: var(--mute-2);
+  transition: color 0.2s;
+}
+.marketing .nav-link::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.2rem;
+  height: 1.5px;
+  background: var(--ink);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.3s var(--ease);
+}
+.marketing .nav-link:hover {
+  color: var(--ink);
+}
+.marketing .nav-link:hover::after {
+  transform: scaleX(1);
+}
+
+/* The mobile menu is a native disclosure: no script, works before hydration. */
 .marketing details.site-menu > summary {
   list-style: none;
 }
@@ -33,22 +450,97 @@
   display: none;
 }
 
-/* A screenshot in a thin frame: the image is the thing, the frame is a hint
-   of a window. `aspect-ratio` reserves the space so nothing jumps on load. */
-.marketing .shot {
-  aspect-ratio: 16 / 10;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--primary-soft);
+/* ---- Accordion (the services rows on the ink section) ------------------ */
+
+.marketing .acc-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
 }
-.marketing .shot img {
+.marketing .acc-row:last-child {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+.marketing .acc-btn {
+  display: flex;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: top;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.125rem 0;
+  color: #fff;
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
 }
-.marketing .shot-mobile {
-  aspect-ratio: 390 / 844;
-  max-width: 16rem;
+.marketing .acc-num {
+  flex: none;
+  width: 1.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+.marketing .acc-title {
+  font-size: 1.1875rem;
+  font-weight: 520;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+}
+.marketing .acc-plus {
+  flex: none;
+  margin-left: auto;
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  transition:
+    transform 0.35s var(--ease),
+    background-color 0.2s;
+}
+.marketing .acc-btn:hover .acc-plus {
+  background: rgba(255, 255, 255, 0.08);
+}
+.marketing .acc-btn[aria-expanded="true"] .acc-plus {
+  transform: rotate(45deg);
+}
+.marketing .acc-panel {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.4s var(--ease);
+}
+.marketing .acc-panel[data-open] {
+  grid-template-rows: 1fr;
+}
+.marketing .acc-panel > div {
+  overflow: hidden;
+}
+.marketing .acc-body {
+  padding: 0 0 1.5rem 2.5rem;
+  max-width: 52ch;
+  color: #aab3c1;
+  font-size: 0.9375rem;
+}
+
+/* ---- Forms on public pages -------------------------------------------- */
+
+.marketing .field {
+  height: 2.875rem;
+  border-radius: 0.75rem;
+  background: var(--paper);
+  font-size: 1rem;
+}
+.marketing textarea.field {
+  height: auto;
+  min-height: 9rem;
+  padding-top: 0.75rem;
+}
+
+/* ---- Small helpers ---------------------------------------------------- */
+
+.marketing .measure {
+  max-width: 62ch;
+}
+.marketing ::selection {
+  background: var(--tint-2);
+  color: var(--ink);
 }

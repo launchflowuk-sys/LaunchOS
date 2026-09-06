@@ -1,82 +1,81 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/brand-mark";
 import { marketingLinks } from "@/lib/marketing/links";
-import { PRODUCTS } from "@/lib/marketing/products";
-import { CONTACT_EMAIL, CONTACT_PHONE, LOCATION, NAV } from "@/lib/marketing/site";
+import { CONTACT_EMAIL, FOOTER_LINE, LOCATION } from "@/lib/marketing/site";
+import { Arrow, Container } from "./primitives";
 
-const COMPANY = [...NAV, { label: "Contact", path: "/contact" }, { label: "Privacy", path: "/privacy" }] as const;
+const COLUMNS = [
+  [
+    { label: "Our work", path: "/work" },
+    { label: "Our products", path: "/products" },
+    { label: "Pricing", path: "/pricing" },
+  ],
+  [
+    { label: "What we do", path: "/services" },
+    { label: "About us", path: "/about" },
+    { label: "Get in touch", path: "/contact" },
+  ],
+] as const;
 
 export async function SiteFooter() {
   const { href, portalSignIn } = await marketingLinks();
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t bg-background">
-      <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
-          <div className="sm:col-span-2 lg:col-span-1">
-            <BrandMark width={128} />
-            <p className="mt-4 max-w-xs text-sm text-muted-foreground">
-              Web applications, mobile apps, websites and hosting for local businesses. Built and hosted in-house in {LOCATION}.
-            </p>
+    <footer className="hairline bg-white">
+      <Container className="py-14 sm:py-16">
+        <div className="grid gap-12 lg:grid-cols-12">
+          <div className="lg:col-span-5">
+            <BrandMark width={132} />
+            <p className="lede mt-5 max-w-[30ch]">{FOOTER_LINE}</p>
           </div>
 
-          <FooterList title="Company">
-            {COMPANY.map((item) => (
-              <li key={item.path}>
-                <Link href={href(item.path)} className="hover:text-foreground hover:underline">
-                  {item.label}
-                </Link>
-              </li>
-            ))}
-          </FooterList>
+          {COLUMNS.map((column, index) => (
+            <nav key={index} aria-label={index === 0 ? "Explore" : "Company"} className="lg:col-span-2">
+              <ul className="space-y-3">
+                {column.map((item) => (
+                  <li key={item.path}>
+                    <Link href={href(item.path)} className="tlink tlink-quiet text-[0.9375rem]">
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
 
-          <FooterList title="Products">
-            {PRODUCTS.map((product) => (
-              <li key={product.slug}>
-                <a href={product.url} className="hover:text-foreground hover:underline" rel="noopener">
-                  {product.name}
-                </a>
-              </li>
-            ))}
-          </FooterList>
-
-          <FooterList title="Get in touch">
-            <li>
-              <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-foreground hover:underline">
+          <div className="space-y-3 text-[0.9375rem] lg:col-span-3">
+            <p>
+              <a href={`mailto:${CONTACT_EMAIL}`} className="tlink">
                 {CONTACT_EMAIL}
               </a>
-            </li>
-            {CONTACT_PHONE ? (
-              <li>
-                <a href={`tel:${CONTACT_PHONE.replace(/\s+/g, "")}`} className="hover:text-foreground hover:underline">
-                  {CONTACT_PHONE}
-                </a>
-              </li>
-            ) : null}
-            <li>{LOCATION}</li>
-            <li className="pt-2">
-              <a href={portalSignIn} className="font-medium text-primary hover:underline">
-                Client portal login
+            </p>
+            <p className="muted">{LOCATION}, United Kingdom</p>
+            <p>
+              <a href={portalSignIn} className="tlink">
+                Client portal
+                <Arrow />
               </a>
-            </li>
-          </FooterList>
+            </p>
+          </div>
         </div>
 
-        <div className="mt-12 flex flex-col gap-2 border-t pt-6 text-meta text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {year} LaunchFlow. All rights reserved.</p>
-          <p>Powered by LaunchFlow</p>
+        <div className="mt-14 flex flex-col gap-3 border-t border-[var(--line)] pt-6 text-sm text-[var(--mute)] sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            © {year} LaunchFlow
+            <span aria-hidden className="mx-2">
+              ·
+            </span>
+            <Link href={href("/privacy")} className="hover:text-[var(--ink)]">
+              Privacy policy
+            </Link>
+          </p>
+          <a href="#top" className="tlink tlink-quiet text-sm">
+            Back to top
+            <Arrow />
+          </a>
         </div>
-      </div>
+      </Container>
     </footer>
-  );
-}
-
-function FooterList({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h2 className="label-caps text-muted-foreground">{title}</h2>
-      <ul className="mt-4 space-y-2.5 text-sm text-muted-foreground">{children}</ul>
-    </div>
   );
 }

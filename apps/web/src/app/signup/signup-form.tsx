@@ -34,8 +34,8 @@ export function SignupForm({ packages, initialSlug }: { packages: readonly Signu
 
   return (
     <form action={formAction} aria-label="Sign up" className="space-y-6">
-      <fieldset>
-        <legend className="mb-3 text-base font-semibold">1. Choose your package</legend>
+      <fieldset className="min-w-0">
+        <legend className="h-line mb-4">1. Choose your package</legend>
         <div className="grid gap-3 sm:grid-cols-2">
           {packages.map((pkg) => {
             const selected = pkg.slug === slug;
@@ -43,8 +43,8 @@ export function SignupForm({ packages, initialSlug }: { packages: readonly Signu
               <label
                 key={pkg.slug}
                 className={cn(
-                  "flex cursor-pointer flex-col rounded-xl border bg-card p-4 shadow-sm transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
-                  selected ? "border-primary ring-2 ring-primary/30" : "hover:border-muted-foreground/40",
+                  "card flex cursor-pointer flex-col p-5 transition-colors has-focus-visible:ring-3 has-focus-visible:ring-ring/50",
+                  selected ? "border-[var(--ink)] ring-1 ring-[var(--ink)]" : "hover:bg-[var(--fill)]",
                 )}
               >
                 <input
@@ -56,7 +56,7 @@ export function SignupForm({ packages, initialSlug }: { packages: readonly Signu
                   className="sr-only"
                 />
                 <span className="flex items-start justify-between gap-3">
-                  <span className="text-base font-semibold">{pkg.name}</span>
+                  <span className="h-line">{pkg.name}</span>
                   <span className="text-base font-semibold tabular-nums">
                     {pkg.monthlyPrice}
                     <span className="text-meta font-normal text-muted-foreground"> / month</span>
@@ -83,25 +83,29 @@ export function SignupForm({ packages, initialSlug }: { packages: readonly Signu
         </div>
       </fieldset>
 
-      <fieldset className="rounded-xl border bg-card p-5 shadow-sm sm:p-6">
-        <legend className="px-1 text-base font-semibold">2. Your details</legend>
-        <div className="mt-2 grid gap-4 sm:grid-cols-2">
+      <fieldset className="card min-w-0 p-6 sm:p-7">
+        {/* The legend names the group for assistive tech; the visible heading sits inside the card so the fields keep a normal flow. */}
+        <legend className="sr-only">2. Your details</legend>
+        <p className="h-line mb-4" aria-hidden>
+          2. Your details
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label htmlFor="signup-name">Your name</Label>
-            <Input id="signup-name" name="name" autoComplete="name" required maxLength={120} className="h-11 bg-card text-base" />
+            <Input id="signup-name" name="name" autoComplete="name" required maxLength={120} className="field" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="signup-business">Business name</Label>
-            <Input id="signup-business" name="business" autoComplete="organization" required maxLength={200} className="h-11 bg-card text-base" />
+            <Input id="signup-business" name="business" autoComplete="organization" required maxLength={200} className="field" />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="signup-email">Email</Label>
-            <Input id="signup-email" name="email" type="email" inputMode="email" autoComplete="email" required maxLength={320} className="h-11 bg-card text-base" />
+            <Input id="signup-email" name="email" type="email" inputMode="email" autoComplete="email" required maxLength={320} className="field" />
             <p className="text-meta text-muted-foreground">Your portal login goes here.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="signup-phone">Phone (optional)</Label>
-            <Input id="signup-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" maxLength={40} className="h-11 bg-card text-base" />
+            <Input id="signup-phone" name="phone" type="tel" inputMode="tel" autoComplete="tel" maxLength={40} className="field" />
           </div>
         </div>
 
@@ -111,7 +115,7 @@ export function SignupForm({ packages, initialSlug }: { packages: readonly Signu
           </InlineAlert>
         ) : null}
 
-        <Button type="submit" size="lg" loading={pending} disabled={!chosen} className="mt-5 w-full">
+        <Button type="submit" size="lg" loading={pending} disabled={!chosen} className="btn btn-ink mt-6 w-full">
           {chosen?.online === false ? "Sign up — invoice me" : "Continue to payment"}
         </Button>
         <p className="mt-3 text-center text-meta text-muted-foreground">

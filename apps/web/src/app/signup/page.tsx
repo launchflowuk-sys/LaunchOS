@@ -1,5 +1,6 @@
 import { listPackages } from "@launchos/core";
 import type { PackageIncludes } from "@launchos/db/schema";
+import type { Metadata } from "next";
 import { AttributionCapture } from "@/components/attribution-capture";
 import { InlineAlert } from "@/components/inline-alert";
 import { getDb } from "@/lib/db";
@@ -13,6 +14,12 @@ import { SignupShell } from "./signup-shell";
 // `(admin)` and `(portal)` groups, so neither shell's `require*` runs here —
 // the same way `/sign-in` is public.
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Sign up — LaunchFlow",
+  description: "Pick a package, tell us who you are, and your portal login arrives by email.",
+  robots: { index: false, follow: false },
+};
 
 /** What the package gives you, as a short list a buyer can read in a glance. */
 function includesLines(includes: PackageIncludes): string[] {

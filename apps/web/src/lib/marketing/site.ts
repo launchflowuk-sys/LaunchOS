@@ -17,11 +17,15 @@ export const REPLY_PROMISE = "Shoji will reply within one working day.";
 
 export const NAV = [
   { label: "Work", path: "/work" },
-  { label: "Products", path: "/products" },
   { label: "Services", path: "/services" },
-  { label: "Pricing", path: "/pricing" },
+  { label: "Products", path: "/products" },
   { label: "About", path: "/about" },
+  { label: "Pricing", path: "/pricing" },
 ] as const;
+
+/** The line under the wordmark in the footer, and the studio's one-sentence promise. */
+export const FOOTER_LINE = "Thoughtful design. Useful software. A partner for the long run.";
+export const STUDIO_EYEBROW = "Independent digital studio · Essex, UK";
 
 /** Every indexable marketing path, for the sitemap; work briefs are added from the data file. */
 export const STATIC_PATHS = ["/", "/work", "/products", "/services", "/pricing", "/about", "/contact", "/privacy"] as const;

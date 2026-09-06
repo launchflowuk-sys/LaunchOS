@@ -6,6 +6,7 @@ import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marke
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
 import "./marketing.css";
+import "./motion.css";
 
 /**
  * The public site's frame. It sits at `(marketing)/site/layout.tsx` rather
@@ -31,7 +32,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function MarketingLayout({ children }: LayoutProps<"/site">) {
   return (
-    <div className="marketing flex min-h-screen flex-1 flex-col bg-card text-foreground">
+    <div id="top" className="marketing flex min-h-screen flex-1 flex-col">
+      {/* Scroll reveals start hidden and are shown by `motion-root.tsx`; a page
+          with no script must still read. */}
+      <noscript>
+        <style>{`.marketing [data-reveal]{opacity:1;transform:none}`}</style>
+      </noscript>
       {/* The campaign cookie: written once, on the first page a paid or
           referred visitor lands on, and read back by the contact form. */}
       <AttributionCapture ownHosts={[marketingHost(), appHost()]} />

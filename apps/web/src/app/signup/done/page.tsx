@@ -1,5 +1,6 @@
 import { createEmailAdapter } from "@launchos/channels";
 import { completeSignup, SignupRefused } from "@launchos/core";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { z } from "zod";
 import { InlineAlert, type InlineAlertTone } from "@/components/inline-alert";
@@ -11,6 +12,11 @@ import { installWebEnqueue } from "@/lib/queue";
 import { SignupShell } from "../signup-shell";
 
 export const dynamic = "force-dynamic";
+
+export const metadata: Metadata = {
+  title: "Welcome to LaunchFlow",
+  robots: { index: false, follow: false },
+};
 
 type Outcome = { tone: InlineAlertTone; title: string; body: string; done: boolean };
 
@@ -88,11 +94,11 @@ export default async function SignupDonePage({ searchParams }: PageProps<"/signu
       </InlineAlert>
       <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
         {outcome.done ? (
-          <Button asChild size="lg">
+          <Button asChild size="lg" className="btn btn-ink">
             <Link href="/sign-in">Go to sign in</Link>
           </Button>
         ) : (
-          <Button asChild size="lg" variant="secondary">
+          <Button asChild size="lg" variant="secondary" className="btn btn-white">
             <Link href="/signup">Back to sign-up</Link>
           </Button>
         )}
