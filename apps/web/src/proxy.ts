@@ -40,5 +40,10 @@ export const config = {
   // Never the app's own paths or a file with an extension — the same list
   // `marketingRewriteTarget` applies, repeated here as a constant because a
   // matcher must be statically analysable and cannot call a function.
-  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|book|.*\\..*).*)"],
+  //
+  // `p/` carries its slash on purpose: a bare `p` would exclude `/pricing`
+  // from the proxy and take the marketing pricing page off the marketing
+  // host. Bare `/p` is left in, and `marketingRewriteTarget` passes it
+  // through anyway — the matcher is a short-circuit, not the rule.
+  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|book|p/|.*\\..*).*)"],
 };

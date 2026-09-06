@@ -11,6 +11,8 @@ import {
   decideApproval,
   INVOICE_SEND_ACTION,
   LEAD_REPLY_ACTION,
+  PROPOSAL_SEND_ACTION,
+  ProposalSendPayload,
   recordAudit,
   sendApprovedInvoice,
   SUBSCRIPTION_CHANGE_ACTION,
@@ -21,6 +23,7 @@ import { getDb } from "@/lib/db";
 import { env } from "@/lib/env";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requirePermission } from "@/lib/permissions";
+import { queueProposalSendDecision } from "../proposals/send-queue";
 
 /** Each admin module declares its own `ActionResult` with this shape. */
 export type ActionResult = { status: "ok" } | { status: "error"; message: string };
@@ -212,6 +215,27 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
         });
         revalidatePath("/leads");
         revalidatePath(`/leads/${applied.leadId}`);
+      } else if (payload.success && payload.data.action === PROPOSAL_SEND_ACTION) {
+        // The Proposal Drafter's finished draft asking to go to the client.
+        // Both verdicts are queued for the worker rather than carried out
+        // here: approving renders a PDF, and Chromium lives only in the
+        // worker's image. `applyProposalSendDecision` is at-most-once through
+        // its own stamp, and the worker's two-minute sweep picks up any
+        // decision whose job never arrived — so a lost enqueue is a late
+        // send, never a silent one. That is why the throw below is logged
+        // and swallowed: the decision is already committed and final.
+        const proposal = ProposalSendPayload.safeParse(before.payload);
+        if (!proposal.success) throw new Error("That request does not name a proposal.");
+        await queueProposalSendDecision(session.organisationId, approvalId, proposal.data.proposalId, session.userId).catch(
+          (err: unknown) => {
+            console.error("proposals.send could not be queued; the proposal send sweep will pick it up", {
+              approvalId,
+              err: err instanceof Error ? err.message : String(err),
+            });
+          },
+        );
+        revalidatePath("/proposals");
+        revalidatePath(`/proposals/${proposal.data.proposalId}`);
       } else if (status === "approved" && payload.success && payload.data.action === INVOICE_SEND_ACTION) {
         const { invoiceId } = await sendApprovedInvoice(
           getDb(),

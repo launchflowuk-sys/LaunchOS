@@ -7,6 +7,7 @@ import {
   ChartLine,
   Clock,
   CreditCard,
+  FileSignature,
   Globe,
   HeartPulse,
   Inbox,
@@ -76,6 +77,12 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // the join link. After Leads because that is where most of them come
       // from; the only nav entry the client-workflow work adds.
       { label: "Meetings", href: "/meetings", icon: CalendarClock },
+      // The priced offer that follows the call. It sits after Meetings rather
+      // than immediately after Leads because that is the order the work
+      // happens in — enquiry, call, proposal — and it is gated on `billing`
+      // because a proposal is a price and a subscription in waiting, the same
+      // area as Invoices and Packages. Staff hold `billing` by default.
+      { label: "Proposals", href: "/proposals", icon: FileSignature, permission: "billing" },
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },

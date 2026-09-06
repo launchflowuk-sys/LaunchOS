@@ -9,6 +9,9 @@ const NAV: readonly PortalTab[] = [
   { label: "Domains", href: "/portal/domains" },
   { label: "Progress", href: "/portal/tasks" },
   { label: "Support", href: "/portal/support" },
+  // What we quoted and what they signed. Before Invoices because that is the
+  // order it happens in: a proposal is agreed, then it is billed.
+  { label: "Proposals", href: "/portal/proposals" },
   { label: "Invoices", href: "/portal/invoices" },
   { label: "Plan", href: "/portal/plan" },
   { label: "Content", href: "/portal/content" },

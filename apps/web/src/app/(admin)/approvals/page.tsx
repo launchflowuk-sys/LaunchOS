@@ -20,6 +20,7 @@ import { ContentPublishRequest } from "./content-publish-card";
 import { ContentReportSendRequest } from "./content-report-send-card";
 import { DecisionForm } from "./decision-form";
 import { LeadReplyRequest } from "./lead-reply-card";
+import { ProposalSendRequest } from "./proposal-send-card";
 
 export const dynamic = "force-dynamic";
 
@@ -128,6 +129,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
   const isSubscriptionChange = approval.kind === "subscription_change";
   const isContentPublish = approval.kind === "content_publish";
   const isContentReportSend = approval.kind === "content_report_send";
+  const isProposalSend = approval.kind === "proposal_send";
   // The drafted reply carries its own Approve/Reject: the edited body has to
   // travel with the verdict, so the generic pair below is not drawn for it.
   const isLeadReply = approval.kind === "lead_reply";
@@ -150,6 +152,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         {isContentPublish ? <ContentPublishRequest approval={approval} /> : null}
         {isContentReportSend ? <ContentReportSendRequest approval={approval} /> : null}
         {isLeadReply ? <LeadReplyRequest approval={approval} /> : null}
+        {isProposalSend ? <ProposalSendRequest approval={approval} /> : null}
 
         {description ? (
           <InlineAlert tone="warning" title="What approving does">
