@@ -27,6 +27,7 @@
 import { ADS_ENV_KEYS } from "./ads/index.js";
 import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
 import { ZOOM_ENV_KEYS } from "./meetings/index.js";
+import { IMAGEGEN_ADAPTER_NAMES, IMAGEGEN_ADAPTER_VARIABLE, IMAGEGEN_ENV_KEYS } from "./imagegen/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -77,6 +78,9 @@ export interface AdapterEnv {
   readonly ZOOM_ACCOUNT_ID?: string | undefined;
   readonly ZOOM_CLIENT_ID?: string | undefined;
   readonly ZOOM_CLIENT_SECRET?: string | undefined;
+  readonly IMAGEGEN_ADAPTER?: string | undefined;
+  readonly OPENAI_API_KEY?: string | undefined;
+  readonly FAL_KEY?: string | undefined;
   readonly NODE_ENV?: string | undefined;
   readonly ALLOW_MOCK_ADAPTERS?: string | undefined;
 }
@@ -251,6 +255,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "booked calls get a join link on meet.launchflow.example that opens nothing; no Zoom meeting is created",
+    },
+    {
+      name: "imagegen",
+      variable: IMAGEGEN_ADAPTER_VARIABLE,
+      ...resolveImageGen(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "AI post images are a flat blue placeholder; branded template graphics, which is what most posts use, are unaffected",
     },
   ];
 }
@@ -539,6 +551,35 @@ function resolveMeetings(env: AdapterEnv): SelectionOutcome {
     return { requested: "zoom", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
   }
   return { requested: "zoom", ...builds("zoom") };
+}
+
+/**
+ * `imagegen/index.ts` `createImageGenAdapterFromEnv`: the generator named by
+ * `IMAGEGEN_ADAPTER`, when its one key is non-blank after trimming; the mock
+ * otherwise. Unlike `resolveAds` and `resolveSocial`, a key on its own selects
+ * nothing — see the factory for why an `OPENAI_API_KEY` that turns up for some
+ * other reason must not start spending.
+ *
+ * Two downgrades are named rather than swallowed, and both are refused in
+ * production: a generator asked for with its key missing, and a value that is
+ * not one of the three names at all — `IMAGEGEN_ADAPTER=openapi` builds the
+ * mock in silence, and a typo that quietly turns AI mode off is exactly the
+ * kind of thing this module exists to catch. The constructors validate
+ * presence only, so there is no `UNBUILDABLE` branch; a wrong key fails at the
+ * first render, which falls back to a template.
+ */
+function resolveImageGen(env: AdapterEnv): SelectionOutcome {
+  const requested = trimmedOrUnset(env.IMAGEGEN_ADAPTER);
+  if (requested === undefined || requested === "mock") return { requested: "mock", ...builds("mock") };
+  if (requested !== "openai" && requested !== "fal") {
+    return {
+      requested,
+      ...builds("mock", `${IMAGEGEN_ADAPTER_VARIABLE} must be one of ${IMAGEGEN_ADAPTER_NAMES.join(", ")}.`),
+    };
+  }
+  const key = IMAGEGEN_ENV_KEYS[requested];
+  if (trimmedOrUnset(env[key]) === undefined) return { requested, ...builds("mock", `Missing: ${key}.`) };
+  return { requested, ...builds(requested) };
 }
 
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */

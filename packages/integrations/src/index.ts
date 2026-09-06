@@ -7,6 +7,7 @@ import { createDnsProvidersFromEnv } from "./dns/index.js";
 import { createCmsProviderFromEnv, type CmsProvider, type CmsProviderDeps } from "./cms/index.js";
 import { createSocialPublisherFromEnv, type SocialPublisher } from "./social/index.js";
 import { createMeetingsAdapterFromEnv, type MeetingsAdapter } from "./meetings/index.js";
+import { createImageGenAdapterFromEnv, type ImageGenAdapter } from "./imagegen/index.js";
 
 export * from "./uptime/index.js";
 export * from "./coolify/index.js";
@@ -17,6 +18,7 @@ export * from "./dns/index.js";
 export * from "./cms/index.js";
 export * from "./social/index.js";
 export * from "./meetings/index.js";
+export * from "./imagegen/index.js";
 export * from "./adapter-guard.js";
 
 export interface Integrations {
@@ -31,6 +33,8 @@ export interface Integrations {
   social: SocialPublisher;
   /** Zoom (Server-to-Server OAuth) behind the booking page, or the mock. */
   meetings: MeetingsAdapter;
+  /** AI post images, when a client's brief asks for photography. Branded templates need nothing from here. */
+  imagegen: ImageGenAdapter;
 }
 
 /**
@@ -76,5 +80,6 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     cms: createCmsProviderFromEnv(env, deps),
     social: createSocialPublisherFromEnv(env),
     meetings: createMeetingsAdapterFromEnv(env),
+    imagegen: createImageGenAdapterFromEnv(env),
   };
 }
