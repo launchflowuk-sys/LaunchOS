@@ -27,7 +27,7 @@ export const NAV = [
 export const FOOTER_LINE = "Thoughtful design. Useful software. A partner for the long run.";
 export const STUDIO_EYEBROW = "Independent digital studio · Essex, UK";
 
-/** Every indexable marketing path, for the sitemap; work briefs are added from the data file. */
+/** Every indexable marketing path, for the sitemap; work briefs are added from the published case studies. */
 export const STATIC_PATHS = ["/", "/work", "/products", "/services", "/pricing", "/about", "/contact", "/privacy"] as const;
 
 /** The image every page shares for link previews. 600×144, the wordmark. */

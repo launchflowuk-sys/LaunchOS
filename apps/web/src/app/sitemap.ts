@@ -3,7 +3,7 @@ import { headers } from "next/headers";
 import { marketingHost } from "@/lib/env";
 import { isMarketingHost, requestHost } from "@/lib/marketing/hosts";
 import { STATIC_PATHS } from "@/lib/marketing/site";
-import { WORK } from "@/lib/marketing/work";
+import { workItems } from "@/lib/marketing/portfolio";
 
 /** Newest first in the data file is not a rule; this is what the sitemap says changes. */
 const CHANGE: Record<string, MetadataRoute.Sitemap[number]["changeFrequency"]> = {
@@ -31,7 +31,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     changeFrequency: CHANGE[path] ?? "monthly",
     priority: path === "/" ? 1 : 0.7,
   }));
-  const briefs: MetadataRoute.Sitemap = WORK.map((item) => ({
+  const briefs: MetadataRoute.Sitemap = (await workItems()).map((item) => ({
     url: `${base}/work/${item.slug}`,
     changeFrequency: "monthly",
     priority: 0.6,

@@ -1,10 +1,10 @@
-import { FEATURED_WORK } from "@/lib/marketing/work";
+import { featuredWork } from "@/lib/marketing/portfolio";
 import { Container, Lines, SectionHead } from "../primitives";
 import { WorkCard } from "../work-card";
 
-/** 01 / SELECTED WORK — three featured projects from the data file. */
-export function SelectedWork({ href }: { href: (path: string) => string }) {
-  const items = FEATURED_WORK.slice(0, 3);
+/** 01 / SELECTED WORK — three featured projects, published rows only. */
+export async function SelectedWork({ href }: { href: (path: string) => string }) {
+  const items = (await featuredWork()).slice(0, 3);
   return (
     <section aria-labelledby="work-title" className="py-20 sm:py-28">
       <Container>

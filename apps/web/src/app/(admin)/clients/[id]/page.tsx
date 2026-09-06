@@ -16,6 +16,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { MeetingsStrip } from "../../meetings/meetings-strip";
 import { SubscriptionsSection } from "./billing/subscriptions-section";
+import { ClientWorkStrip } from "./client-work-strip";
 import { ClientDetailsForm } from "./client-details-form";
 import {
   AddContactForm, AddDomainForm, AddSiteForm, ArchiveClientButton, BillingForm, RemoveContactButton,
@@ -124,6 +125,8 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
     </Section>
 
     <MeetingsStrip organisationId={session.organisationId} clientId={client.id} />
+
+    <ClientWorkStrip organisationId={session.organisationId} clientId={client.id} />
 
     <Section title="Activity" description="Everything that has happened for this client, newest first.">
       {events.length === 0 ? (

@@ -1,5 +1,5 @@
 import Image from "next/image";
-import type { PoweredBy } from "@/lib/marketing/work";
+import type { PoweredBy } from "@/lib/marketing/portfolio";
 import { cn } from "@/lib/utils";
 
 /**

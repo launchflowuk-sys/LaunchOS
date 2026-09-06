@@ -9,6 +9,7 @@ import {
   CreditCard,
   FileSignature,
   Globe,
+  HardHat,
   HeartPulse,
   Inbox,
   LayoutDashboard,
@@ -25,6 +26,7 @@ import {
   ShieldCheck,
   SquareCheckBig,
   Sunrise,
+  Trophy,
   TriangleAlert,
   UserPlus,
   Users,
@@ -83,10 +85,20 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // because a proposal is a price and a subscription in waiting, the same
       // area as Invoices and Packages. Staff hold `billing` by default.
       { label: "Proposals", href: "/proposals", icon: FileSignature, permission: "billing" },
+      // The build an accepted proposal turns into. After Proposals for the
+      // same reason Proposals is after Meetings: enquiry, call, proposal,
+      // project is the order the work happens in. Ungated like Tasks — a
+      // project is delivery work and the permission vocabulary has no key for
+      // it.
+      { label: "Projects", href: "/projects", icon: HardHat },
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
       { label: "Content", href: "/content", icon: Newspaper, permission: "content" },
+      // The public portfolio. Gated on `content` beside the content calendar:
+      // both are copy that goes out under LaunchFlow's name, and publishing a
+      // case study puts a client's story on the marketing site.
+      { label: "Case studies", href: "/case-studies", icon: Trophy, permission: "content" },
     ],
   },
   {

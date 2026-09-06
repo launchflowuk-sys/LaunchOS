@@ -1,9 +1,10 @@
-import { FLAGSHIP_PRODUCTS, UPCOMING_PRODUCTS } from "@/lib/marketing/products";
-import { STATUS_LABEL } from "@/lib/marketing/work";
+import { flagshipProducts, STATUS_LABEL, upcomingProducts } from "@/lib/marketing/portfolio";
 import { Arrow, Container, Lines, Pill, SectionHead } from "../primitives";
 
 /** 03 / MADE BY LAUNCHFLOW — the four flagship products, then the four taking shape. */
-export function Products({ href }: { href: (path: string) => string }) {
+export async function Products({ href }: { href: (path: string) => string }) {
+  const [flagship, upcoming] = await Promise.all([flagshipProducts(), upcomingProducts()]);
+
   return (
     <section aria-labelledby="products-title" className="py-20 sm:py-28">
       <Container>
@@ -17,7 +18,7 @@ export function Products({ href }: { href: (path: string) => string }) {
         />
 
         <ul className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--line)] sm:grid-cols-2 lg:grid-cols-4">
-          {FLAGSHIP_PRODUCTS.map((product) => (
+          {flagship.map((product) => (
             <li key={product.slug} className="group flex flex-col bg-white p-6 transition-colors hover:bg-[var(--fill)]" data-reveal>
               <div className="flex items-center justify-between gap-3">
                 <p className="eyebrow">{product.category}</p>
@@ -34,13 +35,13 @@ export function Products({ href }: { href: (path: string) => string }) {
           ))}
         </ul>
 
-        {UPCOMING_PRODUCTS.length > 0 ? (
+        {upcoming.length > 0 ? (
           <div className="mt-14 grid gap-8 lg:grid-cols-12">
             <p className="eyebrow eyebrow-index lg:col-span-3" data-reveal>
               <span>Also taking shape</span>
             </p>
             <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:col-span-9 lg:grid-cols-4">
-              {UPCOMING_PRODUCTS.map((product) => (
+              {upcoming.map((product) => (
                 <li key={product.slug} className="border-t border-[var(--line)] pt-4" data-reveal>
                   <p className="h-line">{product.name}</p>
                   <p className="body mt-1 text-sm">{product.tagline}</p>

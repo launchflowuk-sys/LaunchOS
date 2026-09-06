@@ -3,19 +3,22 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marketingLinks } from "@/lib/marketing/links";
-import { findWork, STATUS_LABEL, WORK, WORK_SLUGS } from "@/lib/marketing/work";
+import { findWork, STATUS_LABEL, workItems } from "@/lib/marketing/portfolio";
 import { CtaBlock } from "../../_components/cta-block";
 import { PoweredByBadge } from "../../_components/powered-by";
 import { Arrow, Btn, Container, Eyebrow, Lines, Pill } from "../../_components/primitives";
 import { Shot } from "../../_components/shot";
 
-export function generateStaticParams(): { slug: string }[] {
-  return WORK_SLUGS.map((slug) => ({ slug }));
-}
-
+/**
+ * There is no `generateStaticParams`. The slugs live in the database now, and
+ * the route was never prerenderable anyway: the layout reads `headers()` to
+ * decide whether links carry the `/site` prefix, which opts the whole tree
+ * into dynamic rendering. The five-minute portfolio cache is what keeps it
+ * cheap, and a slug that is not a published story is `notFound()` below.
+ */
 export async function generateMetadata({ params }: PageProps<"/site/work/[slug]">): Promise<Metadata> {
   const { slug } = await params;
-  const item = findWork(slug);
+  const item = await findWork(slug);
   if (!item) return { title: "Not found" };
   return {
     title: item.name,
@@ -40,13 +43,13 @@ const SECTIONS = [
 /** The brief: the big screenshot first, then the four questions, the facts beside them, and the next project. */
 export default async function WorkDetailPage({ params }: PageProps<"/site/work/[slug]">) {
   const { slug } = await params;
-  const item = findWork(slug);
+  const [{ href }, work] = await Promise.all([marketingLinks(), workItems()]);
+  const item = work.find((entry) => entry.slug === slug);
   if (!item) notFound();
-  const { href } = await marketingLinks();
 
-  const index = WORK.findIndex((entry) => entry.slug === item.slug);
-  const previous = WORK[(index - 1 + WORK.length) % WORK.length]!;
-  const next = WORK[(index + 1) % WORK.length]!;
+  const index = work.findIndex((entry) => entry.slug === item.slug);
+  const previous = work[(index - 1 + work.length) % work.length]!;
+  const next = work[(index + 1) % work.length]!;
   const host = item.url ? new URL(item.url).host.replace(/^www\./, "") : null;
 
   return (

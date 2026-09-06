@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { STATUS_LABEL, type WorkItem } from "@/lib/marketing/work";
+import { STATUS_LABEL, type WorkItem } from "@/lib/marketing/portfolio";
 import { PoweredByBadge } from "./powered-by";
 import { Pill } from "./primitives";
 import { Shot } from "./shot";

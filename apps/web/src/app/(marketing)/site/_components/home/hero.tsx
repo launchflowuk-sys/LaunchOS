@@ -1,7 +1,7 @@
 import { ArrowUpRight, Check } from "lucide-react";
 import Image from "next/image";
 import { STUDIO_EYEBROW } from "@/lib/marketing/site";
-import { findWork } from "@/lib/marketing/work";
+import { findWork } from "@/lib/marketing/portfolio";
 import { Btn, Container, Eyebrow, TextLink } from "../primitives";
 
 /** A line break in the headline. */
@@ -83,13 +83,16 @@ export function Hero({ contactHref, workHref }: { contactHref: string; workHref:
   );
 }
 
-function HeroStack() {
+async function HeroStack() {
+  // Both briefs are resolved before the map: `findWork` reads the published
+  // rows now, and a `.map` cannot await.
+  const layers = await Promise.all(STACK.map(async (layer) => ({ layer, item: await findWork(layer.slug) })));
+
   return (
     <div data-parallax className="relative aspect-[5/6] w-full rounded-[1.75rem] bg-[var(--tint)] sm:aspect-[4/4.4] lg:aspect-[5/6]">
       <p className="eyebrow absolute left-6 top-6 z-10 text-[var(--mute-2)]">A little of what we do</p>
 
-      {STACK.map((layer, index) => {
-        const item = findWork(layer.slug);
+      {layers.map(({ layer, item }, index) => {
         if (!item?.screenshots.desktop) return null;
         return (
           <div key={layer.slug} className={`plx absolute ${layer.className}`} style={{ "--depth": layer.depth } as React.CSSProperties}>

@@ -11,6 +11,10 @@ import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
+import { ClientReviews } from "./client-reviews";
+import { ClientProjects } from "./project-progress";
+import { PublishedStory } from "./published-story";
+import { WeeklyUpdate } from "./weekly-update";
 
 export const dynamic = "force-dynamic";
 
@@ -119,10 +123,22 @@ export default async function PortalTasksPage() {
         category="delivery"
       />
 
+      {/* The build first: it is the thing a client signs in to check. Anything
+          we have asked them to look at sits under it, framed as an invitation —
+          nothing on the build is waiting on them. Then the week's news, then
+          the job list, which is the detail behind all three. */}
+      <ClientProjects organisationId={session.organisationId} clientId={session.clientId} />
+
+      <ClientReviews organisationId={session.organisationId} clientId={session.clientId} />
+
+      <WeeklyUpdate organisationId={session.organisationId} clientId={session.clientId} />
+
+      <PublishedStory organisationId={session.organisationId} clientId={session.clientId} />
+
       {groups.length === 0 ? (
-        <EmptyState icon={ListChecks}>
-          Nothing to show yet. We will list the work here as it is planned.
-        </EmptyState>
+        <Section title="Jobs" description="The individual pieces of work on your account.">
+          <EmptyState icon={ListChecks}>Nothing listed yet. We will add the jobs here as they are planned.</EmptyState>
+        </Section>
       ) : (
         groups.map((group) => {
           const { done, total } = progressOf(group.tasks);

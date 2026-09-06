@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
-import { PRODUCTS } from "@/lib/marketing/products";
-import { STATUS_LABEL } from "@/lib/marketing/work";
+import { productItems, STATUS_LABEL } from "@/lib/marketing/portfolio";
 import { CtaBlock } from "../_components/cta-block";
 import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
 import { Shot } from "../_components/shot";
@@ -15,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 export default async function ProductsPage() {
-  const { href } = await marketingLinks();
+  const [{ href }, products] = await Promise.all([marketingLinks(), productItems()]);
 
   return (
     <>
@@ -30,7 +29,7 @@ export default async function ProductsPage() {
       </Container>
 
       <div className="hairline">
-        {PRODUCTS.map((product, index) => {
+        {products.map((product, index) => {
           const flip = index % 2 === 1;
           return (
             <section key={product.slug} id={product.slug} className={flip ? "section-off" : undefined} aria-labelledby={`${product.slug}-title`}>

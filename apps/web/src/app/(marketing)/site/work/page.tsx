@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
-import { WORK } from "@/lib/marketing/work";
+import { workItems } from "@/lib/marketing/portfolio";
 import { CtaBlock } from "../_components/cta-block";
 import { Container, Lines, SectionHead } from "../_components/primitives";
 import { WorkCard } from "../_components/work-card";
@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 };
 
 export default async function WorkPage() {
-  const { href } = await marketingLinks();
+  const [{ href }, work] = await Promise.all([marketingLinks(), workItems()]);
 
   return (
     <>
@@ -28,7 +28,7 @@ export default async function WorkPage() {
       </Container>
       <Container className="py-16 sm:py-20">
         <div className="grid gap-x-8 gap-y-14 sm:grid-cols-2 lg:grid-cols-3">
-          {WORK.map((item, index) => (
+          {work.map((item, index) => (
             <WorkCard key={item.slug} item={item} href={href(`/work/${item.slug}`)} priority={index < 2} />
           ))}
         </div>
