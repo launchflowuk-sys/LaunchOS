@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import { and, eq, gte, isNotNull, lt, notInArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { leadsAwaitingReply } from "../leads/leads.js";
+import { CLIENT_REVIEW_STALE_DAYS, staleClientReviews } from "../projects/client-review.js";
 import { FINISHED_STATUSES } from "../tasks/update-task-status.js";
 import { entryMinutes } from "./week.js";
 
@@ -59,6 +60,21 @@ export interface OpsMetricsSnapshot {
   leads: {
     /** Still `new` — nobody has written back — after 24 hours. The brief's "waiting for a reply" line. */
     awaitingReplyOver24h: number;
+  };
+  projects: {
+    /**
+     * Client reviews nobody has answered or commented on after
+     * `CLIENT_REVIEW_STALE_DAYS`.
+     *
+     * This number is the *entire* consequence of an unanswered review. A
+     * review never blocks a task, a phase, a milestone or a delivery — see
+     * `packages/core/src/projects/client-review.ts` — so this is the one place
+     * in LaunchOS that notices one has gone quiet, and what it produces is a
+     * line in the morning brief telling Shoji to pick up the phone.
+     */
+    clientReviewsUnanswered: number;
+    /** Longest wait among them, in whole days. Null when there are none. */
+    oldestClientReviewDays: number | null;
   };
 }
 
@@ -198,9 +214,14 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
     teamMetrics(db, organisationId, from, v.now),
     leadsAwaitingReply(db, organisationId, { hours: 24, now: v.now, limit: 200 }),
   ]);
+  const stale = await staleClientReviews(db, organisationId, { now: v.now, days: CLIENT_REVIEW_STALE_DAYS, limit: 50 });
   return {
     window: { from, to: v.now, hours: v.hours },
     cases, tasks, incidents, approvals, invoices, content, agents, team,
     leads: { awaitingReplyOver24h: waiting.length },
+    projects: {
+      clientReviewsUnanswered: stale.length,
+      oldestClientReviewDays: stale.length === 0 ? null : Math.max(...stale.map((review) => review.daysWaiting)),
+    },
   };
 }

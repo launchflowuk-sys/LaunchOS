@@ -16,7 +16,8 @@ export const opsMetricsSnapshotTool = defineTool({
   description:
     "The organisation's operating numbers for the last N hours and its open state right now: cases opened/resolved/open " +
     "and median first-response minutes, tasks overdue/completed, incidents, approvals pending, invoices overdue/outstanding/paid " +
-    "(in pence), content published/failed, agent runs and failures, and hours the team clocked. Quote only figures from this.",
+    "(in pence), content published/failed, agent runs and failures, hours the team clocked, and client reviews nobody has answered " +
+    "for over five days. Quote only figures from this.",
   input: Input,
   risk: "safe",
   execute: async (input, ctx): Promise<OpsMetricsSnapshot> =>

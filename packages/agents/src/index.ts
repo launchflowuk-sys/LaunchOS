@@ -65,3 +65,16 @@ export type { ProposalSaveDraftResult } from "./tools/proposal-save-draft.js";
 export { proposalRequestApproval } from "./tools/proposal-request-approval.js";
 export type { ProposalRequestApprovalResult } from "./tools/proposal-request-approval.js";
 export { PROPOSAL_SUMMARY_MAX_CHARS } from "./tools/proposal-shared.js";
+export { projectReporter, PROJECT_REPORTER_KEY, PROJECT_REPORTER_PROMPT, PROJECT_REPORTER_CRON } from "./agents/project-reporter/index.js";
+export { caseStudyWriter, CASE_STUDY_WRITER_KEY, CASE_STUDY_WRITER_PROMPT } from "./agents/case-study-writer/index.js";
+export {
+  PROJECT_UPDATE_TARGET_WORDS, CASE_STUDY_SECTION_MAX_CHARS, CASE_STUDY_BUILT_MAX_CHARS,
+} from "./tools/project-shared.js";
+export { projectGetWeek } from "./tools/project-get-week.js";
+export { projectUpdateRequestApproval } from "./tools/project-update-request-approval.js";
+export type { ProjectUpdateRequestApprovalResult } from "./tools/project-update-request-approval.js";
+export { caseStudyGetMaterial } from "./tools/case-study-get-material.js";
+export { caseStudySaveDraft } from "./tools/case-study-save-draft.js";
+export type { CaseStudySaveDraftResult } from "./tools/case-study-save-draft.js";
+export { caseStudyPublish } from "./tools/case-study-publish.js";
+export type { CaseStudyPublishResult } from "./tools/case-study-publish.js";

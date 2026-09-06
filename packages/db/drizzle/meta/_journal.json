@@ -183,6 +183,13 @@
       "when": 1788685724368,
       "tag": "0025_projects_case_studies",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788690000000,
+      "tag": "0026_project_approvals",
+      "breakpoints": true
     }
   ]
 }

@@ -5,6 +5,7 @@
  * is, and nothing here reaches a database — a renderer is a peripheral, like
  * the SMTP transport next door, and is swapped for a mock the same way.
  */
+import type { CaptureScreenshotInput, Screenshot } from "./screenshot.js";
 
 /** The paper a LaunchFlow document is set on. A4 unless somebody asks for US Letter. */
 export type PdfPageFormat = "A4" | "Letter";
@@ -38,6 +39,16 @@ export interface RenderPdfInput {
   displayFooter?: boolean;
 }
 
+/**
+ * The process's browser, behind one handle.
+ *
+ * It is called `PdfRenderer` because printing documents is what it was built
+ * for and what most of it does, but `capture` shares the same Chromium on
+ * purpose: a second implementation would mean a second browser, and one
+ * headless Chromium per container is the whole point of the lifecycle in
+ * `chromium.ts`. A capability that needs the browser belongs on this
+ * interface, not beside it.
+ */
 export interface PdfRenderer {
   /** `"chromium"` or `"mock"` — printed in the worker's startup line. */
   readonly kind: "chromium" | "mock";
@@ -49,6 +60,12 @@ export interface PdfRenderer {
    * a copy at every call site. Copying once, here, keeps every caller honest.
    */
   render(input: RenderPdfInput): Promise<Uint8Array<ArrayBuffer>>;
+  /**
+   * Photographs a live page in the same browser. Throws `ScreenshotFailed`
+   * when the page cannot be reached or drawn; see `screenshot.ts` for the URL
+   * the caller is obliged to have vetted first.
+   */
+  capture(input: CaptureScreenshotInput): Promise<Screenshot>;
   /**
    * Shuts the browser down. Idempotent, and safe to call on a renderer that
    * never launched one — the worker calls it on every SIGTERM, including the

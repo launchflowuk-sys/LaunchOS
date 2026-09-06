@@ -61,6 +61,23 @@ export const MEETING_NOTICE_KIND = "meeting_notice";
 export const PROPOSAL_NOTICE_KIND = "proposal_notice";
 
 /**
+ * `metadata.kind` on the weekly project update Shoji approved
+ * (`applyProjectUpdateDecision`). `metadata.projectId` names the build.
+ *
+ * A courtesy notice even though it carries real news, because the definition
+ * below is about threads, not importance: it is an outbound record on a
+ * conversation of its own, and a reader of a support case must never see it as
+ * a turn in that case.
+ */
+export const PROJECT_UPDATE_NOTICE_KIND = "project_update_notice";
+
+/**
+ * `metadata.kind` on the same-day note that a milestone was reached
+ * (`queueMilestoneNotice`). `metadata.milestoneId` names the promise kept.
+ */
+export const PROJECT_MILESTONE_NOTICE_KIND = "project_milestone_notice";
+
+/**
  * Every kind of message that is a record of an email we sent *about* a thread
  * rather than a turn in it. All of them are `outbound` rows written by the
  * system, and all of them must be invisible to every reader of the thread —
@@ -77,6 +94,8 @@ export const COURTESY_NOTICE_KINDS = [
   LEAD_ACKNOWLEDGEMENT_KIND,
   MEETING_NOTICE_KIND,
   PROPOSAL_NOTICE_KIND,
+  PROJECT_UPDATE_NOTICE_KIND,
+  PROJECT_MILESTONE_NOTICE_KIND,
 ] as const;
 
 export type CourtesyNoticeKind = (typeof COURTESY_NOTICE_KINDS)[number];

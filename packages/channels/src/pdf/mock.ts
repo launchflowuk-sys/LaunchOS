@@ -14,6 +14,7 @@
  * a real bug into production. The document's title is drawn on the page, so a
  * test can also prove the right document reached the renderer.
  */
+import { SCREENSHOT_VIEWPORTS, type CaptureScreenshotInput, type Screenshot } from "./screenshot.js";
 import type { PdfRenderer, RenderPdfInput } from "./types.js";
 
 /** Everything a PDF string literal may not contain unescaped. */
@@ -69,15 +70,41 @@ export function tinyPdf(line: string): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+/**
+ * A one-pixel opaque PNG, byte for byte.
+ *
+ * The same reasoning as `tinyPdf`: a mock capture has to return something a
+ * real reader accepts, because `createContentAsset` checks the MIME and the
+ * web app will later serve the file to a browser. A string of zeroes with the
+ * right first eight bytes would push the discovery of a broken pipeline into
+ * production. Base64 rather than an array literal so the checksum stays right
+ * without anyone recomputing a CRC by hand.
+ */
+const ONE_PIXEL_PNG_BASE64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+export function onePixelPng(): Uint8Array<ArrayBuffer> {
+  return Uint8Array.from(Buffer.from(ONE_PIXEL_PNG_BASE64, "base64"));
+}
+
 export class MockPdfRenderer implements PdfRenderer {
   readonly kind = "mock" as const;
   /** Every render, in order — what a test asserts on instead of parsing bytes. */
   readonly rendered: RenderPdfInput[] = [];
+  /** Every capture, in order. Same idea: assert the URL, not the pixels. */
+  readonly captured: CaptureScreenshotInput[] = [];
 
   async render(input: RenderPdfInput): Promise<Uint8Array<ArrayBuffer>> {
     this.rendered.push(input);
     const reference = input.footerReference ? ` (${input.footerReference})` : "";
     return tinyPdf(`${titleOf(input.html)}${reference}`);
+  }
+
+  async capture(input: CaptureScreenshotInput): Promise<Screenshot> {
+    this.captured.push(input);
+    const viewport = input.viewport ?? "desktop";
+    const size = SCREENSHOT_VIEWPORTS[viewport];
+    return { bytes: onePixelPng(), mime: "image/png", viewport, width: size.width, height: size.height };
   }
 
   async close(): Promise<void> {}

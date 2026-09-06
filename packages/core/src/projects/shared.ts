@@ -18,6 +18,16 @@ export type ProjectMilestoneRow = typeof schema.projectMilestones.$inferSelect;
 export const ActorKindSchema = z.enum(["user", "client", "agent", "system"]);
 export type ActorKind = z.infer<typeof ActorKindSchema>;
 
+/**
+ * Where a client reads their own progress page.
+ *
+ * Named here rather than typed as a literal wherever a link is built, because
+ * three things have to agree on it — the branded email's button, the portal
+ * route itself and the Ops Brief — and a route that moves should break the
+ * build rather than a client's link.
+ */
+export const PROJECT_PORTAL_PATH = "/portal/projects";
+
 /** The audit target types the three tables are recorded under. */
 export const PROJECT_TARGET_TYPE = "project";
 export const PHASE_TARGET_TYPE = "project_phase";

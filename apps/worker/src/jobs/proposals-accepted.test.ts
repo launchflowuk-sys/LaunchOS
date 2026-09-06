@@ -9,8 +9,12 @@ import {
   acceptProposal,
   createLead,
   createProposal,
+  getCaseStudyForProject,
+  getProjectForProposal,
   getProposalAcceptance,
   getProposalDetail,
+  listProjectMilestones,
+  listProjectPhases,
   sendProposal,
   setEnqueue,
   setProposalFollowOn,
@@ -121,7 +125,9 @@ describe("proposals.accepted", () => {
       const payments = new MockPaymentsAdapter();
       const result = await handleProposalAccepted({ db, payments, env: ENV, logger: quiet }, f.job);
 
-      expect(result).toMatchObject({ countersigned: true, payment: "checkout", tasksCreated: 2 });
+      // The project is the work now, not a loose task list: six phases and one
+      // milestone per deliverable, from the proposal alone.
+      expect(result).toMatchObject({ countersigned: true, payment: "checkout", projectCreated: true, milestonesCreated: 2 });
 
       // The signed copy is filed against the acceptance, not just rendered.
       const acceptance = (await getProposalAcceptance(db, f.organisationId, f.proposalId))!;
@@ -145,8 +151,22 @@ describe("proposals.accepted", () => {
       expect(notice?.body).toContain("£1,200.00");
       expect(notice?.body).toContain("£99.00 a month");
 
-      const tasks = await db.select().from(schema.tasks).where(eq(schema.tasks.organisationId, f.organisationId));
-      expect(tasks.map((t) => t.title).sort()).toEqual(["Hosting and backups", "Six-page website"]);
+      // The work is the project now: the six standard phases, and one
+      // client-visible milestone per deliverable, hung off the build phase.
+      const project = (await getProjectForProposal(db, f.organisationId, f.proposalId))!;
+      expect(project.status).toBe("active");
+      expect(project.startedAt).not.toBeNull();
+      const milestones = await listProjectMilestones(db, f.organisationId, project.id);
+      expect(milestones.map((m) => m.title).sort()).toEqual(["Hosting and backups", "Six-page website"]);
+      const phases = await listProjectPhases(db, f.organisationId, project.id);
+      expect(phases.map((phase) => phase.key)).toEqual(["brief", "design", "build", "review", "launch", "care"]);
+      const build = phases.find((phase) => phase.key === "build")!;
+      expect(milestones.every((m) => m.phaseId === build.id && m.clientVisible)).toBe(true);
+      // And the story starts as a draft the moment the build does.
+      expect(result.projectId).toBe(project.id);
+      expect(await getCaseStudyForProject(db, f.organisationId, project.id)).not.toBeNull();
+      // No loose tasks any more — the placeholder is gone.
+      expect(await db.select().from(schema.tasks).where(eq(schema.tasks.organisationId, f.organisationId))).toHaveLength(0);
     });
   });
 
@@ -157,7 +177,7 @@ describe("proposals.accepted", () => {
       await handleProposalAccepted({ db, payments, env: ENV, logger: quiet }, f.job);
       const again = await handleProposalAccepted({ db, payments, env: ENV, logger: quiet }, f.job);
 
-      expect(again).toMatchObject({ countersigned: false, payment: "already", tasksCreated: 0 });
+      expect(again).toMatchObject({ countersigned: false, payment: "already", projectCreated: false, milestonesCreated: 0 });
       const signedCopies = await db.select().from(schema.documents).where(and(
         eq(schema.documents.organisationId, f.organisationId),
         eq(schema.documents.kind, PROPOSAL_SIGNED_DOCUMENT_KIND),
@@ -166,7 +186,10 @@ describe("proposals.accepted", () => {
       const payLinks = (await db.select().from(schema.messages).where(eq(schema.messages.organisationId, f.organisationId)))
         .filter((m) => m.metadata["notice"] === "payment");
       expect(payLinks).toHaveLength(1);
-      expect(await db.select().from(schema.tasks).where(eq(schema.tasks.organisationId, f.organisationId))).toHaveLength(2);
+      // One project, whatever `projects_proposal` was asked twice.
+      const projects = await db.select().from(schema.projects).where(eq(schema.projects.organisationId, f.organisationId));
+      expect(projects).toHaveLength(1);
+      expect(await listProjectMilestones(db, f.organisationId, projects[0]!.id)).toHaveLength(2);
     });
   });
 
@@ -205,8 +228,9 @@ describe("proposals.accepted", () => {
         eq(schema.notifications.kind, "proposal.payment_step"),
       ));
       expect(bells[0]!.body).toMatch(/when the work goes live/i);
-      // The work is still opened, because that is what they agreed to.
-      expect(result.tasksCreated).toBe(2);
+      // The work is still started, because that is what they agreed to.
+      expect(result.projectCreated).toBe(true);
+      expect(result.milestonesCreated).toBe(2);
     });
   });
 

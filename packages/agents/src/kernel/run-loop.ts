@@ -224,7 +224,9 @@ async function parkForApproval(
     organisationId: ctx.organisationId,
     runId: ctx.runId,
     stepId: step.id,
-    kind: "tool_call",
+    // The tool may name the card after what it does; `tool_call` otherwise.
+    // Nothing on the resume path reads this — see `ToolDefinition.approvalKind`.
+    kind: tool.approvalKind ?? "tool_call",
     title: description?.title ?? `${def.name} wants to run ${tool.name}`,
     // `toolUseId` is the binding, and the only one: `resume-agent.ts` compares
     // it against the run's `metadata.pending.awaitingToolUseId`, and

@@ -104,6 +104,9 @@
  * | `proposals.send` | `proposal-send:<proposalId>` from a decided approval and from the admin Send button; **none** from the two-minute tick, which is why the queue is `standard` | `apps/worker/src/jobs/proposals-send.ts`, the worker's cron, the approvals action |
  * | `proposals.accepted` | `proposal-accepted:<proposalId>` | `acceptProposal` through `setProposalFollowOn`, and the same file's safety net |
  * | `proposals.expire` / `proposals.nudge` | none — daily crons, payload `{}` | the worker's cron registration |
+ * | `projects.weekly-update` | none — a Friday cron, payload `{}`; the fan-out it sends is an `agent.run` keyed `project-reporter:<projectId>:<yyyy-mm-dd>` under `dailyDedupe` | `apps/worker/src/jobs/project-weekly-update.ts` |
+ * | `projects.milestone-email` | `milestone-email:<milestoneId>` | `dispatch-event.ts` on `project.milestone_reached` |
+ * | `projects.delivered` | `project-delivered:<projectId>` | `dispatch-event.ts` on `project.delivered` |
  */
 
 export type QueuePolicy = "standard" | "short" | "singleton" | "stately";
@@ -142,6 +145,9 @@ export const QUEUE = {
   proposalsAccepted: "proposals.accepted",
   proposalsExpire: "proposals.expire",
   proposalsNudge: "proposals.nudge",
+  projectsWeeklyUpdate: "projects.weekly-update",
+  projectsMilestoneEmail: "projects.milestone-email",
+  projectsDelivered: "projects.delivered",
 } as const;
 
 export type QueueName = (typeof QUEUE)[keyof typeof QUEUE];
@@ -227,6 +233,24 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // Two daily crons: payload `{}`, no key, one job per tick is the point.
   "proposals.expire": "standard",
   "proposals.nudge": "standard",
+  // The Friday fan-out: a cron, payload `{}`, no key. What must not repeat is
+  // the *agent run* it sends, and that carries `dailyDedupe` on
+  // `project-reporter:<projectId>:<date>` — an Opus-priced run, the same
+  // reasoning as the Sentinel and the content writer. A day is well inside
+  // `ARCHIVE_COMPLETED_AFTER_SECONDS`, which after 76f313a is the constraint
+  // any window has to satisfy.
+  "projects.weekly-update": "standard",
+  // Every send carries `milestone-email:<milestoneId>`, so a re-emitted event
+  // collapses while the first job is still queued. Deliberately no
+  // `singletonSeconds`: `job_i4` covers `failed`, and a courtesy note that
+  // failed on a bad minute must be retryable the same day — it is the one
+  // email whose whole value is arriving today. What stops a second note once
+  // the job is running is the domain layer, as ever: `queueMilestoneNotice`
+  // claims `metadata.clientEmailedAt` before it writes anything.
+  "projects.milestone-email": "short",
+  // Same shape, keyed `project-delivered:<projectId>`. The screenshots and the
+  // writer run behind it are both idempotent on the case study's own row.
+  "projects.delivered": "short",
 };
 
 /**

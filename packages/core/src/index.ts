@@ -491,14 +491,14 @@ export {
   PROPOSAL_SEND_ACTION, PENDING_PROPOSAL_SEND_INDEX, PROPOSAL_SEND_APPLIED_AT,
 } from "./proposals/approval.js";
 export type { ApplyProposalSendDecisionResult } from "./proposals/approval.js";
-export { PROPOSAL_NOTICE_KIND } from "./support/courtesy-notice.js";
+export { PROPOSAL_NOTICE_KIND, PROJECT_UPDATE_NOTICE_KIND, PROJECT_MILESTONE_NOTICE_KIND } from "./support/courtesy-notice.js";
 export {
   projectProgress, describeProgress, MAX_UNDELIVERED_PERCENT,
 } from "./projects/progress.js";
 export type { ProjectProgress, ProjectProgressInput, ProgressPhase, ProgressMilestone } from "./projects/progress.js";
 export {
   ProjectRefused, STANDARD_PHASES, DateKeySchema,
-  PROJECT_TARGET_TYPE, PHASE_TARGET_TYPE, MILESTONE_TARGET_TYPE,
+  PROJECT_TARGET_TYPE, PHASE_TARGET_TYPE, MILESTONE_TARGET_TYPE, PROJECT_PORTAL_PATH,
   PROJECT_OPEN_STATUSES, PROJECT_CLOSED_STATUSES, PROJECT_PHASE_KEYS,
   getProjectRow, requireProject, getProjectForProposal,
   listProjectPhases, listProjectMilestones, requirePhaseOfProject, requireMilestoneOfProject,
@@ -537,3 +537,33 @@ export { toWorkItem, toProduct, toCaseStudySeed } from "./case-studies/portfolio
 export type { PortfolioWorkItem, PortfolioProduct, PortfolioStatus } from "./case-studies/portfolio-view.js";
 export { seedCaseStudies, SeedCaseStudiesInput } from "./case-studies/seed.js";
 export type { SeedCaseStudiesResult } from "./case-studies/seed.js";
+// P4b — the client review that never blocks anything.
+export {
+  ClientReviewRefused, CLIENT_REVIEW_ACTION, PENDING_CLIENT_REVIEW_INDEX, CLIENT_REVIEW_STALE_DAYS,
+  CLIENT_REVIEW_COMMENTED_AT, CLIENT_REVIEW_COMMENTS, ClientReviewPayload,
+  clientReviewTargetRef, commentsOf,
+  requestClientReview, listClientReviews, getClientReview,
+  approveClientReview, commentOnClientReview, staleClientReviews, withdrawClientReview,
+  RequestClientReviewInput, ListClientReviewsInput, AnswerClientReviewInput, CommentOnClientReviewInput,
+} from "./projects/client-review.js";
+export type { ClientReviewComment, StaleClientReview } from "./projects/client-review.js";
+// P4c — the Friday update: what the reporter reads, and the card it raises.
+export { projectWeekActivity, projectsDueAnUpdate, ProjectWeekActivityInput, PROJECT_WEEK_MS } from "./projects/week-activity.js";
+export type {
+  ProjectWeekActivity, ProjectWeekPhase, ProjectWeekMilestone, ProjectDueAnUpdate,
+} from "./projects/week-activity.js";
+export {
+  ProjectUpdateRefused, PROJECT_UPDATE_ACTION, PENDING_PROJECT_UPDATE_INDEX, PROJECT_UPDATE_APPLIED_AT,
+  PROJECT_UPDATE_MAX_CHARS, PROJECT_UPDATE_DEFAULT_SUBJECT, ProjectUpdatePayload,
+  requestProjectUpdateApproval, applyProjectUpdateDecision, projectUpdatesAwaitingApplication, projectUpdateRecipients,
+  RequestProjectUpdateApprovalInput, ApplyProjectUpdateDecisionInput,
+} from "./projects/update-approval.js";
+export type { ApplyProjectUpdateDecisionResult } from "./projects/update-approval.js";
+export { queueMilestoneNotice, milestoneNoticeBody, MILESTONE_EMAILED_AT, QueueMilestoneNoticeInput } from "./projects/milestone-notice.js";
+export type { MilestoneNoticeResult } from "./projects/milestone-notice.js";
+// P4d — the Case Study Writer's allow-list, and the publish it has to ask for.
+export { caseStudyMaterial, CaseStudyMaterialInput, CASE_STUDY_MATERIAL_FIELDS } from "./case-studies/material.js";
+export type { CaseStudyMaterial, CaseStudyMaterialPhase, CaseStudyMaterialMilestone } from "./case-studies/material.js";
+export {
+  publishCaseStudy, unpublishCaseStudy, whyNotPublishable, PublishCaseStudyInput, REQUIRED_BRIEF_SECTIONS,
+} from "./case-studies/publish.js";

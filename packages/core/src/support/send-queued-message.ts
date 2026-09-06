@@ -7,10 +7,12 @@ import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
+import { PROJECT_PORTAL_PATH } from "../projects/shared.js";
 import { MAX_ADDRESS_CHARS, MAX_ERROR_CHARS, truncate } from "../text.js";
 import {
   CASE_ACKNOWLEDGEMENT_KIND, CONTENT_REPORT_NOTICE_KIND, CSAT_INVITE_KIND, LEAD_ACKNOWLEDGEMENT_KIND, MEETING_NOTICE_KIND,
-  PORTAL_REPLY_NOTICE_KIND, PROPOSAL_NOTICE_KIND, SUBSCRIPTION_CHANGE_NOTICE_KIND,
+  PORTAL_REPLY_NOTICE_KIND, PROJECT_MILESTONE_NOTICE_KIND, PROJECT_UPDATE_NOTICE_KIND, PROPOSAL_NOTICE_KIND,
+  SUBSCRIPTION_CHANGE_NOTICE_KIND,
 } from "./courtesy-notice.js";
 
 /**
@@ -228,6 +230,19 @@ function presentationFor(
       preheader: preheaderFrom(message.body),
       heading: headings[notice] ?? "Your proposal",
       cta,
+      footerNote: "Reply to this email with any questions and it comes straight to Shoji.",
+    };
+  }
+  if (kind === PROJECT_UPDATE_NOTICE_KIND || kind === PROJECT_MILESTONE_NOTICE_KIND) {
+    // Both go to the client's progress page, because that is the one place the
+    // whole plan is — and it is deliberately an invitation, not an instruction:
+    // there is nothing on that page a client has to do.
+    const projectId = typeof message.metadata["projectId"] === "string" ? message.metadata["projectId"] : undefined;
+    const milestone = kind === PROJECT_MILESTONE_NOTICE_KIND;
+    return {
+      preheader: milestone ? "One more thing off the list." : "Where your project got to this week.",
+      heading: message.subject ?? (milestone ? "Another step done" : "Your project update"),
+      cta: projectId ? { label: "See your progress", url: `${appUrl}${PROJECT_PORTAL_PATH}/${projectId}` } : undefined,
       footerNote: "Reply to this email with any questions and it comes straight to Shoji.",
     };
   }

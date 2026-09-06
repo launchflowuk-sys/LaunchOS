@@ -1,4 +1,5 @@
 import type { Db } from "@launchos/db";
+import type { ApprovalKind } from "@launchos/db/schema";
 import type { z } from "zod";
 
 export type ToolRisk = "safe" | "requires_approval";
@@ -38,6 +39,18 @@ export interface ToolDefinition<TInput extends z.ZodTypeAny = z.ZodTypeAny, TOut
   description: string;
   input: TInput;
   risk: ToolRisk;
+  /**
+   * What the parked card is called on /approvals. `tool_call` unless set.
+   *
+   * Only the *label* changes: the binding between a card and the run it parked
+   * is `run_id` + `step_id` + `payload.toolUseId`, which `resume-agent.ts` and
+   * `approvals.resume-sweep` join on and neither reads `kind`. So naming the
+   * card after what it actually is — `case_study_publish` rather than a
+   * generic `tool_call` — costs nothing and stops an approvals queue where
+   * every agent-raised card looks alike. Meaningless on a `safe` tool, which
+   * never parks.
+   */
+  approvalKind?: ApprovalKind;
   execute: (input: z.infer<TInput>, ctx: AgentContext) => Promise<TOutput>;
   /**
    * Optional, and only meaningful on a `requires_approval` tool: the kernel

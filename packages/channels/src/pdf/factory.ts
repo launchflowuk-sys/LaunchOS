@@ -18,6 +18,7 @@
  */
 import { ChromiumPdfRenderer, chromiumOptionsFromEnv } from "./chromium.js";
 import { MockPdfRenderer } from "./mock.js";
+import type { CaptureScreenshotInput, Screenshot } from "./screenshot.js";
 import type { PdfRenderer, RenderPdfInput } from "./types.js";
 
 /** The one variable that overrides the default. `mock` or `chromium`. */
@@ -58,6 +59,17 @@ export function pdfRenderer(env: NodeJS.ProcessEnv = process.env): PdfRenderer {
  */
 export function renderPdf(input: RenderPdfInput, env: NodeJS.ProcessEnv = process.env): Promise<Uint8Array<ArrayBuffer>> {
   return pdfRenderer(env).render(input);
+}
+
+/**
+ * `captureScreenshot({ url, viewport })` — the PNG.
+ *
+ * The same shared renderer, so a launch screenshot and a countersigned
+ * proposal are drawn by one Chromium. **The URL must already have been vetted
+ * by the caller** — see the note at the top of `screenshot.ts`.
+ */
+export function captureScreenshot(input: CaptureScreenshotInput, env: NodeJS.ProcessEnv = process.env): Promise<Screenshot> {
+  return pdfRenderer(env).capture(input);
 }
 
 /**

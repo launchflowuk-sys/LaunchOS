@@ -10,6 +10,8 @@ import type { OutboundMessageJob } from "./outbound-message.js";
 import type { GenerateOnboardingJob } from "./task-generation.js";
 import type { PaymentsWebhookJob } from "./payments-webhook.js";
 import type { PushSendJob } from "./push-send.js";
+import type { ProjectDeliveredJob } from "./case-study-launch.js";
+import type { MilestoneEmailJob } from "./project-milestone-email.js";
 
 /** The lead sources the qualifier answers. `manual`, `signup` and `booking` are deliberately absent — see the branch below. */
 export const QUALIFIED_LEAD_SOURCES: readonly string[] = ["website", "funnel", "api", "referral"];
@@ -116,6 +118,25 @@ export async function dispatchEvent(deps: DispatchEventDeps, event: DomainEvent)
     // transaction while the first job is still queued.
     const job: PushSendJob = { organisationId: event.organisationId, notificationId: event.notificationId, userId: event.userId };
     await boss.send(QUEUE.pushSend, job, { singletonKey: `push:${event.notificationId}` });
+    return;
+  }
+  if (event.name === "project.milestone_reached") {
+    // The same-day courtesy note. `reachMilestone` is already idempotent
+    // through `WHERE reached_at IS NULL`, so one tick emits one event; the key
+    // collapses a re-emit from a retried transaction while the job is still
+    // queued, and `queueMilestoneNotice`'s own stamp holds once it is running.
+    const job: MilestoneEmailJob = {
+      organisationId: event.organisationId, projectId: event.projectId, milestoneId: event.milestoneId,
+    };
+    await boss.send(QUEUE.projectsMilestoneEmail, job, { singletonKey: `milestone-email:${event.milestoneId}` });
+    return;
+  }
+  if (event.name === "project.delivered") {
+    // The launch screenshots and the Case Study Writer, in that order, in one
+    // job — see ./case-study-launch.ts. Both are stamped on the case study, so
+    // a retry repeats neither.
+    const job: ProjectDeliveredJob = { organisationId: event.organisationId, projectId: event.projectId };
+    await boss.send(QUEUE.projectsDelivered, job, { singletonKey: `project-delivered:${event.projectId}` });
     return;
   }
   // site.created / domain.created / member.created / task.created /

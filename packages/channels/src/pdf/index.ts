@@ -7,6 +7,7 @@
  * `playwright` will try to bundle the browser driver into the web build; a
  * separate subpath means it never can.
  */
+export * from "./screenshot.js";
 export * from "./types.js";
 export * from "./document.js";
 export * from "./mock.js";

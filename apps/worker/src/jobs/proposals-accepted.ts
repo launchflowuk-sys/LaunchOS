@@ -1,9 +1,12 @@
 import {
   PROPOSAL_SIGNED_DOCUMENT_KIND,
-  createTask,
+  ProjectRefused,
+  createProject,
   emit,
+  getProjectForProposal,
   getProposalAcceptance,
   getProposalDetail,
+  listProjectPhases,
   notifyOwner,
   paymentBody,
   queueProposalNotice,
@@ -16,7 +19,7 @@ import {
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { PaymentsAdapter } from "@launchos/integrations";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, like, sql } from "drizzle-orm";
 
 /**
  * Everything that happens after a client agrees, done where it can be done.
@@ -36,13 +39,20 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 export const FOLLOW_ON_DONE_AT = "followOnDoneAt";
 export const CHECKOUT_SESSION_ID = "checkoutSessionId";
 export const CHECKOUT_URL = "checkoutUrl";
+/**
+ * The stamp the *placeholder* left before projects existed.
+ *
+ * Between `d405e3f` and this commit, an accepted proposal's deliverables were
+ * written as one onboarding task each and this key marked that it had happened.
+ * Those tasks are real work somebody may already have started, so they are
+ * adopted onto the new project rather than left orphaned or duplicated — see
+ * `adoptPlaceholderTasks`. Nothing writes this key any more; it is read only
+ * to find the proposals that carry it.
+ */
 export const PROJECT_TASKS_AT = "projectTasksAt";
 
 /** `metadata.launchos` on the Checkout session — what marks it as a proposal's, not a signup's. */
 export const PROPOSAL_CHECKOUT_MARKER = "proposal";
-
-/** How many deliverables become tasks. A proposal with forty lines is a project plan, not a task list. */
-export const MAX_PROJECT_TASKS = 20;
 
 export const PROPOSAL_PAID_UP_NOTIFICATION_KIND = "proposal.payment_step";
 
@@ -58,7 +68,14 @@ export interface ProposalAcceptedResult {
   countersigned: boolean;
   payment: PaymentStepKind;
   checkoutUrl: string | null;
-  tasksCreated: number;
+  /** The build this acceptance started. Null only when the proposal has no client. */
+  projectId: string | null;
+  /** True when this run is the one that created it. */
+  projectCreated: boolean;
+  /** One per deliverable the client agreed to, capped by `MAX_PROPOSAL_MILESTONES`. */
+  milestonesCreated: number;
+  /** Tasks the old placeholder wrote, moved onto the project's build phase. */
+  tasksAdopted: number;
 }
 
 export type PaymentStepKind =
@@ -148,18 +165,21 @@ export async function handleProposalAccepted(
     // The acceptance was rolled back, or this is a stale job for a proposal
     // that was never actually agreed. Nothing to follow on from.
     logger.warn({ organisationId, proposalId: job.proposalId }, "proposal follow-on ran with no acceptance recorded; skipping");
-    return { proposalId: job.proposalId, countersigned: false, payment: "none", checkoutUrl: null, tasksCreated: 0 };
+    return {
+      proposalId: job.proposalId, countersigned: false, payment: "none", checkoutUrl: null,
+      projectId: null, projectCreated: false, milestonesCreated: 0, tasksAdopted: 0,
+    };
   }
 
   const countersigned = await countersign(db, organisationId, { ...detail, acceptance }, env);
   const payment = await openPaymentStep(deps, job, detail, logger);
-  const tasksCreated = await writeProjectTasks(db, organisationId, detail, job.clientId, logger);
+  const project = await startProject(db, organisationId, detail, job.clientId, logger);
 
   await db.update(schema.proposals)
     .set({ metadata: sql`coalesce(${schema.proposals.metadata}, '{}'::jsonb) || ${JSON.stringify({ [FOLLOW_ON_DONE_AT]: new Date().toISOString() })}::jsonb` })
     .where(and(eq(schema.proposals.id, job.proposalId), eq(schema.proposals.organisationId, organisationId)));
 
-  return { proposalId: job.proposalId, countersigned, payment: payment.kind, checkoutUrl: payment.url, tasksCreated };
+  return { proposalId: job.proposalId, countersigned, payment: payment.kind, checkoutUrl: payment.url, ...project };
 }
 
 /**
@@ -324,62 +344,146 @@ async function stripePriceForPackage(db: Db, organisationId: string, packageId: 
   return pkg?.stripePriceId ?? null;
 }
 
+/** What `startProject` reports back, folded into the job's result. */
+interface StartedProject {
+  projectId: string | null;
+  projectCreated: boolean;
+  milestonesCreated: number;
+  tasksAdopted: number;
+}
+
 /**
- * The work, as tasks — a stand-in for the project P4 will create.
+ * The work, as a project.
  *
- * Until phases and milestones exist, the deliverables the client agreed to are
- * the only record of what was promised, and leaving them on a PDF nobody works
- * from is how a signed proposal quietly turns into a forgotten one. One
- * onboarding task per deliverable, client-visible so it shows in their portal,
- * with the proposal's reference in the description so P4 can find them again.
+ * This is what a signed proposal is *for*. Until P4 the deliverables the
+ * client agreed to were written as loose onboarding tasks, because there was
+ * no container to put them in; now `createProject` builds the whole thing in
+ * one transaction — the six standard phases, and one milestone per deliverable
+ * hung off the build phase — from the proposal alone. The client's progress
+ * page exists from the moment they accept, rather than from whenever somebody
+ * remembered to set one up.
+ *
+ * `status: "active"` rather than `planned`: the client has just signed and the
+ * clock is running, and `createProject` stamps `started_at` on the strength of
+ * it. A build that is genuinely not starting for a month is moved back on the
+ * admin page, which is one click; the alternative — every accepted proposal
+ * sitting at `planned` until somebody notices — is how a project page reads
+ * 0% for a fortnight after work began.
+ *
+ * Idempotent through the database, not through a stamp. `projects_proposal` is
+ * unique, so `createProject` refuses a second project for the same proposal
+ * with `ProjectRefused("already_exists")`; the read before it is only the fast
+ * path, and the loser of a race is answered by the index and treats it as
+ * done. That is why this job carries no `projectAt` metadata key of its own —
+ * a stamp beside a unique index is a second source of truth that can disagree
+ * with it.
  */
-async function writeProjectTasks(
+async function startProject(
   db: Db,
   organisationId: string,
   detail: ProposalDetail,
   clientId: string | null,
   logger: Pick<Console, "info" | "warn" | "error">,
-): Promise<number> {
-  if (!clientId) return 0;
-  if (detail.proposal.metadata[PROJECT_TASKS_AT]) return 0;
-  const deliverables = detail.proposal.scope.deliverables.slice(0, MAX_PROJECT_TASKS);
-  if (deliverables.length === 0) return 0;
+): Promise<StartedProject> {
+  if (!clientId) return { projectId: null, projectCreated: false, milestonesCreated: 0, tasksAdopted: 0 };
 
-  // The stamp is taken first and conditionally, so two runs racing cannot both
-  // write the list. Losing the race means the other run is writing them.
-  const [claimed] = await db.update(schema.proposals)
-    .set({ metadata: sql`coalesce(${schema.proposals.metadata}, '{}'::jsonb) || ${JSON.stringify({ [PROJECT_TASKS_AT]: new Date().toISOString() })}::jsonb` })
-    .where(and(
-      eq(schema.proposals.id, detail.proposal.id),
-      eq(schema.proposals.organisationId, organisationId),
-      sql`${schema.proposals.metadata}->>${PROJECT_TASKS_AT} is null`,
-    ))
-    .returning();
-  if (!claimed) return 0;
-
-  let created = 0;
-  for (const deliverable of deliverables) {
-    try {
-      await createTask(db, organisationId, {
-        clientId,
-        title: deliverable,
-        kind: "build",
-        phase: "onboarding",
-        descriptionMd: `From accepted proposal ${detail.proposal.reference} — ${detail.proposal.title}.`,
-        clientVisible: true,
-        actorKind: "system",
-      });
-      created += 1;
-    } catch (error) {
-      // One bad deliverable must not cost the other nineteen. The proposal is
-      // the record either way; this is a convenience.
-      logger.error({ organisationId, proposalId: detail.proposal.id, deliverable, err: error }, "could not create a task from a deliverable");
-    }
+  const existing = await getProjectForProposal(db, organisationId, detail.proposal.id);
+  if (existing) {
+    return {
+      projectId: existing.id,
+      projectCreated: false,
+      milestonesCreated: 0,
+      tasksAdopted: await adoptPlaceholderTasks(db, organisationId, detail, existing.id, clientId, logger),
+    };
   }
+
+  let created;
+  try {
+    created = await createProject(db, organisationId, {
+      proposalId: detail.proposal.id,
+      status: "active",
+      actorKind: "system",
+    });
+  } catch (error) {
+    // Lost the race to a concurrent run: their project is the one the client
+    // will see, so this run adopts it rather than failing the whole follow-on.
+    if (error instanceof ProjectRefused && error.reason === "already_exists") {
+      const raced = await getProjectForProposal(db, organisationId, detail.proposal.id);
+      if (raced) {
+        return {
+          projectId: raced.id,
+          projectCreated: false,
+          milestonesCreated: 0,
+          tasksAdopted: await adoptPlaceholderTasks(db, organisationId, detail, raced.id, clientId, logger),
+        };
+      }
+    }
+    throw error;
+  }
+
   await recordActivity(db, organisationId, {
     clientId, actorKind: "system", kind: "proposal.work_started",
-    title: `${created} task${created === 1 ? "" : "s"} opened from proposal ${detail.proposal.reference}`,
-    link: `/clients/${clientId}/tasks`,
+    title: `Project started from proposal ${detail.proposal.reference}: ${created.project.name}`,
+    link: `/projects/${created.project.id}`,
   });
-  return created;
+
+  return {
+    projectId: created.project.id,
+    projectCreated: true,
+    milestonesCreated: created.milestones.length,
+    tasksAdopted: await adoptPlaceholderTasks(db, organisationId, detail, created.project.id, clientId, logger),
+  };
+}
+
+/**
+ * Moves the tasks the old placeholder wrote onto the new project.
+ *
+ * Between `d405e3f` and this commit an accepted proposal produced one
+ * onboarding task per deliverable, marked with the proposal's reference in the
+ * description precisely so P4 could find them again. Those tasks are real —
+ * somebody may have half-finished one — so the choice was never "delete them";
+ * it was between leaving them beside the project and adopting them into it.
+ *
+ * Adopting wins because the alternative is a client's portal showing the same
+ * twelve promises twice, once as tasks and once as milestones, with no way to
+ * tell that they are the same twelve. They land on the build phase, which is
+ * where `createProject` puts the milestones they duplicate.
+ *
+ * Only tasks with no project of their own are touched, so a task somebody has
+ * since moved to another build stays where it was put. On a proposal that
+ * never carried the placeholder — every proposal accepted from now on — the
+ * `LIKE` matches nothing and this costs one statement.
+ */
+async function adoptPlaceholderTasks(
+  db: Db,
+  organisationId: string,
+  detail: ProposalDetail,
+  projectId: string,
+  clientId: string,
+  logger: Pick<Console, "info" | "warn" | "error">,
+): Promise<number> {
+  if (!detail.proposal.metadata[PROJECT_TASKS_AT]) return 0;
+  const phases = await listProjectPhases(db, organisationId, projectId);
+  const buildPhaseId = phases.find((phase) => phase.key === "build")?.id ?? null;
+  // The reference is unique per organisation and the placeholder wrote it into
+  // every description, so it identifies the set exactly. `%` around it because
+  // the description is a sentence; the reference itself carries no LIKE
+  // metacharacters (`LF-2026-0007`).
+  const adopted = await db.update(schema.tasks)
+    .set({ projectId, phaseId: buildPhaseId, updatedAt: new Date() })
+    .where(and(
+      eq(schema.tasks.organisationId, organisationId),
+      eq(schema.tasks.clientId, clientId),
+      isNull(schema.tasks.projectId),
+      isNull(schema.tasks.deletedAt),
+      like(schema.tasks.descriptionMd, `%${detail.proposal.reference}%`),
+    ))
+    .returning({ id: schema.tasks.id });
+  if (adopted.length > 0) {
+    logger.info(
+      { organisationId, proposalId: detail.proposal.id, projectId, adopted: adopted.length },
+      "adopted placeholder tasks onto the project",
+    );
+  }
+  return adopted.length;
 }

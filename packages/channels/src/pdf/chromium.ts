@@ -29,6 +29,15 @@
  */
 import type { Browser } from "playwright";
 import { DOCUMENT_MARGIN, EMPTY_HEADER_TEMPLATE, documentFooterTemplate } from "./document.js";
+import {
+  CAPTURE_SETTLE_MS,
+  CAPTURE_TIMEOUT_MS,
+  SCREENSHOT_VIEWPORTS,
+  ScreenshotFailed,
+  looksLikePng,
+  type CaptureScreenshotInput,
+  type Screenshot,
+} from "./screenshot.js";
 import { PdfRenderFailed, looksLikePdf, type PdfRenderer, type RenderPdfInput } from "./types.js";
 
 /**
@@ -140,6 +149,55 @@ export class ChromiumPdfRenderer implements PdfRenderer {
     } finally {
       // The page goes even when the render threw; the browser stays.
       await page.close().catch(() => {});
+    }
+  }
+
+  /**
+   * Photographs a live page in the same browser.
+   *
+   * The one place in this file that loads something we did not write, so it is
+   * the one place that gets its own `BrowserContext`: a throwaway profile with
+   * its own cookies, storage and cache, closed with the capture. Documents
+   * rendered before or after it share the browser but never that state.
+   *
+   * `networkidle` rather than `load`, then a short settle. A modern site
+   * finishes `load` with its hero still fading in and its images still
+   * arriving over lazy-loading observers; the picture taken at `load` is of a
+   * page that is technically ready and visibly wrong. Where the network never
+   * goes quiet — a chat widget polling, an analytics beacon on a timer — the
+   * wait times out and we photograph what is on screen anyway rather than
+   * failing, because a slightly early picture beats no picture.
+   */
+  async capture(input: CaptureScreenshotInput): Promise<Screenshot> {
+    const browser = await this.ensureBrowser();
+    const viewport = input.viewport ?? "desktop";
+    const size = SCREENSHOT_VIEWPORTS[viewport];
+    const timeout = input.timeoutMs ?? CAPTURE_TIMEOUT_MS;
+    const context = await browser.newContext({
+      viewport: { width: size.width, height: size.height },
+      deviceScaleFactor: 2,
+      acceptDownloads: false,
+      // A phone-sized viewport that says it is a desktop gets the desktop
+      // layout scaled down, which is a picture of nothing anybody sees.
+      isMobile: viewport === "mobile",
+      hasTouch: viewport === "mobile",
+    });
+    try {
+      const page = await context.newPage();
+      const response = await page.goto(input.url, { waitUntil: "domcontentloaded", timeout });
+      if (!response) throw new ScreenshotFailed(input.url, "the page did not answer");
+      if (!response.ok()) throw new ScreenshotFailed(input.url, `the page answered ${response.status()}`);
+      await page.waitForLoadState("networkidle", { timeout }).catch(() => {});
+      await page.waitForTimeout(CAPTURE_SETTLE_MS);
+      const bytes = Uint8Array.from(await page.screenshot({ type: "png", fullPage: input.fullPage ?? false, timeout }));
+      if (!looksLikePng(bytes)) throw new ScreenshotFailed(input.url, "Chromium returned bytes that are not a PNG");
+      return { bytes, mime: "image/png", viewport, width: size.width, height: size.height };
+    } catch (error) {
+      if (error instanceof ScreenshotFailed) throw error;
+      throw new ScreenshotFailed(input.url, `could not photograph the page: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    } finally {
+      // The profile goes even when the capture threw; the browser stays.
+      await context.close().catch(() => {});
     }
   }
 

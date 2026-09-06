@@ -35,6 +35,7 @@ import { ensureOpsBriefEnabled, registerOpsBriefJob } from "./jobs/ops-brief.js"
 import { ensureLeadQualifierEnabled } from "./jobs/lead-enablement.js";
 import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
 import { ensureProposalDrafterEnabled, registerProposalJobs } from "./jobs/proposals-jobs.js";
+import { ensureProjectAgentsEnabled, registerProjectJobs } from "./jobs/project-jobs.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -247,6 +248,15 @@ async function main() {
   // turns `acceptProposal`'s no-op hook into a real queue send.
   await ensureProposalDrafterEnabled(db);
   await registerProposalJobs({ db, boss, payments: integrations.payments, env: process.env });
+
+  // Projects: the Friday update fan-out, the same-day milestone note, and the
+  // launch screenshots plus the Case Study Writer on delivery. The screenshots
+  // borrow the PDF engine's Chromium — `installPdfShutdown` above is what
+  // closes it — so there is one browser in this process, not two. Both agents
+  // are on by default like the writer; neither can reach a client without a
+  // card in Shoji's approvals queue.
+  await ensureProjectAgentsEnabled(db);
+  await registerProjectJobs({ db, boss, env: process.env });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });
   // Every minute: a decided approval whose resume never arrived is an approved

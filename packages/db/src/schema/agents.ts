@@ -16,10 +16,25 @@ export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", 
 // `proposal_send` is the Proposal Drafter's finished draft asking to go to the
 // client — run-less too, decided on /approvals, and carried out by the worker,
 // because sending renders a PDF and only `apps/worker` has a browser.
+// `client_review` is the second kind a *client* decides, and the only one that
+// is not a gate: Shoji invites them to look at a design, they approve or
+// comment, and **nothing waits on them either way** — see
+// `packages/core/src/projects/client-review.ts`.
+// `project_update` is the Project Reporter's drafted Friday note to a client —
+// run-less, decided on /approvals, and carried out by
+// `applyProjectUpdateDecision`, which queues the email.
+// `case_study_publish` is the one approval on this list the *kernel* raises:
+// the Case Study Writer's `case_study_publish` tool is `requires_approval`, so
+// the run parks and approving it resumes the run and executes the tool. It
+// therefore carries a `run_id` and the kernel's own payload shape, not an
+// `action` — which is why it has no pending index below.
 export const approvalKindEnum = pgEnum("approval_kind", [
   "tool_call", "report_send", "message_send", "dns_change", "content_change", "subscription_change", "content_publish",
-  "content_report_send", "lead_reply", "proposal_send",
+  "content_report_send", "lead_reply", "proposal_send", "client_review", "project_update", "case_study_publish",
 ]);
+/** What a card is called on /approvals. A tool may name its own — see `ToolDefinition.approvalKind`. */
+export type ApprovalKind = (typeof approvalKindEnum.enumValues)[number];
+
 export const approvalStatusEnum = pgEnum("approval_status", ["pending", "approved", "rejected"]);
 
 export const agentEnablement = pgTable("agent_enablement", {
@@ -124,6 +139,34 @@ export const approvals = pgTable("approvals", {
   uniqueIndex("approvals_pending_proposal_send")
     .on(t.organisationId, sql`(${t.payload} ->> 'proposalId')`)
     .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'proposal_send'`),
+  // At most one *open* review per thing being reviewed —
+  // `payload.targetRef` is `milestone:<id>` or `project:<id>`.
+  //
+  // The other five indexes on this table stop a duplicate *outward action*: a
+  // second email, a second quote, a second post. This one is not about that; a
+  // client review sends nothing. It is about the client's page. A review is an
+  // invitation to look at one thing, and because it never blocks anything, a
+  // second invitation about the same thing buys no time — it only makes a
+  // portal that was meant to read as "here is where we are" read as a queue of
+  // work the client owes us. If two things need looking at, they are two
+  // milestones. Same payload-not-enum predicate as the four above, for the
+  // same one-migration reason.
+  //
+  // `deleted_at is null` is in the predicate here and not in the five above,
+  // and the difference is real: a review Shoji withdraws because it no longer
+  // needs answering is soft-deleted, and the slot has to come free so he can
+  // ask about the same milestone again. Nothing withdraws a proposal send or a
+  // content publish that way, so those five have never needed it.
+  uniqueIndex("approvals_pending_client_review")
+    .on(t.organisationId, sql`(${t.payload} ->> 'targetRef')`)
+    .where(sql`${t.status} = 'pending' and ${t.deletedAt} is null and ${t.payload} ->> 'action' = 'client_review'`),
+  // At most one *pending* weekly update per project. The Friday cron is the
+  // reason: a project whose last draft is still waiting for Shoji does not
+  // want a second week's draft stacked behind it, because approving them out
+  // of order would send the client last week's news after this week's.
+  uniqueIndex("approvals_pending_project_update")
+    .on(t.organisationId, sql`(${t.payload} ->> 'projectId')`)
+    .where(sql`${t.status} = 'pending' and ${t.payload} ->> 'action' = 'project_update'`),
 ]);
 
 export const auditLog = pgTable("audit_log", {
