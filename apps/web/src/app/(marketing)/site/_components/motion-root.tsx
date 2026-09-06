@@ -15,12 +15,46 @@ import { useEffect } from "react";
  * Mounted from `template.tsx`, so it runs once per navigation against the
  * page that has just rendered. Under `prefers-reduced-motion: reduce` it
  * shows everything at rest and does nothing else.
+ *
+ * **It also watches for content that arrives after it.** The scan alone was a
+ * bug: the pages are async server components that read the database, so on a
+ * client-side navigation React commits this template while the page is still
+ * suspended. The scan then found nothing, nothing was ever observed, and every
+ * `[data-reveal]` on the new page stayed at `opacity: 0` for good — a Work
+ * page with a header and nothing under it, until you navigated somewhere else.
+ * A `MutationObserver` picks up whatever mounts later, which is the only
+ * arrangement that survives streaming.
  */
 export function MotionRoot() {
   useEffect(() => {
+    // Tells the stylesheet the runtime arrived, which turns off its safety
+    // reveal. Never removed: once a page has a working runtime it has one for
+    // the rest of the visit, and a gap between two templates must not let the
+    // safety animation start.
+    document.documentElement.classList.add("motion-on");
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const stops = [revealOnScroll(reduced), countUp(reduced), parallax(reduced)];
-    return () => stops.forEach((stop) => stop());
+    const reveal = revealOnScroll(reduced);
+    const count = countUp(reduced);
+    const stops = [reveal.stop, count.stop, parallax(reduced)];
+
+    // Streamed content, and anything a client component renders later.
+    const watcher = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue;
+          if (node.hasAttribute("data-reveal")) reveal.add(node);
+          if (node.hasAttribute("data-count")) count.add(node);
+          node.querySelectorAll<HTMLElement>("[data-reveal]").forEach(reveal.add);
+          node.querySelectorAll<HTMLElement>("[data-count]").forEach(count.add);
+        }
+      }
+    });
+    watcher.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      watcher.disconnect();
+      stops.forEach((stop) => stop());
+    };
   }, []);
   return null;
 }
@@ -28,11 +62,17 @@ export function MotionRoot() {
 const STAGGER_MS = 60;
 const COUNT_MS = 1200;
 
-function revealOnScroll(reduced: boolean): () => void {
-  const targets = Array.from(document.querySelectorAll<HTMLElement>("[data-reveal]"));
+/** A live watcher: `add` takes one more element, `stop` tears the whole thing down. */
+interface Watched {
+  add: (el: HTMLElement) => void;
+  stop: () => void;
+}
+
+function revealOnScroll(reduced: boolean): Watched {
   if (reduced || !("IntersectionObserver" in window)) {
-    targets.forEach((el) => el.classList.add("is-in"));
-    return () => undefined;
+    const show = (el: HTMLElement) => el.classList.add("is-in");
+    document.querySelectorAll<HTMLElement>("[data-reveal]").forEach(show);
+    return { add: show, stop: () => undefined };
   }
   const observer = new IntersectionObserver(
     (entries) => {
@@ -46,8 +86,13 @@ function revealOnScroll(reduced: boolean): () => void {
     },
     { rootMargin: "0px 0px -8% 0px", threshold: 0.05 },
   );
-  targets.forEach((el) => observer.observe(el));
-  return () => observer.disconnect();
+  // Already revealed means already seen: re-observing on a navigation back
+  // would replay the stagger on content the visitor has read.
+  const add = (el: HTMLElement) => {
+    if (!el.classList.contains("is-in")) observer.observe(el);
+  };
+  document.querySelectorAll<HTMLElement>("[data-reveal]").forEach(add);
+  return { add, stop: () => observer.disconnect() };
 }
 
 function siblingIndex(el: HTMLElement): number {
@@ -61,18 +106,18 @@ function siblingIndex(el: HTMLElement): number {
   return 0;
 }
 
-function countUp(reduced: boolean): () => void {
-  const targets = Array.from(document.querySelectorAll<HTMLElement>("[data-count]"));
-  if (targets.length === 0) return () => undefined;
+function countUp(reduced: boolean): Watched {
   const render = (el: HTMLElement, value: number) => {
     const pad = Number(el.dataset.pad ?? 0);
     el.textContent = String(Math.round(value)).padStart(pad, "0");
   };
   if (reduced || !("IntersectionObserver" in window)) {
-    targets.forEach((el) => render(el, Number(el.dataset.count)));
-    return () => undefined;
+    const show = (el: HTMLElement) => render(el, Number(el.dataset.count));
+    document.querySelectorAll<HTMLElement>("[data-count]").forEach(show);
+    return { add: show, stop: () => undefined };
   }
   const frames = new Set<number>();
+  const counted = new WeakSet<HTMLElement>();
   const observer = new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
@@ -91,13 +136,21 @@ function countUp(reduced: boolean): () => void {
     },
     { threshold: 0.5 },
   );
-  targets.forEach((el) => {
+  // Zeroing a figure that has already counted would make a navigation back
+  // reset the number under the visitor's eyes.
+  const add = (el: HTMLElement) => {
+    if (counted.has(el)) return;
+    counted.add(el);
     render(el, 0);
     observer.observe(el);
-  });
-  return () => {
-    observer.disconnect();
-    frames.forEach((id) => cancelAnimationFrame(id));
+  };
+  document.querySelectorAll<HTMLElement>("[data-count]").forEach(add);
+  return {
+    add,
+    stop: () => {
+      observer.disconnect();
+      frames.forEach((id) => cancelAnimationFrame(id));
+    },
   };
 }
 

@@ -238,3 +238,70 @@ test("home and work-brief screenshots for the design review", async ({ browser }
     }
   }
 });
+
+/**
+ * Clicking through the site, which is not the same journey as loading a page.
+ *
+ * Reported from the live site: home reads fine, Work lists the projects, a
+ * project opens with its screenshot and nothing under it, and going back to
+ * Work leaves a header above an empty page that stays empty however many times
+ * you return — until you visit some other page entirely.
+ *
+ * Every one of those screens passes a `goto` test, because a `goto` gives the
+ * runtime a finished document to scan. A click does not: the pages are async
+ * server components reading the database, so React commits the template while
+ * the page is still suspended, the one-shot scan finds nothing, and everything
+ * it should have revealed stays at `opacity: 0` for good.
+ *
+ * So this walks it with the mouse and asserts what a visitor would see —
+ * computed opacity, not presence in the DOM. Playwright counts a fully
+ * transparent element as visible, so `toBeVisible()` would have passed
+ * throughout the bug.
+ */
+test("clicking home → work → a project → back to work leaves every section readable", async ({ page }) => {
+  await page.goto("/site");
+  await expect(page.getByRole("heading", { level: 1, name: HOME_H1 })).toBeVisible({ timeout: COLD_COMPILE });
+
+  // Home → Work, by clicking the nav rather than loading the URL.
+  await page.getByRole("navigation").getByRole("link", { name: "Work", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/site\/work$/);
+  const firstCard = page.locator('a[href^="/site/work/"]').first();
+  await expect(firstCard).toHaveCSS("opacity", "1", { timeout: COLD_COMPILE });
+
+  // Work → a project. The screenshot is not a reveal target, so it showed even
+  // while the brief beneath it did not; the brief is what this asserts.
+  await firstCard.click();
+  await expect(page).toHaveURL(/\/site\/work\/[a-z0-9-]+$/);
+  const brief = page.getByRole("heading", { name: "The client" }).locator("xpath=ancestor::section[1]");
+  await brief.scrollIntoViewIfNeeded();
+  await expect(brief).toHaveCSS("opacity", "1", { timeout: COLD_COMPILE });
+
+  // And back, which is where it stayed blank for good.
+  await page.getByRole("link", { name: "All work" }).click();
+  await expect(page).toHaveURL(/\/site\/work$/);
+  await expect(page.locator('a[href^="/site/work/"]').first()).toHaveCSS("opacity", "1", { timeout: COLD_COMPILE });
+
+  // Nothing anywhere on the page may be left invisible once it has been scrolled to.
+  // Scrolled a screen at a time, the way a person reads it. Jumping to the
+  // bottom would leave the middle of the page never having been on screen,
+  // which is not a bug in a scroll reveal — it is the point of one.
+  const screens = await page.evaluate(() => Math.ceil(document.body.scrollHeight / window.innerHeight));
+  for (let i = 1; i <= screens; i += 1) {
+    await page.evaluate((n) => window.scrollTo(0, n * window.innerHeight * 0.8), i);
+    await page.waitForTimeout(250);
+  }
+  // Polled rather than slept: the reveal is a 500ms transition staggered 60ms
+  // per sibling, so a fixed wait is either a flake or a guess. What matters is
+  // that everything the visitor has actually scrolled to has settled visible.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() =>
+          [...document.querySelectorAll("[data-reveal]")]
+            .filter((el) => getComputedStyle(el).opacity === "0")
+            .map((el) => `${el.tagName}.${(el as HTMLElement).className}`.slice(0, 60)),
+        ),
+      { timeout: 10_000 },
+    )
+    .toEqual([]);
+});

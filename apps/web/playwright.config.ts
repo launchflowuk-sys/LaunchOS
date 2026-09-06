@@ -19,6 +19,12 @@ export default defineConfig({
   // First visits compile routes in `next dev`; a 5s expect default turns every cold
   // route into a flake, so the default matches the slowest observed compile.
   expect: { timeout: 45_000 },
+  // And the per-test cap has to clear the expects inside it. Playwright's
+  // default is 30s, which quietly overrode every `COLD_COMPILE` wait in the
+  // specs: a test allowed 120s for one assertion was killed at 30s having
+  // never been allowed to make it. A signed-in journey that compiles a public
+  // page, an auth page and an admin page in one test needs the room.
+  timeout: 180_000,
   testDir: "./tests/e2e",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,

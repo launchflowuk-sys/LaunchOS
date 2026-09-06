@@ -19,6 +19,31 @@
   transform: none;
 }
 
+/* The safety net, and it is not decoration.
+   `[data-reveal]` starts invisible and is only shown by a script, so anything
+   that stops that script from claiming an element hides real content from a
+   real visitor for good — which is precisely what happened when the runtime
+   scanned once and the page streamed in afterwards. That specific bug is
+   fixed in `motion-root.tsx`, but the shape of the risk remains: a marketing
+   page must never depend on JavaScript to be readable.
+   So the hidden state now expires. If the runtime has not stamped
+   `motion-on` on <html> within a second and a half — script blocked, failed
+   to parse, threw on load — everything reveals itself and the page reads
+   normally, having merely missed its animation. With the runtime present the
+   animation is switched off and the observer is back in charge. */
+@keyframes m-reveal-safety {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.marketing [data-reveal] {
+  animation: m-reveal-safety 0.4s var(--ease) 1.5s forwards;
+}
+:root.motion-on .marketing [data-reveal] {
+  animation: none;
+}
+
 /* The hero: each headline word rises in turn (80ms apart), the rest of the
    column follows, the screenshot panel fades up. Pure CSS from the first
    paint — no script has to arrive for the first screen to move. */
@@ -98,8 +123,19 @@
     opacity: 1;
   }
 }
+/* `forwards` rather than `both`. This element wraps every route, and the
+   keyframe starts at `opacity: 0`, so its fill mode decides what a visitor
+   sees whenever the animation is not running. `both` adds a backwards fill
+   that holds the whole page invisible; `forwards` leaves the resting state as
+   the element's own opacity.
+   Honestly: this does not rescue an animation that is *frozen* — a paused
+   animation is still inside its active phase and still paints frame zero,
+   which is why a background tab renders this element transparent. It is
+   narrower than that. It means that if the animation never applies at all,
+   the page is readable rather than blank. Cheap, and the failure it removes
+   is total. */
 .marketing .route-enter {
-  animation: m-route 0.3s ease-out both;
+  animation: m-route 0.3s ease-out forwards;
 }
 
 @media (prefers-reduced-motion: reduce) {
