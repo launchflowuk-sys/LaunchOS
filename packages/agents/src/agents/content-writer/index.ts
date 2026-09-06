@@ -1,5 +1,6 @@
 import type { AgentDefinition } from "../../kernel/types.js";
 import { contentGetBrief } from "../../tools/content-get-brief.js";
+import { contentListAssets } from "../../tools/content-list-assets.js";
 import { contentListSlots } from "../../tools/content-list-slots.js";
 import { contentRequestApproval } from "../../tools/content-request-approval.js";
 import { contentSaveDraft } from "../../tools/content-save-draft.js";
@@ -22,11 +23,12 @@ Work in this order:
 1. Call content_get_brief. The brief is the client's voice: tone, audience, services, offers, area, and things they never say. Everything you write must fit it. If the brief is null, you may still write from the client's name, website and the knowledge base — but only about services and facts those name. If there is nothing to write from at all, stop and say so.
 2. Call knowledge_search, at most ${MAX_KNOWLEDGE_SEARCHES} times, for the client's services and area, so you can cite real facts. Use only what it returns.
 3. Call content_list_slots for the period. Draft only the slots where unfilled is true; leave every other slot alone.
-4. For every unfilled slot, call content_save_draft once. Vary the angle across the month — a service, a local tip, a seasonal note, a reason to get in touch — so no two posts read alike. If the tool answers { saved: false, reason }, fix the draft as the reason says and save it again.
-5. Once every unfilled slot is saved, call content_request_approval once for each slot you wrote. Shoji approves each post before it is published; write every draft ready to go out unchanged.
+4. Call content_list_assets once. These are the client's own photos of their work, and a post with a real photo does far better than one without. For every Facebook and Instagram slot, pick the photo whose alt text or file name best suits the post you are about to write and pass its url as imageUrl; use each photo at most once in the month while there are enough to go round. When the list is empty, or none of the photos fits, give an imagePrompt instead. Never pass an image url from anywhere else.
+5. For every unfilled slot, call content_save_draft once. Vary the angle across the month — a service, a local tip, a seasonal note, a reason to get in touch — so no two posts read alike. If the tool answers { saved: false, reason }, fix the draft as the reason says and save it again.
+6. Once every unfilled slot is saved, call content_request_approval once for each slot you wrote. Shoji approves each post before it is published; write every draft ready to go out unchanged.
 
 Rules by channel:
-- Facebook and Instagram: plain text, at most ${SOCIAL_TARGET_MAX_CHARS} characters unless the brief says otherwise. One clear idea per post. At most two hashtags, or none. Give an imagePrompt describing a single photo that suits the post (Instagram cannot publish without an image, so always give one there). Add linkUrl only when a page on the client's own site is the natural next step.
+- Facebook and Instagram: plain text, at most ${SOCIAL_TARGET_MAX_CHARS} characters unless the brief says otherwise. One clear idea per post. At most two hashtags, or none. Give an imageUrl from the client's photos when one suits; otherwise an imagePrompt describing a single photo that suits the post (Instagram cannot publish without an image, so always give one or the other there). Add linkUrl only when a page on the client's own site is the natural next step.
 - Blog: a title, and a body of ${BLOG_MIN_WORDS} to ${BLOG_MAX_WORDS} words in Markdown with H2 headings (## …), short paragraphs and a closing call to action. Link to the client's site where it helps the reader. Give an imagePrompt for the featured image.
 - Google Business Profile: plain text, at most ${GBP_MAX_BODY_CHARS} characters, written for someone who has just searched for the business locally. Give linkUrl to the client's site when there is a relevant page.
 
@@ -49,7 +51,7 @@ export function contentWriter(): AgentDefinition {
       "then sends each one to the owner for approval.",
     trigger: { kind: "cron", schedule: "0 6 1 * *", timezone: "Europe/London" },
     systemPrompt: CONTENT_WRITER_PROMPT,
-    tools: [contentGetBrief, knowledgeSearch, contentListSlots, contentSaveDraft, contentRequestApproval],
+    tools: [contentGetBrief, knowledgeSearch, contentListSlots, contentListAssets, contentSaveDraft, contentRequestApproval],
     // A month can be eight or more slots, each a save and a request, plus the
     // brief, the searches and the listing — and a refused save costs a turn to
     // fix. Generous so a full month never stops half-written.

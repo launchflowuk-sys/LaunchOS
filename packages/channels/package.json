@@ -17,14 +17,16 @@
   },
   "dependencies": {
     "nodemailer": "^7.0.9",
+    "web-push": "3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@launchos/config": "workspace:*",
     "@types/node": "^24",
     "@types/nodemailer": "^7",
+    "@types/web-push": "3.6.4",
+    "tsx": "^4",
     "typescript": "^5",
-    "vitest": "^3",
-    "tsx": "^4"
+    "vitest": "^3"
   }
 }

@@ -8,6 +8,7 @@ import type { InboundMessageJob } from "./inbound-message.js";
 import type { OutboundMessageJob } from "./outbound-message.js";
 import type { GenerateOnboardingJob } from "./task-generation.js";
 import type { PaymentsWebhookJob } from "./payments-webhook.js";
+import type { PushSendJob } from "./push-send.js";
 
 /** The only pg-boss surface this needs — narrow enough to fake in tests. */
 export type BossSender = Pick<PgBoss, "send">;
@@ -86,6 +87,15 @@ export async function dispatchEvent(deps: DispatchEventDeps, event: DomainEvent)
     // also cover `failed` and so block the redelivery that is the only
     // recovery path a failed sync has — see packages/core/src/queue/queues.ts.
     await boss.send(QUEUE.paymentsWebhook, job, { singletonKey: `stripe:${event.providerEvent.id}` });
+    return;
+  }
+  if (event.name === "push.requested") {
+    // `notify()` emits this for every urgent notification whose user has a
+    // subscribed device. One job per notification; the job fans out to the
+    // user's devices itself, and the key collapses a re-emit from a retried
+    // transaction while the first job is still queued.
+    const job: PushSendJob = { organisationId: event.organisationId, notificationId: event.notificationId, userId: event.userId };
+    await boss.send(QUEUE.pushSend, job, { singletonKey: `push:${event.notificationId}` });
     return;
   }
   // site.created / domain.created / member.created / task.created /

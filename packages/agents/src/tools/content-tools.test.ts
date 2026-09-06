@@ -1,11 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import { getContentItem, requestContentApproval } from "@launchos/core";
+import { createContentAsset, getContentItem, publicAssetUrl, requestContentApproval } from "@launchos/core";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { PERIOD, writerFixture } from "../agents/content-writer/fixture.js";
 import { buildContext } from "../kernel/run-loop.js";
 import { contentGetBrief } from "./content-get-brief.js";
+import { contentListAssets } from "./content-list-assets.js";
 import { contentListSlots } from "./content-list-slots.js";
 import { contentRequestApproval } from "./content-request-approval.js";
 import { contentSaveDraft } from "./content-save-draft.js";
@@ -166,6 +170,60 @@ describe("content_request_approval", () => {
       expect((await contentRequestApproval.execute({ itemId: slot.id }, ctx)).requested).toBe(true);
       const again = await contentRequestApproval.execute({ itemId: slot.id }, ctx);
       expect(again).toMatchObject({ requested: false, reason: expect.stringMatching(/awaiting approval/) });
+    });
+  });
+});
+
+describe("content_list_assets and imageUrl on content_save_draft", () => {
+  let storage: string;
+  beforeAll(async () => { storage = await mkdtemp(join(tmpdir(), "launchos-writer-assets-")); });
+  afterAll(async () => { await rm(storage, { recursive: true, force: true }); });
+  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 1, 2, 3]);
+  const storageEnv = () => ({ ...process.env, STORAGE_DIR: storage }) as NodeJS.ProcessEnv;
+
+  it("lists the client's photos newest first with the public url, as a safe tool, and nothing for another organisation's client", async () => {
+    await withTestDb(async (db) => {
+      const mine = await writerFixture(db, { plan: false });
+      const theirs = await writerFixture(db, { plan: false });
+      const ctx = await ctxFor(db, mine.orgId);
+      expect(contentListAssets.risk).toBe("safe");
+
+      expect(await contentListAssets.execute({ clientId: mine.clientId }, ctx)).toEqual({ assets: [], count: 0 });
+      const older = await createContentAsset(db, mine.orgId, { clientId: mine.clientId, bytes: png, mime: "image/png", originalName: "cab.png", alt: "A cab at Stansted" }, storageEnv());
+      const newer = await createContentAsset(db, mine.orgId, { clientId: mine.clientId, bytes: png, mime: "image/jpeg", originalName: "driver.jpg", source: "client", actorKind: "client" }, storageEnv());
+      await createContentAsset(db, theirs.orgId, { clientId: theirs.clientId, bytes: png, mime: "image/png", originalName: "not-mine.png" }, storageEnv());
+
+      const out = await contentListAssets.execute({ clientId: mine.clientId }, ctx);
+      expect(out.count).toBe(2);
+      expect(out.assets.map((a) => a.id)).toEqual([newer.id, older.id]);
+      expect(out.assets[1]).toEqual({
+        id: older.id, url: publicAssetUrl(older.id), alt: "A cab at Stansted", originalName: "cab.png", mime: "image/png",
+        source: "staff", uploadedAt: older.createdAt.toISOString(),
+      });
+      expect(out.assets[0]).toMatchObject({ source: "client", alt: null });
+      // The other organisation's client, through this organisation's context: nothing, not a leak.
+      expect(await contentListAssets.execute({ clientId: theirs.clientId }, ctx)).toEqual({ assets: [], count: 0 });
+    });
+  });
+
+  it("saves an imageUrl only when it is one of the client's own photos, and refuses any other url as data", async () => {
+    await withTestDb(async (db) => {
+      const f = await writerFixture(db);
+      const other = await writerFixture(db, { plan: false });
+      const ctx = await ctxFor(db, f.orgId);
+      const slot = slotOf(f.planned, "instagram");
+      const asset = await createContentAsset(db, f.orgId, { clientId: f.clientId, bytes: png, mime: "image/png", alt: "Fleet" }, storageEnv());
+      const foreign = await createContentAsset(db, other.orgId, { clientId: other.clientId, bytes: png, mime: "image/png" }, storageEnv());
+
+      const invented = await contentSaveDraft.execute({ itemId: slot.id, body: "Early flight?", imageUrl: "https://images.example.com/cab.jpg" }, ctx);
+      expect(invented).toMatchObject({ saved: false, reason: expect.stringMatching(/one of this client's photos/) });
+      const stolen = await contentSaveDraft.execute({ itemId: slot.id, body: "Early flight?", imageUrl: publicAssetUrl(foreign.id) }, ctx);
+      expect(stolen.saved).toBe(false);
+      expect((await getContentItem(db, f.orgId, { itemId: slot.id }))!.body).toBeNull();
+
+      const ok = await contentSaveDraft.execute({ itemId: slot.id, body: "Early flight? We are up before you are.", imageUrl: publicAssetUrl(asset.id) }, ctx);
+      expect(ok.saved).toBe(true);
+      expect(await getContentItem(db, f.orgId, { itemId: slot.id })).toMatchObject({ imageUrl: publicAssetUrl(asset.id), imagePrompt: null });
     });
   });
 });

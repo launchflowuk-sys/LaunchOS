@@ -1,8 +1,7 @@
-import { buildContentReport, monthName, notifyOwner, parsePeriodKey, periodKeyFor } from "@launchos/core";
+import { CONTENT_REPORT_SEND_ACTION, ContentRefused, buildContentReport, parsePeriodKey, periodKeyFor, requestContentReportSend } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { ContentReportStats } from "@launchos/db/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { sweep, throwOnSweepFailure, type SweepLogger } from "./sweep.js";
 
 export interface ContentReportLogger extends SweepLogger {
@@ -20,23 +19,15 @@ export interface ContentReportResult {
   /** Clients with at least one published item in that month. */
   clients: number;
   reports: number;
-  /** Owner notifications raised this run; a report already announced is not announced again. */
-  notified: number;
+  /** Send approvals raised this run; a report already sent, pending or decided is not asked about again. */
+  requested: number;
   failed: number;
 }
-
-/** The notification kind the bell shows, and the key that stops a second one for the same report. */
-export const CONTENT_REPORT_NOTIFICATION_KIND = "content_report.built";
 
 /** `2026-09` → `2026-08`. */
 export function previousPeriodKey(periodKey: string): string {
   const [year, month] = parsePeriodKey(periodKey);
   return month === 1 ? `${year - 1}-12` : `${year}-${String(month - 1).padStart(2, "0")}`;
-}
-
-/** Where the owner is sent to read it. C4 owns the page; the query is the filter its list takes. */
-export function contentReportLink(clientId: string, periodKey: string): string {
-  return `/content?client=${clientId}&period=${periodKey}`;
 }
 
 async function clientsWithPublishedContent(db: Db, organisationId: string, periodKey: string): Promise<{ clientId: string; name: string }[]> {
@@ -53,30 +44,34 @@ async function clientsWithPublishedContent(db: Db, organisationId: string, perio
   return rows;
 }
 
-async function alreadyAnnounced(db: Db, organisationId: string, link: string): Promise<boolean> {
-  const [row] = await db.select({ id: schema.notifications.id }).from(schema.notifications).where(and(
-    eq(schema.notifications.organisationId, organisationId),
-    eq(schema.notifications.kind, CONTENT_REPORT_NOTIFICATION_KIND),
-    eq(schema.notifications.link, link),
+/**
+ * Whether the owner has already decided a send for this report. A rejection
+ * leaves the report a draft, and a re-run of this job (a retry, or a manual
+ * kick) must not put the same card back in front of them; a pending one is
+ * `requestContentReportSend`'s own `already_pending` refusal.
+ */
+async function sendAlreadyDecided(db: Db, organisationId: string, reportId: string): Promise<boolean> {
+  const [row] = await db.select({ id: schema.approvals.id }).from(schema.approvals).where(and(
+    eq(schema.approvals.organisationId, organisationId),
+    eq(schema.approvals.kind, CONTENT_REPORT_SEND_ACTION),
+    sql`${schema.approvals.payload}->>'reportId' = ${reportId}`,
+    ne(schema.approvals.status, "pending"),
   )).limit(1);
   return row !== undefined;
 }
 
 /**
  * On the 1st: builds last month's content report for every client who had
- * something published, and tells the owner it is ready.
- *
- * Sending it to the client is deliberately not here. The ad-report send flow
- * is bound to `ad_reports` (`sendAdReport` ships an approved `ad_reports`
- * row), and `content_reports` has `approved`/`sent` columns but no service
- * behind them yet — that service is core's to add, and this phase does not
- * own core. Until it exists the owner gets a bell notification with a link to
- * the month, once per report: the summary is in the admin portal, and the
- * client's portal already shows every published post with its link.
+ * something published, and asks the owner to send it — a
+ * `content_report_send` approval, whose card carries the summary and whose
+ * request rings the owner's bell (and phone: `approval.requested` is urgent).
+ * Approving it emails the client's portal users and marks the report sent;
+ * see `applyContentReportSendDecision` in core.
  *
  * Re-running is safe: `buildContentReport` replaces a draft in place and
- * never touches a sent one, and the notification is skipped when the same
- * report has already been announced.
+ * never touches a sent one; a report already sent is skipped; a send already
+ * waiting is `already_pending`, which is expected and not counted; and a send
+ * the owner already rejected is not asked about again.
  */
 export async function runContentReports(db: Db, organisationId: string, options: ContentReportOptions): Promise<ContentReportResult> {
   const logger = options.logger ?? console;
@@ -84,24 +79,22 @@ export async function runContentReports(db: Db, organisationId: string, options:
   const clients = await clientsWithPublishedContent(db, organisationId, periodKey);
 
   let reports = 0;
-  let notified = 0;
+  let requested = 0;
   const label = `content reports (${organisationId})`;
   const summary = await sweep(clients, { label, id: (c) => c.clientId, logger }, async (client) => {
     const report = await buildContentReport(db, organisationId, { clientId: client.clientId, periodKey, actorKind: "system" });
     reports += 1;
-    const link = contentReportLink(client.clientId, periodKey);
-    if (report.status === "sent" || (await alreadyAnnounced(db, organisationId, link))) return;
-    const stats = report.stats as ContentReportStats;
-    await notifyOwner(db, organisationId, {
-      kind: CONTENT_REPORT_NOTIFICATION_KIND,
-      title: `Content report ready: ${client.name}, ${monthName(periodKey)}`,
-      body: `${stats.published} of ${stats.planned} planned posts published. Review it and share it with the client.`,
-      link,
-    });
-    notified += 1;
+    if (report.status === "sent" || (await sendAlreadyDecided(db, organisationId, report.id))) return;
+    try {
+      await requestContentReportSend(db, organisationId, { reportId: report.id, actorKind: "system" });
+      requested += 1;
+    } catch (error) {
+      if (error instanceof ContentRefused && (error.reason === "already_pending" || error.reason === "already_sent")) return;
+      throw error;
+    }
   });
 
-  const result: ContentReportResult = { periodKey, clients: clients.length, reports, notified, failed: summary.failed };
+  const result: ContentReportResult = { periodKey, clients: clients.length, reports, requested, failed: summary.failed };
   logger.info({ organisationId, ...result }, "content reports");
   throwOnSweepFailure(label, summary);
   return result;

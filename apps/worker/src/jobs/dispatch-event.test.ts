@@ -166,4 +166,21 @@ describe("dispatchEvent", () => {
       );
     });
   });
+
+  it("routes push.requested to push.send keyed by the notification, so a user's devices are rung once per alert", async () => {
+    await withTestDb(async (db) => {
+      const boss = fakeBoss();
+      const organisationId = randomUUID();
+      const notificationId = randomUUID();
+      const userId = randomUUID();
+
+      await dispatchEvent({ db, boss }, { name: "push.requested", organisationId, notificationId, userId });
+
+      expect(boss.send).toHaveBeenCalledWith(
+        "push.send",
+        { organisationId, notificationId, userId },
+        { singletonKey: `push:${notificationId}` },
+      );
+    });
+  });
 });

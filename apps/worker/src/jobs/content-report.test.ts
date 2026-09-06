@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
+import { CONTENT_REPORT_SEND_ACTION } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { CONTENT_REPORT_NOTIFICATION_KIND, contentReportLink, previousPeriodKey, runContentReports } from "./content-report.js";
+import { previousPeriodKey, runContentReports } from "./content-report.js";
 import { addClient, approvedItem, contentJobFixture, silentLogger } from "./content-test-fixture.js";
 
 // 07:00 London on 1 October 2026: the report is for September.
@@ -17,9 +18,14 @@ async function publishedItem(db: Parameters<typeof runContentReports>[0], orgId:
   return item;
 }
 
-function notices(db: Parameters<typeof runContentReports>[0], orgId: string) {
+function sendApprovals(db: Parameters<typeof runContentReports>[0], orgId: string) {
+  return db.select().from(schema.approvals)
+    .where(and(eq(schema.approvals.organisationId, orgId), eq(schema.approvals.kind, CONTENT_REPORT_SEND_ACTION)));
+}
+
+function bells(db: Parameters<typeof runContentReports>[0], orgId: string) {
   return db.select().from(schema.notifications)
-    .where(and(eq(schema.notifications.organisationId, orgId), eq(schema.notifications.kind, CONTENT_REPORT_NOTIFICATION_KIND)));
+    .where(and(eq(schema.notifications.organisationId, orgId), eq(schema.notifications.kind, "approval.requested")));
 }
 
 describe("previousPeriodKey", () => {
@@ -30,7 +36,7 @@ describe("previousPeriodKey", () => {
 });
 
 describe("runContentReports", () => {
-  it("builds last month's report for every client with published content and tells the owner once", async () => {
+  it("builds last month's report for every client with published content and asks the owner to send it, once", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);
       const quiet = await addClient(db, f.orgId, { name: "Nothing published" });
@@ -42,25 +48,30 @@ describe("runContentReports", () => {
 
       const result = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
 
-      expect(result).toEqual({ periodKey: PERIOD, clients: 1, reports: 1, notified: 1, failed: 0 });
+      expect(result).toEqual({ periodKey: PERIOD, clients: 1, reports: 1, requested: 1, failed: 0 });
       const reports = await db.select().from(schema.contentReports).where(eq(schema.contentReports.organisationId, f.orgId));
       expect(reports).toHaveLength(1);
       expect(reports[0]).toMatchObject({ clientId: f.clientId, periodKey: PERIOD, status: "draft" });
       expect(reports[0]!.stats).toMatchObject({ published: 2, planned: 3 });
-      expect(reports[0]!.summaryMd).toContain("2 of 3 planned posts published");
 
-      const [notice] = await notices(db, f.orgId);
-      expect(notice).toMatchObject({
-        userId: f.ownerId,
-        title: "Content report ready: Grays CabLine, September 2026",
-        link: contentReportLink(f.clientId, PERIOD),
+      // The send is an approval card, not a bare bell: approving it emails the client.
+      const [approval] = await sendApprovals(db, f.orgId);
+      expect(approval).toMatchObject({ status: "pending", runId: null });
+      expect(approval!.payload).toMatchObject({
+        action: CONTENT_REPORT_SEND_ACTION, reportId: reports[0]!.id, clientId: f.clientId, clientName: "Grays CabLine",
+        periodKey: PERIOD, published: 2, planned: 3, requestedByKind: "system",
       });
-      expect(notice!.body).toContain("2 of 3");
+      expect(approval!.title).toContain("Grays CabLine");
+      expect(approval!.title).toContain("2 of 3");
+      // The owner is told, urgently.
+      const [bell] = await bells(db, f.orgId);
+      expect(bell).toMatchObject({ userId: f.ownerId, link: "/approvals" });
 
-      // Re-running rebuilds the draft but does not ring the bell again.
+      // Re-running rebuilds the draft but does not raise a second card or ring again.
       const again = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
-      expect(again).toMatchObject({ reports: 1, notified: 0 });
-      expect(await notices(db, f.orgId)).toHaveLength(1);
+      expect(again).toMatchObject({ reports: 1, requested: 0, failed: 0 });
+      expect(await sendApprovals(db, f.orgId)).toHaveLength(1);
+      expect(await bells(db, f.orgId)).toHaveLength(1);
     });
   });
 
@@ -69,25 +80,32 @@ describe("runContentReports", () => {
       const f = await contentJobFixture(db);
       await publishedItem(db, f.orgId, f.clientId, new Date("2026-08-12T09:00:00Z"));
       const result = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
-      expect(result).toEqual({ periodKey: PERIOD, clients: 0, reports: 0, notified: 0, failed: 0 });
-      expect(await notices(db, f.orgId)).toHaveLength(0);
+      expect(result).toEqual({ periodKey: PERIOD, clients: 0, reports: 0, requested: 0, failed: 0 });
+      expect(await sendApprovals(db, f.orgId)).toHaveLength(0);
     });
   });
 
-  it("leaves a sent report alone and does not announce it again", async () => {
+  it("leaves a sent report alone, and does not ask again about a send the owner rejected", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);
       await publishedItem(db, f.orgId, f.clientId, new Date("2026-09-12T09:00:00Z"));
       await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
+
+      // Rejected: the report stays a draft, and the next run must not nag.
+      await db.update(schema.approvals).set({ status: "rejected", decidedAt: NOW, decidedBy: f.ownerId })
+        .where(eq(schema.approvals.organisationId, f.orgId));
+      const afterReject = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
+      expect(afterReject).toMatchObject({ reports: 1, requested: 0 });
+      expect(await sendApprovals(db, f.orgId)).toHaveLength(1);
+
+      // Sent: the summary is frozen and nothing is asked.
       await db.update(schema.contentReports).set({ status: "sent", sentAt: NOW, summaryMd: "as sent" })
         .where(eq(schema.contentReports.organisationId, f.orgId));
-      await db.delete(schema.notifications).where(eq(schema.notifications.organisationId, f.orgId));
-
-      const result = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
-
-      expect(result).toMatchObject({ reports: 1, notified: 0 });
+      const afterSent = await runContentReports(db, f.orgId, { now: NOW, logger: silentLogger() });
+      expect(afterSent).toMatchObject({ reports: 1, requested: 0 });
       const [report] = await db.select().from(schema.contentReports).where(eq(schema.contentReports.organisationId, f.orgId));
       expect(report!.summaryMd).toBe("as sent");
+      expect(await sendApprovals(db, f.orgId)).toHaveLength(1);
     });
   });
 });

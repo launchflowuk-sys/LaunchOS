@@ -95,6 +95,21 @@ const EnvShape = z.object({
    * run before the SPF and DKIM records verify) says so out loud.
    */
   ALLOW_MOCK_ADAPTERS: z.string().optional(),
+  /**
+   * Where `GET /health` answers (`apps/worker/src/health.ts`) — the port
+   * Coolify's health check and a curious operator hit. `0` asks the OS for a
+   * free port, which the tests use.
+   */
+  WORKER_HEALTH_PORT: z.coerce.number().int().min(0).max(65535).default(3001),
+  /**
+   * Web push. Read by `createPushAdapterFromEnv` in `packages/channels` from
+   * `process.env`; declared here so the adapter guard sees them (same rule as
+   * the SMTP and Stripe keys above). Both keys set → real push; unset → the
+   * mock, tolerated with a warning; keys without `VAPID_SUBJECT` → refused.
+   */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().optional(),
 });
 
 /**

@@ -5,7 +5,8 @@
  * Selection itself is spread across the factories — `createEmailAdapter`
  * (`packages/channels`), `createPaymentsAdapter`, `createAdsAdapterFromEnv`,
  * `createHostingProviderFromEnv`, `createDnsProvidersFromEnv`,
- * `createCmsProviderFromEnv`, `createSocialPublisherFromEnv` and the
+ * `createCmsProviderFromEnv`, `createSocialPublisherFromEnv`, `createPushAdapterFromEnv`
+ * (`packages/channels`) and the
  * `UPTIME_PROBE` branch in `createIntegrations`. This module is the one place that *names* the outcome
  * of all of them, for two jobs no factory can do on its own: printing the
  * resolved set in the startup log, and refusing to boot a production process on
@@ -69,9 +70,21 @@ export interface AdapterEnv {
   readonly HOSTINGER_API_TOKEN?: string | undefined;
   readonly CLOUDFLARE_API_TOKEN?: string | undefined;
   readonly SECRETS_ENCRYPTION_KEY?: string | undefined;
+  readonly VAPID_PUBLIC_KEY?: string | undefined;
+  readonly VAPID_PRIVATE_KEY?: string | undefined;
+  readonly VAPID_SUBJECT?: string | undefined;
   readonly NODE_ENV?: string | undefined;
   readonly ALLOW_MOCK_ADAPTERS?: string | undefined;
 }
+
+/**
+ * The pair `createPushAdapterFromEnv` (`packages/channels/src/push/factory.ts`)
+ * selects on. Repeated here rather than imported because `packages/channels`
+ * is a leaf this package does not depend on — the same reason `resolveEmail`
+ * mirrors the SMTP factory in prose. `adapter-guard.test.ts` loads the real
+ * factory by path and fails if the two ever disagree.
+ */
+export const PUSH_ENV_KEYS = ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"] as const;
 
 /**
  * The third resolution: the environment selected a real adapter the factory
@@ -218,6 +231,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "approved Facebook, Instagram and Google Business Profile posts are marked published with a fake permalink and nothing reaches the page or profile",
+    },
+    {
+      name: "push",
+      variable: PUSH_ENV_KEYS.join(","),
+      ...resolvePush(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "urgent alerts (incidents, failed payments, SLA breaches, a worker outage) never reach a phone; the bell in the portal still rings",
     },
   ];
 }
@@ -460,6 +481,35 @@ function resolveSocial(env: AdapterEnv): SelectionOutcome {
     requested: requested.length > 0 ? requested.join("+") : "mock",
     ...builds(resolved.length > 0 ? resolved.join("+") : "mock", missing.length > 0 ? `Missing: ${missing.join(", ")}.` : null),
   };
+}
+
+/** Web push's VAPID subject: `mailto:` or `https:`, the same test `isValidVapidSubject` applies in the factory. */
+const VAPID_SUBJECT_PATTERN = /^(mailto:[^\s@]+@[^\s@]+|https:\/\/\S+)$/;
+
+/**
+ * `packages/channels/src/push/factory.ts` `createPushAdapterFromEnv`: web
+ * push when both VAPID keys are non-blank after trimming, the mock otherwise.
+ * One key without the other is the downgrade case — `requested` says
+ * `web-push` so production refuses it — and both keys with `VAPID_SUBJECT`
+ * missing or malformed is `UNBUILDABLE`, because the factory throws rather
+ * than pushing unsigned. Unset entirely is tolerated with a warning: the
+ * bell still rings in the portal; only the phone stays quiet.
+ */
+function resolvePush(env: AdapterEnv): SelectionOutcome {
+  const set = PUSH_ENV_KEYS.filter((key) => trimmedOrUnset(env[key]) !== undefined);
+  if (set.length === 0) return { requested: "mock", ...builds("mock") };
+  if (set.length < PUSH_ENV_KEYS.length) {
+    const missing = PUSH_ENV_KEYS.filter((key) => !set.includes(key));
+    return { requested: "web-push", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
+  }
+  const subject = trimmedOrUnset(env.VAPID_SUBJECT);
+  if (subject === undefined) {
+    return { requested: "web-push", ...unbuildable("VAPID_SUBJECT is required when VAPID_PUBLIC_KEY and VAPID_PRIVATE_KEY are set (a mailto: address)") };
+  }
+  if (!VAPID_SUBJECT_PATTERN.test(subject)) {
+    return { requested: "web-push", ...unbuildable(`VAPID_SUBJECT must be a mailto: address or an https: URL, got ${JSON.stringify(subject)}`) };
+  }
+  return { requested: "web-push", ...builds("web-push") };
 }
 
 /** `{ email: "mock", payments: "stripe", … }` — names only, for the startup log. */

@@ -13,6 +13,17 @@ const usage = { inputTokens: 1, outputTokens: 1 };
 const quiet = { info() {}, warn() {}, error() {} };
 
 describe("content-writer", () => {
+  it("carries the asset tool and tells the model to pick a photo per social slot, with every tool safe", () => {
+    const agent = contentWriter();
+    expect(agent.tools.map((t) => t.name)).toEqual([
+      "content_get_brief", "knowledge_search", "content_list_slots", "content_list_assets", "content_save_draft", "content_request_approval",
+    ]);
+    expect(agent.tools.every((t) => t.risk === "safe")).toBe(true);
+    expect(agent.systemPrompt).toMatch(/content_list_assets once/);
+    expect(agent.systemPrompt).toMatch(/pass its url as imageUrl/);
+    expect(agent.systemPrompt).toMatch(/Never pass an image url from anywhere else/);
+  });
+
   it("drafts every unfilled slot and sends each one for approval in one run, then completes", async () => {
     await withTestDb(async (db) => {
       const f = await writerFixture(db);

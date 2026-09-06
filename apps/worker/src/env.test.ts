@@ -167,8 +167,9 @@ describe("worker env", () => {
       // each, are the four adapters production tolerates on their mocks — the
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
-      // hosting, dns, cms, ads and, since the Meta social publisher landed, social.
-      expect(warnings).toHaveLength(5);
+      // hosting, dns, cms, ads, social and, since web push landed, push.
+      expect(warnings).toHaveLength(6);
+      expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
       expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
       expect(warnings.join(" ")).toMatch(/social adapter is the MOCK/);
@@ -176,6 +177,30 @@ describe("worker env", () => {
       // Cached, so a second call neither re-parses nor re-logs.
       loadEnv({} as NodeJS.ProcessEnv, logger);
       expect(logger.info).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("health port and web push", () => {
+    const ok = { ...base, LLM: "fake" } as NodeJS.ProcessEnv;
+
+    it("defaults WORKER_HEALTH_PORT to 3001, coerces a set one, and refuses one that is not a port", () => {
+      expect(parseEnv(ok).WORKER_HEALTH_PORT).toBe(3001);
+      expect(parseEnv({ ...ok, WORKER_HEALTH_PORT: "" }).WORKER_HEALTH_PORT).toBe(3001);
+      expect(parseEnv({ ...ok, WORKER_HEALTH_PORT: "4010" }).WORKER_HEALTH_PORT).toBe(4010);
+      expect(parseEnv({ ...ok, WORKER_HEALTH_PORT: "0" }).WORKER_HEALTH_PORT).toBe(0);
+      expect(() => parseEnv({ ...ok, WORKER_HEALTH_PORT: "70000" })).toThrow();
+      expect(() => parseEnv({ ...ok, WORKER_HEALTH_PORT: "http" })).toThrow();
+    });
+
+    it("carries the VAPID keys through to the adapter guard, which refuses keys without a subject in production", () => {
+      const env = parseEnv({ ...ok, VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "mailto:shoji@launchflow.test" });
+      expect(env).toMatchObject({ VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "mailto:shoji@launchflow.test" });
+      // Unset in production: tolerated (the bell still rings), not refused.
+      expect(() => parseEnv(production)).not.toThrow();
+      expect(() => parseEnv({ ...production, VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private" }))
+        .toThrow(/VAPID_SUBJECT is required/);
+      expect(() => parseEnv({ ...production, VAPID_PUBLIC_KEY: "BPublic" }))
+        .toThrow(/falls back to the mock push adapter.*Missing: VAPID_PRIVATE_KEY/);
     });
   });
 });

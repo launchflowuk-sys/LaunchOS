@@ -32,6 +32,11 @@ const emailFactoryUrl = new URL("../../channels/src/email/factory.ts", import.me
 const { createEmailAdapter } = (await import(/* @vite-ignore */ emailFactoryUrl)) as {
   createEmailAdapter: (env: NodeJS.ProcessEnv) => { readonly name: string };
 };
+/** The push factory, from the same package, loaded the same way for the same reason. */
+const pushFactoryUrl = new URL("../../channels/src/push/factory.ts", import.meta.url).href;
+const { createPushAdapterFromEnv } = (await import(/* @vite-ignore */ pushFactoryUrl)) as {
+  createPushAdapterFromEnv: (env: NodeJS.ProcessEnv) => { readonly name: string };
+};
 
 /**
  * A production environment with the three `refuse` adapters genuinely live and
@@ -64,21 +69,24 @@ const SOCIAL_VARIABLE = "META_ADS_ACCESS_TOKEN,META_ADS_APP_SECRET,GBP_CLIENT_ID
 const COOLIFY = { COOLIFY_API_URL: "https://coolify.launchflow.test", COOLIFY_API_TOKEN: "tok" };
 const DNS = { HOSTINGER_API_TOKEN: "hpat_1", CLOUDFLARE_API_TOKEN: "cf_1" };
 const CMS = { SECRETS_ENCRYPTION_KEY: "a".repeat(44) };
+const PUSH = { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "mailto:shoji@launchflow.test" };
+/** The `push` row's variable: the two VAPID keys. */
+const PUSH_VARIABLE = "VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY";
 
 /** Every adapter real. */
-const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS };
+const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH };
 
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
     expect(describeAdapters(live)).toEqual({
-      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock",
+      email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock",
     });
     expect(describeAdapters(fullyLive)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
-      cms: "wordpress", social: "meta+gbp",
+      cms: "wordpress", social: "meta+gbp", push: "web-push",
     });
     expect(describeAdapters({})).toEqual({
-      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock",
+      email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock",
     });
   });
 
@@ -127,8 +135,10 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
-      SOCIAL_VARIABLE,
+      SOCIAL_VARIABLE, PUSH_VARIABLE,
     ]);
+    expect(warnings[5]!.message).toMatch(/push adapter is the MOCK/);
+    expect(warnings[5]!.message).toMatch(/never reach a phone/);
     expect(warnings[4]!.message).toMatch(/social adapter is the MOCK/);
     expect(warnings[4]!.message).toMatch(/nothing reaches the page or profile/);
     expect(warnings[1]!.message).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
@@ -243,6 +253,36 @@ describe("social (Meta Pages + Instagram, Google Business Profile, by credential
   it("reads a blank key as unset, exactly as the factory does", () => {
     expect(describeAdapters({ ...live, ...META, META_ADS_APP_SECRET: "  " }).social).toBe("mock");
     expect(describeAdapters({ ...live, ...GBP, GBP_REFRESH_TOKEN: "" }).social).toBe("mock");
+  });
+});
+
+describe("push (web push, by VAPID key pair)", () => {
+  it("is real when both keys and a subject are set, and tolerated unset with a warning", () => {
+    expect(describeAdapters({ ...live, ...PUSH }).push).toBe("web-push");
+    expect(productionAdapterIssues({ ...live, ...PUSH })).toEqual([]);
+    expect(productionMockWarnings({ ...live, ...PUSH }).map((w) => w.variable)).not.toContain(PUSH_VARIABLE);
+    // Unset is a sound deployment: the portal bell still rings.
+    expect(productionAdapterIssues(live)).toEqual([]);
+    expect(productionMockWarnings(live).map((w) => w.variable)).toContain(PUSH_VARIABLE);
+  });
+
+  it("refuses one key without the other as a silent downgrade, naming the missing one", () => {
+    expect(() => assertProductionAdapters({ ...live, VAPID_PUBLIC_KEY: "BPublic" }))
+      .toThrow(/VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY=web-push is not configured and falls back to the mock push adapter.*Missing: VAPID_PRIVATE_KEY\./);
+    expect(productionAdapterIssues({ ...live, VAPID_PRIVATE_KEY: "private", ALLOW_MOCK_ADAPTERS: "1" })).toEqual([]);
+  });
+
+  it("treats both keys with no subject, or a bare address, as UNBUILDABLE — the factory throws rather than pushing unsigned", () => {
+    const noSubject = { ...live, ...PUSH, VAPID_SUBJECT: undefined };
+    expect(describeAdapters(noSubject).push).toBe(UNBUILDABLE);
+    expect(() => assertProductionAdapters(noSubject)).toThrow(/VAPID_SUBJECT is required/);
+    expect(() => assertProductionAdapters({ ...noSubject, ALLOW_MOCK_ADAPTERS: "1" })).toThrow(/cannot be built/);
+    expect(() => assertProductionAdapters({ ...live, ...PUSH, VAPID_SUBJECT: "shoji@launchflow.test" }))
+      .toThrow(/VAPID_SUBJECT must be a mailto: address or an https: URL/);
+  });
+
+  it("reads a blank key as unset, exactly as the factory does", () => {
+    expect(describeAdapters({ ...live, ...PUSH, VAPID_PRIVATE_KEY: "  " }).push).toBe("mock");
   });
 });
 
@@ -498,6 +538,23 @@ describe("every guard rule against the factory it mirrors", () => {
     { ...GBP, META_ADS_ACCESS_TOKEN: "EAAG" },
   ])("social: %o", (env) => {
     expect(guard(env, "social")).toBe(named(built(createSocialPublisherFromEnv, env)));
+  });
+
+  it.each([
+    {},
+    { ...PUSH },
+    { VAPID_PUBLIC_KEY: "BPublic" },
+    { VAPID_PRIVATE_KEY: "private" },
+    { VAPID_PUBLIC_KEY: "", VAPID_PRIVATE_KEY: "private" },
+    { VAPID_PUBLIC_KEY: " BPublic ", VAPID_PRIVATE_KEY: " " },
+    { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private" },
+    { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "" },
+    { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "shoji@launchflow.test" },
+    { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: "http://os.launchflow.test" },
+    { VAPID_PUBLIC_KEY: "BPublic", VAPID_PRIVATE_KEY: "private", VAPID_SUBJECT: " https://os.launchflow.test " },
+    { ...PUSH, VAPID_SUBJECT: " mailto:shoji@launchflow.test " },
+  ])("push: %o", (env) => {
+    expect(guard(env, "push")).toBe(built(createPushAdapterFromEnv, env));
   });
 
   it("createIntegrations builds what the guard names, mocks and real alike", () => {

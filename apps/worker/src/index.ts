@@ -1,11 +1,17 @@
 import { createDb } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
-import { createEmailAdapter } from "@launchos/channels";
+import { createEmailAdapter, createPushAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
 import { loadEnv } from "./env.js";
 import { FakeAgentLlmClient } from "./llm/fake.js";
 import { QUEUE, createBoss } from "./boss.js";
+import { installProcessErrorAlerts, reportJobFailure } from "./error-alerts.js";
+import { startHealthServer } from "./health.js";
+import { startHeartbeat } from "./heartbeat.js";
+import { WorkerTelemetry, instrumentBoss } from "./telemetry.js";
+import { handlePushSend, type PushSendJob } from "./jobs/push-send.js";
+import { SLA_SWEEP_CRON, runSlaSweep } from "./jobs/sla-sweep.js";
 import { sweepOrganisations } from "./jobs/sweep-organisations.js";
 import { runMonitorSweep } from "./jobs/monitor-check.js";
 import { handleAgentRun, type AgentRunJob } from "./jobs/agent-run.js";
@@ -32,10 +38,23 @@ async function main() {
   // agent runs later.
   const env = loadEnv();
   const db = createDb(env.DATABASE_URL);
-  const boss = await createBoss(env.DATABASE_URL);
+  // The worker watching itself, from the first line: an uncaught error is an
+  // owner alert, not a silent restart; the health endpoint answers 503 until
+  // every handler below is registered; the heartbeat row is what the admin
+  // layout's "worker down" banner reads.
+  installProcessErrorAlerts({ db, logger: console });
+  const telemetry = new WorkerTelemetry();
+  let ready = false;
+  const health = await startHealthServer({ port: env.WORKER_HEALTH_PORT, status: () => ({ ready, ...telemetry.snapshot() }) });
+  const boss = instrumentBoss(await createBoss(env.DATABASE_URL), {
+    telemetry,
+    logger: console,
+    onFinalFailure: (failure) => reportJobFailure({ db, logger: console }, failure),
+  });
   const integrations = createIntegrations(process.env);
   const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : AnthropicLlmClient.fromEnv(env);
   const emailAdapter = createEmailAdapter(process.env);
+  const pushAdapter = createPushAdapterFromEnv(process.env);
   // The Ad Performance Sentinel emails clients a portal link once a human
   // approves the send, so the registry needs the same adapter and base URL the
   // web app serves the portal from.
@@ -153,6 +172,21 @@ async function main() {
     await dispatchSentinelRuns({ db, boss }, new Date());
   });
 
+  // Alerts that reach the phone: one job per urgent notification, fanned out
+  // to the user's subscribed devices. A dead endpoint is removed, a failing
+  // one stamped; the job never throws for either, so a phone that did get
+  // the alert is not rung twice by a retry.
+  await boss.work<PushSendJob>(QUEUE.pushSend, async ([job]) => {
+    await handlePushSend({ db, push: pushAdapter, env: process.env, logger: console }, job!.data);
+  });
+
+  // The first-response SLA: every fifteen minutes, any client-visible case
+  // still unanswered after the promised hours rings the owner and the
+  // assignee, once per case.
+  await boss.work(QUEUE.supportSlaSweep, async () => {
+    console.info(await runSlaSweep(db, new Date()), "support SLA sweep");
+  });
+
   // The content engine: plan the month, draft it, publish what is approved
   // when it is due, report on it. Its workers and crons register together in
   // ./jobs/content-jobs.ts so a test can assert the schedule; the writer is
@@ -197,6 +231,15 @@ async function main() {
   // and after invoices.check-overdue (07:30), so the drafted report reports a
   // full month of ad spend and current invoice statuses.
   await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.supportSlaSweep, SLA_SWEEP_CRON, {}, { tz: "Europe/London" });
+
+  // Everything is registered: the health endpoint may say so, and the first
+  // heartbeat clears the admin banner at once rather than a minute from now.
+  ready = true;
+  const heartbeat = startHeartbeat({
+    db, snapshot: () => telemetry.snapshot(), details: { pid: process.pid, healthPort: health.port }, logger: console,
+  });
+  await heartbeat.beat();
   // Which brain is in the box and which adapters are wired, in the first line of
   // the log. `LLM=fake`, or an `EMAIL_ADAPTER` lost in a redeploy, is otherwise
   // invisible until an agent answers from a stub or a week of replies turns out
@@ -207,6 +250,7 @@ async function main() {
       model: env.LLM === "fake" ? "fake-agent-llm" : env.AGENT_MODEL,
       policy: env.AGENT_POLICY,
       adapters: describeAdapters(process.env),
+      healthPort: health.port,
     },
     "worker started",
   );

@@ -44,6 +44,7 @@ export { adsSaveDraftReport } from "./tools/ads-save-draft-report.js";
 export { reportsSendToClient } from "./tools/reports-send-to-client.js";
 export { contentGetBrief } from "./tools/content-get-brief.js";
 export { contentListSlots } from "./tools/content-list-slots.js";
+export { contentListAssets } from "./tools/content-list-assets.js";
 export { contentSaveDraft } from "./tools/content-save-draft.js";
 export { contentRequestApproval } from "./tools/content-request-approval.js";
 export { GBP_MAX_BODY_CHARS, SOCIAL_TARGET_MAX_CHARS } from "./tools/content-shared.js";
