@@ -15,6 +15,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { ProgressPanel } from "../progress-panel";
 import { ProjectStatusBadge } from "../project-status-badge";
+import { HandoverPanel } from "./handover-panel";
 import { MilestoneList } from "./milestone-list";
 import { PhaseSpine } from "./phase-spine";
 import { DeliverProjectForm, ProjectDetailsForm } from "./project-forms";
@@ -172,8 +173,19 @@ export default async function ProjectDetailPage({ params }: PageProps<"/projects
         />
       </Section>
 
+      {/* The handover before Deliver, because that is the order it happens in:
+          the report goes out, the client signs it off, and signing off is what
+          closes the project. Closing it by hand below is the other door — for
+          a build that was handed over in person. */}
+      <Section
+        title="Handover"
+        description="What we built, where it lives, where their logins are kept and what the care plan covers — compiled from this project, not typed. Signing it off closes the project and starts the care plan."
+      >
+        <HandoverPanel organisationId={session.organisationId} projectId={project.id} />
+      </Section>
+
       {project.deliveredAt ? null : (
-        <Section title="Deliver" description="The sign-off. It is what puts the client's page at 100%, and it opens their case study for writing.">
+        <Section title="Deliver by hand" description="Closing it here does everything sign-off does, for a build that was handed over in person. It is what puts the client's page at 100%, and it opens their case study for writing.">
           <div className="rounded-xl border bg-card p-4">
             <DeliverProjectForm projectId={project.id} outstanding={outstanding} />
           </div>

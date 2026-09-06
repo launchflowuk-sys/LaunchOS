@@ -5,10 +5,10 @@ import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { SignaturePad } from "@/components/signature-pad";
 import { Textarea } from "@/components/ui/textarea";
 import { acceptProposalAction, declineProposalAction } from "./actions";
 import type { PublicActionResult } from "./schemas";
-import { SignaturePad } from "./signature-pad";
 
 /**
  * The decision: accept, or decline with a reason.

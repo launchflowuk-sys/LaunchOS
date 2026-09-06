@@ -50,6 +50,8 @@ describe("marketing hosts", () => {
       "/book/r/abc123/calendar.ics",
       "/p",
       "/p/8Kd2mQ1xTn0Zr7Lb4Vc9Ws6Yh3Uj5Ge",
+      "/d",
+      "/d/8Kd2mQ1xTn0Zr7Lb4Vc9Ws6Yh3Uj5Ge",
       "/robots.txt",
       "/sitemap.xml",
       "/brand/launchflow-logo.png",
@@ -58,8 +60,10 @@ describe("marketing hosts", () => {
     // A prefix match is not a segment match.
     expect(marketingRewriteTarget("/signup-bonus")).toBe("/site/signup-bonus");
     expect(marketingRewriteTarget("/bookshop")).toBe("/site/bookshop");
-    // The proposal path must not swallow the marketing pricing page.
+    // The proposal path must not swallow the marketing pricing page, and the
+    // handover path must not swallow anything either.
     expect(marketingRewriteTarget("/pricing")).toBe("/site/pricing");
+    expect(marketingRewriteTarget("/design")).toBe("/site/design");
   });
 
   it("prefixes links with /site everywhere except the marketing host", () => {

@@ -6,6 +6,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Signing, drawn.
  *
+ * **One pad, both agreements.** A client accepts a proposal at `/p/<token>`
+ * and signs off a finished build at `/d/<token>`, and core stores both marks
+ * in the same shape through `documents/acceptance.ts` — the `d` attribute
+ * alone, normalised to `0 0 600 200`, with the name, the email, the time, the
+ * address and the browser beside it. A second pad would be a second way to
+ * draw the same evidence, and the two would drift the first time one of them
+ * was fixed. It lives in `src/components` for that reason and for no other:
+ * it knows nothing about either page.
+ *
  * Shoji's decision was click-to-accept plus **our own** recorded signature
  * rather than a third-party e-signature service, so this is the signature —
  * not a decorative flourish on top of a tickbox — and it is built to be used

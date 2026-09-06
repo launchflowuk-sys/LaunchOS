@@ -1,9 +1,12 @@
+import { monthlyReportDocumentHtml, monthlyReportReference, monthlyReportTitle, reportMonthName } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import Markdown from "react-markdown";
 import { ActionForm } from "@/components/action-form";
+import { DocumentPreview } from "@/components/document-preview";
+import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
@@ -57,6 +60,13 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
 
   const { report, clientName } = row;
   const stats = report.stats;
+  // "August 2026", read in Europe/London as core reads it. The period columns
+  // are date keys, so midnight UTC on the first is the same London day, which
+  // is the reason this can be reconstructed here rather than stored.
+  const monthName = reportMonthName({
+    start: new Date(`${report.periodStart}T00:00:00Z`),
+    end: new Date(`${report.periodEnd}T00:00:00Z`),
+  });
 
   const [adCurrencies, invoiceCurrencies] = await Promise.all([
     db.selectDistinct({ currency: schema.adAccounts.currency }).from(schema.adAccounts).where(and(
@@ -141,6 +151,48 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
         <div className="rounded-xl border bg-card p-4 sm:p-6">
           <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-foreground">
             <Markdown>{report.summaryMd}</Markdown>
+          </div>
+        </div>
+      </Section>
+
+      {/* The month as one document, on the same headed paper as a proposal and
+          a handover. The preview is the exact HTML the worker prints, built
+          from `summary_md` — the row above and the PDF below cannot disagree,
+          because the second is a rendering of the first. */}
+      <Section
+        title="The document"
+        description="What the client is emailed on the 1st, once the send has been approved."
+      >
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)]">
+          <KeyValue
+            // `self-start`: the preview beside it is a page's worth of height,
+            // and a grid child stretches by default — without it the three
+            // rows spread themselves down 600px of nothing.
+            className="self-start"
+            columns={1}
+            items={[
+              { label: "Reference", value: <span className="font-mono text-meta">{monthlyReportReference(report)}</span> },
+              { label: "Month", value: monthName },
+              {
+                label: "PDF",
+                value: report.documentId ? (
+                  <a href={`/api/documents/${report.documentId}`} className="text-primary underline underline-offset-2">
+                    Open the PDF
+                  </a>
+                ) : (
+                  "Not rendered yet — the worker prints it, this app has no browser."
+                ),
+                ...(report.documentId
+                  ? { hint: "A draft is re-rendered on every build; a published report keeps the file it was published with." }
+                  : {}),
+              },
+            ]}
+          />
+          <div className="min-w-0">
+            <DocumentPreview
+              html={monthlyReportDocumentHtml({ report, clientName, monthName })}
+              title={monthlyReportTitle(monthName)}
+            />
           </div>
         </div>
       </Section>

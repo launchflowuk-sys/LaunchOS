@@ -1,5 +1,5 @@
 import { notifyOwner, setEnqueue, type DomainEvent } from "@launchos/core";
-import { BOSS_OPTIONS, QUEUE, ensureQueues, type QueueName } from "@launchos/core/queue";
+import { BOSS_OPTIONS, JOB_RETRY, QUEUE, ensureQueues, type QueueName, type QueuePolicy } from "@launchos/core/queue";
 import PgBoss from "pg-boss";
 import { getDb } from "./db";
 
@@ -70,6 +70,43 @@ export async function sendJob(name: QueueName, data: object, opts?: PgBoss.SendO
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error(`DATABASE_URL is not set; cannot queue "${name}"`);
   const boss = await getBoss(url);
+  const jobId = opts ? await boss.send(name, data, opts) : await boss.send(name, data);
+  if (jobId === null) {
+    console.info({ queue: name, singletonKey: opts?.singletonKey }, "job deduped; an identical job is already queued");
+  }
+  return jobId;
+}
+
+/**
+ * Sends a job onto a queue core's topology table does not name **yet**.
+ *
+ * There is exactly one caller, and it is temporary:
+ * `(admin)/projects/delivery-queue.ts`. The handover send has to happen in the
+ * worker — it renders a PDF, and Chromium is a dependency of `apps/worker`,
+ * deliberately not of this app — but P5-core landed the services without the
+ * queue that carries them, and naming that queue in `packages/core` is
+ * P5-worker's job, not this app's. Rather than either launch a browser from a
+ * Server Action or cast a string to `QueueName`, the send declares the name
+ * and the policy it needs and creates the queue itself.
+ *
+ * `create_queue` is `ON CONFLICT DO NOTHING`, and `ensureQueues` follows every
+ * create with an update, so the moment core names this queue its policy wins
+ * and this function's argument stops mattering. **When it does, delete this
+ * and go back through `sendJob`** — one topology table is the point, and a
+ * second place that knows a queue name is how the first one gets forgotten.
+ */
+export async function sendUnlistedJob(
+  name: string,
+  policy: QueuePolicy,
+  data: object,
+  opts?: PgBoss.SendOptions,
+): Promise<string | null> {
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error(`DATABASE_URL is not set; cannot queue "${name}"`);
+  const boss = await getBoss(url);
+  // Idempotent, and cheap enough for a button press: pg-boss refuses a send to
+  // a queue that does not exist, and this one is not in `ensureQueues` yet.
+  await boss.createQueue(name, { name, policy, ...JOB_RETRY });
   const jobId = opts ? await boss.send(name, data, opts) : await boss.send(name, data);
   if (jobId === null) {
     console.info({ queue: name, singletonKey: opts?.singletonKey }, "job deduped; an identical job is already queued");

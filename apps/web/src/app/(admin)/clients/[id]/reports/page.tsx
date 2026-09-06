@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -33,6 +34,23 @@ const COLUMNS: readonly DataListColumn<ReportRow>[] = [
     header: "Published",
     className: "whitespace-nowrap",
     cell: (row) => formatDateTime(row.publishedAt),
+  },
+  {
+    // The month as one PDF — the document that replaces the several emails a
+    // client used to get. Absent rather than broken when the worker has not
+    // printed it yet: a dash where a file is expected reads as "there isn't
+    // one", which for a draft is exactly right.
+    key: "document",
+    header: "PDF",
+    action: true,
+    cell: (row) =>
+      row.documentId ? (
+        <Button asChild variant="secondary" size="sm">
+          <a href={`/api/documents/${row.documentId}`}>Open</a>
+        </Button>
+      ) : (
+        <span className="text-muted-foreground">Not rendered yet</span>
+      ),
   },
 ];
 

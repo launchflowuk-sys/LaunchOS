@@ -92,6 +92,17 @@ export default async function PortalInvoicePage({ params }: PageProps<"/portal/i
             Back to invoices
           </Link>
         </Button>
+        {/* The PDF we sent them, when it exists. It sits before the print
+            button and is named for what makes it different: printing produces
+            a copy of this page, while this is the file their bookkeeper was
+            already emailed, with our reference in its footer. Absent rather
+            than disabled when it has not been rendered — printing still gets
+            them a document. */}
+        {invoice.documentId ? (
+          <Button asChild variant="secondary">
+            <a href={`/api/documents/${invoice.documentId}`}>The PDF we sent you</a>
+          </Button>
+        ) : null}
         <PrintButton />
       </div>
 

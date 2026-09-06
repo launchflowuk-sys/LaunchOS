@@ -20,6 +20,7 @@ import { ContentPublishRequest } from "./content-publish-card";
 import { ContentReportSendRequest } from "./content-report-send-card";
 import { DecisionForm } from "./decision-form";
 import { LeadReplyRequest } from "./lead-reply-card";
+import { MonthlyReportSendRequest } from "./monthly-report-send-card";
 import { ProposalSendRequest } from "./proposal-send-card";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +131,9 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
   const isContentPublish = approval.kind === "content_publish";
   const isContentReportSend = approval.kind === "content_report_send";
   const isProposalSend = approval.kind === "proposal_send";
+  // The monthly account report. `report_send` is the enum value the monthly
+  // report gate uses; `content_report_send` above is the separate content one.
+  const isMonthlyReportSend = approval.kind === "report_send";
   // The drafted reply carries its own Approve/Reject: the edited body has to
   // travel with the verdict, so the generic pair below is not drawn for it.
   const isLeadReply = approval.kind === "lead_reply";
@@ -153,6 +157,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         {isContentReportSend ? <ContentReportSendRequest approval={approval} /> : null}
         {isLeadReply ? <LeadReplyRequest approval={approval} /> : null}
         {isProposalSend ? <ProposalSendRequest approval={approval} /> : null}
+        {isMonthlyReportSend ? <MonthlyReportSendRequest approval={approval} /> : null}
 
         {description ? (
           <InlineAlert tone="warning" title="What approving does">
@@ -171,6 +176,8 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
             "Sent for approval from the Content screen."
           ) : isContentReportSend && !approval.runId ? (
             "Raised by the monthly content report."
+          ) : isMonthlyReportSend && !approval.runId ? (
+            "Raised by the monthly account report, on the 1st."
           ) : approval.runId ? (
             <>
               Agent <span className="font-medium text-foreground">{agentKey ?? "unknown"}</span> (

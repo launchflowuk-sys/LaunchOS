@@ -16,6 +16,10 @@ const NAV: readonly PortalTab[] = [
   { label: "Plan", href: "/portal/plan" },
   { label: "Content", href: "/portal/content" },
   { label: "Reports", href: "/portal/reports" },
+  // The filing cabinet: every PDF we have sent them, in one list. Last but one
+  // because it is where somebody goes looking for a file rather than for news
+  // — and after Reports, since a monthly report is one of the things filed.
+  { label: "Documents", href: "/portal/documents" },
   { label: "Account", href: "/portal/account" },
 ];
 

@@ -65,8 +65,11 @@ export function isMarketingHost(host: string, marketingHost: string): boolean {
  * `${APP_URL}/p/<token>` and is the link a client bookmarks and forwards to a
  * business partner while they think it over, so it has to answer on whichever
  * of the two hosts they eventually type — exactly the reason `/book` is here.
+ * `/d` is the handover report at the other end of the same job, emailed the
+ * same way and forwarded to the same business partner, so it is here for the
+ * same reason.
  */
-const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal", "/book", "/p"] as const;
+const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal", "/book", "/p", "/d"] as const;
 
 /**
  * Where a path on the marketing host is actually served from: `/` → `/site`,

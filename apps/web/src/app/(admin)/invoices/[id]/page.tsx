@@ -132,6 +132,23 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
         </span>
       ),
     },
+    {
+      // The PDF on our headed paper, filed against the invoice by
+      // `ensureInvoiceDocument` and linked from the email the client is sent.
+      // Never rendered here: an invoice PDF is printed by Chromium and this
+      // app has no browser, which is why `sendApprovedInvoice` is called from
+      // the two Server Actions with no renderer at all. It links a document
+      // the invoice already has, and says so plainly when it has none.
+      label: "PDF",
+      value: invoice.documentId ? (
+        <a href={`/api/documents/${invoice.documentId}`} className="text-primary underline underline-offset-2">
+          Open the PDF
+        </a>
+      ) : (
+        "Not rendered yet — the worker prints it before the invoice is emailed."
+      ),
+      ...(invoice.documentId ? {} : { hint: "Print above gives you the same document through the browser in the meantime." }),
+    },
     ...(subscription
       ? [{
           label: "Subscription",
@@ -160,6 +177,13 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
                   Send…
                 </Button>
               </ActionForm>
+            ) : null}
+            {/* The rendered PDF when there is one — the same file the client
+                was emailed, so what Shoji forwards is what they hold. */}
+            {invoice.documentId ? (
+              <Button asChild variant="secondary">
+                <a href={`/api/documents/${invoice.documentId}`}>PDF</a>
+              </Button>
             ) : null}
             {/* The same document the client reads in their portal, so an
                 invoice can be saved as a PDF for a client who never signs in. */}
