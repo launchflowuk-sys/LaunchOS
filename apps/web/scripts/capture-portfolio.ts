@@ -52,9 +52,13 @@ const MOBILE_USER_AGENT =
 
 type Target = { slug: string; url: string };
 
+/** `--only a,b,c` recaptures just those slugs; everything else on disk is kept. */
+const ONLY = new Set((process.argv.find((a) => a.startsWith("--only="))?.slice("--only=".length) ?? "").split(",").filter(Boolean));
+
 function targets(): Target[] {
-  const work = WORK.filter((item): item is typeof item & { url: string } => item.url !== null).map((item) => ({ slug: item.slug, url: item.url }));
-  const products = PRODUCTS.filter((item) => !OMIT.has(item.slug)).map((item) => ({ slug: item.slug, url: item.url }));
+  const wanted = (slug: string) => ONLY.size === 0 || ONLY.has(slug);
+  const work = WORK.filter((item): item is typeof item & { url: string } => item.url !== null && wanted(item.slug)).map((item) => ({ slug: item.slug, url: item.url }));
+  const products = PRODUCTS.filter((item) => !OMIT.has(item.slug) && wanted(item.slug)).map((item) => ({ slug: item.slug, url: item.url }));
   return [...work, ...products];
 }
 

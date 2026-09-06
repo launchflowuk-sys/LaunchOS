@@ -7,6 +7,10 @@
     "desktop": "/work/amo-rendering-desktop.jpg",
     "mobile": "/work/amo-rendering-mobile.jpg"
   },
+  "be-gorgeous-by-monika": {
+    "desktop": "/work/be-gorgeous-by-monika-desktop.jpg",
+    "mobile": "/work/be-gorgeous-by-monika-mobile.jpg"
+  },
   "bizzflow": {
     "desktop": "/work/bizzflow-desktop.jpg",
     "mobile": "/work/bizzflow-mobile.jpg"
@@ -27,6 +31,10 @@
     "desktop": "/work/grays-park-masjid-desktop.jpg",
     "mobile": "/work/grays-park-masjid-mobile.jpg"
   },
+  "kd-essex": {
+    "desktop": "/work/kd-essex-desktop.jpg",
+    "mobile": "/work/kd-essex-mobile.jpg"
+  },
   "lakeside-purfleet-taxis": {
     "desktop": "/work/lakeside-purfleet-taxis-desktop.jpg",
     "mobile": "/work/lakeside-purfleet-taxis-mobile.jpg"
@@ -34,6 +42,10 @@
   "launchos": {
     "desktop": "/work/launchos-desktop.jpg",
     "mobile": "/work/launchos-mobile.jpg"
+  },
+  "mobile-pc-doctor": {
+    "desktop": "/work/mobile-pc-doctor-desktop.jpg",
+    "mobile": "/work/mobile-pc-doctor-mobile.jpg"
   },
   "nexus-education-group": {
     "desktop": "/work/nexus-education-group-desktop.jpg",
@@ -46,5 +58,9 @@
   "takeaway-platform": {
     "desktop": "/work/takeaway-platform-desktop.jpg",
     "mobile": "/work/takeaway-platform-mobile.jpg"
+  },
+  "thurrock-tuition-academy": {
+    "desktop": "/work/thurrock-tuition-academy-desktop.jpg",
+    "mobile": "/work/thurrock-tuition-academy-mobile.jpg"
   }
 }
