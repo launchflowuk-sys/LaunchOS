@@ -25,6 +25,7 @@ import {
   Settings,
   ShieldCheck,
   SquareCheckBig,
+  Split,
   Sunrise,
   Trophy,
   TriangleAlert,
@@ -79,6 +80,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // the join link. After Leads because that is where most of them come
       // from; the only nav entry the client-workflow work adds.
       { label: "Meetings", href: "/meetings", icon: CalendarClock },
+      // Where a paid click lands before it is a lead. Beside Leads and
+      // Meetings because a funnel is the front of the same queue: five
+      // questions on a phone, the name and number asked in the middle.
+      { label: "Funnels", href: "/funnels", icon: Split },
       // The priced offer that follows the call. It sits after Meetings rather
       // than immediately after Leads because that is the order the work
       // happens in — enquiry, call, proposal — and it is gated on `billing`

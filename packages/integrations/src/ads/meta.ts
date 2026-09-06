@@ -5,7 +5,7 @@ import {
   type AdsHttpOptions, type HttpReply, type HttpRuntime,
 } from "./http.js";
 import { decimalToMinorUnits, toNumber } from "./money.js";
-import type { AdAccountSummary, AdDailyMetrics, AdsAdapter } from "./types.js";
+import type { AdAccountSummary, AdCampaignMetrics, AdDailyMetrics, AdsAdapter } from "./types.js";
 
 /**
  * Pinned for the same reason as the Google version: Meta keeps a Graph version
@@ -51,6 +51,19 @@ export interface MetaAdsOptions extends MetaAdsCredentials, AdsHttpOptions {
 const REQUIRED = ["accessToken", "appSecret"] as const;
 
 const INSIGHTS_FIELDS = "account_currency,spend,impressions,clicks,actions,action_values";
+/** The same insights, plus which campaign they belong to. */
+const CAMPAIGN_INSIGHTS_FIELDS = `campaign_id,campaign_name,${INSIGHTS_FIELDS}`;
+
+/** One campaign's day, summed in minor units before anything is rounded. */
+interface MetaCampaignTotals {
+  name: string;
+  spendPence: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValuePence: number;
+  currency: string;
+}
 
 /** Meta's own error codes, which arrive with HTTP 400 as often as with 401/429. */
 const AUTH_CODES = new Set([102, 190, 200, 210, 458, 459, 463, 464, 467, 2500]);
@@ -205,6 +218,59 @@ export class MetaAdsAdapter implements AdsAdapter {
       roas: spendPence === 0 ? 0 : conversionValuePence / spendPence,
       ...(currency === "" ? {} : { currency }),
     };
+  }
+
+  /**
+   * The same day at `level=campaign`. Graph pages this one for real — an
+   * account with thirty campaigns is several pages — which `getPaged` already
+   * follows, refusing any cursor pointing somewhere other than the configured
+   * endpoint.
+   */
+  async fetchCampaignMetrics(accountId: string, date: string): Promise<AdCampaignMetrics[]> {
+    const day = assertIsoDate(date);
+    const params = new URLSearchParams({
+      fields: CAMPAIGN_INSIGHTS_FIELDS,
+      level: "campaign",
+      time_increment: "1",
+      time_range: JSON.stringify({ since: day, until: day }),
+      limit: "100",
+    });
+    const rows = await this.getPaged(
+      `${this.endpoint}/${this.apiVersion}/act_${normaliseAdAccountId(accountId)}/insights?${params.toString()}`,
+    );
+
+    const byCampaign = new Map<string, MetaCampaignTotals>();
+    for (const row of rows) {
+      const raw = row.campaign_id;
+      const id = typeof raw === "string" || typeof raw === "number" ? String(raw) : "";
+      if (id === "") continue;
+      const code = row.account_currency;
+      const existing = byCampaign.get(id) ?? {
+        name: typeof row.campaign_name === "string" && row.campaign_name !== "" ? row.campaign_name : id,
+        spendPence: 0, impressions: 0, clicks: 0, conversions: 0, conversionValuePence: 0,
+        currency: typeof code === "string" ? code.toUpperCase() : "",
+      };
+      byCampaign.set(id, {
+        ...existing,
+        spendPence: existing.spendPence + decimalToMinorUnits(row.spend),
+        impressions: existing.impressions + toNumber(row.impressions),
+        clicks: existing.clicks + toNumber(row.clicks),
+        conversions: existing.conversions + sumActions(row.actions, this.conversionActionTypes, false),
+        conversionValuePence: existing.conversionValuePence + sumActions(row.action_values, this.conversionActionTypes, true),
+      });
+    }
+
+    return [...byCampaign].map(([campaignExternalId, totals]) => ({
+      date: day,
+      campaignExternalId,
+      campaignName: totals.name,
+      spendPence: totals.spendPence,
+      impressions: Math.round(totals.impressions),
+      clicks: Math.round(totals.clicks),
+      conversions: Math.round(totals.conversions),
+      conversionValuePence: totals.conversionValuePence,
+      ...(totals.currency === "" ? {} : { currency: totals.currency }),
+    }));
   }
 
   /** Follows `paging.next` until Graph stops offering one. */

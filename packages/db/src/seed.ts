@@ -82,10 +82,10 @@ import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  buildClientReport, createAdAccount, createInvoiceFromSubscription, createKnowledgeArticle,
-  createSubscription, ensureEmailIdentity, ingestDailyMetrics,
+  buildClientReport, createAdAccount, createFunnel, createInvoiceFromSubscription, createKnowledgeArticle,
+  createSubscription, ensureEmailIdentity, ingestDailyCampaignMetrics, ingestDailyMetrics,
   ingestInboundEmail, markInvoiceSent, monthPeriod, publishClientReport, recordPayment,
-  seedCaseStudies,
+  seedCaseStudies, setFunnelStatus,
 } from "@launchos/core";
 import { MockAdsAdapter, MockPaymentsAdapter } from "@launchos/integrations";
 import { hashPassword } from "better-auth/crypto";
@@ -589,6 +589,9 @@ export async function runSeed(db: Db, config: SeedConfig): Promise<void> {
   // so a re-seed never reverts a story that has since been rewritten.
   const portfolio = await seedCaseStudies(db, organisation.id);
   console.log("case studies  ", `${portfolio.inserted.length} written, ${portfolio.skipped} already present`);
+
+  const funnel = await seedFunnel(db, organisation.id);
+  console.log("funnel        ", funnel.id, `/f/${funnel.slug} (${funnel.status})`);
 
   const billing = await seedBillingAndAds(db, organisation.id, seededClients);
   // What this run created, not a constant: a second seed prints zeros, which
@@ -1161,6 +1164,10 @@ async function seedBillingAndAds(
   for (let day = new Date(windowStart); day <= yesterday; day = new Date(day.getTime() + 86_400_000)) {
     // Upserts on (ad_account_id, date), so a re-run rewrites the same rows.
     const result = await ingestDailyMetrics(db, organisationId, { date: isoDay(day) }, ads);
+    // The same day cut by campaign, so the cost-per-lead screen has both sides
+    // of its join locally. Upserts on (account, date, campaign) like the line
+    // above, so a re-seed rewrites rather than duplicates.
+    await ingestDailyCampaignMetrics(db, organisationId, { date: isoDay(day) }, ads);
     snapshots += result.snapshots;
     if (day >= period.start && day < period.end) snapshotsInPeriod += result.snapshots;
   }
@@ -1188,6 +1195,31 @@ async function seedBillingAndAds(
     snapshotsInPeriod,
     reports: reportsPublished,
   };
+}
+
+/**
+ * One published funnel, so `/f/website-enquiry` answers on a freshly seeded
+ * database and the Funnels screen is not an empty page.
+ *
+ * The default six screens, with the contact step at three — the shape the
+ * whole feature exists for. Idempotent by slug, so a re-seed never reverts
+ * questions that have since been rewritten.
+ */
+async function seedFunnel(db: Db, organisationId: string) {
+  const slug = "website-enquiry";
+  const [existing] = await db.select().from(schema.funnels)
+    .where(and(eq(schema.funnels.organisationId, organisationId), eq(schema.funnels.slug, slug)));
+  if (existing) return existing;
+
+  const created = await createFunnel(db, organisationId, {
+    name: "Website enquiry",
+    slug,
+    headline: "Let us take a look at your website",
+    subheadline: "Six quick questions. We will come back to you within one working day.",
+    hotScore: 55,
+    actorKind: "system",
+  });
+  return setFunnelStatus(db, organisationId, { funnelId: created.id, status: "published", actorKind: "system" });
 }
 
 async function seedMonitor(db: Db, organisationId: string, siteId: string, target: string) {

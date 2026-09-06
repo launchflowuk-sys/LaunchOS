@@ -64,3 +64,21 @@ describe("createAdsAdapter", () => {
     expect(createAdsAdapter({ ADS_ADAPTER: "google" } as NodeJS.ProcessEnv).name).toBe("mock");
   });
 });
+
+describe("MockAdsAdapter fetchCampaignMetrics", () => {
+  it("splits the day across campaigns without losing a penny, and is stable across runs", async () => {
+    const ads = new MockAdsAdapter();
+    const day = await ads.fetchDailyMetrics("acct-1", "2026-09-01");
+    const rows = await ads.fetchCampaignMetrics("acct-1", "2026-09-01");
+
+    expect(rows.map((r) => r.campaignName)).toEqual(["spring-offer", "brand-search", "local-services"]);
+    expect(rows.reduce((sum, r) => sum + r.spendPence, 0)).toBe(day.spendPence);
+    expect(rows.reduce((sum, r) => sum + r.clicks, 0)).toBe(day.clicks);
+    expect(await ads.fetchCampaignMetrics("acct-1", "2026-09-01")).toEqual(rows);
+    expect(await ads.fetchCampaignMetrics("acct-2", "2026-09-01")).not.toEqual(rows);
+  });
+
+  it("returns nothing when it is configured with no campaigns", async () => {
+    expect(await new MockAdsAdapter({ campaigns: [] }).fetchCampaignMetrics("acct-1", "2026-09-01")).toEqual([]);
+  });
+});

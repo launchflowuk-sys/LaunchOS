@@ -270,3 +270,49 @@ describe("GoogleAdsAdapter.listAccounts", () => {
     expect(stub.calls[1]!.url).toContain("/customers/9998887777/");
   });
 });
+
+describe("GoogleAdsAdapter fetchCampaignMetrics", () => {
+  it("queries FROM campaign and folds the rows by campaign id", async () => {
+    const chunk = [
+      {
+        results: [
+          {
+            campaign: { id: "111", name: "spring-offer" },
+            customer: { currencyCode: "GBP" },
+            metrics: { costMicros: "4000000", impressions: "3000", clicks: "100", conversions: 4, conversionsValue: 250.5 },
+            segments: { date: "2026-09-01" },
+          },
+          {
+            campaign: { id: "222", name: "brand-search" },
+            customer: { currencyCode: "GBP" },
+            metrics: { costMicros: "1500000", impressions: "1000", clicks: "40", conversions: 1.5, conversionsValue: 90 },
+            segments: { date: "2026-09-01" },
+          },
+          // The same campaign again, as a further segment would return it.
+          {
+            campaign: { id: "111", name: "spring-offer" },
+            customer: { currencyCode: "GBP" },
+            metrics: { costMicros: "1000000", impressions: "500", clicks: "20", conversions: 0.5, conversionsValue: 30 },
+            segments: { date: "2026-09-01" },
+          },
+        ],
+      },
+    ];
+    const { ads, stub } = adapter([TOKEN_OK, { body: chunk }]);
+    const rows = await ads.fetchCampaignMetrics("123-456-7890", "2026-09-01");
+
+    expect(JSON.parse(stub.calls[1]!.body).query).toContain("FROM campaign WHERE segments.date BETWEEN '2026-09-01'");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      campaignExternalId: "111", campaignName: "spring-offer", spendPence: 500, impressions: 3500, clicks: 120, currency: "GBP",
+    });
+    // Fractional conversions are summed before they are rounded: 4 + 0.5 → 5.
+    expect(rows[0]!.conversions).toBe(5);
+    expect(rows[1]).toMatchObject({ campaignExternalId: "222", spendPence: 150, conversionValuePence: 9000 });
+  });
+
+  it("returns nothing for a day nothing delivered, rather than a zero-spend campaign", async () => {
+    const { ads } = adapter([TOKEN_OK, { body: [{ results: [] }] }]);
+    expect(await ads.fetchCampaignMetrics("1234567890", "2026-09-01")).toEqual([]);
+  });
+});

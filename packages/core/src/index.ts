@@ -643,3 +643,29 @@ export {
   ensureInvoiceDocument, EnsureInvoiceDocumentInput, INVOICE_DOCUMENT_KIND, INVOICE_SUBJECT_TYPE,
 } from "./billing/invoice-document.js";
 export type { InvoiceDocumentInput, InvoiceDocumentDeps } from "./billing/invoice-document.js";
+
+// ---- P6 — funnels as a lead source, and cost per lead per campaign ----
+export {
+  createFunnel, updateFunnel, setFunnelStatus, getFunnel, listFunnels, publishedFunnelBySlug, FunnelRefused,
+  CreateFunnelInput, UpdateFunnelInput, SetFunnelStatusInput, ListFunnelsInput,
+} from "./funnels/crud.js";
+export type { FunnelRow } from "./funnels/crud.js";
+export {
+  FunnelStepSchema, FunnelStepsSchema, FunnelSuccessSchema, FunnelChoiceOptionSchema,
+  contactStepIndex, maximumScore, defaultFunnelSteps,
+} from "./funnels/steps.js";
+export type { FunnelStepsInput } from "./funnels/steps.js";
+export {
+  answerFunnelStep, completeFunnelSession, sessionByToken,
+  AnswerFunnelStepInput, CompleteFunnelSessionInput, FUNNEL_HOT_NOTIFICATION_KIND,
+} from "./funnels/sessions.js";
+export type { FunnelSessionRow, AnswerFunnelStepResult } from "./funnels/sessions.js";
+export { funnelPerformance, recentFunnelSessions, FunnelPerformanceInput, RecentFunnelSessionsInput } from "./funnels/summary.js";
+export type { FunnelPerformance } from "./funnels/summary.js";
+export {
+  ingestDailyCampaignMetrics, campaignSpend, AdCampaignIngestError,
+  IngestCampaignMetricsInput, CampaignSpendInput,
+} from "./ads/campaigns.js";
+export type { CampaignIngestResult, CampaignSpend, CampaignSpendTotals } from "./ads/campaigns.js";
+export { costPerLeadByCampaign, normaliseCampaign, CostPerLeadInput } from "./leads/cost-per-lead.js";
+export type { CostPerLeadReport, CampaignCostPerLead } from "./leads/cost-per-lead.js";

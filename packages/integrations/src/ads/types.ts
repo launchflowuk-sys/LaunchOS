@@ -38,4 +38,37 @@ export interface AdsAdapter {
    * `ad_accounts.platform`; every single-platform adapter ignores it.
    */
   fetchDailyMetrics(accountId: string, date: string, platform?: AdPlatform): Promise<AdDailyMetrics>;
+  /**
+   * The same day broken down by campaign, for the cost-per-lead join.
+   *
+   * Optional on the interface because an adapter is free not to have it — an
+   * account whose provider cannot answer keeps its account-level snapshot and
+   * simply contributes no campaign rows, which the cost-per-lead screen
+   * reports as unplaced spend rather than as zero. Every adapter in this
+   * package implements it.
+   */
+  fetchCampaignMetrics?(accountId: string, date: string, platform?: AdPlatform): Promise<AdCampaignMetrics[]>;
+}
+
+/**
+ * One campaign's share of one day.
+ *
+ * A separate shape from `AdDailyMetrics` rather than an extension of it: there
+ * is no `cpcPence` or `roas` here because those are derived, and deriving them
+ * per campaign per day and then averaging them across a period is the classic
+ * way to publish a wrong number. The core layer sums the raw figures over the
+ * period and divides once.
+ */
+export interface AdCampaignMetrics {
+  date: string;
+  /** The provider's own campaign id. Stable when the campaign is renamed. */
+  campaignExternalId: string;
+  /** The campaign's name as it stands today — what a `utm_campaign` is matched against. */
+  campaignName: string;
+  spendPence: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValuePence: number;
+  currency?: string;
 }

@@ -41,11 +41,11 @@ export const config = {
   // `marketingRewriteTarget` applies, repeated here as a constant because a
   // matcher must be statically analysable and cannot call a function.
   //
-  // `p/` and `d/` carry their slashes on purpose: a bare `p` would exclude
-  // `/pricing` from the proxy and take the marketing pricing page off the
-  // marketing host, and a bare `d` would do the same to any future marketing
-  // page beginning with one. Bare `/p` and `/d` are left in, and
-  // `marketingRewriteTarget` passes them through anyway — the matcher is a
-  // short-circuit, not the rule.
-  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|book|p/|d/|.*\\..*).*)"],
+  // `p/`, `d/` and `f/` carry their slashes on purpose: a bare `p` would
+  // exclude `/pricing` from the proxy and take the marketing pricing page off
+  // the marketing host, a bare `d` would do the same to any future marketing
+  // page beginning with one, and a bare `f` would take `/faq` with it. Bare
+  // `/p`, `/d` and `/f` are left in, and `marketingRewriteTarget` passes them
+  // through anyway — the matcher is a short-circuit, not the rule.
+  matcher: ["/((?!api|_next|sign-in|signup|after-sign-in|portal|book|p/|d/|f/|.*\\..*).*)"],
 };

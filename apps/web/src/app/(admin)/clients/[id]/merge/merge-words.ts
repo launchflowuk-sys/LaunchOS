@@ -32,6 +32,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   project_phases: ["project phase", "project phases"],
   project_milestones: ["milestone", "milestones"],
   case_studies: ["case study", "case studies"],
+  funnels: ["funnel", "funnels"],
   content_reports: ["content report", "content reports"],
   client_reports: ["client report", "client reports"],
   client_users: ["portal login", "portal logins"],

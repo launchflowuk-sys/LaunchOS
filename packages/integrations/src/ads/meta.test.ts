@@ -251,3 +251,36 @@ describe("MetaAdsAdapter.listAccounts", () => {
     expect(stub.calls[0]!.url).toContain("/me/adaccounts?fields=account_id,name,currency");
   });
 });
+
+describe("MetaAdsAdapter fetchCampaignMetrics", () => {
+  it("asks for level=campaign and returns one row per campaign", async () => {
+    const { ads, stub } = adapter([
+      {
+        body: {
+          data: [
+            {
+              campaign_id: "3001", campaign_name: "spring-offer", account_currency: "GBP",
+              spend: "40.00", impressions: "3000", clicks: "100",
+              actions: [{ action_type: "offsite_conversion.fb_pixel_lead", value: "6" }],
+              action_values: [{ action_type: "offsite_conversion.fb_pixel_lead", value: "300.00" }],
+            },
+            {
+              campaign_id: "3002", campaign_name: "retargeting", account_currency: "GBP",
+              spend: "12.50", impressions: "900", clicks: "35", actions: [], action_values: [],
+            },
+          ],
+        },
+      },
+    ]);
+    const rows = await ads.fetchCampaignMetrics("act_1234567890123456", "2026-09-01");
+
+    expect(stub.calls[0]!.url).toContain("level=campaign");
+    expect(stub.calls[0]!.url).toContain("campaign_id%2Ccampaign_name");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      campaignExternalId: "3001", campaignName: "spring-offer", spendPence: 4000, clicks: 100, conversions: 6,
+      conversionValuePence: 30000, currency: "GBP",
+    });
+    expect(rows[1]).toMatchObject({ campaignExternalId: "3002", spendPence: 1250, conversions: 0 });
+  });
+});

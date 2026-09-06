@@ -68,8 +68,13 @@ export function isMarketingHost(host: string, marketingHost: string): boolean {
  * `/d` is the handover report at the other end of the same job, emailed the
  * same way and forwarded to the same business partner, so it is here for the
  * same reason.
+ *
+ * `/f` is a funnel, and it is here for the plainest reason of the lot: it is
+ * the page a paid ad points at, and the ad's final URL is whichever of the two
+ * hosts Shoji typed when he wrote it. A funnel that 404s on the marketing host
+ * would burn the click that was paid for.
  */
-const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal", "/book", "/p", "/d"] as const;
+const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in", "/portal", "/book", "/p", "/d", "/f"] as const;
 
 /**
  * Where a path on the marketing host is actually served from: `/` → `/site`,

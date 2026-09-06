@@ -76,6 +76,11 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // A case study's slug is unique per organisation, not per client, so two
   // clients' stories can never collide on the way across.
   { key: "case_studies", table: schema.caseStudies },
+  // A funnel belongs to the client whose ads point at it, and its slug is
+  // unique per organisation rather than per client, so two clients' funnels
+  // can never collide on the way across. Sessions carry no `client_id` — they
+  // hang off the funnel — so they follow it without being touched.
+  { key: "funnels", table: schema.funnels },
   { key: "content_reports", table: schema.contentReports, conflict: sql`k.period_key = t.period_key`, onConflict: "leave" },
   { key: "client_reports", table: schema.clientReports, conflict: sql`k.period_start = t.period_start`, onConflict: "leave" },
   { key: "client_users", table: schema.clientUsers, conflict: sql`k.user_id = t.user_id`, onConflict: "drop" },

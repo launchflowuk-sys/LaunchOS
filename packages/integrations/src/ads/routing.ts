@@ -1,5 +1,5 @@
 import { AdsRoutingError } from "./errors.js";
-import type { AdAccountSummary, AdDailyMetrics, AdPlatform, AdsAdapter } from "./types.js";
+import type { AdAccountSummary, AdCampaignMetrics, AdDailyMetrics, AdPlatform, AdsAdapter } from "./types.js";
 
 /**
  * Which platform an external id belongs to, when the caller did not say.
@@ -57,5 +57,21 @@ export class MultiPlatformAdsAdapter implements AdsAdapter {
       throw new AdsRoutingError(`ads: no adapter configured for platform ${JSON.stringify(resolved)}`);
     }
     return adapter.fetchDailyMetrics(accountId, date, resolved);
+  }
+
+  /**
+   * An adapter without a campaign query contributes no rows rather than
+   * throwing: the account keeps its daily snapshot, and the cost-per-lead
+   * screen reports its spend as unplaced. That is the honest answer for a
+   * provider that cannot break a day down, and it is not a reason to fail the
+   * whole ingest.
+   */
+  async fetchCampaignMetrics(accountId: string, date: string, platform?: AdPlatform): Promise<AdCampaignMetrics[]> {
+    const resolved = platform ?? inferPlatform(accountId);
+    const adapter = this.adapters[resolved];
+    if (adapter === undefined) {
+      throw new AdsRoutingError(`ads: no adapter configured for platform ${JSON.stringify(resolved)}`);
+    }
+    return adapter.fetchCampaignMetrics?.(accountId, date, resolved) ?? [];
   }
 }

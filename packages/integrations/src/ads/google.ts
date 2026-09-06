@@ -4,7 +4,7 @@ import {
   type AdsHttpOptions, type HttpReply, type HttpRuntime,
 } from "./http.js";
 import { microsToMinorUnits, toNumber, unitsToMinorUnits } from "./money.js";
-import type { AdAccountSummary, AdDailyMetrics, AdsAdapter } from "./types.js";
+import type { AdAccountSummary, AdCampaignMetrics, AdDailyMetrics, AdsAdapter } from "./types.js";
 
 /**
  * Pinned, not "latest": Google removes a version roughly a year after it ships,
@@ -56,8 +56,20 @@ interface GoogleMetrics {
   conversionsValue?: unknown;
 }
 
+/** One campaign's day, summed before anything is rounded. */
+interface CampaignTotals {
+  name: string;
+  costMicros: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  conversionValue: number;
+  currency: string;
+}
+
 interface GoogleRow {
   customer?: { currencyCode?: unknown } | undefined;
+  campaign?: { id?: unknown; name?: unknown } | undefined;
   customerClient?: { id?: unknown; descriptiveName?: unknown; currencyCode?: unknown; manager?: unknown } | undefined;
   metrics?: GoogleMetrics | undefined;
   segments?: { date?: unknown } | undefined;
@@ -113,6 +125,18 @@ function isGoogleRetryable(reply: HttpReply): boolean {
 }
 
 const DAILY_METRICS_FIELDS = [
+  "customer.currency_code",
+  "segments.date",
+  "metrics.cost_micros",
+  "metrics.impressions",
+  "metrics.clicks",
+  "metrics.conversions",
+  "metrics.conversions_value",
+].join(", ");
+
+const CAMPAIGN_METRICS_FIELDS = [
+  "campaign.id",
+  "campaign.name",
   "customer.currency_code",
   "segments.date",
   "metrics.cost_micros",
@@ -234,6 +258,56 @@ export class GoogleAdsAdapter implements AdsAdapter {
       roas: spendPence === 0 ? 0 : conversionValuePence / spendPence,
       ...(currency === "" ? {} : { currency }),
     };
+  }
+
+  /**
+   * The same day, `FROM campaign`. One row per campaign that delivered;
+   * a campaign that spent nothing returns no row and is correctly absent
+   * rather than reported as a zero-spend campaign.
+   *
+   * Rows are folded by campaign id rather than trusted to be unique: a query
+   * segmented further in future would return several rows per campaign, and
+   * summing is right in both cases.
+   */
+  async fetchCampaignMetrics(accountId: string, date: string): Promise<AdCampaignMetrics[]> {
+    const day = assertIsoDate(date);
+    const rows = await this.searchStream(
+      normaliseCustomerId(accountId),
+      `SELECT ${CAMPAIGN_METRICS_FIELDS} FROM campaign WHERE segments.date BETWEEN '${day}' AND '${day}'`,
+    );
+
+    const byCampaign = new Map<string, CampaignTotals>();
+    for (const row of rows) {
+      const id = row.campaign?.id === undefined || row.campaign.id === null ? "" : String(row.campaign.id);
+      if (id === "") continue;
+      const metrics = row.metrics ?? {};
+      const code = row.customer?.currencyCode;
+      const existing = byCampaign.get(id) ?? {
+        name: typeof row.campaign?.name === "string" && row.campaign.name !== "" ? row.campaign.name : id,
+        costMicros: 0, impressions: 0, clicks: 0, conversions: 0, conversionValue: 0,
+        currency: typeof code === "string" ? code.toUpperCase() : "",
+      };
+      byCampaign.set(id, {
+        ...existing,
+        costMicros: existing.costMicros + toNumber(metrics.costMicros),
+        impressions: existing.impressions + toNumber(metrics.impressions),
+        clicks: existing.clicks + toNumber(metrics.clicks),
+        conversions: existing.conversions + toNumber(metrics.conversions),
+        conversionValue: existing.conversionValue + toNumber(metrics.conversionsValue),
+      });
+    }
+
+    return [...byCampaign].map(([campaignExternalId, totals]) => ({
+      date: day,
+      campaignExternalId,
+      campaignName: totals.name,
+      spendPence: microsToMinorUnits(totals.costMicros),
+      impressions: Math.round(totals.impressions),
+      clicks: Math.round(totals.clicks),
+      conversions: Math.round(totals.conversions),
+      conversionValuePence: unitsToMinorUnits(totals.conversionValue),
+      ...(totals.currency === "" ? {} : { currency: totals.currency }),
+    }));
   }
 
   private async searchStream(customerId: string, query: string): Promise<GoogleRow[]> {

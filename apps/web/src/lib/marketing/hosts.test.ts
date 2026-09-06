@@ -52,6 +52,8 @@ describe("marketing hosts", () => {
       "/p/8Kd2mQ1xTn0Zr7Lb4Vc9Ws6Yh3Uj5Ge",
       "/d",
       "/d/8Kd2mQ1xTn0Zr7Lb4Vc9Ws6Yh3Uj5Ge",
+      "/f",
+      "/f/website-enquiry",
       "/robots.txt",
       "/sitemap.xml",
       "/brand/launchflow-logo.png",
@@ -64,6 +66,8 @@ describe("marketing hosts", () => {
     // handover path must not swallow anything either.
     expect(marketingRewriteTarget("/pricing")).toBe("/site/pricing");
     expect(marketingRewriteTarget("/design")).toBe("/site/design");
+    // …and the funnel path must not swallow a marketing page beginning with f.
+    expect(marketingRewriteTarget("/faq")).toBe("/site/faq");
   });
 
   it("prefixes links with /site everywhere except the marketing host", () => {

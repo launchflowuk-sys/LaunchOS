@@ -22,7 +22,7 @@ import { handleOutboundMessage, type OutboundMessageJob } from "./jobs/outbound-
 import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type GenerateOnboardingJob } from "./jobs/task-generation.js";
 import { dispatchEvent } from "./jobs/dispatch-event.js";
 import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-webhook.js";
-import { runAdsIngest } from "./jobs/ads-ingest.js";
+import { runAdsCampaignIngest, runAdsIngest } from "./jobs/ads-ingest.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { STRIPE_RECONCILE_CRON, runStripeReconcile } from "./jobs/stripe-reconcile.js";
@@ -152,6 +152,12 @@ async function main() {
     const now = new Date();
     await sweepOrganisations(db, "ads ingest", async (organisationId) => {
       console.info(await runAdsIngest(db, organisationId, integrations.ads, { now }), "ads ingest");
+    });
+    // The campaign breakdown behind cost per lead. A separate sweep so a
+    // campaign query that fails cannot cost an organisation its account-level
+    // snapshot, which the client report and the Sentinel both read.
+    await sweepOrganisations(db, "ads campaign ingest", async (organisationId) => {
+      console.info(await runAdsCampaignIngest(db, organisationId, integrations.ads, { now }), "ads campaign ingest");
     });
   });
 

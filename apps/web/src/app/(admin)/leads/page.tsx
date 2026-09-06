@@ -1,4 +1,4 @@
-import { attributionOf, attributionSummary, leadCampaignCounts, type LeadRow, listLeads } from "@launchos/core";
+import { attributionOf, attributionSummary, costPerLeadByCampaign, leadCampaignCounts, type LeadRow, listLeads } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { LeadStatus } from "@launchos/db/schema";
 import { and, count, eq, isNull } from "drizzle-orm";
@@ -13,6 +13,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { CostPerLeadStrip } from "./cost-per-lead-strip";
 import { LeadStatusBadge } from "./lead-status-badge";
 import { LEAD_SOURCE_LABEL, LEAD_STATUS_LABEL, LEAD_STATUSES } from "./schemas";
 
@@ -85,7 +86,13 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   const campaign = typeof params.campaign === "string" && params.campaign.trim().length > 0 ? params.campaign.trim().slice(0, 200) : null;
   const page = pageParam(params.page);
 
-  const [{ leads: fetched }, counts, campaigns] = await Promise.all([
+  // The same thirty days the campaign pills cover, as the ISO calendar dates
+  // the ad platforms report in.
+  const today = new Date();
+  const since = new Date(today.getTime() - 29 * 86_400_000);
+  const isoDay = (value: Date) => value.toISOString().slice(0, 10);
+
+  const [{ leads: fetched }, counts, campaigns, costPerLead] = await Promise.all([
     listLeads(getDb(), session.organisationId, {
       ...(filter === "all" ? {} : { status: filter }),
       ...(campaign ? { utmCampaign: campaign } : {}),
@@ -94,6 +101,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
     }),
     countsByStatus(session.organisationId),
     leadCampaignCounts(getDb(), session.organisationId, { days: 30 }),
+    costPerLeadByCampaign(getDb(), session.organisationId, { from: isoDay(since), to: isoDay(today) }),
   ]);
   const attributed = campaigns.campaigns.filter((row) => row.campaign !== null);
   const hasNext = fetched.length > PAGE_SIZE;
@@ -155,6 +163,11 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
           </ul>
         </div>
       ) : null}
+
+      {/* What the enquiries cost. Below the campaign pills because it is the
+          same thirty days read a second way: the pills say where they came
+          from, this says what each one was worth paying. */}
+      <CostPerLeadStrip report={costPerLead} days={campaigns.days} />
 
       <form action="/leads">
         {campaign ? <input type="hidden" name="campaign" value={campaign} /> : null}

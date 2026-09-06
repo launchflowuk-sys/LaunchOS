@@ -28,6 +28,11 @@ export const URGENT_NOTIFICATION_KINDS = [
   // worth interrupting somebody for. `proposal.viewed` deliberately is not
   // here — a client may open the same proposal five times in an afternoon.
   "proposal.accepted",
+  // A funnel visitor who scored above the funnel's own threshold, buzzed the
+  // moment they leave a number rather than when they finish. The ordinary
+  // `lead.created` bell has already gone; this one means "ring them while
+  // they are still on the page".
+  "funnel.hot_lead",
 ] as const;
 
 export type UrgentNotificationKind = (typeof URGENT_NOTIFICATION_KINDS)[number];
