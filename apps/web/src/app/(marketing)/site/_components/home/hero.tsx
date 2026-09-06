@@ -63,7 +63,7 @@ export function Hero({ contactHref, workHref }: { contactHref: string; workHref:
             <Btn href={contactHref} tone="blue" size="lg">
               Let&rsquo;s build something
             </Btn>
-            <TextLink href={workHref} kind="right" className="text-[0.9375rem]">
+            <TextLink href={workHref} kind="right" className="text-link text-[0.9375rem]">
               Explore our work
             </TextLink>
           </div>

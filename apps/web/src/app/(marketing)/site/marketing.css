@@ -214,10 +214,16 @@
 /* Hero call to action: on a phone the blue button shrinks a touch so it and
    "Explore our work" share one line, as in the reference. */
 @media (max-width: 639px) {
+  .marketing .hero-actions {
+    column-gap: 0.75rem;
+  }
   .marketing .hero-actions .btn-lg {
-    min-height: 2.75rem;
-    padding: 0 1.25rem;
-    font-size: 0.9375rem;
+    min-height: 2.625rem;
+    padding: 0 1rem;
+    font-size: 0.875rem;
+  }
+  .marketing .hero-actions .text-link {
+    font-size: 0.875rem;
   }
 }
 .marketing .btn-block {
