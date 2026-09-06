@@ -71,7 +71,7 @@ describe("content-writer", () => {
       });
 
       expect(result.status).toBe("completed");
-      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId));
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId)).orderBy(schema.agentSteps.seq);
       const renders = steps
         .filter((s) => s.kind === "tool_result" && s.toolName === "content_render_image")
         .map((s) => s.output as { rendered: boolean; mode?: string; costPence?: number; reason?: string });
@@ -214,7 +214,7 @@ describe("content-writer", () => {
         llm, policy: "safe", logger: quiet, now: () => NOW,
       });
       expect(result.status).toBe("completed");
-      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId));
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.runId, result.runId)).orderBy(schema.agentSteps.seq);
       const results = steps.filter((s) => s.kind === "tool_result" && s.toolName === "content_save_draft").map((s) => s.output as { saved: boolean });
       expect(results.map((r) => r.saved)).toEqual([false, true]);
       const [item] = await db.select().from(schema.contentItems).where(eq(schema.contentItems.id, blog.id));

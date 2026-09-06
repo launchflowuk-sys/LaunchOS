@@ -108,7 +108,7 @@ describe("lead-qualifier", () => {
       ]);
       const result = await runAgent(leadQualifier(), { db, organisationId: f.orgId, trigger: "event", payload: { leadId: f.lead.id }, llm, policy: "safe", logger: quiet });
       expect(result.status).toBe("completed");
-      const outputs = (await db.select().from(schema.agentSteps).where(and(eq(schema.agentSteps.runId, result.runId), eq(schema.agentSteps.kind, "tool_result"))))
+      const outputs = (await db.select().from(schema.agentSteps).where(and(eq(schema.agentSteps.runId, result.runId), eq(schema.agentSteps.kind, "tool_result"))).orderBy(schema.agentSteps.seq))
         .map((s) => s.output as Record<string, unknown>);
       expect(outputs[0]).toMatchObject({ drafted: false, reason: expect.stringMatching(/170 words/) });
       expect(outputs[1]).toMatchObject({ drafted: true });

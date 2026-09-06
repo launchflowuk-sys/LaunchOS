@@ -10,6 +10,8 @@ export type ClientUserRow = {
   role: "client_admin" | "client_member";
   status: "active" | "suspended";
   createdAt: Date;
+  /** Whether this portal account holds a second factor. Drives the reset control. */
+  twoFactorEnabled: boolean;
 };
 
 /**
@@ -27,6 +29,7 @@ export async function listClientUsers(db: Db, organisationId: string, clientId: 
       role: schema.clientUsers.role,
       status: schema.clientUsers.status,
       createdAt: schema.clientUsers.createdAt,
+      twoFactorEnabled: schema.user.twoFactorEnabled,
     })
     .from(schema.clientUsers)
     .innerJoin(schema.user, eq(schema.clientUsers.userId, schema.user.id))
