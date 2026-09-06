@@ -40,11 +40,12 @@ const VIEWPORTS = {
 } as const;
 
 /**
- * Products whose address is not a page of their own yet. The Funnel Engine
- * has no public site, and its entry points at the products page, which on
- * the day this runs may still be the old WordPress install.
+ * Products whose address is not a page of their own yet — their entry
+ * points at a shared page, so a screenshot would show the wrong thing.
+ * Empty since the placeholder products were dropped; kept because the next
+ * product to be announced before it has a site will need it again.
  */
-const OMIT = new Set(["funnel-engine"]);
+const OMIT = new Set<string>();
 
 /** A phone's own user agent, so a site that serves a different layout to phones shows it. */
 const MOBILE_USER_AGENT =

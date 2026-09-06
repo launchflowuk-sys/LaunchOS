@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { marketingLinks } from "@/lib/marketing/links";
 import { findWork, STATUS_LABEL, WORK, WORK_SLUGS } from "@/lib/marketing/work";
 import { CtaBlock } from "../../_components/cta-block";
+import { PoweredByBadge } from "../../_components/powered-by";
 import { Arrow, Btn, Container, Eyebrow, Lines, Pill } from "../../_components/primitives";
 import { Shot } from "../../_components/shot";
 
@@ -65,6 +66,7 @@ export default async function WorkDetailPage({ params }: PageProps<"/site/work/[
             <div className="mt-5 flex flex-wrap items-center gap-2">
               <Pill tone={item.status === "live" ? "live" : "default"}>{STATUS_LABEL[item.status]}</Pill>
               {item.charity ? <Pill tone="tint">Built free, as charity</Pill> : null}
+              {item.poweredBy ? <PoweredByBadge platform={item.poweredBy} linked /> : null}
             </div>
           </div>
           {item.url && host ? (
@@ -101,6 +103,14 @@ export default async function WorkDetailPage({ params }: PageProps<"/site/work/[
                   <span className="tabular">{item.year}</span>
                 </Fact>
                 <Fact label="Status">{STATUS_LABEL[item.status]}</Fact>
+                {item.poweredBy ? (
+                  <Fact label="Platform">
+                    <a href={item.poweredBy.url} rel="noopener" className="link-blue">
+                      {item.poweredBy.name}
+                    </a>
+                    <span className="quiet"> — our own</span>
+                  </Fact>
+                ) : null}
                 <div>
                   <dt className="eyebrow">Stack</dt>
                   <dd className="mt-3 flex flex-wrap gap-2">

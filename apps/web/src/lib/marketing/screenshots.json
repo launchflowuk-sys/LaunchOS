@@ -7,6 +7,10 @@
     "desktop": "/work/amo-rendering-desktop.jpg",
     "mobile": "/work/amo-rendering-mobile.jpg"
   },
+  "amo-services": {
+    "desktop": "/work/amo-services-desktop.jpg",
+    "mobile": "/work/amo-services-mobile.jpg"
+  },
   "be-gorgeous-by-monika": {
     "desktop": "/work/be-gorgeous-by-monika-desktop.jpg",
     "mobile": "/work/be-gorgeous-by-monika-mobile.jpg"
@@ -31,6 +35,10 @@
     "desktop": "/work/grays-park-masjid-desktop.jpg",
     "mobile": "/work/grays-park-masjid-mobile.jpg"
   },
+  "grays-town-taxis": {
+    "desktop": "/work/grays-town-taxis-desktop.jpg",
+    "mobile": "/work/grays-town-taxis-mobile.jpg"
+  },
   "kd-essex": {
     "desktop": "/work/kd-essex-desktop.jpg",
     "mobile": "/work/kd-essex-mobile.jpg"
@@ -43,6 +51,10 @@
     "desktop": "/work/launchos-desktop.jpg",
     "mobile": "/work/launchos-mobile.jpg"
   },
+  "lifestyle-windows": {
+    "desktop": "/work/lifestyle-windows-desktop.jpg",
+    "mobile": "/work/lifestyle-windows-mobile.jpg"
+  },
   "mobile-pc-doctor": {
     "desktop": "/work/mobile-pc-doctor-desktop.jpg",
     "mobile": "/work/mobile-pc-doctor-mobile.jpg"
@@ -50,6 +62,10 @@
   "nexus-education-group": {
     "desktop": "/work/nexus-education-group-desktop.jpg",
     "mobile": "/work/nexus-education-group-mobile.jpg"
+  },
+  "ockendon-station-taxis": {
+    "desktop": "/work/ockendon-station-taxis-desktop.jpg",
+    "mobile": "/work/ockendon-station-taxis-mobile.jpg"
   },
   "star-grooming": {
     "desktop": "/work/star-grooming-desktop.jpg",

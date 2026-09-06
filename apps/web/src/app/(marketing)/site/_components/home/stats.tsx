@@ -2,7 +2,7 @@ import { Container, Lines } from "../primitives";
 
 const STATS = [
   { value: 15, pad: 2, unit: "years", label: "Building for real businesses" },
-  { value: 8, pad: 2, unit: "products", label: "Created in-house" },
+  { value: 5, pad: 2, unit: "products", label: "Created in-house" },
   { value: 1, pad: 2, unit: "partner", label: "From design to ongoing care" },
 ] as const;
 

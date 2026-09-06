@@ -64,21 +64,6 @@ export const PRODUCTS: readonly Product[] = [
     screenshots: shots("agent-zero"),
   },
   {
-    slug: "lima",
-    name: "Lima",
-    domain: "agentlima.com",
-    url: "https://agentlima.com",
-    tagline: "An inbox agent that drafts the reply.",
-    description:
-      "Connects a business's Gmail, Microsoft 365 or IMAP mailbox, classifies what comes in and drafts a reply in that business's voice — queued for one-click approval, or sent automatically under rules the owner sets. Self-hosted, so client email never leaves our server. Mailbox credentials are encrypted at rest.",
-    facts: ["Gmail, Microsoft 365 and IMAP", "Multi-business from the ground up", "Approve or auto-send by rule", "Companion app in progress"],
-    category: "Inbox AI",
-    oneLine: "Reads a business’s inbox and drafts the reply in its own voice, for one-click approval.",
-    flagship: false,
-    status: "in-build",
-    screenshots: shots("lima"),
-  },
-  {
     slug: "bizzflow",
     name: "BizzFlow",
     domain: "bizzflowuk.com",
@@ -109,21 +94,6 @@ export const PRODUCTS: readonly Product[] = [
     screenshots: shots("launchos"),
   },
   {
-    slug: "funnel-engine",
-    name: "Funnel Engine",
-    domain: "launchflow.co.uk",
-    url: "https://launchflow.co.uk/products",
-    tagline: "Lead funnels for the trades, one question per screen.",
-    description:
-      "Mobile-first landing funnels for paid ads: five or six screens, one question each, with the contact step in the middle rather than the end so a visitor who leaves early still leaves a name and a number. Each client is a single config file. Answers are scored and a hot lead emails the owner straight away.",
-    facts: ["Config-driven, no CMS", "Contact captured mid-funnel", "Lead scoring and instant alerts", "First funnel built for KD Essex"],
-    category: "Paid ads",
-    oneLine: "One-question-per-screen landing funnels that keep the lead even when the visitor leaves early.",
-    flagship: false,
-    status: "in-build",
-    screenshots: shots("funnel-engine"),
-  },
-  {
     slug: "takeaway-platform",
     name: "Takeaway ordering platform",
     domain: "farm-pizza.shop",
@@ -137,21 +107,6 @@ export const PRODUCTS: readonly Product[] = [
     flagship: false,
     status: "in-testing",
     screenshots: shots("takeaway-platform"),
-  },
-  {
-    slug: "yournanny",
-    name: "YourNanny",
-    domain: "yournanny.co.uk",
-    url: "https://yournanny.co.uk",
-    tagline: "A commission-free back office for nannies and childminders.",
-    description:
-      "A public profile in a searchable directory, an enquiry inbox, a booking tracker with recurring sessions and conflict detection, parent and child records, and reviews — for self-employed nannies and registered childminders who keep their full rate.",
-    facts: ["Enquiry to booking in one click", "Weekly and fortnightly recurrence", "Audit trail on every booking", "Payments being wired up"],
-    category: "Childcare",
-    oneLine: "A commission-free back office and directory profile for nannies and childminders.",
-    flagship: false,
-    status: "in-testing",
-    screenshots: shots("yournanny"),
   },
 ] as const;
 

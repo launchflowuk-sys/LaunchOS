@@ -17,6 +17,29 @@ export type WorkStatus = "live" | "in-build" | "in-testing" | "discovery";
 
 export type WorkScreenshots = { desktop?: string; mobile?: string };
 
+/**
+ * A project that runs on one of our own platforms. The card and the brief
+ * say so with the platform's own mark, because "we also built the thing
+ * underneath it" is the part of the story a taxi operator cares about.
+ */
+export type PoweredBy = {
+  name: string;
+  /** Where the platform lives. */
+  url: string;
+  /** In `public/`, transparent, sized for a small badge. */
+  logo: string;
+  logoWidth: number;
+  logoHeight: number;
+};
+
+export const CABIO: PoweredBy = {
+  name: "Cabio",
+  url: "https://cabio.cab",
+  logo: "/brand/cabio-logo.png",
+  logoWidth: 600,
+  logoHeight: 156,
+};
+
 export type WorkItem = {
   slug: string;
   name: string;
@@ -43,6 +66,8 @@ export type WorkItem = {
   status: WorkStatus;
   /** Built free, for the community. Said plainly on the card and the brief. */
   charity?: boolean;
+  /** Runs on one of our own platforms. */
+  poweredBy?: PoweredBy;
 };
 
 const SHOTS = manifest as Record<string, WorkScreenshots>;
@@ -81,6 +106,7 @@ export const WORK: readonly WorkItem[] = [
     featured: true,
     kind: "client",
     status: "live",
+    poweredBy: CABIO,
   },
   {
     slug: "lakeside-purfleet-taxis",
@@ -103,6 +129,53 @@ export const WORK: readonly WorkItem[] = [
     featured: false,
     kind: "client",
     status: "live",
+    poweredBy: CABIO,
+  },
+  {
+    slug: "ockendon-station-taxis",
+    name: "Ockendon Station Taxis",
+    client: "Ockendon Station Taxis",
+    sector: "Taxi",
+    url: "https://ockendonstationtaxis.co.uk",
+    summary: "A local taxi site built round station pickups and fixed airport fares, with a step-by-step booking enquiry.",
+    brief: {
+      client: "Ockendon Station Taxis is a private hire firm working South Ockendon, Aveley, Grays, Chafford Hundred and the rest of Thurrock.",
+      problem:
+        "Almost all their work starts with somebody standing at Ockendon Station or planning an early airport run, and almost all of it came in by phone. There was nothing online for the passenger who wants a price before they ring, and nothing at all after hours.",
+      built:
+        "A site organised the way the work actually arrives: local journeys, station pickups and airport transfers, each with its own page and its own area pages for the villages around Ockendon. A multi-step booking enquiry asks for the journey type first, then the addresses, dates and passenger count, so a return airport run with a flight number takes the same short form as a trip to the shops. Airport fares are published — Heathrow, Gatwick, Stansted, Luton and London City — so the price question is answered before anybody picks up the phone.",
+      results: "Enquiries now arrive around the clock with the journey already described, and the published airport fares do the quoting.",
+    },
+    stack: ["WordPress", "Fluent Forms", "Cabio", "Google Business Profile"],
+    year: 2026,
+    screenshots: shots("ockendon-station-taxis"),
+    featured: false,
+    kind: "client",
+    status: "live",
+    poweredBy: CABIO,
+  },
+  {
+    slug: "grays-town-taxis",
+    name: "Grays Town Taxis",
+    client: "Grays Town Taxis",
+    sector: "Taxi and airport transfers",
+    url: "https://graystowntaxis.co.uk",
+    summary: "A fixed-price booking site on Cabio, with live tracking, corporate accounts and the Google Ads that feed it.",
+    brief: {
+      client: "Grays Town Taxis is Safiullah Mansoor's private hire firm in Grays, running local work, school runs and airport transfers around the clock.",
+      problem:
+        "A one-driver-up operator competing with the big Thurrock firms needs to look every bit as solid as they do — instant quotes, fixed airport prices, tracking, card payment — without paying for a dispatch platform priced for a fleet.",
+      built:
+        "The site runs on Cabio Solo, our subscription tier for the single operator: the booking engine, the quote, the live tracking link and the card payment are the same ones our fleet customers use, embedded straight into the site. On top of that a marketing site with fixed airport fares to seven airports, service pages for local, corporate, school-run, long-distance and wedding work, an application form for corporate and school accounts with monthly invoicing, and real Google reviews on the page. We run the Google Ads alongside it.",
+      results: "Online booking and tracking on a solo operator's budget, with quotes arriving overnight instead of waiting for the phone.",
+    },
+    stack: ["Cabio", "Google Ads", "Google Business Profile", "Coolify"],
+    year: 2026,
+    screenshots: shots("grays-town-taxis"),
+    featured: false,
+    kind: "client",
+    status: "live",
+    poweredBy: CABIO,
   },
   {
     slug: "star-grooming",
@@ -291,6 +364,52 @@ export const WORK: readonly WorkItem[] = [
     stack: ["BizzFlow", "React", "Express", "PostgreSQL", "Google Ads", "Coolify"],
     year: 2026,
     screenshots: shots("amo-rendering"),
+    featured: false,
+    kind: "client",
+    status: "live",
+  },
+  {
+    slug: "amo-services",
+    name: "AMO Services",
+    client: "AMO Services",
+    sector: "Construction and building",
+    url: "https://amoservices.co.uk",
+    summary: "A construction company's site with a service page per trade and a quote form that feeds the same CRM as its sister firm.",
+    brief: {
+      client:
+        "AMO Services is a construction company in Grays, established in 2011 and covering Essex and London — new builds, commercial works, home renovations, loft conversions, kitchens, electrical work and bricklaying. It is Mark Baker's second business, alongside AMO Rendering.",
+      problem:
+        "One firm doing seven quite different trades is hard to sell in a single paragraph. A homeowner searching for a loft conversion and a developer looking for groundworks want completely different pages, and neither wanted to read about the other. Both businesses also had to be run from one login rather than two systems.",
+      built:
+        "A page per trade — new builds, commercial, renovations, lofts, electrical, kitchens, bricklaying — each one landing its own searches and each one ending at the same free-quote form. The story that ties them together is the one AMO actually sells on: one team from first visit to final handover, building and electrical under one roof, a written quotation before anything starts. Enquiries land in the same BizzFlow CRM as AMO Rendering, so Mark runs both businesses from a single login.",
+      results: "Two businesses, one back office. The seven trades each have somewhere to rank instead of sharing one crowded page.",
+    },
+    stack: ["BizzFlow", "React", "Express", "PostgreSQL", "Coolify"],
+    year: 2026,
+    screenshots: shots("amo-services"),
+    featured: false,
+    kind: "client",
+    status: "live",
+  },
+  {
+    slug: "lifestyle-windows",
+    name: "LifeStyle Windows",
+    client: "Chathwell Windows Ltd",
+    sector: "Windows, doors and conservatories",
+    url: "https://lifestylewindow.co.uk",
+    summary: "A premium glazing site with an instant estimate tool, a product page for every style and an area page for every town.",
+    brief: {
+      client:
+        "LifeStyle Windows, trading as Chathwell Windows Ltd, is a family-run, FENSA-registered glazing installer working across Dagenham, East London and Essex. They have fitted windows, doors and conservatories since 2010 with their own installers rather than subcontractors.",
+      problem:
+        "Glazing is a trade with a reputation problem, and the firms that deserve better are the ones least able to show it. Homeowners compare on price alone because nothing on a typical glazing site tells them what they are getting, and every enquiry turns into a survey visit before anyone knows whether the budget is close.",
+      built:
+        "A site built to answer the question before the phone call. An instant estimate tool gives a homeowner a number without a salesperson in the room. Every product has its own page — double and triple glazing, uPVC, aluminium, sash, bay and casement windows; composite, uPVC, aluminium, bifold, patio and French doors; conservatories — so a search for one style lands on that style. Service-area pages cover Dagenham, Romford, Ilford, Barking, Redbridge, East London and Essex. The trust marks that matter in this trade sit where they are read: FENSA registration, PAS 24 and Secured by Design, the 15-year guarantee, in-house fitters and a gallery of real installs.",
+      results: "Our Premium Plan client: the site, the estimate tool, the search work and the ongoing care run together, and the enquiries arrive with a budget already attached.",
+    },
+    stack: ["WordPress", "Divi", "Custom estimate plugin", "Google Business Profile"],
+    year: 2026,
+    screenshots: shots("lifestyle-windows"),
     featured: false,
     kind: "client",
     status: "live",

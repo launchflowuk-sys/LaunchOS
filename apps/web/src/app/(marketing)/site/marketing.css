@@ -559,3 +559,35 @@
   background: var(--tint-2);
   color: var(--ink);
 }
+
+/* The "Powered by Cabio" credit: a pill that carries the platform's own
+   mark. The logo is set to the cap height of the label so the two read as
+   one line rather than an image with words beside it. */
+.marketing .powered {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  font-size: 0.75rem;
+  font-weight: 560;
+  letter-spacing: 0.02em;
+  color: var(--mute);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.marketing .powered img {
+  height: 0.875rem;
+  width: auto;
+}
+.marketing a.powered {
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+.marketing a.powered:hover {
+  border-color: #cfd7e1;
+  background: var(--fill);
+}

@@ -9,7 +9,7 @@ import { Shot } from "../_components/shot";
 export const metadata: Metadata = {
   title: "Products",
   description:
-    "Cabio taxi dispatch, Agent Zero phone agent, Lima inbox agent, BizzFlow for the trades, LaunchOS, Funnel Engine, takeaway ordering and YourNanny — the products LaunchFlow builds and runs.",
+    "Cabio taxi dispatch, Agent Zero phone agent, BizzFlow for the trades, LaunchOS and our takeaway ordering platform — the products LaunchFlow builds, runs and sells.",
   alternates: { canonical: "/products" },
   openGraph: { title: "Products — LaunchFlow", description: "The systems we run our own businesses on, and sell to others.", url: "/products" },
 };

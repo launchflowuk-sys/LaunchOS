@@ -34,20 +34,22 @@ export function Products({ href }: { href: (path: string) => string }) {
           ))}
         </ul>
 
-        <div className="mt-14 grid gap-8 lg:grid-cols-12">
-          <p className="eyebrow eyebrow-index lg:col-span-3" data-reveal>
-            <span>Also taking shape</span>
-          </p>
-          <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:col-span-9 lg:grid-cols-4">
-            {UPCOMING_PRODUCTS.map((product) => (
-              <li key={product.slug} className="border-t border-[var(--line)] pt-4" data-reveal>
-                <p className="h-line">{product.name}</p>
-                <p className="body mt-1 text-sm">{product.tagline}</p>
-                <p className="mt-2 text-xs font-medium tracking-wide text-[var(--mute)] uppercase">{STATUS_LABEL[product.status]}</p>
-              </li>
-            ))}
-          </ul>
-        </div>
+        {UPCOMING_PRODUCTS.length > 0 ? (
+          <div className="mt-14 grid gap-8 lg:grid-cols-12">
+            <p className="eyebrow eyebrow-index lg:col-span-3" data-reveal>
+              <span>Also taking shape</span>
+            </p>
+            <ul className="grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:col-span-9 lg:grid-cols-4">
+              {UPCOMING_PRODUCTS.map((product) => (
+                <li key={product.slug} className="border-t border-[var(--line)] pt-4" data-reveal>
+                  <p className="h-line">{product.name}</p>
+                  <p className="body mt-1 text-sm">{product.tagline}</p>
+                  <p className="mt-2 text-xs font-medium tracking-wide text-[var(--mute)] uppercase">{STATUS_LABEL[product.status]}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </Container>
     </section>
   );

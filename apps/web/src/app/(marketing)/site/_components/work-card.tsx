@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { STATUS_LABEL, type WorkItem } from "@/lib/marketing/work";
+import { PoweredByBadge } from "./powered-by";
 import { Pill } from "./primitives";
 import { Shot } from "./shot";
 
@@ -33,6 +34,11 @@ export function WorkCard({ item, href, priority = false, sizes }: { item: WorkIt
           {item.status !== "live" ? <Pill>{STATUS_LABEL[item.status]}</Pill> : null}
         </div>
         <p className="body mt-1.5">{item.summary}</p>
+        {item.poweredBy ? (
+          <p className="mt-3">
+            <PoweredByBadge platform={item.poweredBy} />
+          </p>
+        ) : null}
       </div>
     </Link>
   );
