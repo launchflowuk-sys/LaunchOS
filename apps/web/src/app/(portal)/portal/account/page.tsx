@@ -5,8 +5,10 @@ import { EmptyState, PageHeader } from "@/components/page-header";
 import { KeyValue } from "@/components/key-value";
 import { SignOutButton } from "@/components/portal/sign-out-button";
 import { Section } from "@/components/section";
+import { TwoFactorPanel } from "@/components/two-factor/two-factor-panel";
 import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
+import { getAuthUser } from "@/lib/session";
 import { ChangePasswordForm } from "./change-password-form";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +41,11 @@ const CONTACT_COLUMNS: readonly DataListColumn<ContactRow>[] = [
 
 export default async function PortalAccountPage() {
   const session = await requireClient();
-  const contacts = await listContacts(getDb(), session.organisationId, session.clientId);
+  const [contacts, authUser] = await Promise.all([
+    listContacts(getDb(), session.organisationId, session.clientId),
+    getAuthUser(),
+  ]);
+  const twoFactorEnabled = authUser?.twoFactorEnabled === true;
 
   return (
     <>
@@ -85,6 +91,19 @@ export default async function PortalAccountPage() {
       <Section title="Password" description="Changing it signs you out everywhere else.">
         <div className="max-w-xl rounded-xl border bg-card p-5 sm:p-6">
           <ChangePasswordForm />
+        </div>
+      </Section>
+
+      {/* Offered, never required. If a client loses their phone and their
+          backup codes there is nobody behind them to let them back in, so it
+          becomes a support request — which is a fine outcome for an optional
+          protection and a poor one for a compulsory one. */}
+      <Section
+        title="Two-factor authentication"
+        description="Optional. A code from an app on your phone, on top of your password."
+      >
+        <div className="max-w-xl rounded-xl border bg-card p-5 sm:p-6">
+          <TwoFactorPanel enabled={twoFactorEnabled} />
         </div>
       </Section>
     </>

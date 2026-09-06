@@ -34,7 +34,11 @@ async function workerBanner(organisationId: string): Promise<string | null> {
 }
 
 export default async function AdminLayout({ children }: LayoutProps<"/">) {
-  const session = await requireAdmin();
+  // The shell itself must stay reachable when an organisation requires a
+  // second factor this member has not set up yet: the screen that fixes it —
+  // /account — renders inside this layout, and a gate here would bounce it
+  // back to itself. Every page and action inside still applies the gate.
+  const session = await requireAdmin({ allowPendingEnrolment: true });
 
   // The one number the rail carries. Approvals is where every outward action
   // stops for a human, so the count travels with the shell rather than living

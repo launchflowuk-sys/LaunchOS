@@ -18,7 +18,11 @@ import { type AdminSession, requireAdmin } from "./session";
  * row: the default set with whatever an owner has stored laid over it.
  */
 export const sessionPermissions = cache(async (): Promise<MemberPermissions> => {
-  const session = await requireAdmin();
+  // This decides what the rail renders, and the rail renders in the layout —
+  // which has to stay up while a member who owes a two-factor enrolment is
+  // sent to /account to do it. The gate belongs on the pages and actions
+  // behind those links, and `requirePermission` below still applies it.
+  const session = await requireAdmin({ allowPendingEnrolment: true });
   if (session.role === "owner") return defaultPermissions("owner");
   const row = await getMemberPermissions(getDb(), session.organisationId, { userId: session.userId });
   return row?.permissions ?? defaultPermissions("staff");

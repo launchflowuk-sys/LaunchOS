@@ -1,5 +1,13 @@
 export { recordAudit, RecordAuditInput } from "./audit/record-audit.js";
 export {
+  recordTwoFactorEvent, isStaffUser, TWO_FACTOR_EVENTS, RecordTwoFactorEventInput,
+} from "./security/two-factor-events.js";
+export type { TwoFactorEvent, TwoFactorEventResult } from "./security/two-factor-events.js";
+export {
+  staffTwoFactorRequired, staffWithoutTwoFactor, setStaffTwoFactorRequired,
+  SetStaffTwoFactorRequiredInput, TwoFactorPolicyRefused,
+} from "./security/two-factor-policy.js";
+export {
   supportEmailDomain,
   supportEmailFor,
   DEFAULT_SUPPORT_EMAIL_DOMAIN,

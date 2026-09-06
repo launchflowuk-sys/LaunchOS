@@ -1,4 +1,4 @@
-import { jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 // Defined in its own file (rather than in system.ts) so that _shared.ts can
 // import `organisations` without creating an import cycle with system.ts,
@@ -27,6 +27,13 @@ export const organisations = pgTable("organisations", {
   companyNumber: text("company_number"),
   /** Free text printed at the foot of every invoice: bank details, terms, a thank-you. */
   invoiceFooter: text("invoice_footer"),
+  // Whether owner and staff accounts must hold a second factor. Off by
+  // default and only an owner may switch it on, from their own Account
+  // screen — a live organisation whose owner has not enrolled yet must not
+  // be locked out by a migration. Client portal users are never covered: a
+  // client who loses their authenticator is a support ticket, not an
+  // outage, so the portal keeps enrolment voluntary.
+  requireStaffTwoFactor: boolean("require_staff_two_factor").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),

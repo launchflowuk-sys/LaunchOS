@@ -235,6 +235,38 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
 
 7. **Verify** — after first deploy, hit `https://os.launchflow.co.uk/api/health` and confirm `{"ok":true}`, then check the worker resource logs for the `worker started` line.
 
+## Two-factor authentication
+
+Better Auth's own `twoFactor` plugin (better-auth 1.7.x), TOTP only, on our Postgres. Migration `0028` adds `user.two_factor_enabled`, the `two_factor` table and `organisations.require_staff_two_factor`. **Nothing about the deploy switches it on**: every existing account comes out of the migration with `two_factor_enabled = false`, every live session keeps working, and enforcement starts off.
+
+Everything a person does with their own second factor is on **Account** (`/account` for staff, `/portal/account` for clients): enrol by scanning a QR, replace the backup codes, turn it off. Enrolling shows ten single-use backup codes **once** and never again. Turning it off and replacing the codes both ask for the account password — a live session on a stolen laptop cannot take the second factor off the account it is protecting.
+
+**Who can be made to have it.** An owner can require it for owner and staff accounts, from the same screen. While it is on, any staff member without one is sent to `/account` on every other admin page until they enrol; client portal accounts are never covered, deliberately — a client who loses their authenticator has nobody behind them, so it stays voluntary and a locked-out client is a support request. Switching enforcement **on** is refused unless the owner doing it has already enrolled, which is what stops the switch shutting out the person holding it. Switching it **off** has no such condition.
+
+**What is recorded.** Enabled, disabled, backup codes regenerated, a backup code spent and a failed challenge each write an `audit_log` row (`security.two_factor_*`), from inside the auth layer rather than from the screens, so a raw POST to `/api/auth` is recorded the same way. A disable and a spent backup code also ring the owner's bell. A successful challenge is not recorded: it happens on every sign-in and would bury the rest.
+
+**Limits that already apply.** Five wrong codes end the sign-in challenge and it has to be started again; ten consecutive failures lock the account's second factor for fifteen minutes; the challenge itself expires ten minutes after the password was accepted.
+
+### Recovery — an owner who has lost both the phone and the codes
+
+There is no self-service path back, by design. The way back is direct database access, which on a Coolify install means the Postgres resource. Take the factor off the account, and if enforcement is on and nobody else is enrolled, turn enforcement off in the same session — otherwise the account comes back to a portal that immediately asks it to enrol again:
+
+```sql
+-- 1. who it is
+select id, email, two_factor_enabled from "user" where email = 'you@example.com';
+
+-- 2. take the second factor off that one account
+delete from two_factor where user_id = (select id from "user" where email = 'you@example.com');
+update "user" set two_factor_enabled = false where email = 'you@example.com';
+
+-- 3. only if enforcement is on and no other owner is enrolled
+update organisations set require_staff_two_factor = false;
+```
+
+Then sign in with the password alone and enrol again. Two things to know about it: the account keeps every session it had, so revoke them by changing the password if the phone was lost rather than merely replaced; and **this write happens outside the application, so nothing audits it** — say what was done and when, in whatever the incident record is, because `audit_log` will show the enrolment that follows and nothing before it. The same three statements are how a client who is locked out of the portal is let back in, once the support request has established who is asking.
+
+**Rotating `BETTER_AUTH_SECRET` orphans every enrolment.** The TOTP seeds and the backup codes in `two_factor` are AES-256-GCM encrypted under it (they cannot be hashed: verifying a backup code means recovering the remaining list and writing it back one code shorter). After a rotation, no authenticator code and no backup code will verify for anybody. Plan it as `truncate two_factor; update "user" set two_factor_enabled = false;` plus enforcement off, followed by everybody enrolling again — the same as the recovery above, for every account at once.
+
 ## Inbound email
 
 Every client has a support address `<client-slug>@$SUPPORT_EMAIL_DOMAIN`. Mail sent to it reaches `POST /api/webhooks/email/inbound`, which validates the shared secret, normalises the payload, writes attachments to `STORAGE_DIR` and enqueues. It performs **no** business writes, so a slow database cannot time the provider out.

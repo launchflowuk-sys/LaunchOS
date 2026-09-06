@@ -1,4 +1,4 @@
-import { boolean, index, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Better Auth core tables for Better Auth 1.7.x (drizzle adapter, pg provider).
 //
@@ -21,6 +21,10 @@ export const user = pgTable("user", {
   email: text("email").notNull().unique(),
   emailVerified: boolean("email_verified").default(false).notNull(),
   image: text("image"),
+  // Added by the `twoFactor` plugin, not by the core tables. False for every
+  // account that has never enrolled, which is every account before this
+  // migration — enrolment is opt-in and nothing switches it on for anybody.
+  twoFactorEnabled: boolean("two_factor_enabled").default(false).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
@@ -93,4 +97,37 @@ export const verification = pgTable(
       .notNull(),
   },
   (t) => [index("verification_identifier_idx").on(t.identifier)],
+);
+
+/**
+ * Better Auth's `twoFactor` model — one row per enrolled user, written only by
+ * the two-factor plugin. Both credential columns are `returned: false` in the
+ * plugin's own schema, so nothing that serialises a user can carry them out.
+ *
+ * `secret` is the TOTP seed and `backupCodes` the recovery codes, both
+ * AES-256-GCM encrypted by the plugin under `BETTER_AUTH_SECRET` before they
+ * arrive here — the codes cannot be *hashed*, because verification has to
+ * recover the remaining list and write it back one code shorter. Rotating that
+ * secret therefore orphans every enrolment: see the recovery section of
+ * `docs/DEPLOYMENT.md`.
+ *
+ * `verified` is false between `/two-factor/enable` and the first correct code,
+ * which is what stops a half-finished enrolment locking anybody out; the
+ * failure counter and `lockedUntil` are the plugin's per-account lockout
+ * (ten consecutive failures, fifteen minutes).
+ */
+export const twoFactor = pgTable(
+  "two_factor",
+  {
+    id: text("id").primaryKey(),
+    secret: text("secret").notNull(),
+    backupCodes: text("backup_codes").notNull(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    verified: boolean("verified").default(true).notNull(),
+    failedVerificationCount: integer("failed_verification_count").default(0).notNull(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
+  },
+  (t) => [index("two_factor_userId_idx").on(t.userId), index("two_factor_secret_idx").on(t.secret)],
 );

@@ -1,8 +1,9 @@
-import { listMembers, listPushSubscriptions } from "@launchos/core";
+import { listMembers, listPushSubscriptions, staffWithoutTwoFactor } from "@launchos/core";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
+import { TwoFactorPanel } from "@/components/two-factor/two-factor-panel";
 import { getDb } from "@/lib/db";
 import { vapidPublicKey } from "@/lib/env";
 import { formatDate, formatDateTime } from "@/lib/format";
@@ -10,6 +11,7 @@ import { endpointHost } from "@/lib/push";
 import { requireAdmin } from "@/lib/session";
 import { ChangePasswordForm } from "./change-password-form";
 import { DeviceAlerts, type DeviceRow } from "./device-alerts";
+import { TwoFactorPolicySwitch } from "./two-factor-policy";
 
 export const dynamic = "force-dynamic";
 
@@ -24,12 +26,18 @@ export const dynamic = "force-dynamic";
  * decides whether an owner may still re-issue over the top of that credential —
  * could never be stamped.
  */
-export default async function AccountPage() {
-  const session = await requireAdmin();
-  const [members, subscriptions] = await Promise.all([
+export default async function AccountPage({ searchParams }: PageProps<"/account">) {
+  // The one admin screen that stays open to a member who owes a two-factor
+  // enrolment — it is where they do it. Every other page and action redirects
+  // here until they have.
+  const session = await requireAdmin({ allowPendingEnrolment: true });
+  const [{ "two-factor": twoFactorNotice }, members, subscriptions, unenrolled] = await Promise.all([
+    searchParams,
     listMembers(getDb(), session.organisationId),
     listPushSubscriptions(getDb(), session.organisationId, { userId: session.userId }),
+    session.role === "owner" ? staffWithoutTwoFactor(getDb(), session.organisationId) : Promise.resolve([]),
   ]);
+  const sentHereToEnrol = twoFactorNotice === "required" && !session.twoFactorEnabled;
   const me = members.find((m) => m.userId === session.userId);
   // Plain data for the client component: the endpoint travels so the browser
   // can tell whether *it* is on the list; only the host is ever rendered.
@@ -79,6 +87,29 @@ export default async function AccountPage() {
           <ChangePasswordForm />
         </div>
       </Section>
+
+      <Section
+        title="Two-factor authentication"
+        description="A code from an app on your phone, on top of your password."
+      >
+        <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+          {sentHereToEnrol ? (
+            <InlineAlert tone="warning" title="Set this up to carry on">
+              Your organisation now requires a second factor on staff accounts. The rest of the portal opens again as
+              soon as this is done.
+            </InlineAlert>
+          ) : null}
+          <TwoFactorPanel enabled={session.twoFactorEnabled} enforced={session.twoFactorRequired} />
+        </div>
+      </Section>
+
+      {session.role === "owner" ? (
+        <Section title="Two-factor for the team" description="Owner and staff accounts only — never client portals.">
+          <div className="rounded-xl border bg-card p-4 sm:p-5">
+            <TwoFactorPolicySwitch required={session.twoFactorRequired} pending={unenrolled.length} />
+          </div>
+        </Section>
+      ) : null}
 
       <Section
         title="Alerts on this device"

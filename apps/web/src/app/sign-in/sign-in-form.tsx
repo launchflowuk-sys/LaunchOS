@@ -32,11 +32,21 @@ export function SignInForm({ notice }: { notice: string | null }) {
     setPending(true);
     setError(null);
 
-    const { error: signInError } = await authClient.signIn.email({ email, password });
+    const { data, error: signInError } = await authClient.signIn.email({ email, password });
 
     if (signInError) {
       setError(signInError.message ?? "Could not sign in with those details.");
       setPending(false);
+      return;
+    }
+
+    // An account with a second factor gets no session here: Better Auth
+    // answers the password with `twoFactorRedirect` and a short-lived
+    // challenge cookie instead. The routing is done here rather than through
+    // the client plugin's own `twoFactorPage` option, which navigates with
+    // `window.location` and would race the push below.
+    if (data && "twoFactorRedirect" in data && data.twoFactorRedirect) {
+      router.push("/sign-in/two-factor");
       return;
     }
 

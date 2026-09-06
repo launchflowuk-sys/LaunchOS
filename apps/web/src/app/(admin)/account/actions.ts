@@ -1,6 +1,6 @@
 "use server";
 
-import { recordOwnPasswordChange } from "@launchos/core";
+import { recordOwnPasswordChange, setStaffTwoFactorRequired, TwoFactorPolicyRefused } from "@launchos/core";
 import { APIError } from "better-auth/api";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -151,4 +151,51 @@ export async function changeOwnPasswordAction(
   // explicit `undefined`.
   const warning = warnings.join(" ");
   return warning ? { status: "changed", warning } : { status: "changed" };
+}
+
+export type TwoFactorPolicyState =
+  | { status: "idle" }
+  | { status: "saved"; required: boolean }
+  | { status: "error"; message: string };
+
+const PolicyInput = z.object({ required: z.enum(["on", "off"]) });
+
+/**
+ * An owner switches the staff two-factor requirement on or off.
+ *
+ * It lives on the Account screen rather than under Settings because it is the
+ * same subject as the panel above it, and because the guard that makes it safe
+ * — `setStaffTwoFactorRequired` refuses an owner who has not enrolled — only
+ * makes sense next to the thing that enrols them.
+ *
+ * `requireAdmin` is called with `allowPendingEnrolment` for the usual reason:
+ * this screen has to work for somebody who owes an enrolment. The owner check
+ * is separate and is the real gate — a staff member reaching this action by
+ * POST is refused with a sentence, not an error page.
+ */
+export async function setTeamTwoFactorPolicyAction(
+  _previous: TwoFactorPolicyState,
+  formData: FormData,
+): Promise<TwoFactorPolicyState> {
+  const session = await requireAdmin({ allowPendingEnrolment: true });
+  if (session.role !== "owner") {
+    return { status: "error", message: "Only an owner can change this." };
+  }
+
+  const parsed = PolicyInput.safeParse({ required: formData.get("required") });
+  if (!parsed.success) return { status: "error", message: "Check the form." };
+
+  try {
+    const required = await setStaffTwoFactorRequired(getDb(), session.organisationId, {
+      required: parsed.data.required === "on",
+      actorId: session.userId,
+    });
+    revalidatePath("/account");
+    return { status: "saved", required };
+  } catch (error) {
+    // The one refusal worth showing verbatim: an owner who has not enrolled
+    // trying to switch enforcement on, which would shut the whole team out.
+    if (error instanceof TwoFactorPolicyRefused) return { status: "error", message: error.message };
+    throw error;
+  }
 }
