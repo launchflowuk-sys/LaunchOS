@@ -1,13 +1,16 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { PaymentsCatalogItem, PaymentsSubscriptionDetail } from "@launchos/integrations";
-import { and, eq, inArray, isNull, like, ne } from "drizzle-orm";
+import { and, eq, inArray, isNull, like } from "drizzle-orm";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { supportEmailFor } from "../config.js";
 import { ensureEmailIdentity } from "../email/ensure-email-identity.js";
 import { slugify, uniqueClientSlug } from "../clients/slug.js";
+import { customerClaimedElsewhere } from "./payment-accounts.js";
 import { monthlyEquivalentPence, preferredPrice } from "./stripe-sync-match.js";
+
+export { customerClaimedElsewhere };
 
 /**
  * The writing half of the Stripe sync. Every function here is idempotent —
@@ -100,7 +103,8 @@ export async function upsertLinkedPackage(
 
 /**
  * A client provisioned from a Stripe customer: the row, its billing profile
- * already carrying the customer id, a timeline entry and the audit row.
+ * already carrying the customer id, the matching primary payment account, a
+ * timeline entry and the audit row.
  *
  * Deliberately not `createClient`: that emits `client.created`, which
  * generates the onboarding task list from the package's templates — wrong
@@ -125,6 +129,10 @@ export async function createImportedClient(
     await tx.insert(schema.billingProfiles).values({
       organisationId, clientId: row!.id, billingName: input.name, stripeCustomerId: input.customerId,
     });
+    await tx.insert(schema.clientPaymentAccounts).values({
+      organisationId, clientId: row!.id, provider: "stripe", externalCustomerId: input.customerId,
+      email: input.email ?? null, name: input.name, isPrimary: true,
+    });
     await recordActivity(tx, organisationId, {
       clientId: row!.id, actorKind: input.actorKind, actorId: input.actorId, kind: "client.created",
       title: `Client created from Stripe: ${row!.name}`,
@@ -139,21 +147,6 @@ export async function createImportedClient(
   });
   await ensureEmailIdentity(db, organisationId, { clientId: client.id }, env);
   return client;
-}
-
-/**
- * Whether another organisation's billing profile already carries this Stripe
- * customer. The customer id is unique across every profile (the webhook
- * resolves tenancy by it), so a customer claimed elsewhere can neither be
- * linked nor provisioned here — the sync skips it rather than failing the run.
- */
-export async function customerClaimedElsewhere(db: Db, organisationId: string, customerId: string): Promise<boolean> {
-  const [row] = await db
-    .select({ id: schema.billingProfiles.id })
-    .from(schema.billingProfiles)
-    .where(and(eq(schema.billingProfiles.stripeCustomerId, customerId), ne(schema.billingProfiles.organisationId, organisationId)))
-    .limit(1);
-  return row !== undefined;
 }
 
 /**

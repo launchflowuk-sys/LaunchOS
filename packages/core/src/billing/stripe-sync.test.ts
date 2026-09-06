@@ -9,7 +9,7 @@ import { seedOrgWithClient } from "../tasks/test-fixtures.js";
 import { businessCase, proposedClientName } from "./stripe-sync-match.js";
 import { getStripeSyncSettings } from "./stripe-sync-settings.js";
 import { applyStripeSync, previewStripeSync, reconcileStripe } from "./stripe-sync.js";
-import { syncFromPaymentsEvent } from "./webhook-sync.js";
+import { findOrganisationByStripeCustomer, syncFromPaymentsEvent } from "./webhook-sync.js";
 
 const price = (over: Partial<PaymentsCatalogItem> & Pick<PaymentsCatalogItem, "priceId" | "productId" | "productName">): PaymentsCatalogItem => ({
   productActive: true, amountPence: 5000, currency: "GBP", interval: "month", intervalCount: 1, ...over,
@@ -304,6 +304,118 @@ describe("syncFromPaymentsEvent — customer.subscription.*", () => {
       expect(deleted).toEqual({ handled: true, action: "subscription.cancelled" });
       const [row] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.stripeSubscriptionId, "sub_hook"));
       expect(row!.status).toBe("cancelled");
+    });
+  });
+});
+
+describe("payment accounts — filing Stripe customers under existing clients", () => {
+  it("offers candidates by email domain and name, files a customer under the chosen client, and forces a new client on \"new\"", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId, ownerUserId } = await seedOrgWithClient(db);
+      await db.update(schema.clients).set({ name: "Grays Town Taxis", email: "office@graystowntaxis.example" }).where(eq(schema.clients.id, clientId));
+      await db.insert(schema.billingProfiles).values({ organisationId, clientId, stripeCustomerId: "cus_cabio_dispatch" });
+      await db.insert(schema.clientPaymentAccounts).values({ organisationId, clientId, externalCustomerId: "cus_cabio_dispatch", isPrimary: true });
+      const [other] = await db.insert(schema.clients).values({ organisationId, name: "Gateway Taxis", slug: `gw-${randomUUID()}`, email: "hello@gatewaytaxis.example" }).returning();
+      await db.insert(schema.clientContacts).values({ organisationId, clientId: other!.id, name: "Ali", email: "ali@gateway-cars.example" });
+
+      const payments = mock(CATALOG, [
+        // Stripe holds the owner's name; the name shares nothing, but the email domain is the client's.
+        sub({ id: "sub_safi", customerId: "cus_safi", customerName: "Safiullah Mansoor", customerEmail: "safi@graystowntaxis.example", priceId: "price_basic", productId: "prod_basic" }),
+        // A contact's domain, plus a name sharing "gateway".
+        sub({ id: "sub_gw", customerId: "cus_gw", customerName: "Gateway Cars Ltd", customerEmail: "accounts@gateway-cars.example", priceId: "price_basic", productId: "prod_basic" }),
+        // An email match the owner will override with "new".
+        sub({ id: "sub_dup", customerId: "cus_dup", customerName: "Someone Else", customerEmail: "office@graystowntaxis.example", priceId: "price_basic", productId: "prod_basic" }),
+      ]);
+
+      const preview = await previewStripeSync(db, organisationId, payments);
+      const byId = new Map(preview.subscriptions.map((s) => [s.id, s]));
+      expect(byId.get("sub_safi")).toMatchObject({ matchedClientId: null, candidates: [{ clientId, name: "Grays Town Taxis", reason: "Same email domain (graystowntaxis.example)" }] });
+      expect(byId.get("sub_gw")!.candidates).toEqual([{ clientId: other!.id, name: "Gateway Taxis", reason: "Same email domain (gateway-cars.example)" }]);
+      expect(byId.get("sub_dup")).toMatchObject({ matchedClientId: clientId, matchedBy: "email", candidates: [] });
+
+      const summary = await applyStripeSync(db, organisationId, payments, {
+        selectedProductIds: ["prod_basic"], actorId: ownerUserId,
+        fileUnder: { cus_safi: clientId, cus_gw: other!.id, cus_dup: "new" },
+        clientNames: { cus_dup: "Someone Else Ltd" },
+      });
+
+      expect(summary.clients.created.map((c) => c.name)).toEqual(["Someone Else Ltd"]);
+      expect(summary.clients.matched).toBe(2);
+      expect(summary.subscriptions).toMatchObject({ created: 3, skipped: 0 });
+      const accounts = await db.select().from(schema.clientPaymentAccounts).where(eq(schema.clientPaymentAccounts.organisationId, organisationId));
+      const byCustomer = new Map(accounts.map((a) => [a.externalCustomerId, a]));
+      // The Cabio customer stays primary; the ads customer is an extra account of the same client.
+      expect(byCustomer.get("cus_safi")).toMatchObject({ clientId, isPrimary: false, email: "safi@graystowntaxis.example", name: "Safiullah Mansoor" });
+      // Gateway had no account at all: its first one is primary and its billing profile gains the id.
+      expect(byCustomer.get("cus_gw")).toMatchObject({ clientId: other!.id, isPrimary: true });
+      const [gwProfile] = await db.select().from(schema.billingProfiles).where(eq(schema.billingProfiles.clientId, other!.id));
+      expect(gwProfile!.stripeCustomerId).toBe("cus_gw");
+      const [profile] = await db.select().from(schema.billingProfiles).where(eq(schema.billingProfiles.clientId, clientId));
+      expect(profile!.stripeCustomerId).toBe("cus_cabio_dispatch");
+      const someoneElse = (await db.select().from(schema.clients).where(and(eq(schema.clients.organisationId, organisationId), eq(schema.clients.name, "Someone Else Ltd"))))[0]!;
+      expect(byCustomer.get("cus_dup")).toMatchObject({ clientId: someoneElse.id, isPrimary: true });
+      const rows = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organisationId, organisationId));
+      expect(rows.map((r) => [r.stripeSubscriptionId, r.clientId]).sort()).toEqual([["sub_dup", someoneElse.id], ["sub_gw", other!.id], ["sub_safi", clientId]].sort());
+
+      // The next preview finds all three by payment account, and the run is idempotent.
+      const next = await previewStripeSync(db, organisationId, payments);
+      expect(next.subscriptions.map((s) => [s.id, s.matchedBy, s.matchedClientId]).sort()).toEqual([
+        ["sub_dup", "payment_account", someoneElse.id], ["sub_gw", "payment_account", other!.id], ["sub_safi", "payment_account", clientId],
+      ].sort());
+      const again = await applyStripeSync(db, organisationId, payments, { selectedProductIds: ["prod_basic"] });
+      expect(again.subscriptions).toEqual({ created: 0, updated: 0, unchanged: 3, skipped: 0 });
+      expect(await db.select().from(schema.clientPaymentAccounts).where(eq(schema.clientPaymentAccounts.organisationId, organisationId))).toHaveLength(4);
+    });
+  });
+
+  it("keeps two Stripe customers on one client across the reconcile, which follows payment accounts rather than the billing profile", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, clientId } = await seedOrgWithClient(db);
+      await db.insert(schema.billingProfiles).values({ organisationId, clientId, stripeCustomerId: "cus_one" });
+      await db.insert(schema.clientPaymentAccounts).values([
+        { organisationId, clientId, externalCustomerId: "cus_one", isPrimary: true },
+        { organisationId, clientId, externalCustomerId: "cus_two" },
+      ]);
+      const payments = mock(CATALOG, [sub({ id: "sub_one", customerId: "cus_one", priceId: "price_basic", productId: "prod_basic" })]);
+      await applyStripeSync(db, organisationId, payments, { selectedProductIds: ["prod_basic"] });
+
+      payments.seedSubscriptions([
+        sub({ id: "sub_one", customerId: "cus_one", priceId: "price_basic", productId: "prod_basic" }),
+        sub({ id: "sub_two", customerId: "cus_two", customerName: "Would Be New Ltd", customerEmail: "nobody@nowhere.example", priceId: "price_basic", productId: "prod_basic" }),
+      ]);
+      const summary = await reconcileStripe(db, organisationId, payments);
+
+      expect(summary.clients).toEqual({ created: [], matched: 1 });
+      expect(summary.subscriptions).toMatchObject({ created: 1, unchanged: 1, skipped: 0 });
+      const rows = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organisationId, organisationId));
+      expect(rows.map((r) => r.clientId)).toEqual([clientId, clientId]);
+      expect(await db.select().from(schema.clients).where(eq(schema.clients.organisationId, organisationId))).toHaveLength(1);
+      expect(await notifications(db, organisationId)).toHaveLength(1);
+      // The webhook route resolves tenancy the same way.
+      expect(await findOrganisationByStripeCustomer(db, "cus_two")).toEqual({ organisationId, clientId });
+    });
+  });
+
+  it("refuses to file under another organisation's client and skips a customer another organisation's payment account holds", async () => {
+    await withTestDb(async (db) => {
+      const mine = await seedOrgWithClient(db);
+      const theirs = await seedOrgWithClient(db);
+      await db.insert(schema.clientPaymentAccounts).values({ organisationId: theirs.organisationId, clientId: theirs.clientId, externalCustomerId: "cus_theirs" });
+      const payments = mock(CATALOG, [
+        sub({ id: "sub_a", customerId: "cus_a", customerName: "A Ltd", priceId: "price_basic", productId: "prod_basic" }),
+        sub({ id: "sub_theirs", customerId: "cus_theirs", customerName: "Theirs Ltd", priceId: "price_basic", productId: "prod_basic" }),
+      ]);
+
+      await expect(applyStripeSync(db, mine.organisationId, payments, { selectedProductIds: ["prod_basic"], fileUnder: { cus_a: theirs.clientId } }))
+        .rejects.toThrow(/not found in organisation/);
+      expect(await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.organisationId, mine.organisationId))).toHaveLength(0);
+
+      const summary = await applyStripeSync(db, mine.organisationId, payments, { selectedProductIds: ["prod_basic"], fileUnder: { cus_a: mine.clientId } });
+      expect(summary.subscriptions).toEqual({ created: 1, updated: 0, unchanged: 0, skipped: 1 });
+      expect(await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.stripeSubscriptionId, "sub_theirs"))).toHaveLength(0);
+      const preview = await previewStripeSync(db, mine.organisationId, payments);
+      expect(preview.subscriptions.find((s) => s.id === "sub_theirs")).toMatchObject({ matchedClientId: null, candidates: [] });
+      expect(await db.select().from(schema.clientPaymentAccounts).where(eq(schema.clientPaymentAccounts.organisationId, theirs.organisationId))).toHaveLength(1);
     });
   });
 });

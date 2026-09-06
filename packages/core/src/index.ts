@@ -20,6 +20,9 @@ export { updateClient, archiveClient, UpdateClientInput, ArchiveClientInput } fr
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
 export type { ClientListRow } from "./clients/list-clients.js";
 export { slugify, uniqueClientSlug } from "./clients/slug.js";
+export { mergeClients, mergePreview, MergeRefused, MergeClientsInput, MergePreviewInput } from "./clients/merge-clients.js";
+export type { MergeClientsResult, MergePreview, MergeCounts } from "./clients/merge-clients.js";
+export { MOVE_SPECS } from "./clients/merge-clients-tables.js";
 export { createSite, CreateSiteInput } from "./sites/create-site.js";
 export { createMonitor, CreateMonitorInput } from "./monitoring/create-monitor.js";
 export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/record-check.js";
@@ -186,7 +189,13 @@ export {
   previewStripeSync, applyStripeSync, reconcileStripe, importStripeSubscription, businessCase, isSuggestedProduct, proposedClientName,
   ApplyStripeSyncInput, STRIPE_SYNC_NOTIFICATION_KIND, STRIPE_CLIENT_CREATED_NOTIFICATION_KIND, STRIPE_STATUS_CHANGED_NOTIFICATION_KIND,
 } from "./billing/stripe-sync.js";
-export type { StripeSyncPreview, StripeSyncPreviewProduct, StripeSyncPreviewSubscription, ImportedSubscription } from "./billing/stripe-sync.js";
+export type {
+  StripeSyncPreview, StripeSyncPreviewProduct, StripeSyncPreviewSubscription, ImportedSubscription, MatchedBy, StripeSyncCandidate,
+} from "./billing/stripe-sync.js";
+export {
+  attachPaymentAccount, findClientByStripeCustomer, customerClaimedElsewhere, listPaymentAccounts, STRIPE_PROVIDER,
+} from "./billing/payment-accounts.js";
+export type { AttachPaymentAccountOutcome } from "./billing/payment-accounts.js";
 export {
   getStripeSyncSettings, setStripeSyncSettings, stripeSyncSettingsFrom, soleActiveOrganisationId,
   StripeSyncSettings, StripeSyncSummary, STRIPE_SYNC_METADATA_KEY,

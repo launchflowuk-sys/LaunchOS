@@ -9,6 +9,7 @@ import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { completeSignup, SIGNUP_MARKER, SignupRefused } from "../signup/signup.js";
+import { findClientByStripeCustomer } from "./payment-accounts.js";
 import { reconcileInvoice } from "./payments.js";
 import { STRIPE_CLIENT_CREATED_NOTIFICATION_KIND, STRIPE_STATUS_CHANGED_NOTIFICATION_KIND, importStripeSubscription } from "./stripe-sync.js";
 
@@ -102,18 +103,14 @@ export interface SyncResult {
 /**
  * A Stripe webhook arrives with no tenancy of its own. The customer id on the
  * event is the only link back to a LaunchOS organisation, so it is resolved
- * through `billing_profiles.stripe_customer_id` before anything is written.
+ * through `client_payment_accounts` (then `billing_profiles.stripe_customer_id`
+ * for a profile older code linked) before anything is written.
  */
 export async function findOrganisationByStripeCustomer(
   db: Db,
   stripeCustomerId: string,
 ): Promise<{ organisationId: string; clientId: string } | undefined> {
-  const [row] = await db
-    .select({ organisationId: schema.billingProfiles.organisationId, clientId: schema.billingProfiles.clientId })
-    .from(schema.billingProfiles)
-    .where(eq(schema.billingProfiles.stripeCustomerId, stripeCustomerId))
-    .limit(1);
-  return row;
+  return findClientByStripeCustomer(db, stripeCustomerId);
 }
 
 export interface SyncDeps {

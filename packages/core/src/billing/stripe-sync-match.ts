@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import type { PaymentsCatalogItem, PaymentsSubscriptionDetail } from "@launchos/integrations";
 import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
+import { candidatesFor, type CandidateSource, type StripeSyncCandidate } from "./stripe-sync-candidates.js";
 
 /**
  * The pure half of the Stripe sync: which products look like ours, what a
@@ -89,67 +90,103 @@ export interface KnownClient {
   name: string;
 }
 
-export type ClientMatch = (KnownClient & { matchedBy: "billing_profile" | "email" }) | null;
+export type MatchedBy = "payment_account" | "billing_profile" | "email";
+export type ClientMatch = (KnownClient & { matchedBy: MatchedBy }) | null;
 
 /**
  * Every way a Stripe customer can already be a LaunchOS client, loaded once
- * per run: the billing profile that carries the customer id, the client's own
- * email, and the emails of its portal users. Clients created during the run
- * are registered so a customer with two subscriptions gets one client.
+ * per run: the client's payment accounts, the billing profile that carries
+ * the customer id, the client's own email, its contacts' emails and the
+ * emails of its portal users. Clients created during the run are registered
+ * so a customer with two subscriptions gets one client. Also the snapshot
+ * the "file under" candidates are scored from.
  */
 export class ClientIndex {
-  private readonly byCustomerId = new Map<string, KnownClient>();
+  private readonly byCustomerId = new Map<string, KnownClient & { matchedBy: MatchedBy }>();
   private readonly byEmail = new Map<string, KnownClient>();
+  private readonly sources = new Map<string, CandidateSource>();
 
   static async load(db: Db, organisationId: string): Promise<ClientIndex> {
     const index = new ClientIndex();
     const clients = await db
-      .select({ id: schema.clients.id, name: schema.clients.name, email: schema.clients.email })
+      .select({ id: schema.clients.id, name: schema.clients.name, tradingName: schema.clients.tradingName, email: schema.clients.email })
       .from(schema.clients)
       .where(and(eq(schema.clients.organisationId, organisationId), isNull(schema.clients.deletedAt)));
-    const names = new Map(clients.map((c) => [c.id, c.name]));
     for (const client of clients) {
+      index.sources.set(client.id, { clientId: client.id, name: client.name, tradingName: client.tradingName, emails: [] });
       index.registerEmail(client.email, { clientId: client.id, name: client.name });
     }
+    const accounts = await db
+      .select({ clientId: schema.clientPaymentAccounts.clientId, customerId: schema.clientPaymentAccounts.externalCustomerId })
+      .from(schema.clientPaymentAccounts)
+      .where(and(eq(schema.clientPaymentAccounts.organisationId, organisationId), eq(schema.clientPaymentAccounts.provider, "stripe")));
+    for (const account of accounts) index.registerCustomer(account.customerId, account.clientId, "payment_account");
     const profiles = await db
       .select({ clientId: schema.billingProfiles.clientId, stripeCustomerId: schema.billingProfiles.stripeCustomerId })
       .from(schema.billingProfiles)
       .where(eq(schema.billingProfiles.organisationId, organisationId));
     for (const profile of profiles) {
-      const name = names.get(profile.clientId);
-      if (profile.stripeCustomerId && name !== undefined) {
-        index.byCustomerId.set(profile.stripeCustomerId, { clientId: profile.clientId, name });
-      }
+      if (profile.stripeCustomerId) index.registerCustomer(profile.stripeCustomerId, profile.clientId, "billing_profile");
     }
+    const contacts = await db
+      .select({ clientId: schema.clientContacts.clientId, email: schema.clientContacts.email })
+      .from(schema.clientContacts)
+      .where(eq(schema.clientContacts.organisationId, organisationId));
+    for (const contact of contacts) index.registerEmailFor(contact.clientId, contact.email);
     const portalUsers = await db
       .select({ clientId: schema.clientUsers.clientId, email: schema.user.email })
       .from(schema.clientUsers)
       .innerJoin(schema.user, eq(schema.user.id, schema.clientUsers.userId))
       .where(eq(schema.clientUsers.organisationId, organisationId));
-    for (const portalUser of portalUsers) {
-      const name = names.get(portalUser.clientId);
-      if (name !== undefined) index.registerEmail(portalUser.email, { clientId: portalUser.clientId, name });
-    }
+    for (const portalUser of portalUsers) index.registerEmailFor(portalUser.clientId, portalUser.email);
     return index;
   }
 
-  /** A client's own email wins over a portal user's when both are set; the first registration stays. */
+  /** A payment account outranks a billing profile; within one source the first registration stays. */
+  private registerCustomer(customerId: string, clientId: string, matchedBy: MatchedBy): void {
+    const source = this.sources.get(clientId);
+    if (source && !this.byCustomerId.has(customerId)) this.byCustomerId.set(customerId, { clientId, name: source.name, matchedBy });
+  }
+
+  /** A client's own email wins over a contact's or a portal user's when both are set; the first registration stays. */
   private registerEmail(email: string | null | undefined, client: KnownClient): void {
     const key = normalisedEmail(email);
-    if (key && !this.byEmail.has(key)) this.byEmail.set(key, client);
+    if (!key) return;
+    if (!this.byEmail.has(key)) this.byEmail.set(key, client);
+    const source = this.sources.get(client.clientId);
+    if (source && !source.emails.includes(key)) this.sources.set(client.clientId, { ...source, emails: [...source.emails, key] });
+  }
+
+  private registerEmailFor(clientId: string, email: string | null | undefined): void {
+    const source = this.sources.get(clientId);
+    if (source) this.registerEmail(email, { clientId, name: source.name });
   }
 
   match(detail: Pick<PaymentsSubscriptionDetail, "customerId" | "customerEmail">): ClientMatch {
-    const byProfile = this.byCustomerId.get(detail.customerId);
-    if (byProfile) return { ...byProfile, matchedBy: "billing_profile" };
+    const byCustomer = this.byCustomerId.get(detail.customerId);
+    if (byCustomer) return byCustomer;
     const key = normalisedEmail(detail.customerEmail);
     const byEmail = key ? this.byEmail.get(key) : undefined;
     return byEmail ? { ...byEmail, matchedBy: "email" } : null;
   }
 
+  /** The client with this id, when the organisation has it (and it is not soft-deleted). */
+  known(clientId: string): KnownClient | null {
+    const source = this.sources.get(clientId);
+    return source ? { clientId: source.clientId, name: source.name } : null;
+  }
+
+  /** Clients the review screen can offer to file this customer under, never the one already matched. */
+  candidates(detail: Pick<PaymentsSubscriptionDetail, "customerEmail" | "customerName">, excludeClientId: string | null): StripeSyncCandidate[] {
+    return candidatesFor(detail, [...this.sources.values()], excludeClientId);
+  }
+
   /** A client the run just created, or just linked to a customer id. */
   register(customerId: string, email: string | undefined, client: KnownClient): void {
-    this.byCustomerId.set(customerId, client);
+    if (!this.sources.has(client.clientId)) {
+      this.sources.set(client.clientId, { clientId: client.clientId, name: client.name, tradingName: null, emails: [] });
+    }
+    this.byCustomerId.set(customerId, { ...client, matchedBy: "payment_account" });
     this.registerEmail(email, client);
   }
 }

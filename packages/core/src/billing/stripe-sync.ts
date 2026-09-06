@@ -5,7 +5,9 @@ import { and, eq, isNotNull, isNull, or } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { notifyOwner } from "../notifications/notify.js";
-import { ClientIndex, isSuggestedProduct, normalisedEmail, proposedClientName } from "./stripe-sync-match.js";
+import { attachPaymentAccount } from "./payment-accounts.js";
+import type { StripeSyncCandidate } from "./stripe-sync-candidates.js";
+import { ClientIndex, isSuggestedProduct, normalisedEmail, proposedClientName, type MatchedBy } from "./stripe-sync-match.js";
 import { getStripeSyncSettings, setStripeSyncSettings, type StripeSyncSummary } from "./stripe-sync-settings.js";
 import {
   createImportedClient, customerClaimedElsewhere, linkBillingProfile, setClientPackage, upsertLinkedPackage, upsertSubscriptionRow,
@@ -13,6 +15,8 @@ import {
 } from "./stripe-sync-writes.js";
 
 export { businessCase, isSuggestedProduct, proposedClientName } from "./stripe-sync-match.js";
+export type { MatchedBy } from "./stripe-sync-match.js";
+export type { StripeSyncCandidate } from "./stripe-sync-candidates.js";
 
 export const STRIPE_SYNC_NOTIFICATION_KIND = "stripe_sync.completed";
 export const STRIPE_CLIENT_CREATED_NOTIFICATION_KIND = "stripe_sync.client_created";
@@ -40,7 +44,13 @@ export interface StripeSyncPreviewSubscription extends PaymentsSubscriptionDetai
   productSuggested: boolean;
   matchedClientId: string | null;
   matchedClientName: string | null;
-  matchedBy: "billing_profile" | "email" | null;
+  matchedBy: MatchedBy | null;
+  /**
+   * Clients the owner could file this customer under instead: same email
+   * domain, or a name sharing a distinctive word. Best first, never the
+   * matched client. The form sends the choice back as `fileUnder`.
+   */
+  candidates: StripeSyncCandidate[];
   proposedClientName: string;
   willCreateClient: boolean;
   willImport: boolean;
@@ -124,6 +134,7 @@ export async function previewStripeSync(db: Db, organisationId: string, payments
       matchedClientId: match?.clientId ?? null,
       matchedClientName: match?.name ?? null,
       matchedBy: match?.matchedBy ?? null,
+      candidates: index.candidates(detail, match?.clientId ?? null),
       proposedClientName: proposedClientName(detail),
       willCreateClient: productSuggested && match === null && !cancelled,
       willImport: productSuggested && (match !== null || !cancelled),
@@ -137,6 +148,13 @@ export const ApplyStripeSyncInput = z.object({
   selectedProductIds: z.array(z.string().min(1)),
   /** Client names the owner typed on the review screen, by Stripe customer id. */
   clientNames: z.record(z.string(), z.string().trim().min(1).max(200)).default({}),
+  /**
+   * Where the owner chose to file a Stripe customer, by customer id: an
+   * existing client's id (a payment account is added to it), or `"new"` to
+   * create a client even when an email match exists. Absent means "as the
+   * preview matched it".
+   */
+  fileUnder: z.record(z.string(), z.union([z.string().uuid(), z.literal("new")])).default({}),
   actorKind: z.enum(["user", "system"]).default("user"),
   actorId: z.string().optional(),
 });
@@ -148,6 +166,7 @@ interface RunContext extends SyncActor {
   packagesByProduct: ReadonlyMap<string, PackageRow>;
   index: ClientIndex;
   clientNames: Readonly<Record<string, string>>;
+  fileUnder: Readonly<Record<string, string>>;
   env: NodeJS.ProcessEnv;
 }
 
@@ -156,19 +175,64 @@ interface SubscriptionOutcome {
   clientId: string;
   clientName: string;
   clientCreated: boolean;
-  matchedBy: "billing_profile" | "email" | null;
+  matchedBy: MatchedBy | "filed" | null;
   row: UpsertSubscriptionOutcome;
 }
 
 type SkippedOutcome = { detail: PaymentsSubscriptionDetail; skipped: "no_client" | "unlinked_product" | "claimed_elsewhere" };
 
+interface KnownClientRef {
+  clientId: string;
+  clientName: string;
+}
+
+/** The client a subscription files under, and how it was decided. */
+interface FiledClient extends KnownClientRef {
+  matchedBy: SubscriptionOutcome["matchedBy"];
+  clientCreated: boolean;
+}
+
+/** The client the owner named on the review screen, which must be this organisation's. */
+function filedByOwner(ctx: RunContext, detail: PaymentsSubscriptionDetail): FiledClient | "new" | null {
+  const choice = ctx.fileUnder[detail.customerId];
+  if (!choice) return null;
+  if (choice === "new") return "new";
+  const known = ctx.index.known(choice);
+  if (!known) throw new Error(`client ${choice} not found in organisation`);
+  return { clientId: known.clientId, clientName: known.name, matchedBy: "filed", clientCreated: false };
+}
+
+/**
+ * Which client a subscription LaunchOS has not seen belongs to: the owner's
+ * "file under" choice, else the index (payment account, billing profile,
+ * email), else a client created for it. A cancelled subscription for a
+ * customer nobody knows is skipped — there is no client to hold the history,
+ * and the import does not invent one for a relationship that has ended.
+ */
+async function resolveClient(
+  ctx: RunContext,
+  detail: PaymentsSubscriptionDetail,
+  packageId: string,
+): Promise<FiledClient | SkippedOutcome["skipped"]> {
+  const filed = filedByOwner(ctx, detail);
+  if (filed !== null && filed !== "new") return filed;
+  const match = filed === "new" ? null : ctx.index.match(detail);
+  if (match) return { clientId: match.clientId, clientName: match.name, matchedBy: match.matchedBy, clientCreated: false };
+  if (detail.status === "cancelled") return "no_client";
+  if (await customerClaimedElsewhere(ctx.db, ctx.organisationId, detail.customerId)) return "claimed_elsewhere";
+  const name = ctx.clientNames[detail.customerId]?.trim() || proposedClientName(detail);
+  const client = await createImportedClient(ctx.db, ctx.organisationId, {
+    name, email: normalisedEmail(detail.customerEmail), customerId: detail.customerId, packageId,
+    actorKind: ctx.actorKind, actorId: ctx.actorId,
+  }, ctx.env);
+  return { clientId: client.id, clientName: client.name, matchedBy: null, clientCreated: true };
+}
+
 /**
  * One subscription through the sync: the client it belongs to (the existing
- * row's, a billing-profile or email match, or a client created for it), the
- * billing-profile link, and the subscription row itself. A cancelled
- * subscription for a customer LaunchOS does not know is skipped — there is
- * no client to hold the history, and the import does not invent one for a
- * relationship that has ended.
+ * row's, the owner's choice, an index match, or a client created for it),
+ * the payment account and billing-profile link that make the next run find
+ * it by customer id, and the subscription row itself.
  */
 async function syncOneSubscription(ctx: RunContext, detail: PaymentsSubscriptionDetail): Promise<SubscriptionOutcome | SkippedOutcome> {
   const pkg = ctx.packagesByProduct.get(detail.productId);
@@ -181,38 +245,20 @@ async function syncOneSubscription(ctx: RunContext, detail: PaymentsSubscription
     .innerJoin(schema.clients, eq(schema.clients.id, schema.subscriptions.clientId))
     .where(and(eq(schema.subscriptions.organisationId, organisationId), eq(schema.subscriptions.stripeSubscriptionId, detail.id)));
 
-  let clientId: string;
-  let clientName: string;
-  let clientCreated = false;
-  let matchedBy: SubscriptionOutcome["matchedBy"] = null;
-  const email = normalisedEmail(detail.customerEmail);
-  if (existing) {
-    clientId = existing.clientId;
-    clientName = existing.clientName;
-    matchedBy = "billing_profile";
+  const resolved: FiledClient | SkippedOutcome["skipped"] = existing
+    ? { ...existing, matchedBy: "billing_profile", clientCreated: false }
+    : await resolveClient(ctx, detail, pkg.id);
+  if (typeof resolved === "string") return { detail, skipped: resolved };
+  const { clientId, clientName, matchedBy, clientCreated } = resolved;
+
+  if (!clientCreated) {
+    const attached = await attachPaymentAccount(db, organisationId, {
+      clientId, customerId: detail.customerId, email: normalisedEmail(detail.customerEmail), name: detail.customerName, actorKind, actorId,
+    });
+    if (attached.outcome === "claimed_elsewhere") return { detail, skipped: "claimed_elsewhere" };
     await linkBillingProfile(db, organisationId, { clientId, customerId: detail.customerId, actorKind, actorId });
-  } else {
-    const match = ctx.index.match(detail);
-    if (match) {
-      clientId = match.clientId;
-      clientName = match.name;
-      matchedBy = match.matchedBy;
-      if (match.matchedBy === "email") {
-        await linkBillingProfile(db, organisationId, { clientId, customerId: detail.customerId, actorKind, actorId });
-      }
-    } else {
-      if (detail.status === "cancelled") return { detail, skipped: "no_client" };
-      if (await customerClaimedElsewhere(db, organisationId, detail.customerId)) return { detail, skipped: "claimed_elsewhere" };
-      const name = ctx.clientNames[detail.customerId]?.trim() || proposedClientName(detail);
-      const client = await createImportedClient(db, organisationId, {
-        name, email, customerId: detail.customerId, packageId: pkg.id, actorKind, actorId,
-      }, ctx.env);
-      clientId = client.id;
-      clientName = client.name;
-      clientCreated = true;
-    }
-    ctx.index.register(detail.customerId, email, { clientId, name: clientName });
   }
+  ctx.index.register(detail.customerId, normalisedEmail(detail.customerEmail), { clientId, name: clientName });
 
   const row = await upsertSubscriptionRow(db, organisationId, { clientId, packageId: pkg.id, detail, actorKind, actorId });
   if (row.statusChange) {
@@ -251,6 +297,7 @@ interface RunInput extends SyncActor {
   subscriptions: readonly PaymentsSubscriptionDetail[];
   selectedProductIds: readonly string[];
   clientNames: Readonly<Record<string, string>>;
+  fileUnder: Readonly<Record<string, string>>;
   env: NodeJS.ProcessEnv;
 }
 
@@ -275,7 +322,7 @@ async function runStripeSync(db: Db, organisationId: string, input: RunInput): P
 
   const ctx: RunContext = {
     db, organisationId, actorKind, actorId, packagesByProduct, env: input.env,
-    index: await ClientIndex.load(db, organisationId), clientNames: input.clientNames,
+    index: await ClientIndex.load(db, organisationId), clientNames: input.clientNames, fileUnder: input.fileUnder,
   };
   // Oldest first, so the newest live subscription decides the client's package
   // and a customer's first subscription is the one that names the client.
@@ -327,8 +374,8 @@ function describeSummary(s: StripeSyncSummary): string {
 
 /**
  * The owner's import: packages for the ticked products, a client for every
- * subscription on them that LaunchOS does not yet know, and a subscription
- * row for each. Idempotent — a second run with the same ticks changes
+ * subscription on them that LaunchOS does not yet know (or the existing
+ * client the owner filed it under), and a subscription row for each. Idempotent — a second run with the same ticks changes
  * nothing and reports every row unchanged. The unticked products are
  * remembered as ignored so the next review leaves them unticked.
  */
@@ -344,7 +391,7 @@ export async function applyStripeSync(
   // transaction, and a Stripe outage leaves nothing half-imported.
   const [catalog, subscriptions] = await Promise.all([payments.listCatalog(), payments.listSubscriptions()]);
   const summary = await runStripeSync(db, organisationId, {
-    trigger: "import", catalog, subscriptions, selectedProductIds: v.selectedProductIds, clientNames: v.clientNames,
+    trigger: "import", catalog, subscriptions, selectedProductIds: v.selectedProductIds, clientNames: v.clientNames, fileUnder: v.fileUnder,
     actorKind: v.actorKind, actorId: v.actorId, env,
   });
   await notifyOwner(db, organisationId, {
@@ -374,7 +421,7 @@ export async function reconcileStripe(
   ]);
   const selectedProductIds = packages.flatMap((p) => (p.stripeProductId ? [p.stripeProductId] : []));
   const summary = await runStripeSync(db, organisationId, {
-    trigger: "reconcile", catalog, subscriptions, selectedProductIds, clientNames: {},
+    trigger: "reconcile", catalog, subscriptions, selectedProductIds, clientNames: {}, fileUnder: {},
     actorKind: options.actorId ? "user" : "system", actorId: options.actorId, env: options.env ?? process.env,
   });
   if (summary.clients.created.length > 0 || summary.statusChanges.length > 0) {
@@ -417,7 +464,7 @@ export async function importStripeSubscription(
   }
   if (!packagesByProduct.has(detail.productId)) return null;
   const ctx: RunContext = {
-    db, organisationId, ...actor, packagesByProduct, env, clientNames: {}, index: await ClientIndex.load(db, organisationId),
+    db, organisationId, ...actor, packagesByProduct, env, clientNames: {}, fileUnder: {}, index: await ClientIndex.load(db, organisationId),
   };
   const outcome = await syncOneSubscription(ctx, detail);
   if (isSkipped(outcome)) return null;

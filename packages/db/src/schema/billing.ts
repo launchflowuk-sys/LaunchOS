@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 import { packages } from "./packages.js";
@@ -34,6 +34,34 @@ export const billingProfiles = pgTable(
     uniqueIndex("billing_profiles_stripe_customer")
       .on(t.stripeCustomerId)
       .where(sql`${t.stripeCustomerId} is not null`),
+  ],
+);
+
+/**
+ * Every payment-provider customer a client pays LaunchFlow through. One person
+ * can be a Cabio dispatch customer under one Stripe customer and pay for ad
+ * management under another, or sign up twice with two emails — so a client
+ * may carry several customer ids, and "one Stripe customer = one client" is
+ * only true in the other direction. `billing_profiles.stripe_customer_id`
+ * stays the primary (existing code reads it); the `is_primary` row here
+ * mirrors it, and every lookup from a customer id to a client checks this
+ * table first. The customer id is unique across every organisation, as the
+ * webhook route resolves tenancy by it.
+ */
+export const clientPaymentAccounts = pgTable(
+  "client_payment_accounts",
+  {
+    ...tenantColumns(),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    provider: text("provider").default("stripe").notNull(),
+    externalCustomerId: text("external_customer_id").notNull(),
+    email: text("email"),
+    name: text("name"),
+    isPrimary: boolean("is_primary").default(false).notNull(),
+  },
+  (t) => [
+    uniqueIndex("client_payment_accounts_provider_customer").on(t.provider, t.externalCustomerId),
+    index("client_payment_accounts_org_client").on(t.organisationId, t.clientId),
   ],
 );
 
