@@ -4,7 +4,7 @@ import { CONTENT_WRITER_KEY, FakeLlmClient, agentRegistry, text, toolUse } from 
 import { MockEmailAdapter } from "@launchos/channels";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { MockCmsProvider, MockSocialPublisher, createIntegrations } from "@launchos/integrations";
+import { MockCmsProvider, MockImageGenAdapter, MockSocialPublisher, createIntegrations } from "@launchos/integrations";
 import { QUEUE } from "../boss.js";
 import { handleContentDraft } from "./content-draft.js";
 import { CONTENT_CRON, LONDON, registerContentJobs, type BossRegistrar } from "./content-jobs.js";
@@ -37,17 +37,22 @@ describe("registerContentJobs", () => {
       const { boss, worked, scheduled } = fakeBoss();
 
       await registerContentJobs({
-        db, boss, social: new MockSocialPublisher(), cms: new MockCmsProvider(), logger: silentLogger(),
+        db, boss, social: new MockSocialPublisher(), cms: new MockCmsProvider(), imagegen: new MockImageGenAdapter(), logger: silentLogger(),
         agentRun: { db, registry: registry(), llm: new FakeLlmClient([]), policy: "safe", logger: silentLogger() },
       });
 
-      expect(worked.sort()).toEqual([QUEUE.contentDraft, QUEUE.contentPlanMonth, QUEUE.contentPublishDue, QUEUE.contentReport].sort());
+      expect(worked.sort()).toEqual(
+        [QUEUE.contentDraft, QUEUE.contentPlanMonth, QUEUE.contentPublishDue, QUEUE.contentRenderImage, QUEUE.contentReport].sort(),
+      );
       expect(scheduled).toEqual([
         { name: QUEUE.contentPlanMonth, cron: "0 6 1 * *", tz: LONDON },
         { name: QUEUE.contentPublishDue, cron: "*/5 * * * *", tz: LONDON },
         { name: QUEUE.contentReport, cron: "0 7 1 * *", tz: LONDON },
       ]);
       expect(Object.keys(CONTENT_CRON)).not.toContain(QUEUE.contentDraft);
+      // Rendering an image is sent by a person's press and by the publish
+      // sweep's backfill; a clock of its own would only redraw pictures.
+      expect(Object.keys(CONTENT_CRON)).not.toContain(QUEUE.contentRenderImage);
     });
   });
 });

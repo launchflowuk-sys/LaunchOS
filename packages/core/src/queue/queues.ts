@@ -93,6 +93,7 @@
  * | `tasks.generate-onboarding` | `onboarding:<clientId>` | `dispatch-event.ts` |
  * | `payments.webhook` | `stripe:<eventId>` | `apps/web/src/app/api/webhooks/stripe/route.ts`, `dispatch-event.ts` |
  * | `content.draft` | `content-draft:<clientId>:<periodKey>` + `singletonSeconds` (an Opus-priced writer run, like the Sentinel); a manual "Draft with AI" appends `:manual:<epochMs>` | `apps/worker/src/jobs/content-plan-month.ts`, C4's client content tab |
+ * | `content.render-image` | `render-image:<itemId>` — no window; see the note under `QUEUE_POLICY` | `apps/worker/src/jobs/content-render-image.ts` (the publish-due backfill), the post editor and the approval card |
  * | `ops.brief` | none from the cron (payload `{}`); a manual "Write today's brief" sends `{ organisationId }` with `ops-brief:<org>:manual:<epochMs>` | `apps/worker/src/jobs/ops-brief.ts`, the web `/briefs` page |
  * | `push.send` | `push:<notificationId>` — one delivery per notification, fanned out to the user's devices by the job | `dispatch-event.ts` on the `push.requested` domain event `notify()` emits |
  * | `support.sla-sweep` | none — a 15-minute cron, payload `{}` | the worker's cron registration |
@@ -126,6 +127,7 @@ export const QUEUE = {
   contentPlanMonth: "content.plan-month",
   contentDraft: "content.draft",
   contentPublishDue: "content.publish-due",
+  contentRenderImage: "content.render-image",
   contentReport: "content.report",
   opsBrief: "ops.brief",
   pushSend: "push.send",
@@ -172,6 +174,16 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "content.plan-month": "standard",
   "content.draft": "short",
   "content.publish-due": "standard",
+  // Every send carries `render-image:<itemId>`, so a double-click on
+  // "Generate image" or "Regenerate" collapses into one job while the first is
+  // still queued. Deliberately no `singletonSeconds`: the window also covers
+  // completed and failed jobs, so a day-long one would mean a picture nobody
+  // liked could not be redrawn until tomorrow, and after 76f313a we know a
+  // window must also fit inside the archive interval. What stops the *second*
+  // spend once the first job is running is the domain layer, as it is for
+  // payments: `renderContentImage` refuses an item that already has an
+  // `image_url` unless a person asked for a replacement with `force`.
+  "content.render-image": "short",
   "content.report": "standard",
   // The daily Ops Brief. The cron sends `{}` with no key, so `standard`; the
   // day's brief is one row per organisation per date regardless of how many

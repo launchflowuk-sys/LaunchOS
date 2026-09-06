@@ -6,7 +6,7 @@ import { MockEmailAdapter } from "@launchos/channels";
 import {
   createKnowledgeArticle, decideApproval, ensureEmailIdentity, ingestInboundEmail, isCourtesyNotice, sendQueuedMessage,
 } from "@launchos/core";
-import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockUptimeProbe } from "@launchos/integrations";
+import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockImageGenAdapter, MockUptimeProbe } from "@launchos/integrations";
 import type { AgentIntegrations } from "../integrations.js";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
 import { resumeAgent } from "../../kernel/resume-agent.js";
@@ -20,6 +20,7 @@ const integrations: AgentIntegrations = {
   hosting: new MockHostingProvider(),
   dns: new MockCloudflareDns(),
   cms: new MockCmsProvider(),
+  imagegen: new MockImageGenAdapter(),
 };
 
 const usage = { inputTokens: 1, outputTokens: 1 };

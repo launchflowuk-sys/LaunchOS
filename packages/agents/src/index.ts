@@ -48,6 +48,7 @@ export { contentListSlots } from "./tools/content-list-slots.js";
 export { contentListAssets } from "./tools/content-list-assets.js";
 export { contentSaveDraft } from "./tools/content-save-draft.js";
 export { contentRequestApproval } from "./tools/content-request-approval.js";
+export { contentRenderImage } from "./tools/content-render-image.js";
 export { GBP_MAX_BODY_CHARS, SOCIAL_TARGET_MAX_CHARS } from "./tools/content-shared.js";
 export { opsMetricsSnapshotTool } from "./tools/ops-metrics-snapshot.js";
 export { opsRecentActivity } from "./tools/ops-recent-activity.js";

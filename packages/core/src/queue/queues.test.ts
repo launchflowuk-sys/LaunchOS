@@ -50,7 +50,7 @@ describe("queue topology", () => {
     // guarantee these queues actually want.
     for (const name of [
       QUEUE.agentRun, QUEUE.agentResume, QUEUE.inboundMessage, QUEUE.outboundMessage,
-      QUEUE.tasksGenerateOnboarding, QUEUE.paymentsWebhook,
+      QUEUE.tasksGenerateOnboarding, QUEUE.paymentsWebhook, QUEUE.contentRenderImage,
     ]) {
       expect(QUEUE_POLICY[name]).toBe("short");
     }

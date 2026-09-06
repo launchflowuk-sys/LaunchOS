@@ -1,7 +1,9 @@
+import type { ImageGenAdapter } from "@launchos/integrations";
 import type { AgentDefinition } from "../../kernel/types.js";
 import { contentGetBrief } from "../../tools/content-get-brief.js";
 import { contentListAssets } from "../../tools/content-list-assets.js";
 import { contentListSlots } from "../../tools/content-list-slots.js";
+import { contentRenderImage } from "../../tools/content-render-image.js";
 import { contentRequestApproval } from "../../tools/content-request-approval.js";
 import { contentSaveDraft } from "../../tools/content-save-draft.js";
 import { CONTENT_WRITER_KEY, GBP_MAX_BODY_CHARS, SOCIAL_TARGET_MAX_CHARS } from "../../tools/content-shared.js";
@@ -25,7 +27,8 @@ Work in this order:
 3. Call content_list_slots for the period. Draft only the slots where unfilled is true; leave every other slot alone.
 4. Call content_list_assets once. These are the client's own photos of their work, and a post with a real photo does far better than one without. For every Facebook and Instagram slot, pick the photo whose alt text or file name best suits the post you are about to write and pass its url as imageUrl; use each photo at most once in the month while there are enough to go round. When the list is empty, or none of the photos fits, give an imagePrompt instead. Never pass an image url from anywhere else.
 5. For every unfilled slot, call content_save_draft once. Vary the angle across the month — a service, a local tip, a seasonal note, a reason to get in touch — so no two posts read alike. If the tool answers { saved: false, reason }, fix the draft as the reason says and save it again.
-6. Once every unfilled slot is saved, call content_request_approval once for each slot you wrote. Shoji approves each post before it is published; write every draft ready to go out unchanged.
+6. For every Facebook, Instagram and Google Business Profile slot you saved without an imageUrl — because the client had no photo that suited it — call content_render_image once with that slot's itemId and nothing else. It draws the post a branded graphic in the client's own colours, or an AI photograph when the client has asked for one, so the post reaches approval with its picture. Call it once per slot and never twice: a slot that already has an image comes back { rendered: false, reason }, which is not a fault to fix. Leave the blog slots alone; their featured image is chosen by a person.
+7. Once every unfilled slot is saved, call content_request_approval once for each slot you wrote. Shoji approves each post before it is published; write every draft ready to go out unchanged.
 
 Rules by channel:
 - Facebook and Instagram: plain text, at most ${SOCIAL_TARGET_MAX_CHARS} characters unless the brief says otherwise. One clear idea per post. At most two hashtags, or none. Give an imageUrl from the client's photos when one suits; otherwise an imagePrompt describing a single photo that suits the post (Instagram cannot publish without an image, so always give one or the other there). Add linkUrl only when a page on the client's own site is the natural next step.
@@ -37,12 +40,17 @@ Rules everywhere: British English spelling and idiom. The client's tone from the
 Finish with one sentence saying how many slots you drafted and sent for approval. That sentence is an internal note; nothing a client reads leaves this run except through the approved posts.`;
 
 /**
- * Drafts every unfilled slot of a client's month and parks each one as a
- * `content_publish` approval. Started by `content.plan-month` on the 1st,
- * and by "Draft with AI" on a client's content tab; the cron below is when
- * the month's run is scheduled, the payload is `{ clientId, periodKey }`.
+ * Drafts every unfilled slot of a client's month, gives each social post its
+ * picture, and parks each one as a `content_publish` approval. Started by
+ * `content.plan-month` on the 1st, and by "Draft with AI" on a client's
+ * content tab; the cron below is when the month's run is scheduled, the
+ * payload is `{ clientId, periodKey }`.
+ *
+ * The generator is passed in rather than read from the environment here for
+ * the same reason every other adapter is: a test runs on the mock, and this
+ * module must not decide how a deployment is configured.
  */
-export function contentWriter(): AgentDefinition {
+export function contentWriter(imagegen: ImageGenAdapter): AgentDefinition {
   return {
     key: CONTENT_WRITER_KEY,
     name: "Content Writer",
@@ -51,10 +59,13 @@ export function contentWriter(): AgentDefinition {
       "then sends each one to the owner for approval.",
     trigger: { kind: "cron", schedule: "0 6 1 * *", timezone: "Europe/London" },
     systemPrompt: CONTENT_WRITER_PROMPT,
-    tools: [contentGetBrief, knowledgeSearch, contentListSlots, contentListAssets, contentSaveDraft, contentRequestApproval],
-    // A month can be eight or more slots, each a save and a request, plus the
-    // brief, the searches and the listing — and a refused save costs a turn to
-    // fix. Generous so a full month never stops half-written.
+    tools: [
+      contentGetBrief, knowledgeSearch, contentListSlots, contentListAssets, contentSaveDraft,
+      contentRenderImage(imagegen), contentRequestApproval,
+    ],
+    // A month can be eight or more slots, each a save, an image and a request,
+    // plus the brief, the searches and the listing — and a refused save costs a
+    // turn to fix. Generous so a full month never stops half-written.
     maxTurns: 40,
   };
 }

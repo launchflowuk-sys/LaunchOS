@@ -37,7 +37,7 @@ export function agentRegistry(deps: AgentRegistryDeps): Record<string, AgentDefi
     hostingGuardDog(deps.integrations),
     supportTriage(deps.integrations),
     adPerformanceSentinel({ email: deps.email, portalBaseUrl: deps.portalBaseUrl }),
-    contentWriter(),
+    contentWriter(deps.integrations.imagegen),
     opsBrief(),
     leadQualifier(),
   ];

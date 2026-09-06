@@ -28,12 +28,15 @@ export type CmsProviderFactory = (scope: CmsProviderScope) => CmsProvider;
  * a `Pick` keeps `packages/agents` decoupled from members added for other
  * plans (payments, ads), which would otherwise force every caller and test
  * fixture to construct adapters no agent uses. `dns` and `cms` back the
- * Support Triage agent's approval-gated tools.
+ * Support Triage agent's approval-gated tools; `imagegen` backs the Content
+ * Writer's `content_render_image`, and is a `Pick` member rather than a
+ * separate registry dependency because both processes that build the registry
+ * already spread `createIntegrations(env)` into it.
  *
  * `cms` is either a provider — the tests hand in a `MockCmsProvider` — or a
  * `CmsProviderFactory`, which is what production wires (see `scopedCmsProvider`).
  */
-export type AgentIntegrations = Pick<Integrations, "uptime" | "hosting" | "dns"> & {
+export type AgentIntegrations = Pick<Integrations, "uptime" | "hosting" | "dns" | "imagegen"> & {
   cms: CmsProvider | CmsProviderFactory;
 };
 

@@ -3,7 +3,7 @@ import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { createClient, createMonitor, createSite, openIncident } from "@launchos/core";
-import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockUptimeProbe } from "@launchos/integrations";
+import { MockCloudflareDns, MockCmsProvider, MockHostingProvider, MockImageGenAdapter, MockUptimeProbe } from "@launchos/integrations";
 import type { AgentIntegrations } from "../integrations.js";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
 import { runAgent } from "../../kernel/run-agent.js";
@@ -23,6 +23,7 @@ describe("hosting-guard-dog", () => {
         hosting: new MockHostingProvider({ app_1: { status: "exited" } }),
         dns: new MockCloudflareDns(),
         cms: new MockCmsProvider(),
+        imagegen: new MockImageGenAdapter(),
       };
       const agent = hostingGuardDog(integrations);
       const llm = new FakeLlmClient([

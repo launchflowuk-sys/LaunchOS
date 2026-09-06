@@ -1,11 +1,12 @@
 import type { CmsProviderFactory } from "@launchos/agents";
 import type { Db } from "@launchos/db";
-import type { CmsProvider, SocialPublisher } from "@launchos/integrations";
+import type { CmsProvider, ImageGenAdapter, SocialPublisher } from "@launchos/integrations";
 import type PgBoss from "pg-boss";
 import { QUEUE } from "../boss.js";
 import type { AgentRunDeps } from "./agent-run.js";
 import { handleContentDraft, type ContentDraftJob } from "./content-draft.js";
 import { runPlanMonth } from "./content-plan-month.js";
+import { backfillDueImages, handleContentRenderImage, type ContentRenderImageJob } from "./content-render-image.js";
 import { runPublishDue } from "./content-publish-due.js";
 import { runContentReports } from "./content-report.js";
 import { sweepOrganisations } from "./sweep-organisations.js";
@@ -38,14 +39,20 @@ export interface ContentJobsDeps {
   readonly agentRun: AgentRunDeps;
   readonly social: SocialPublisher;
   readonly cms: CmsProvider | CmsProviderFactory;
+  /** Draws post images: the branded template always, the generator when a client has asked and paid for one. */
+  readonly imagegen: ImageGenAdapter;
   readonly logger?: Console;
 }
 
 /**
- * Registers the four content queues' workers and the three crons. Lives here
+ * Registers the five content queues' workers and the three crons. Lives here
  * rather than inline in `main()` so a test can boot it against a fake boss
  * and assert what was registered — the schedule table above is the kind of
  * thing that is only ever wrong in production.
+ *
+ * `content.render-image` has no cron on purpose: it is sent by the post editor
+ * and the approval card, and the one unattended render — the backfill below —
+ * runs inside `content.publish-due` rather than on a clock of its own.
  */
 export async function registerContentJobs(deps: ContentJobsDeps): Promise<void> {
   const { db, boss } = deps;
@@ -61,12 +68,22 @@ export async function registerContentJobs(deps: ContentJobsDeps): Promise<void> 
     logger.info({ clientId: job!.data.clientId, periodKey: job!.data.periodKey, result }, "content draft");
   });
 
+  await boss.work<ContentRenderImageJob>(QUEUE.contentRenderImage, async ([job]) => {
+    await handleContentRenderImage({ db, imagegen: deps.imagegen, logger }, job!.data);
+  });
+
   await boss.work(QUEUE.contentPublishDue, async () => {
     const now = new Date();
     await sweepOrganisations(
       db,
       "content publish-due",
-      (organisationId) => runPublishDue({ db, social: deps.social, cms: deps.cms, logger }, organisationId, { now }),
+      async (organisationId) => {
+        // Before the claim, never after: `claimDueContent` flips the item to
+        // `publishing`, and a `publishing` item is refused a render. Template
+        // mode only — see `backfillDueImages`.
+        await backfillDueImages({ db, imagegen: deps.imagegen, logger }, organisationId, now);
+        return runPublishDue({ db, social: deps.social, cms: deps.cms, logger }, organisationId, { now });
+      },
       logger,
     );
   });
