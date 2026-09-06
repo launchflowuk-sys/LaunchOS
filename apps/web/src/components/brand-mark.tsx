@@ -6,18 +6,17 @@ import { cn } from "@/lib/utils";
  * admin rail, the portal top bar and `/sign-in` — cannot drift in size, source
  * or alt text.
  *
- * The 600px PNG is the source at every size: it is the @2x asset for the ~120px
- * lockup this product uses, so a retina screen has real pixels to draw and
- * `next/image` still serves a resized copy to a phone.
+ * The 585px transparent PNG is the source at every size: it is the @2x asset
+ * for the ~120px lockup this product uses, so a retina screen has real pixels
+ * to draw and `next/image` still serves a resized copy to a phone.
  *
- * **It is not transparent.** The export carries an opaque near-white ground
- * (only 2% of its pixels have any alpha at all), so it can sit directly on a
- * white or off-white surface and nowhere else. On the navy rail it goes inside
- * `BrandTile`, which is a deliberate white chip rather than an attempt to hide
- * the ground — a knocked-out white version of the logo would be the other way
- * to do this, and we do not have one.
+ * It is transparent (cut from the original export on 6 Sep 2026, soft edge
+ * kept), so it sits on white, off-white and the marketing header directly.
+ * Its lettering is navy, so on the navy admin rail it still goes inside
+ * `BrandTile`, a deliberate white chip. The opaque `launchflow-logo@600.png`
+ * stays for Open Graph previews, which need a solid ground.
  */
-const INTRINSIC = { width: 600, height: 144 } as const;
+const INTRINSIC = { width: 585, height: 126 } as const;
 
 /** The lockup width DESIGN.md pins: ~120px wide, so ~29px tall. */
 export const BRAND_MARK_WIDTH = 120;
@@ -34,7 +33,7 @@ export function BrandMark({
 }) {
   return (
     <Image
-      src="/brand/launchflow-logo@600.png"
+      src="/brand/launchflow-logo-transparent@600.png"
       alt="LaunchFlow"
       width={width}
       height={Math.round((width * INTRINSIC.height) / INTRINSIC.width)}
