@@ -252,6 +252,18 @@ export { upsertContentBrief, getContentBrief, UpsertContentBriefInput, GetConten
 export { setContentChannel, listContentChannels, SetContentChannelInput, ListContentChannelsInput } from "./content/channels.js";
 export { renderTemplateImage, RenderTemplateImageInput, IMAGE_TEMPLATE_SIZES } from "./content/image-template.js";
 export type { ImageTemplateSize, RenderedTemplateImage } from "./content/image-template.js";
+export { headlineFrom, kickerFrom } from "./content/image-headline.js";
+export {
+  estimatePence, imagegenSpentThisMonth, monthlyCapPence,
+  IMAGE_METADATA_KEY, IMAGEGEN_MONTHLY_CAP_VARIABLE, DEFAULT_IMAGEGEN_MONTHLY_CAP_PENCE,
+} from "./content/image-budget.js";
+export {
+  renderContentImage, channelTakesImage, RenderContentImageInput,
+  IMAGE_CHANNELS, IMAGE_RENDERABLE_STATUSES, BRIEF_IMAGES_METADATA_KEY,
+} from "./content/render-image.js";
+export type {
+  RenderContentImageDeps, RenderContentImageResult, RenderedContentImage, RefusedContentImage, ImageFallbackReason,
+} from "./content/render-image.js";
 export {
   createContentItem, updateContentItem, getContentItem, listContentItems, cancelContentItem,
   CreateContentItemInput, UpdateContentItemInput, GetContentItemInput, ListContentItemsInput, CancelContentItemInput,

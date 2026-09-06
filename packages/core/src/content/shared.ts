@@ -107,7 +107,9 @@ export type ContentRefusedReason =
   | "no_active_subscription"
   | "no_package"
   | "not_portal_user"
-  | "already_sent";
+  | "already_sent"
+  | "no_image_channel"
+  | "already_has_image";
 
 /** A refusal the caller can turn into a sentence — the item is in the wrong state, or the client is not set up. */
 export class ContentRefused extends Error {
