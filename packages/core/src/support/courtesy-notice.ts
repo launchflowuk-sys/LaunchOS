@@ -53,6 +53,14 @@ export const LEAD_ACKNOWLEDGEMENT_KIND = "lead_acknowledgement";
 export const MEETING_NOTICE_KIND = "meeting_notice";
 
 /**
+ * `metadata.kind` on a proposal email: the priced offer going out, the
+ * "you've accepted" confirmation, the decline acknowledgement. All from
+ * `packages/core/src/proposals`; `metadata.proposalId` names the proposal and
+ * `metadata.notice` says which of them it is.
+ */
+export const PROPOSAL_NOTICE_KIND = "proposal_notice";
+
+/**
  * Every kind of message that is a record of an email we sent *about* a thread
  * rather than a turn in it. All of them are `outbound` rows written by the
  * system, and all of them must be invisible to every reader of the thread —
@@ -68,6 +76,7 @@ export const COURTESY_NOTICE_KINDS = [
   CONTENT_REPORT_NOTICE_KIND,
   LEAD_ACKNOWLEDGEMENT_KIND,
   MEETING_NOTICE_KIND,
+  PROPOSAL_NOTICE_KIND,
 ] as const;
 
 export type CourtesyNoticeKind = (typeof COURTESY_NOTICE_KINDS)[number];

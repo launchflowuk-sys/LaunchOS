@@ -24,6 +24,10 @@ export const URGENT_NOTIFICATION_KINDS = [
   // both are the phone's business, not the bell's.
   "meeting.booked",
   "meeting.starting",
+  // A client just agreed to a price. Nothing else in the business is more
+  // worth interrupting somebody for. `proposal.viewed` deliberately is not
+  // here — a client may open the same proposal five times in an afternoon.
+  "proposal.accepted",
 ] as const;
 
 export type UrgentNotificationKind = (typeof URGENT_NOTIFICATION_KINDS)[number];

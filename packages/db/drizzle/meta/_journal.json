@@ -162,6 +162,13 @@
       "when": 1788677475562,
       "tag": "0022_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1788681760910,
+      "tag": "0023_proposals",
+      "breakpoints": true
     }
   ]
 }

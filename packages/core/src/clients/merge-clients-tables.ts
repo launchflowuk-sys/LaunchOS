@@ -61,6 +61,10 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // A merged client's proposals, signed copies and invoices follow them, and
   // never collide: a document is written once and is unique by construction.
   { key: "documents", table: schema.documents },
+  // Proposals move whole. Their lines and acceptances carry no `client_id` of
+  // their own — they hang off the proposal — so they need no spec here and
+  // follow it across without being touched.
+  { key: "proposals", table: schema.proposals },
   { key: "content_reports", table: schema.contentReports, conflict: sql`k.period_key = t.period_key`, onConflict: "leave" },
   { key: "client_reports", table: schema.clientReports, conflict: sql`k.period_start = t.period_start`, onConflict: "leave" },
   { key: "client_users", table: schema.clientUsers, conflict: sql`k.user_id = t.user_id`, onConflict: "drop" },

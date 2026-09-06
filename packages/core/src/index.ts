@@ -428,3 +428,61 @@ export {
   ReadDocumentInput, ReadClientDocumentInput, ReadSignedDocumentInput,
 } from "./documents/read-document.js";
 export type { DocumentAccessResult, DocumentAccessRefusal } from "./documents/read-document.js";
+export {
+  ProposalRefused, PROPOSAL_TARGET_TYPE, PROPOSAL_SUBJECT_TYPE, PROPOSAL_PUBLIC_PATH,
+  SIGNATURE_VIEWBOX, MAX_SIGNATURE_CHARS, SignaturePathSchema, signatureSvgMarkup,
+  PROPOSAL_LIVE_STATUSES, PROPOSAL_DECIDED_STATUSES,
+  mintProposalToken, normaliseProposalToken, proposalPublicUrl,
+  proposalExpiresAt, hasExpired, formatValidUntil, nextProposalReference,
+  getProposal, requireProposal, getProposalByToken, listProposalLines, getProposalAcceptance,
+  proposalActorUserId, proposalRecipient,
+} from "./proposals/shared.js";
+export type { ProposalRow, ProposalLineRow, ProposalAcceptanceRow } from "./proposals/shared.js";
+export {
+  ProposalPricingShapeSchema, ProposalLineKindSchema, ProposalPricingInput, ProposalPricingSchema,
+  LINE_KINDS_FOR_SHAPE, SHAPE_LABEL, DEFAULT_VAT_NOTE,
+  MAX_LINE_QUANTITY, MAX_UNIT_PENCE, MAX_PROPOSAL_PENCE, PenceSchema, QuantitySchema,
+  lineTotalPence, assertLineKindAllowed, proposalTotals, isPricedAtNothing, pricingFromLines,
+  formatPence, describePricing,
+} from "./proposals/pricing.js";
+export type { PricedLine, ProposalTotals } from "./proposals/pricing.js";
+export {
+  createProposal, updateProposal, listProposals, getProposalDetail, getPublicProposal,
+  CreateProposalInput, UpdateProposalInput, ListProposalsInput, ProposalScopeInput, ProposalLineInput,
+  PROPOSAL_EDITABLE_STATUSES, DEFAULT_VALIDITY_DAYS,
+} from "./proposals/crud.js";
+export type { ProposalDetail } from "./proposals/crud.js";
+export {
+  addProposalLine, updateProposalLine, removeProposalLine, LINE_TARGET_TYPE,
+  AddProposalLineInput, UpdateProposalLineInput, RemoveProposalLineInput,
+} from "./proposals/lines.js";
+export type { ProposalLinesResult } from "./proposals/lines.js";
+export { proposalDocumentHtml, proposalDocumentTitle, proposalRenderInput } from "./proposals/document.js";
+export type { ProposalDocumentInput } from "./proposals/document.js";
+export {
+  sendProposal, renderProposalDocument, SendProposalInput,
+  PROPOSAL_DOCUMENT_KIND, PROPOSAL_SIGNED_DOCUMENT_KIND,
+} from "./proposals/send.js";
+export type { ProposalDeps, SendProposalResult } from "./proposals/send.js";
+export {
+  recordProposalView, declineProposal, RecordProposalViewInput, DeclineProposalInput,
+  DECLINE_REASON, PROPOSAL_VIEWED_NOTIFICATION_KIND, PROPOSAL_DECLINED_NOTIFICATION_KIND,
+} from "./proposals/public.js";
+export type { ProposalViewResult, DeclineProposalResult } from "./proposals/public.js";
+export { acceptProposal, AcceptProposalInput, PROPOSAL_ACCEPTED_NOTIFICATION_KIND } from "./proposals/accept.js";
+export type { AcceptProposalResult } from "./proposals/accept.js";
+export {
+  setProposalFollowOn, queueProposalFollowOn, PROPOSAL_ACCEPTED_JOB, FOLLOW_ON_QUEUED_AT,
+} from "./proposals/follow-on.js";
+export type { ProposalAcceptedJobData, ProposalFollowOnFn } from "./proposals/follow-on.js";
+export {
+  expireProposals, nudgeUnopenedProposals, proposalsAwaitingFollowOn,
+  ExpireProposalsInput, NudgeProposalsInput, NUDGED_AT, NUDGE_AFTER_DAYS,
+  PROPOSAL_EXPIRED_NOTIFICATION_KIND, PROPOSAL_UNOPENED_NOTIFICATION_KIND,
+} from "./proposals/sweeps.js";
+export type { ExpireProposalsResult, NudgeProposalsResult } from "./proposals/sweeps.js";
+export {
+  ensureProposalConversation, queueProposalNotice, sentBody, acceptedBody, declinedBody, PROPOSAL_CONVERSATION_ID,
+} from "./proposals/notices.js";
+export type { ProposalNoticeKind, QueueProposalNoticeInput } from "./proposals/notices.js";
+export { PROPOSAL_NOTICE_KIND } from "./support/courtesy-notice.js";
