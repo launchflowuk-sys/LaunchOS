@@ -337,6 +337,57 @@ None of this works on our side alone. Support intake needs: an inbound provider 
 - `TWILIO_*` are still **placeholders**. Nothing reads them.
 - `dns_update_record` and `cms_update_content` are approval-gated tools. Their approval cards read the provider name off the adapter that will really run at describe time — for DNS, the per-domain half the registry resolves to — and print a line naming the mock and stating that nothing reaches the zone or the CMS until a real provider is configured, so nobody approves one expecting a page to change. The row, the audit entry and the run trace are written the same way either way.
 
+## Remote operation pack
+
+Everything in this section exists so the business can be run from another country through the portal alone. Each part has its own keys and degrades to a mock, a warning or a plain message when they are missing; none of it blocks a deploy.
+
+### Alerts on the phone (web push)
+
+Set on **both** web and worker:
+
+| Key | Value |
+|---|---|
+| `VAPID_PUBLIC_KEY` | Public half of one VAPID key pair (`npx web-push generate-vapid-keys`). Never changes once devices are subscribed — rotating it silently kills every subscription. |
+| `VAPID_PRIVATE_KEY` | Private half. Worker only needs it, web tolerates it. |
+| `VAPID_SUBJECT` | `mailto:` address the push services can contact, e.g. `mailto:support@launchflow.co.uk`. |
+
+The worker selects the real `web-push` sender when both keys are set and the mock otherwise (logged at boot, never refused). A device subscribes from **Account → Alerts on this device**; the browser must be served over HTTPS (Coolify's Traefik does this) and, on iPhone, the portal must be added to the Home Screen first. A push service answering 404 or 410 removes the subscription; the next visit to Account offers to subscribe again. Only the urgent notification kinds are pushed — incident opened, payment failed, invoice overdue, case past its first-response time, agent gave up, send failed, worker down, approval requested (except content publishes, which are batched) — everything else stays in the bell.
+
+### The system watching itself
+
+The worker answers `GET /health` on `WORKER_HEALTH_PORT` (default `3001`) with `200 { ok, uptime, lastJobAt, queues }` once pg-boss is running and `503` before that. Point the Coolify **worker** resource's health check at it: Health Checks → enabled, scheme `http`, host `localhost`, port `3001`, path `/health`, interval 30 s, retries 3. Coolify then restarts a wedged worker on its own and refuses to mark a broken deploy healthy.
+
+The worker also writes a `system_heartbeats` row named `worker` every 60 s. The admin layout reads it and shows a red banner when it is more than five minutes old, and the owner gets one `worker.down` notification (and push) per outage, not one per page view. Unhandled errors in the worker (job failures on their final attempt, unhandled rejections, uncaught exceptions) and server-side errors in web (`instrumentation.ts`) raise a `system.error` notification, throttled to one per error signature per hour.
+
+### Off-site backups (switch documented, not yet turned on)
+
+Coolify backs the Postgres resource up on a schedule to the Hetzner box itself. That protects against a bad migration, not against losing the server. To send copies off-site you need an S3-compatible bucket, which LaunchFlow does not have yet (Hetzner Object Storage, Backblaze B2 and Cloudflare R2 all work; B2 is the cheapest at this size). When one exists:
+
+1. Coolify → **Storages** → Add: name, endpoint, region, bucket, access key, secret key. Validate.
+2. Coolify → the `launchos` database resource → **Backups** → the existing schedule → tick **Save to S3**, choose the storage, keep local retention at 7 and set S3 retention at 30.
+3. Run **Backup now** once and confirm the object appears in the bucket.
+4. Restore drill, once a quarter: download the dump, `pg_restore` it into a scratch database (`docker exec` into the db container works), run one query. A backup that has never been restored is a hope, not a backup.
+
+The `STORAGE_DIR` volume (attachments, task screenshots, post images) is not in the database dump. Back it up with a Coolify scheduled task on the web resource that tars the volume to the same bucket, or accept that a total server loss loses uploads. Say which was chosen here when it is done.
+
+### New business from the website (FluentForms → Leads)
+
+Set `PUBLIC_FORMS_TOKEN` on the web resource to a long random string (`openssl rand -hex 32`). The public endpoint is:
+
+```
+POST https://os.launchflow.co.uk/api/public/leads
+Header: x-public-forms-token: <PUBLIC_FORMS_TOKEN>
+Body (JSON): { "name", "email", "phone", "business", "message", "source" }
+```
+
+`name` is required; the rest are optional; `source` defaults to `website`. The route is rate-limited per IP and refuses without the header, so nothing from the open internet can fill the Leads page with junk. Every accepted lead appears in **Leads** and rings the owner's bell (`lead.created`).
+
+In FluentForms on launchflow.co.uk, for the contact form: **Settings → Integrations → Webhooks → Add new**. Request URL as above, method POST, format JSON, add a request header `x-public-forms-token` with the token, and map the fields: `name` → Name field, `email` → Email, `phone` → Phone, `business` → Company, `message` → Message, and a static `source` of `website`. Save, submit the form once, and check Leads.
+
+### Self-serve sign-up
+
+`/signup` is public. It lists the active packages; a package with a `stripe_price_id` (Settings → Packages) sends the buyer to Stripe Checkout in subscription mode and provisions the client, subscription and portal user on `checkout.session.completed` (the same `/api/webhooks/stripe` endpoint already registered in Stripe — add the `checkout.session.completed` event to the webhook if it only listens for invoice events). A package without a price id provisions the client immediately and emails an invoice instead. The welcome email carries a temporary portal password and is sent directly, never stored. If it bounces, the owner's `signup.completed` notification says so and a password can be issued by hand from the client's portal-users page.
+
 ## Branch flow
 
 `main` is production. Feature work happens on branches locally, is tested against docker Postgres, and merges to `main` only after Shoji approves. Coolify deploys `main`.
