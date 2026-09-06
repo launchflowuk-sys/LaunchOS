@@ -1,5 +1,25 @@
 FROM node:24-alpine AS base
 RUN corepack enable && corepack prepare pnpm@11.12.0 --activate
+# The document engine's browser, from the distribution rather than from
+# Playwright's download.
+#
+# Playwright ships its own Chromium build, and it is linked against glibc:
+# on Alpine (musl) it installs happily and then dies with "Executable doesn't
+# exist" or a loader error the first time it is launched. Alpine's own
+# chromium package is built against musl and works, so the image takes that
+# one and `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD` below stops pnpm fetching 170 MB
+# of a browser that could never run here.
+#
+# The rest are what Chromium needs and a slim base does not carry: `nss` for
+# certificate handling (it will not start without it), `freetype` and
+# `harfbuzz` for glyph rasterising and shaping, and two font packages so the
+# stack in `packages/channels/src/pdf/document.ts` resolves — `font-liberation`
+# for the named Liberation faces, `ttf-freefont` as the fontconfig fallback for
+# generic `serif` and `sans-serif`. With no fonts at all Chromium renders a
+# page of empty boxes and reports success, which is the worst of both worlds.
+RUN apk add --no-cache chromium nss freetype freetype-dev harfbuzz ca-certificates ttf-freefont font-liberation
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
 WORKDIR /app
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY apps/worker/package.json apps/worker/
@@ -11,7 +31,8 @@ RUN pnpm --filter @launchos/worker... build
 # (typescript, tsc-alias) while building, and only the runtime is production.
 #
 # This is not a nicety. `apps/worker/src/env.ts` refuses a mock email adapter,
-# a mock uptime probe and `LLM=fake` under `NODE_ENV=production` — and Node does
+# a mock uptime probe, a mock PDF renderer and `LLM=fake` under
+# `NODE_ENV=production` — and Node does
 # not default NODE_ENV, so without this line every one of those guards is dead
 # in the image that actually sends the mail. Coolify sets NODE_ENV=production on
 # the resource as well (docs/DEPLOYMENT.md step 4); this makes the image correct

@@ -19,6 +19,15 @@ export default defineConfig({
   // Bundle every @launchos/* workspace package into the output; leave real
   // npm dependencies (pg-boss, drizzle-orm, zod, @anthropic-ai/sdk, ...)
   // external so they're resolved from node_modules at runtime as usual.
+  //
+  // "External" here means *this* package's dependencies, which is why
+  // `playwright` is listed in apps/worker/package.json even though the code
+  // that imports it lives in @launchos/channels. Bundling the channels package
+  // pulls its imports in with it, and esbuild then tries to bundle
+  // playwright-core — which fails outright on `chromium-bidi`'s runtime
+  // `require`s. Naming it a dependency of the worker makes it external again,
+  // and puts a copy at apps/worker/node_modules where the bundled entry point
+  // can actually resolve it under pnpm's isolated layout.
   noExternal: [/^@launchos\//],
   // Workspace packages pull CommonJS dependencies (nodemailer via
   // @launchos/channels) into this ESM bundle. esbuild rewrites their

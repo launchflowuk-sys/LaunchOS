@@ -9,6 +9,7 @@ import { QUEUE, createBoss } from "./boss.js";
 import { installProcessErrorAlerts, reportJobFailure } from "./error-alerts.js";
 import { startHealthServer } from "./health.js";
 import { startHeartbeat } from "./heartbeat.js";
+import { installPdfShutdown, pdfRendererName } from "./pdf.js";
 import { WorkerTelemetry, instrumentBoss } from "./telemetry.js";
 import { handlePushSend, type PushSendJob } from "./jobs/push-send.js";
 import { SLA_SWEEP_CRON, runSlaSweep } from "./jobs/sla-sweep.js";
@@ -46,6 +47,10 @@ async function main() {
   // every handler below is registered; the heartbeat row is what the admin
   // layout's "worker down" banner reads.
   installProcessErrorAlerts({ db, logger: console });
+  // The document engine's browser is process-wide and lazily launched; this is
+  // the only thing that closes it, and without it a redeploy waits for the
+  // SIGKILL rather than stopping (see ./pdf.ts).
+  installPdfShutdown({ logger: console });
   const telemetry = new WorkerTelemetry();
   let ready = false;
   const health = await startHealthServer({ port: env.WORKER_HEALTH_PORT, status: () => ({ ready, ...telemetry.snapshot() }) });
@@ -211,6 +216,7 @@ async function main() {
     agentRun: { db, registry, llm, policy: env.AGENT_POLICY, logger: console },
     social: integrations.social,
     cms: scopedCmsProvider(process.env),
+    imagegen: integrations.imagegen,
   });
 
   // The morning Ops Brief: one agent run per organisation at 07:00 London,
@@ -271,6 +277,7 @@ async function main() {
       model: env.LLM === "fake" ? "fake-agent-llm" : env.AGENT_MODEL,
       policy: env.AGENT_POLICY,
       adapters: describeAdapters(process.env),
+      pdf: pdfRendererName(process.env),
       healthPort: health.port,
     },
     "worker started",

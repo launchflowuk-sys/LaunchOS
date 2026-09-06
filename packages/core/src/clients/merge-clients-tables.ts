@@ -58,6 +58,9 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
     conflict: sql`k.period_key = t.period_key and k.channel = t.channel and (k.metadata ->> 'slot') = (t.metadata ->> 'slot')`,
   },
   { key: "content_assets", table: schema.contentAssets },
+  // A merged client's proposals, signed copies and invoices follow them, and
+  // never collide: a document is written once and is unique by construction.
+  { key: "documents", table: schema.documents },
   { key: "content_reports", table: schema.contentReports, conflict: sql`k.period_key = t.period_key`, onConflict: "leave" },
   { key: "client_reports", table: schema.clientReports, conflict: sql`k.period_start = t.period_start`, onConflict: "leave" },
   { key: "client_users", table: schema.clientUsers, conflict: sql`k.user_id = t.user_id`, onConflict: "drop" },

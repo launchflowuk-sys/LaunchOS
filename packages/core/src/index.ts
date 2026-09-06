@@ -411,3 +411,20 @@ export {
   SIGNUP_MARKER, SIGNUP_LEAD_SOURCE, SIGNUP_COMPLETED_NOTIFICATION_KIND, SIGNUP_CLAIM_TTL_MS,
 } from "./signup/signup.js";
 export type { SignupDeps, SignupSessionResult, CompleteSignupResult } from "./signup/signup.js";
+export {
+  storeDocument, getDocument, listDocuments, readDocumentBytes, documentFilePath,
+  DocumentRefused, StoreDocumentInput, GetDocumentInput, ListDocumentsInput,
+  DOCUMENT_KINDS, DOCUMENT_TARGET_TYPE, MAX_DOCUMENT_BYTES,
+} from "./documents/store-document.js";
+export type { DocumentRow, DocumentKind } from "./documents/store-document.js";
+export {
+  documentLinkKey, signDocumentToken, signedDocumentUrl, verifyDocumentToken,
+  DOCUMENT_ROUTE_PATH, DOCUMENT_TOKEN_PARAM,
+  DEFAULT_DOCUMENT_LINK_TTL_SECONDS, MAX_DOCUMENT_LINK_TTL_SECONDS,
+} from "./documents/document-link.js";
+export type { DocumentTokenResult, DocumentTokenRefusal, SignDocumentLinkInput } from "./documents/document-link.js";
+export {
+  readDocumentForOwner, readDocumentForClient, readSignedDocument, documentContentDisposition,
+  ReadDocumentInput, ReadClientDocumentInput, ReadSignedDocumentInput,
+} from "./documents/read-document.js";
+export type { DocumentAccessResult, DocumentAccessRefusal } from "./documents/read-document.js";

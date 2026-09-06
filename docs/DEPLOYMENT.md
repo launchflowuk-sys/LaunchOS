@@ -328,6 +328,18 @@ A reply the client never receives no longer passes silently either. When a send 
 
 Mount a persistent volume at `STORAGE_DIR` on the Coolify **web** resource, and give the worker the same path. Without it, every inbound attachment is written to the container's ephemeral filesystem and disappears on the next redeploy, leaving download links pointing at nothing.
 
+### Documents (the PDF engine)
+
+Proposals, signed copies, invoices and monthly reports are all rendered by one engine in the worker: HTML through headless Chromium, in `packages/channels/src/pdf`. Three things it needs, and one it does not.
+
+**It needs the storage volume.** Rendered documents live under `STORAGE_DIR/documents/<org>/<uuid>.pdf` beside the attachments. Without a persistent mount, every proposal a client has been sent 404s after the next redeploy.
+
+**It needs the browser, and the image carries it.** `infra/Dockerfile.worker` installs Alpine's own `chromium` (plus `nss`, `freetype`, `harfbuzz` and two font packages) and sets `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium`. Playwright's bundled Chromium is linked against glibc and cannot run on musl, so `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` stops the install fetching 170 MB of a browser that would never start. Nothing to configure on the Coolify resource — but the image is about 600 MB larger than it was, and the first render after a deploy takes roughly a second while the browser starts. Every render after that borrows the same browser and takes about 200 ms.
+
+**It needs `SECRETS_ENCRYPTION_KEY`.** Documents are private. They are served from `/api/documents/<id>` — never the public `/api/assets` route — to the owner through their admin session, to the owning client through their portal session, and to anybody holding a signed link. That link's signing key is derived from `SECRETS_ENCRYPTION_KEY` with HKDF, so there is no second secret to add and forget; rotating that key invalidates every outstanding document link, which is what a rotation should do. Links last seven days by default and thirty at the most.
+
+**It does not need a mock.** `PDF_RENDERER=mock` renders a valid but blank document, which is exactly the silent-success failure the adapter rules exist to prevent, so the worker refuses it under `NODE_ENV=production`. Tests select it themselves under `NODE_ENV=test`; leave the variable unset everywhere else.
+
 ### External blockers
 
 None of this works on our side alone. Support intake needs: an inbound provider account (Postmark or Cloudflare), DNS control of `SUPPORT_EMAIL_DOMAIN`, SMTP credentials for outbound, and `ANTHROPIC_API_KEY` for real Support Triage runs. Until each is in place the corresponding path uses its mock and the screens still work — the mail simply never leaves or arrives.

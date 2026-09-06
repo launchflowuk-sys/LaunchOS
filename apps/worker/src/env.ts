@@ -84,6 +84,32 @@ const EnvShape = z.object({
   GOOGLE_ADS_API_VERSION: z.string().optional(),
   META_ADS_ACCESS_TOKEN: z.string().optional(),
   META_ADS_APP_SECRET: z.string().optional(),
+  /**
+   * Post images. `IMAGEGEN_ADAPTER` selects the generator **by name** rather
+   * than by credential, because this is the one adapter that spends money per
+   * call: an `OPENAI_API_KEY` set for some other reason must not quietly start
+   * drawing pictures. Unset means branded templates only, which is a perfectly
+   * good place to leave it — hence the guard warns rather than refuses. All
+   * four are declared here for the same reason as the SMTP and Stripe keys
+   * above: the factory reads them from `process.env`, and a key this schema
+   * omits reaches the guard as `undefined`, so a worker configured for
+   * `openai` would draw placeholders and be told it was fine.
+   */
+  IMAGEGEN_ADAPTER: z.enum(["mock", "openai", "fal"]).optional(),
+  OPENAI_API_KEY: z.string().optional(),
+  FAL_KEY: z.string().optional(),
+  /**
+   * What the generator may spend across the organisation in a Europe/London
+   * month, in whole pence. Past it, `renderContentImage` draws a branded
+   * template instead of refusing, so a post still gets a picture.
+   *
+   * The service reads this from `process.env` itself and falls back to 2000 on
+   * anything malformed rather than throwing — a typo must not stop every post
+   * getting a picture. Declaring it here as a number is the louder half of the
+   * same rule: a worker whose cap is nonsense says so at boot, and nobody
+   * finds out from a month of unexpectedly capped renders.
+   */
+  IMAGEGEN_MONTHLY_CAP_PENCE: z.coerce.number().int().min(0).default(2000),
   GBP_CLIENT_ID: z.string().optional(),
   GBP_CLIENT_SECRET: z.string().optional(),
   GBP_REFRESH_TOKEN: z.string().optional(),
@@ -122,6 +148,15 @@ const EnvShape = z.object({
   ZOOM_CLIENT_SECRET: z.string().optional(),
   /** The marketing site, for the one link a token-less lead is sent to (`bookingLinkFor`). */
   MARKETING_URL: z.string().url().default("https://launchflow.co.uk"),
+  /**
+   * The document engine (`@launchos/channels/pdf`). `chromium` unless this
+   * says `mock`; under `NODE_ENV=test` the factory picks the mock itself.
+   * Declared here for the rule below, and because the resolved value is
+   * printed in the startup line.
+   */
+  PDF_RENDERER: z.enum(["chromium", "mock"]).optional(),
+  /** Where the browser binary lives when it is not Playwright's own download. */
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
 });
 
 /**
@@ -177,6 +212,22 @@ export const Env = EnvShape.superRefine((value, ctx) => {
       message:
         `APP_URL is ${LOCAL_APP_URL} in production: a client emailed a portal link would be sent to their own machine. ` +
         "Set it to the address the web app is served from, e.g. https://os.launchflow.co.uk",
+    });
+  }
+  // 5. `PDF_RENDERER=mock` is refused in production for the reason rule 3
+  //    exists: the mock *succeeds*. It returns a valid, blank one-page PDF, so
+  //    `storeDocument` accepts it, the proposal is marked sent, and the client
+  //    receives an empty document with our name on it. This rule lives here
+  //    rather than in `productionAdapterIssues` because the engine has no
+  //    credentials and no factory in `packages/integrations` to mirror — it is
+  //    one variable with one wrong value.
+  if (value.NODE_ENV === "production" && value.PDF_RENDERER === "mock") {
+    ctx.addIssue({
+      code: "custom",
+      path: ["PDF_RENDERER"],
+      message:
+        "PDF_RENDERER=mock is refused in production: the mock renders a blank document, and a client would be emailed it as their proposal. " +
+        "Leave it unset so the worker renders with Chromium.",
     });
   }
   for (const issue of productionAdapterIssues(value)) {

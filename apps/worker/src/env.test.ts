@@ -112,6 +112,54 @@ describe("worker env", () => {
     expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test", NODE_ENV: "development" }).UPTIME_PROBE).toBe("mock");
   });
 
+  // The mock renderer *succeeds*: it returns a valid, blank PDF, so a
+  // production worker running it would email a client an empty proposal and
+  // mark it sent. Same failure shape as a mock email adapter, same refusal.
+  describe("the document engine", () => {
+    it("refuses PDF_RENDERER=mock in production", () => {
+      expect(() => parseEnv({ ...production, PDF_RENDERER: "mock" }))
+        .toThrow(/PDF_RENDERER=mock is refused in production/);
+    });
+
+    it("leaves it unset by default, and accepts chromium said out loud", () => {
+      expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test" }).PDF_RENDERER).toBeUndefined();
+      expect(parseEnv({ ...production, PDF_RENDERER: "chromium" }).PDF_RENDERER).toBe("chromium");
+      expect(parseEnv({ ...base, ANTHROPIC_API_KEY: "sk-test", PDF_RENDERER: "mock" }).PDF_RENDERER).toBe("mock");
+    });
+
+    it("carries the browser path through for the container to set", () => {
+      const env = parseEnv({ ...production, PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: "/usr/bin/chromium-browser" });
+      expect(env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH).toBe("/usr/bin/chromium-browser");
+    });
+  });
+
+  // A key this schema does not declare is stripped before the adapter guard
+  // ever sees it, so an undeclared IMAGEGEN_ADAPTER=openai would read as unset
+  // and the worker would draw placeholders believing itself configured.
+  describe("the image generator", () => {
+    it("carries the generator's name and keys through to the guard", () => {
+      const env = parseEnv({ ...production, IMAGEGEN_ADAPTER: "openai", OPENAI_API_KEY: "sk-image", FAL_KEY: "fal-key" });
+      expect(env.IMAGEGEN_ADAPTER).toBe("openai");
+      expect(env.OPENAI_API_KEY).toBe("sk-image");
+      expect(env.FAL_KEY).toBe("fal-key");
+    });
+
+    it("leaves it unset by default — branded templates only, and production tolerates that", () => {
+      const env = parseEnv({ ...production });
+      expect(env.IMAGEGEN_ADAPTER).toBeUndefined();
+      expect(env.IMAGEGEN_MONTHLY_CAP_PENCE).toBe(2000);
+    });
+
+    it("refuses a misspelt generator rather than quietly drawing placeholders", () => {
+      expect(() => parseEnv({ ...production, IMAGEGEN_ADAPTER: "openapi" })).toThrow(/IMAGEGEN_ADAPTER/);
+    });
+
+    it("takes a cap in whole pence, and refuses one that is not a number", () => {
+      expect(parseEnv({ ...production, IMAGEGEN_MONTHLY_CAP_PENCE: "500" }).IMAGEGEN_MONTHLY_CAP_PENCE).toBe(500);
+      expect(() => parseEnv({ ...production, IMAGEGEN_MONTHLY_CAP_PENCE: "a fiver" })).toThrow(/IMAGEGEN_MONTHLY_CAP_PENCE/);
+    });
+  });
+
   // Review L1: `portalUrl()` used to fall back to the local default, so a
   // client could be emailed "sign in to the portal" pointing at their own
   // machine. The worker passes APP_URL to the agent registry as `portalBaseUrl`.
@@ -167,8 +215,9 @@ describe("worker env", () => {
       // each, are the four adapters production tolerates on their mocks — the
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
-      // hosting, dns, cms, ads, social, push and, since the booking page, meetings.
-      expect(warnings).toHaveLength(7);
+      // hosting, dns, cms, ads, social, push, meetings and, since the branded
+      // post images landed, the image generator.
+      expect(warnings).toHaveLength(8);
       expect(warnings.some((w) => w.startsWith("meetings adapter is the MOCK"))).toBe(true);
       expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
