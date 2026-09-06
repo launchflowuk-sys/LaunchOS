@@ -408,7 +408,7 @@ export const PORTFOLIO_CLIENTS: readonly CaseStudySeed[] = [
     year: 2026,
     url: "https://lifestylewindow.co.uk",
     screenshots: { desktop: "/work/lifestyle-windows-desktop.jpg", mobile: "/work/lifestyle-windows-mobile.jpg" },
-    featured: false,
+    featured: true,
     kind: "client",
     deliveryStatus: "live",
     charity: false,

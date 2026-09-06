@@ -46,8 +46,13 @@ export const PORTFOLIO_REVALIDATE_SECONDS = 300;
 /** The cache tag the admin screens bust when a story is edited, ordered or unpublished. */
 export const PORTFOLIO_CACHE_TAG = "case-studies";
 
-/** The home page shows four at most; `featured` is the flag on both kinds. */
-export const FEATURED_WORK_LIMIT = 4;
+/**
+ * The home page's ceiling, not its target: `featured` is the flag on both
+ * kinds, and this only stops the section growing without anyone noticing.
+ * Six because the grid is three across, so five or six both fill their rows
+ * tidily and a fifth project costs none of the other four its place.
+ */
+export const FEATURED_WORK_LIMIT = 6;
 
 export type Portfolio = { work: readonly WorkItem[]; products: readonly Product[] };
 

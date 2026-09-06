@@ -2,9 +2,17 @@ import { featuredWork } from "@/lib/marketing/portfolio";
 import { Container, Lines, SectionHead } from "../primitives";
 import { WorkCard } from "../work-card";
 
-/** 01 / SELECTED WORK — three featured projects, published rows only. */
+/**
+ * 01 / SELECTED WORK — every featured project, published rows only.
+ *
+ * Not sliced here. `featuredWork()` already caps the list, and slicing twice
+ * meant marking a sixth project featured put it fifth in a list of three —
+ * the flag was set, the admin screen said featured, and the home page never
+ * showed it. Which projects appear is a decision for the Case studies screen,
+ * not for this component.
+ */
 export async function SelectedWork({ href }: { href: (path: string) => string }) {
-  const items = (await featuredWork()).slice(0, 3);
+  const items = await featuredWork();
   return (
     <section aria-labelledby="work-title" className="py-20 sm:py-28">
       <Container>

@@ -218,6 +218,13 @@
       "when": 1788701000000,
       "tag": "0030_funnels_ad_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788701200000,
+      "tag": "0031_feature_lifestyle_windows",
+      "breakpoints": true
     }
   ]
 }
