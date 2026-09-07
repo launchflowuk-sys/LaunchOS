@@ -265,9 +265,36 @@ saving explicitly against list.
 
 ## Decisions still needed
 
-1. **What exactly does £45 buy?** It must be bounded — how many small changes a
-   month, and what counts as small — or it becomes a support sink that loses
-   money on the clients least able to pay more.
+1. **What £45 buys** *(Shoji, 7 Sep 2026)*. The line is **changing what exists
+   is free; building something new is quoted.**
+
+   - **Any change to content already built: free, unlimited.** Rewrites, swaps,
+     new photographs, prices, opening hours, staff coming and going.
+   - **Any minor design change: free.** Colours, spacing, a section reordered,
+     a button moved.
+   - **A full design revamp: a one-off, priced on the job.**
+
+   Deliberately generous, and the reasoning is sound. A floor tier that feels
+   rationed gets cancelled, and the whole thesis is retention through being
+   worth staying with. Edits cost almost nothing to serve and are what a client
+   notices between invoices — the difference between paying for hosting and
+   feeling looked after. Shoji wants somebody on £45 to say they get a lot for
+   it, and this is what that sounds like.
+
+   It is also a boundary that survives a disagreement, which "up to three
+   pages" was not. A client can always tell whether they are asking to change
+   something or to have something new, and so can whoever picks up the job.
+
+   **Still to settle: do new pages stay in?** Earlier the same day the answer
+   was up to three pages included; the content-versus-new-build line implies a
+   new page is a build and therefore quoted. Both work. What must not happen is
+   the page saying one and the invoice saying the other.
+
+   And write **"minor"** down before it reaches a client, or it means whatever
+   the person reading it wants it to mean. A workable test: if it changes what
+   is on a page it is free; if it changes how the site looks throughout, it is
+   quoted.
+
 2. **Setup fees — keep, or fold into the monthly?** Proposals already support
    setup + monthly, one-off, and monthly-on-delivery. Folding them in matches
    the "no upfront fee" the whole pay-monthly field now advertises, but it
