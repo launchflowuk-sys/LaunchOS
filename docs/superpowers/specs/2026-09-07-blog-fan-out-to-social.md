@@ -1,4 +1,4 @@
-# Blog fan-out to social
+# Blog fan-out to Facebook and GBP
 
 **Asked for:** Shoji, 6 Sep 2026 (and, he says, several times before — the earlier
 asks were lost with the session context, which is what `scripts/claude-checkpoint.sh`
@@ -76,30 +76,38 @@ at planning time.** That is the whole design.
 ## Constraints Shoji should hold in mind
 
 - **Instagram cannot publish a clickable link in a feed caption.** A URL there is
-  plain text. The IG variant is the image plus a "link in bio" line; the
-  click-through value is Facebook's, not Instagram's.
-- **These links are `nofollow` / `ugc`.** The gain is referral traffic, not SEO
-  link equity. If ranking is the goal, that is internal linking, GBP posts and
-  citations — a different piece of work.
-- Instagram cannot publish without an image at all, so a fan-out IG post must
-  reuse the blog's featured image or be sent through `content_render_image`.
+  plain text. This is why Instagram is excluded from the fan-out.
+- **Facebook links are `nofollow` / `ugc`.** Facebook's share returns referral
+  traffic, not SEO link equity.
+- **GBP is the exception, and the reason it is in scope.** A Google Business
+  Profile update carries a real, followed link, so it is the one channel here
+  that serves the ranking Shoji originally asked about rather than clicks alone.
+- A fan-out post still needs an image. Reuse the blog's featured image where
+  there is one, otherwise send it through `content_render_image`, which already
+  covers both `facebook` and `gbp`.
 
 ## Decided
 
 1. **Outside the allowance.** A fan-out post does not spend
    `socialPostsPerMonth`. See design point 6. *(Shoji, 7 Sep 2026.)*
-2. **Both Facebook and Instagram**, by default, despite Instagram not carrying a
-   clickable link — the reach and the image are worth having on their own, and
-   the caption can carry a "link in bio" line. *(Shoji, 7 Sep 2026.)*
+2. **Facebook and GBP. Not Instagram.** *(Shoji, 7 Sep 2026.)* The two channels
+   that can carry a link the reader can actually follow. Instagram is excluded
+   deliberately: a feed caption renders a URL as dead text, so an IG share does
+   nothing for the traffic this feature exists to produce, and it would spend a
+   slot and an approval to say nothing clickable.
 
-## Still open — proposed defaults, easily changed
+   GBP matters most of the three. Its update carries a **real, followed link**,
+   so it is the only one that does anything for ranking rather than referral
+   traffic alone — and most of this book is local businesses, which is exactly
+   who a Google Business Profile serves.
+
+   `IMAGE_CHANNELS` still lists instagram; nothing here changes ordinary
+   Instagram posting. This is only about what a *published blog post* fans out
+   to. If Instagram is ever wanted for reach rather than clicks it is one row in
+   the per-client setting, not a redesign.
+
+## Still open — proposed default, easily changed
 
 3. **Offset: the morning after the blog post publishes.** Far enough that the
    share is not simultaneous with the article going live, close enough that it
    is still news. Per-client, so a client posting weekly can be spread wider.
-4. **GBP: include it.** Shoji answered "both" to the Facebook/Instagram
-   question, which leaves this one unanswered. Worth pressing: a Google Business
-   Profile update carries a **real, followed link**, so for local businesses —
-   which is most of this book — it is the only one of the three that does
-   anything for ranking rather than referral traffic alone. Recommend defaulting
-   it on; confirm before building.
