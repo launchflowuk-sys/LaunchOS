@@ -60,10 +60,18 @@ at planning time.** That is the whole design.
    turning it on is a decision per client.
 5. **Idempotent.** A blog item that already has fan-out children creates none on
    a re-run. Keyed on `source_item_id` + `channel`.
-6. **Counts.** Decide whether a fan-out post consumes the client's
-   `socialPostsPerMonth` allowance or sits outside it. It changes what
-   `packageUsagePressure` reports, so it is a billing question, not a cosmetic
-   one. **Open — ask Shoji.**
+6. **Counts: outside the allowance.** *(Shoji, 7 Sep 2026.)* A fan-out post does
+   **not** spend the client's `socialPostsPerMonth`. The allowance is what the
+   client pays for someone to think of and write; a share of an article they
+   already paid for is not a second piece of work, and charging it twice would
+   make the package look spent when it is not.
+
+   This is not a display detail — `packageUsagePressure` decides which clients
+   the Ops Brief names as over or near their limits, so counting these would
+   raise false alarms every month. The allowance query must therefore exclude
+   any item with a non-null `source_item_id`. Add a test that fans a blog post
+   out to a client whose social allowance is already fully spent and asserts the
+   client is still reported as within it.
 
 ## Constraints Shoji should hold in mind
 
@@ -76,11 +84,22 @@ at planning time.** That is the whole design.
 - Instagram cannot publish without an image at all, so a fan-out IG post must
   reuse the blog's featured image or be sent through `content_render_image`.
 
-## Open questions
+## Decided
 
-1. Does a fan-out post count against `socialPostsPerMonth`?
-2. Default offset — same day, next morning, or a few days later?
-3. Both Facebook and Instagram by default, or Facebook only given the link
-   limitation?
-4. Should GBP fan out too? A GBP update carries a real, followed link and is
-   arguably the most valuable of the three for local businesses.
+1. **Outside the allowance.** A fan-out post does not spend
+   `socialPostsPerMonth`. See design point 6. *(Shoji, 7 Sep 2026.)*
+2. **Both Facebook and Instagram**, by default, despite Instagram not carrying a
+   clickable link — the reach and the image are worth having on their own, and
+   the caption can carry a "link in bio" line. *(Shoji, 7 Sep 2026.)*
+
+## Still open — proposed defaults, easily changed
+
+3. **Offset: the morning after the blog post publishes.** Far enough that the
+   share is not simultaneous with the article going live, close enough that it
+   is still news. Per-client, so a client posting weekly can be spread wider.
+4. **GBP: include it.** Shoji answered "both" to the Facebook/Instagram
+   question, which leaves this one unanswered. Worth pressing: a Google Business
+   Profile update carries a **real, followed link**, so for local businesses —
+   which is most of this book — it is the only one of the three that does
+   anything for ranking rather than referral traffic alone. Recommend defaulting
+   it on; confirm before building.
