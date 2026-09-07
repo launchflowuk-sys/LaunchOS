@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
-import { SITE_DESCRIPTION } from "@/lib/marketing/site";
+import { SITE_DESCRIPTION, marketingMetadata } from "@/lib/marketing/site";
 import { CtaBlock } from "./_components/cta-block";
 import { About } from "./_components/home/about";
 import { Hero } from "./_components/home/hero";
@@ -12,12 +12,12 @@ import { Lines } from "./_components/primitives";
 
 const TITLE = "LaunchFlow — Built to work. Designed to stand out.";
 
-export const metadata: Metadata = {
-  title: { absolute: TITLE },
+export const metadata: Metadata = marketingMetadata({
+  title: TITLE,
   description: SITE_DESCRIPTION,
-  alternates: { canonical: "/" },
-  openGraph: { title: TITLE, description: SITE_DESCRIPTION, url: "/" },
-};
+  path: "/",
+  absoluteTitle: true,
+});
 
 /** The eight sections of the home page, in the order the reference reads them. */
 export default async function HomePage() {

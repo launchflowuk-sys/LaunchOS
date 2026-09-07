@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
-import { CONTACT_EMAIL, CONTACT_PHONE, LOCATION, REPLY_PROMISE } from "@/lib/marketing/site";
+import { CONTACT_EMAIL, CONTACT_PHONE, LOCATION, REPLY_PROMISE, marketingMetadata } from "@/lib/marketing/site";
 import { Container, Eyebrow, TextLink } from "../_components/primitives";
 import { ContactForm } from "./contact-form";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Contact",
   description: `Tell LaunchFlow what you need — a web app, a mobile app, a website, ads or hosting. ${REPLY_PROMISE}`,
-  alternates: { canonical: "/contact" },
-  openGraph: { title: "Contact LaunchFlow", description: `Tell us what you need. ${REPLY_PROMISE}`, url: "/contact" },
-};
+  path: "/contact",
+});
 
 export default async function ContactPage() {
   const { href } = await marketingLinks();

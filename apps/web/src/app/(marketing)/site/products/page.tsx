@@ -1,17 +1,16 @@
 import type { Metadata } from "next";
+import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { productItems, STATUS_LABEL } from "@/lib/marketing/portfolio";
 import { CtaBlock } from "../_components/cta-block";
 import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
 import { Shot } from "../_components/shot";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Products",
-  description:
-    "Cabio taxi dispatch, Agent Zero phone agent, BizzFlow for the trades, LaunchOS and our takeaway ordering platform — the products LaunchFlow builds, runs and sells.",
-  alternates: { canonical: "/products" },
-  openGraph: { title: "Products — LaunchFlow", description: "The systems we run our own businesses on, and sell to others.", url: "/products" },
-};
+  description: "Cabio taxi dispatch, Agent Zero phone agent, BizzFlow for the trades, LaunchOS and our takeaway ordering platform — the products LaunchFlow builds, runs and sells.",
+  path: "/products",
+});
 
 export default async function ProductsPage() {
   const [{ href }, products] = await Promise.all([marketingLinks(), productItems()]);

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { marketingMetadata } from "@/lib/marketing/site";
 import { Check } from "lucide-react";
 import Link from "next/link";
 import { marketingLinks } from "@/lib/marketing/links";
@@ -6,12 +7,11 @@ import { pricingPackages } from "@/lib/marketing/packages";
 import { CtaBlock } from "../_components/cta-block";
 import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Pricing",
   description: "Monthly plans for hosting, care, SEO and content, with a plain invoice you can cancel any time. Custom builds are quoted.",
-  alternates: { canonical: "/pricing" },
-  openGraph: { title: "Pricing — LaunchFlow", description: "Monthly plans with a plain invoice. Custom work is quoted.", url: "/pricing" },
-};
+  path: "/pricing",
+});
 
 const QUESTIONS = [
   {

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { marketingMetadata } from "@/lib/marketing/site";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -20,17 +21,17 @@ export async function generateMetadata({ params }: PageProps<"/site/work/[slug]"
   const { slug } = await params;
   const item = await findWork(slug);
   if (!item) return { title: "Not found" };
-  return {
+  // A case study shares the site it is about. Falling back to the LaunchFlow
+  // card matters: a brief with no screenshot yet would otherwise share nothing
+  // at all, which is worse than sharing the wrong picture.
+  return marketingMetadata({
     title: item.name,
     description: item.summary,
-    alternates: { canonical: `/work/${item.slug}` },
-    openGraph: {
-      title: `${item.name} — LaunchFlow`,
-      description: item.summary,
-      url: `/work/${item.slug}`,
-      ...(item.screenshots.desktop ? { images: [{ url: item.screenshots.desktop, width: 1440, height: 900, alt: `${item.name} website` }] } : {}),
-    },
-  };
+    path: `/work/${item.slug}`,
+    ...(item.screenshots.desktop
+      ? { image: { url: item.screenshots.desktop, width: 1440, height: 900, alt: `${item.name} website` } }
+      : {}),
+  });
 }
 
 const SECTIONS = [

@@ -1,16 +1,15 @@
 import type { Metadata } from "next";
+import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { SERVICES } from "@/lib/marketing/services";
 import { CtaBlock } from "../_components/cta-block";
 import { Container, Lines, SectionHead } from "../_components/primitives";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Services",
-  description:
-    "Web applications, mobile apps, websites and hosting, design, ad management, AI agents and ongoing care — from one team in Grays, Essex.",
-  alternates: { canonical: "/services" },
-  openGraph: { title: "Services — LaunchFlow", description: "Everything a local business needs online, built and looked after by one team.", url: "/services" },
-};
+  description: "Web applications, mobile apps, websites and hosting, design, ad management, AI agents and ongoing care — from one team in Grays, Essex.",
+  path: "/services",
+});
 
 export default async function ServicesPage() {
   const { href } = await marketingLinks();

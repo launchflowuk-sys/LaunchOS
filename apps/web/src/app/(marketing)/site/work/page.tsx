@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
+import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { workItems } from "@/lib/marketing/portfolio";
 import { CtaBlock } from "../_components/cta-block";
 import { Container, Lines, SectionHead } from "../_components/primitives";
 import { WorkCard } from "../_components/work-card";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Work",
   description: "Websites, booking systems, dispatch platforms and apps we have built for taxi firms, salons, tutors, takeaways and trades in Essex.",
-  alternates: { canonical: "/work" },
-  openGraph: { title: "Work — LaunchFlow", description: "Real businesses, real systems, screenshots from the live sites.", url: "/work" },
-};
+  path: "/work",
+});
 
 export default async function WorkPage() {
   const [{ href }, work] = await Promise.all([marketingLinks(), workItems()]);

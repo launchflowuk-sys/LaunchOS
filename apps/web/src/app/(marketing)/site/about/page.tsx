@@ -1,17 +1,15 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
-import { LOCATION } from "@/lib/marketing/site";
+import { LOCATION, marketingMetadata } from "@/lib/marketing/site";
 import { CtaBlock } from "../_components/cta-block";
 import { PATH } from "../_components/home/about";
 import { Container, Lines, SectionHead } from "../_components/primitives";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "About",
-  description:
-    "LaunchFlow is Shoji: a trained computer engineer in Grays, Essex, fifteen years building websites, now building and hosting the software his own businesses run on.",
-  alternates: { canonical: "/about" },
-  openGraph: { title: "About LaunchFlow", description: "One engineer, fifteen years, everything built and hosted in-house.", url: "/about" },
-};
+  description: "LaunchFlow is Shoji: a trained computer engineer in Grays, Essex, fifteen years building websites, now building and hosting the software his own businesses run on.",
+  path: "/about",
+});
 
 const NUMBERS = [
   { value: 15, pad: 2, unit: "years", label: "building for local businesses" },

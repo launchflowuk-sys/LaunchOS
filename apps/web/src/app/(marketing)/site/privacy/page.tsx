@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
-import { CONTACT_EMAIL, LOCATION } from "@/lib/marketing/site";
+import { CONTACT_EMAIL, LOCATION, marketingMetadata } from "@/lib/marketing/site";
 import { Container, Eyebrow } from "../_components/primitives";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = marketingMetadata({
   title: "Privacy",
   description: "What LaunchFlow collects from this website and what happens to it. Short, because there is not much.",
-  alternates: { canonical: "/privacy" },
-  openGraph: { title: "Privacy — LaunchFlow", url: "/privacy" },
-};
+  path: "/privacy",
+});
 
 export default function PrivacyPage() {
   return (

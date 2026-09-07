@@ -3,6 +3,7 @@ import { AttributionCapture } from "@/components/attribution-capture";
 import { appHost, marketingHost } from "@/lib/env";
 import { marketingLinks } from "@/lib/marketing/links";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marketing/site";
+import { OrganisationSchema } from "./_components/structured-data";
 import { MenuDismiss } from "./_components/menu-dismiss";
 import { SiteFooter } from "./_components/site-footer";
 import { SiteHeader } from "./_components/site-header";
@@ -32,6 +33,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function MarketingLayout({ children }: LayoutProps<"/site">) {
+  const { canonicalBase, onMarketingHost } = await marketingLinks();
   return (
     <div id="top" className="marketing flex min-h-screen flex-1 flex-col">
       {/* Scroll reveals start hidden and are shown by `motion-root.tsx`; a page
@@ -46,6 +48,10 @@ export default async function MarketingLayout({ children }: LayoutProps<"/site">
           script — but `open` is DOM state and this layout survives a
           client-side navigation, which left the menu covering the page it had
           just opened. */}
+      {/* Only on the marketing host: the copy served from the app host is
+          noindex, and telling a search engine about an organisation on a page
+          it has been asked not to index is noise at best. */}
+      {onMarketingHost ? <OrganisationSchema base={canonicalBase} /> : null}
       <MenuDismiss />
       <SiteHeader />
       <main className="flex-1">{children}</main>
