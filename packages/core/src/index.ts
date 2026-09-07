@@ -396,6 +396,10 @@ export {
 } from "./leads/inbound-enquiry.js";
 export type { InboundEnquiryOutcome, EnquiryVerdict } from "./leads/inbound-enquiry.js";
 export { normalisePhone } from "./leads/phone.js";
+export {
+  addSuppression, removeSuppression, listSuppressions, AddSuppressionInput, SuppressionRefused,
+} from "./leads/suppression.js";
+export type { SuppressionRow } from "./leads/suppression.js";
 
 // ---- Client workflow (X1): lead acknowledgement, attribution, qualifier reply, meetings ----
 export {

@@ -113,6 +113,11 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         title="Leads"
         description="New business coming in: the website form, self-serve sign-ups and anyone you add by hand. Convert the ones that say yes."
         category="delivery"
+        actions={
+          <Button asChild variant="secondary">
+            <Link href="/leads/blocked">Blocked numbers</Link>
+          </Button>
+        }
       />
 
       {/* The counts are the page's one number: how many are waiting on a call
