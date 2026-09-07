@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { isMarketingHost, marketingCanonicalRedirect, marketingHostFromEnv, marketingRewriteTarget, requestHost } from "@/lib/marketing/hosts";
+import { legacyRedirectFor } from "@/lib/marketing/legacy-redirects";
 
 /**
  * Serves the marketing site on its own hostname.
@@ -27,6 +28,16 @@ export function proxy(request: NextRequest): NextResponse {
     url.protocol = "https:";
     url.port = "";
     return NextResponse.redirect(url, 308);
+  }
+
+  // The old WordPress addresses, before anything else: they are the ones with
+  // links pointing at them, and 301 keeps what a 404 throws away.
+  const legacy = legacyRedirectFor(request.nextUrl.pathname);
+  if (legacy) {
+    const url = request.nextUrl.clone();
+    url.pathname = legacy;
+    url.search = "";
+    return NextResponse.redirect(url, 301);
   }
 
   // `/site/...` is the same page as `/...` here. One address per page, so a
