@@ -41,7 +41,7 @@ he still says Jarvis in conversation.
 |---|---|---|
 | 1 | **The key and the door** — `api_tokens`, auth, rate limit, `GET /api/v1/brief` | **done, 7 Sep** |
 | 2 | The rest of the reads — clients, leads, approvals, incidents, invoices | **done, 7 Sep** |
-| 3 | Capability catalogue — `GET /api/v1/capabilities`, generated from the registry | not started |
+| 3 | Capability catalogue — `GET /api/v1/capabilities`, generated from the registry | **done, 7 Sep** |
 | 4 | Acting through the OS — `POST /api/v1/actions/{key}`, policy gate, hard floor server-side | not started |
 | 5 | Awareness by push — durable outbox, ack cursor, notify-by-exception | not started |
 | 6 | The autonomy dial — time-boxed, catalogue-selected, auto-expiry | not started |
@@ -165,6 +165,43 @@ input is 400 in every case — `limit=999`, `status=pendign`, a malformed
 are NOT NULL in the schema — the types were lying, and the `dueAt !== null`
 guard in the overdue calculation was dead code. Found because a test fixture
 would not insert without them.
+
+---
+
+## Phase 3 — what it contains
+
+`GET /api/v1/capabilities`, gated on `settings`. Most of the enumeration
+already existed: `apps/web/src/lib/agent-catalog.ts` builds itself from the same
+`agentRegistry` the worker runs, so nothing here is a maintained list.
+
+Live against the real registry: **9 agents, 43 tools, 38 automatic, 5 always
+asks** — and the five are exactly the five `requires_approval` tools.
+
+### Decisions
+
+- **Approval-gated means never delegated, by default.** Supervised autonomy
+  will loosen categories *explicitly*, one at a time. A default of "delegable
+  unless someone remembered to mark it" is how a tool added in six months
+  quietly gains the right to message a client.
+- **Three enablement states, not two.** `true` on, `false` switched off, `null`
+  never configured. Reporting a never-configured agent as "off" is a small lie
+  Shoji might act on. Three of his nine are currently `null`.
+- **A stale enablement row cannot invent a capability.** The registry is the
+  source; enablement only annotates it.
+
+### What Phase 3 found that Phase 6 has to solve
+
+**The hard floor cannot be classified from the tool.** Spec point 4 says price,
+discounts, dates, money and legal always wait — but none of the five
+approval-gated tools is inherently any of those. `messages_reply_to_client`
+might say "your site is back up" or "that will be £2,000". The floor is a
+property of the **content**, not of the tool, so the catalogue cannot mark it,
+and a catalogue that pretended to would look authoritative and be wrong.
+
+So when autonomy is built, the floor is enforced by screening the *content* at
+send time, and `delegabilityOf` moves into `packages/agents` so the worker
+enforces the same rule the catalogue advertises. Written down because it is the
+one place this design could quietly go wrong.
 
 ---
 
