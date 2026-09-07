@@ -100,20 +100,70 @@ account. Build the catalogue in **test mode first** so the whole thing can be
 reviewed before anything touches live. `STRIPE_SECRET_KEY` is already set on
 both Coolify resources, so no new credential is needed.
 
-## Decisions still needed from Shoji
+## Decided, 7 Sep 2026
+
+- **Presence: £45/month**, published.
+- **Growth: £120–£350/month**, published.
+- **Applications: quoted.**
+
+## The AMO client, and the component prices hiding inside it
+
+The one piece of real evidence in the business. AMO pays **£200/month** for two
+websites — AMO Rendering and AMO Services — plus ad management on Rendering
+only. Adding ads for Services would be **+£100**.
+
+That decomposes cleanly against the tiers, which is the useful part:
+
+| | |
+|---|---|
+| 2 × Presence @ £45 | £90 |
+| Ad management, one business | **£110** |
+| **Total** | **£200** |
+
+And his own "+£100 for the second" corroborates it. So the business is already
+pricing ad management at **£100–£110 per business per month** consistently,
+without anyone having written it down. That is the number to build proposals
+from — not a new invention, a description of what he already does.
+
+**Implied component list** (internal, for quoting; the page shows packages):
+
+| Component | Monthly |
+|---|---|
+| Website / Presence, per site | £45 |
+| Ad management, per business | £100–£110 |
+| Content + social + GBP | to be set — the tier that must carry the margin |
+
+Two sites plus ads for both = £290, which lands inside Growth's £120–£350
+without any special pleading. The band was chosen well.
+
+**Multi-site and multi-brand is a real pattern, not an edge case.** AMO is one
+owner with two trading names. The second site costs LaunchOS almost nothing —
+same client, same portal, same relationship — so a discount there is genuine
+margin, not a giveaway.
+
+**The discount is not published.** Shoji's decision, and the right one: the page
+carries list prices, and the reduction for a second site or a second set of ads
+is offered *in the conversation*, where it is worth something. The proposal
+system already carries this — lines are free-text with their own prices, so a
+quote can say "second site, discounted" as its own line and the client sees the
+saving explicitly against list.
+
+## Decisions still needed
 
 1. **What exactly does £45 buy?** It must be bounded — how many small changes a
    month, and what counts as small — or it becomes a support sink that loses
    money on the clients least able to pay more.
-2. **Has anyone ever paid £500+/month?** Changes whether the Growth tier is
-   priced from evidence or from hope.
-3. **Setup fees — keep, or fold into the monthly?** Proposals already support
+2. **Setup fees — keep, or fold into the monthly?** Proposals already support
    setup + monthly, one-off, and monthly-on-delivery. Folding them in matches
    the "no upfront fee" the whole pay-monthly field now advertises, but it
    costs cash flow he does not currently have.
-4. **Minimum term?** The field standard is 12–24 months. He wants retention
+3. **Minimum term?** The field standard is 12–24 months. He wants retention
    through being worth staying with, which argues for no lock-in — but that is
    a real revenue risk to take deliberately rather than by default.
+4. **What does Content + social + GBP cost per month?** The one component with
+   no price yet, and the one the Growth tier depends on. Agencies charge
+   £800–£3,000 for social alone; the agents in this repo do the work, so the
+   floor is whatever makes the tier worth selling rather than whatever it costs.
 
 ## Sources
 
