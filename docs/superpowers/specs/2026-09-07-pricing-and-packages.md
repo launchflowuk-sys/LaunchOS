@@ -100,11 +100,32 @@ account. Build the catalogue in **test mode first** so the whole thing can be
 reviewed before anything touches live. `STRIPE_SECRET_KEY` is already set on
 both Coolify resources, so no new credential is needed.
 
-## Decided, 7 Sep 2026
+## Decided, 7 Sep 2026 — the ladder
 
-- **Presence: £45/month**, published.
-- **Growth: £120–£350/month**, published.
-- **Applications: quoted.**
+Content, social and GBP is **£65/month**. With that, every published price is
+the sum of its parts, which is why these three numbers and not a range:
+
+| Tier | What is in it | Monthly |
+|---|---|---|
+| **Presence** | Site, hosting, backups, monitoring, portal | **£45** |
+| **Standard** | Presence + content, social and GBP | **£110** |
+| **Growth** | Standard + ad management | **£220** |
+| **Applications** | Cabio-class builds | quoted |
+
+Two things this fixes. £45 + £65 is **£110**, which fell just under the £120
+Growth floor first proposed — site-plus-content had nowhere to sit, and it is
+the shape most local businesses actually want. And a published range makes a
+reader wait for a call; three numbers let them decide on the page, which is the
+entire point of the exercise.
+
+Each step roughly doubles and buys one clear thing: a site, then a voice, then
+traffic. Anything above Growth — a second site, ads on a second brand — is
+quoted from the components, and lands £265–£350, inside the band Shoji named.
+
+**Set against the market:** agencies charge £800–£3,000/month for social
+management alone. Standard is £110 for that *plus* the website. The gap is not
+a discount, it is the agents in this repo doing the work — which is why it can
+be held rather than merely offered.
 
 ## The AMO client, and the component prices hiding inside it
 
@@ -130,8 +151,8 @@ from — not a new invention, a description of what he already does.
 | Component | Monthly |
 |---|---|
 | Website / Presence, per site | £45 |
+| Content + social + GBP, per business | £65 |
 | Ad management, per business | £100–£110 |
-| Content + social + GBP | to be set — the tier that must carry the margin |
 
 Two sites plus ads for both = £290, which lands inside Growth's £120–£350
 without any special pleading. The band was chosen well.
@@ -160,10 +181,7 @@ saving explicitly against list.
 3. **Minimum term?** The field standard is 12–24 months. He wants retention
    through being worth staying with, which argues for no lock-in — but that is
    a real revenue risk to take deliberately rather than by default.
-4. **What does Content + social + GBP cost per month?** The one component with
-   no price yet, and the one the Growth tier depends on. Agencies charge
-   £800–£3,000 for social alone; the agents in this repo do the work, so the
-   floor is whatever makes the tier worth selling rather than whatever it costs.
+*(Content + social + GBP was the fourth of these. Answered: £65.)*
 
 ## Sources
 
