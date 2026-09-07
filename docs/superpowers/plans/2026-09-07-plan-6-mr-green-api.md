@@ -42,7 +42,7 @@ he still says Jarvis in conversation.
 | 1 | **The key and the door** — `api_tokens`, auth, rate limit, `GET /api/v1/brief` | **done, 7 Sep** |
 | 2 | The rest of the reads — clients, leads, approvals, incidents, invoices | **done, 7 Sep** |
 | 3 | Capability catalogue — `GET /api/v1/capabilities`, generated from the registry | **done, 7 Sep** |
-| 4 | Acting through the OS — `POST /api/v1/actions/{key}`, policy gate, hard floor server-side | not started |
+| 4 | Acting through the OS — `POST /api/v1/actions/{key}`, policy gate, hard floor server-side | **done, 7 Sep** |
 | 5 | Awareness by push — durable outbox, ack cursor, notify-by-exception | not started |
 | 6 | The autonomy dial — time-boxed, catalogue-selected, auto-expiry | not started |
 
@@ -202,6 +202,49 @@ So when autonomy is built, the floor is enforced by screening the *content* at
 send time, and `delegabilityOf` moves into `packages/agents` so the worker
 enforces the same rule the catalogue advertises. Written down because it is the
 one place this design could quietly go wrong.
+
+---
+
+## Phase 4 — what it contains
+
+`POST /api/v1/actions/{key}`, gated on `settings`. It puts a job on the same
+`agent.run` queue the cron dispatchers use, and stops. The worker re-checks
+enablement, `resolvePolicy` takes the stricter of environment and organisation,
+and `runAgent` parks every approval-gated tool — none of which this route can
+influence, because it is not on that path. That is spec point 5 made real:
+nothing new had to be trusted.
+
+Answers **202**, not 200. The run is accepted, not performed.
+
+### Only two agents, and why
+
+An agent's payload is not free-form: Support Triage wants a ticket, Content
+Writer a client and a period. Accepting those ids from outside means proving
+each belongs to the caller's organisation, and the functions that prove it
+(`ticketPayload`, `incidentPayload`) live in `apps/worker`, which `apps/web`
+must not import from. Guessing a payload shape would be a tenancy hole dressed
+as a convenience.
+
+So the API starts the two agents whose subject is the whole organisation —
+**Ops Brief** and **Ad Performance Sentinel** — which are also the two Shoji
+would ask for out loud. The rest stay event-driven and say so when asked, in
+words that distinguish "no such agent" from "that one runs on its own".
+
+### The bug live testing found
+
+`hasAgentRunInFlight` reads `agent_runs`, so it only sees a run the worker has
+already **started**. Between queueing and pick-up there is a window — a second
+normally, longer if the worker is busy or down — where a retry passed every
+check and queued a **second billed Claude call**. Unit tests could not see it;
+two POSTs a second apart did.
+
+Closed by bucketing the pg-boss singleton key to 60 seconds, which is the one
+place that can refuse a duplicate without racing. When pg-boss does refuse one,
+the caller is told **409**, not "accepted" — being told a second run is coming
+when it never will is exactly the failure this route is shaped to avoid.
+
+`conflict` (409) was added to the error codes at the same time: "already
+running" is a state conflict, not a malformed request.
 
 ---
 

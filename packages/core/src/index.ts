@@ -721,3 +721,4 @@ export type { IncidentListRow } from "./incidents/list-incidents.js";
 export { listInvoices, ListInvoicesInput } from "./billing/list-invoices.js";
 export type { InvoiceListRow, ListInvoicesResult } from "./billing/list-invoices.js";
 export { listAgentEnablement } from "./agents/list-agent-enablement.js";
+export { hasAgentRunInFlight } from "./agents/agent-run-in-flight.js";
