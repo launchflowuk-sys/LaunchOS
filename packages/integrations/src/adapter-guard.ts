@@ -28,6 +28,7 @@ import { ADS_ENV_KEYS } from "./ads/index.js";
 import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
 import { ZOOM_ENV_KEYS } from "./meetings/index.js";
 import { IMAGEGEN_ADAPTER_NAMES, IMAGEGEN_ADAPTER_VARIABLE, IMAGEGEN_ENV_KEYS } from "./imagegen/index.js";
+import { SEARCH_CONSOLE_ENV_KEYS } from "./search-console/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -67,6 +68,7 @@ export interface AdapterEnv {
   readonly GBP_CLIENT_ID?: string | undefined;
   readonly GBP_CLIENT_SECRET?: string | undefined;
   readonly GBP_REFRESH_TOKEN?: string | undefined;
+  readonly GSC_SERVICE_ACCOUNT_JSON?: string | undefined;
   readonly COOLIFY_API_URL?: string | undefined;
   readonly COOLIFY_API_TOKEN?: string | undefined;
   readonly HOSTINGER_API_TOKEN?: string | undefined;
@@ -263,6 +265,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "AI post images are a flat blue placeholder; branded template graphics, which is what most posts use, are unaffected",
+    },
+    {
+      name: "search-console",
+      variable: SEARCH_CONSOLE_ENV_KEYS.join(","),
+      ...resolveSearchConsole(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "search traffic on a client's portal is invented — plausible clicks, impressions and positions for a property nobody read; the adapter reports live=false so a screen can label it, but nothing forces it to",
     },
   ];
 }
@@ -551,6 +561,25 @@ function resolveMeetings(env: AdapterEnv): SelectionOutcome {
     return { requested: "zoom", ...builds("mock", `Missing: ${missing.join(", ")}.`) };
   }
   return { requested: "zoom", ...builds("zoom") };
+}
+
+/**
+ * `search-console/index.ts` `createSearchConsoleFromEnv`: real when the one key
+ * is non-blank after trimming, the mock otherwise. One key, so there is no
+ * half-set downgrade to name — the case `resolveMeetings` and `resolveSocial`
+ * exist to catch cannot arise here.
+ *
+ * A key that is present but malformed throws out of `parseServiceAccountKey`
+ * at construction rather than degrading to the mock, which is loud and names
+ * the problem, so there is no `UNBUILDABLE` branch to mirror — the same
+ * reasoning written out for `resolveCms`.
+ *
+ * Which property to read is not here and must not be: every client has their
+ * own, so it lives on their row, not in the environment.
+ */
+function resolveSearchConsole(env: AdapterEnv): SelectionOutcome {
+  const resolved = trimmedOrUnset(env.GSC_SERVICE_ACCOUNT_JSON) !== undefined ? "google" : "mock";
+  return { requested: resolved, ...builds(resolved) };
 }
 
 /**

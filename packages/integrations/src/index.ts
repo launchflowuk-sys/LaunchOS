@@ -8,6 +8,7 @@ import { createCmsProviderFromEnv, type CmsProvider, type CmsProviderDeps } from
 import { createSocialPublisherFromEnv, type SocialPublisher } from "./social/index.js";
 import { createMeetingsAdapterFromEnv, type MeetingsAdapter } from "./meetings/index.js";
 import { createImageGenAdapterFromEnv, type ImageGenAdapter } from "./imagegen/index.js";
+import { createSearchConsoleFromEnv, type SearchConsoleAdapter } from "./search-console/index.js";
 
 export * from "./uptime/index.js";
 export * from "./coolify/index.js";
@@ -19,6 +20,7 @@ export * from "./cms/index.js";
 export * from "./social/index.js";
 export * from "./meetings/index.js";
 export * from "./imagegen/index.js";
+export * from "./search-console/index.js";
 export * from "./adapter-guard.js";
 
 export interface Integrations {
@@ -35,6 +37,8 @@ export interface Integrations {
   meetings: MeetingsAdapter;
   /** AI post images, when a client's brief asks for photography. Branded templates need nothing from here. */
   imagegen: ImageGenAdapter;
+  /** Google Search Console, read-only. Which property belongs to whom is a database question, not this one. */
+  searchConsole: SearchConsoleAdapter;
 }
 
 /**
@@ -81,5 +85,6 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     social: createSocialPublisherFromEnv(env),
     meetings: createMeetingsAdapterFromEnv(env),
     imagegen: createImageGenAdapterFromEnv(env),
+    searchConsole: createSearchConsoleFromEnv(env),
   };
 }

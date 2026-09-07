@@ -13,6 +13,7 @@ import { createHostingProviderFromEnv } from "./coolify/index.js";
 import { createDnsProvidersFromEnv } from "./dns/index.js";
 import { createCmsProviderFromEnv } from "./cms/index.js";
 import { createSocialPublisherFromEnv } from "./social/index.js";
+import { createSearchConsoleFromEnv } from "./search-console/index.js";
 import { createIntegrations } from "./index.js";
 import { HttpUptimeProbe } from "./uptime/index.js";
 
@@ -75,23 +76,33 @@ const PUSH_VARIABLE = "VAPID_PUBLIC_KEY,VAPID_PRIVATE_KEY";
 const MEETINGS_VARIABLE = "ZOOM_ACCOUNT_ID,ZOOM_CLIENT_ID,ZOOM_CLIENT_SECRET";
 const ZOOM = { ZOOM_ACCOUNT_ID: "acc", ZOOM_CLIENT_ID: "cid", ZOOM_CLIENT_SECRET: "sec" };
 const IMAGEGEN = { IMAGEGEN_ADAPTER: "openai", OPENAI_API_KEY: "sk-img" };
+/** A key file of the right shape. `parseServiceAccountKey` checks the two fields, not the maths — signing fails later, on use. */
+const GSC = {
+  GSC_SERVICE_ACCOUNT_JSON: Buffer.from(
+    JSON.stringify({
+      client_email: "gsc@p.iam.gserviceaccount.com",
+      private_key: ["-----BEGIN PRIVATE KEY-----", "k", "-----END PRIVATE KEY-----", ""].join("\n"),
+    }),
+    "utf8",
+  ).toString("base64"),
+};
 
 /** Every adapter real. */
-const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH, ...ZOOM, ...IMAGEGEN };
+const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH, ...ZOOM, ...IMAGEGEN, ...GSC };
 
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
     expect(describeAdapters(live)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
-      imagegen: "mock",
+      imagegen: "mock", "search-console": "mock",
     });
     expect(describeAdapters(fullyLive)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
-      cms: "wordpress", social: "meta+gbp", push: "web-push", meetings: "zoom", imagegen: "openai",
+      cms: "wordpress", social: "meta+gbp", push: "web-push", meetings: "zoom", imagegen: "openai", "search-console": "google",
     });
     expect(describeAdapters({})).toEqual({
       email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
-      imagegen: "mock",
+      imagegen: "mock", "search-console": "mock",
     });
   });
 
@@ -140,7 +151,7 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
-      SOCIAL_VARIABLE, PUSH_VARIABLE, MEETINGS_VARIABLE, "IMAGEGEN_ADAPTER",
+      SOCIAL_VARIABLE, PUSH_VARIABLE, MEETINGS_VARIABLE, "IMAGEGEN_ADAPTER", "GSC_SERVICE_ACCOUNT_JSON",
     ]);
     expect(warnings[5]!.message).toMatch(/push adapter is the MOCK/);
     expect(warnings[5]!.message).toMatch(/never reach a phone/);
@@ -258,6 +269,30 @@ describe("social (Meta Pages + Instagram, Google Business Profile, by credential
   it("reads a blank key as unset, exactly as the factory does", () => {
     expect(describeAdapters({ ...live, ...META, META_ADS_APP_SECRET: "  " }).social).toBe("mock");
     expect(describeAdapters({ ...live, ...GBP, GBP_REFRESH_TOKEN: "" }).social).toBe("mock");
+  });
+});
+
+describe("search console (Google, by service account key)", () => {
+  it("is real whenever the key is set, and tolerated unset with a warning", () => {
+    expect(describeAdapters({ ...live, ...GSC })["search-console"]).toBe("google");
+    expect(productionAdapterIssues({ ...live, ...GSC })).toEqual([]);
+    expect(productionMockWarnings({ ...live, ...GSC }).map((w) => w.variable)).not.toContain("GSC_SERVICE_ACCOUNT_JSON");
+    // Unset is a sound deployment: nothing outward depends on it, and the
+    // adapter reports live=false so a screen can say the numbers are not real.
+    expect(productionAdapterIssues(live)).toEqual([]);
+    expect(productionMockWarnings(live).map((w) => w.variable)).toContain("GSC_SERVICE_ACCOUNT_JSON");
+  });
+
+  it("reads a blank key as unset, exactly as the factory does", () => {
+    expect(describeAdapters({ ...live, GSC_SERVICE_ACCOUNT_JSON: "  " })["search-console"]).toBe("mock");
+  });
+
+  it("treats a key that is set but not a key file as UNBUILDABLE — the factory throws rather than downgrading", () => {
+    // The failure this prevents: a mangled paste in Coolify quietly turning
+    // every client's search panel into invented numbers under a real name.
+    const bad = { ...live, GSC_SERVICE_ACCOUNT_JSON: "not-a-key-file" };
+    expect(describeAdapters(bad)["search-console"]).toBe("google");
+    expect(built(createSearchConsoleFromEnv, bad)).toBe(UNBUILDABLE);
   });
 });
 
@@ -396,6 +431,7 @@ const GUARD_NAME: Record<string, string> = {
   "mock-cms": "mock",
   "mock-social": "mock",
   "multi": "google+meta",
+  "google-search-console": "google",
 };
 const named = (name: string): string => GUARD_NAME[name] ?? name;
 
@@ -578,6 +614,8 @@ describe("every guard rule against the factory it mirrors", () => {
     expect(real.cms.name).toBe("wordpress");
     expect(real.ads.name).toBe("multi");
     expect(real.social.name).toBe("meta+gbp");
+    expect(real.searchConsole.name).toBe("google-search-console");
+    expect(mocks.searchConsole.live).toBe(false);
   });
 
   it("a real CMS provider built without a credential resolver refuses rather than pretending", async () => {
