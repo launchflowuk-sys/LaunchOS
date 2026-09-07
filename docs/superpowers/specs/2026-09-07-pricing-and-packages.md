@@ -174,6 +174,21 @@ if Shoji is ill or on a job.
 "Same day" needs defining as *same working day, weekdays, within stated hours*,
 or it quietly means Sunday.
 
+**Shoji's WhatsApp is a WhatsApp Business account** *(7 Sep 2026)*, which is the
+app, not the platform — and the two are different products that cannot share a
+number. The channel adapter here would need the **Cloud API**, and migrating his
+existing number onto it would deregister it from the Business app, costing him
+labels, quick replies, the catalogue and the phone experience he already works
+in. **Do not migrate that number.** When the volume justifies integration, put
+the Cloud API on a *second* number and leave the business number alone. The Meta
+groundwork exists already — `META_ADS_ACCESS_TOKEN` and `META_ADS_APP_SECRET`
+are set on both resources — so this is a later job, not a blocked one.
+
+Until then the Business app covers most of the promise for nothing: an **away
+message carrying the hours**, which sets the same-day boundary automatically
+rather than leaving him to enforce it; **labels** per client so a thread is
+findable; **quick replies** for the questions asked twenty times a month.
+
 **The capacity ceiling this creates, which shapes the whole business.** A
 monthly call plus an hour of messages is roughly 1.5 hours per Growth client per
 month: 30 clients is 45 hours, 50 clients is 75. Presence and Standard scale
