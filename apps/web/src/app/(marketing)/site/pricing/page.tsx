@@ -76,7 +76,7 @@ export default async function PricingPage() {
                     </span>
                     <span className="text-[var(--mute)]">a month</span>
                   </p>
-                  <p className="mt-2 text-sm text-[var(--mute)]">{pkg.setupPrice ? `${pkg.setupPrice} set-up, once.` : "No set-up fee."} Prices exclude VAT.</p>
+                  <p className="mt-2 text-sm text-[var(--mute)]">{pkg.setupPrice ? `${pkg.setupPrice} set-up, once.` : "No set-up fee."} No VAT is charged.</p>
                   <ul className="mt-8 flex-1 space-y-3 border-t border-[var(--line)] pt-8">
                     {pkg.includes.map((line) => (
                       <li key={line} className="flex items-start gap-3 text-[0.9375rem]">

@@ -253,6 +253,13 @@
       "when": 1788761680819,
       "tag": "0035_content_source_item",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1788761880819,
+      "tag": "0036_public_packages",
+      "breakpoints": true
     }
   ]
 }
