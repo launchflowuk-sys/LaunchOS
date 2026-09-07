@@ -85,7 +85,7 @@ export function ChannelsForm({
             {channel === "blog" ? (
               <div className="min-w-0 space-y-1.5">
                 <Label htmlFor={fieldId}>WordPress site</Label>
-                <NativeSelect id={fieldId} name="externalId" defaultValue={row?.externalId ?? ""} required>
+                <NativeSelect key={row?.externalId ?? ""} id={fieldId} name="externalId" defaultValue={row?.externalId ?? ""} required>
                   <option value="" disabled>
                     {wordpressSites.length === 0 ? "No WordPress site on this client" : "Choose a site"}
                   </option>
@@ -127,7 +127,7 @@ export function ChannelsForm({
             </div>
             <div className="min-w-0 space-y-1.5 sm:w-32">
               <Label htmlFor={`channel-${channel}-enabled`}>Publishing</Label>
-              <NativeSelect id={`channel-${channel}-enabled`} name="enabled" defaultValue={row && !row.enabled ? "false" : "true"}>
+              <NativeSelect key={row && !row.enabled ? "false" : "true"} id={`channel-${channel}-enabled`} name="enabled" defaultValue={row && !row.enabled ? "false" : "true"}>
                 <option value="true">On</option>
                 <option value="false">Off</option>
               </NativeSelect>

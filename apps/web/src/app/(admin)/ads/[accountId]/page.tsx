@@ -178,7 +178,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ad-account-status">Status</Label>
-              <NativeSelect id="ad-account-status" name="status" defaultValue={account.status}>
+              <NativeSelect key={account.status} id="ad-account-status" name="status" defaultValue={account.status}>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>
                 <option value="disconnected">Disconnected</option>

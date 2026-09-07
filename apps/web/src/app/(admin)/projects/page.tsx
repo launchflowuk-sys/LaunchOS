@@ -163,7 +163,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
       <form action="/projects">
         <FilterBar>
           <ToolbarField label="Status" htmlFor="status" className="sm:w-52">
-            <NativeSelect id="status" name="status" defaultValue={filter}>
+            <NativeSelect key={filter} id="status" name="status" defaultValue={filter}>
               {FILTERS.map((option) => (
                 <option key={option} value={option}>
                   {option === "all" ? "All" : PROJECT_STATUS_LABEL[option]}

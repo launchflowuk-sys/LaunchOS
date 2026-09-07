@@ -33,7 +33,7 @@ export function ProjectDetailsForm({
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="project-status">Status</Label>
-          <NativeSelect id="project-status" name="status" defaultValue={defaults.status}>
+          <NativeSelect key={defaults.status} id="project-status" name="status" defaultValue={defaults.status}>
             {PROJECT_STATUSES.map((status) => (
               <option key={status} value={status}>
                 {PROJECT_STATUS_LABEL[status]}

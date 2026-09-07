@@ -90,7 +90,7 @@ export function PhaseSpine({
                 <label htmlFor={`phase-${phase.id}`} className="sr-only">
                   {phase.name} status
                 </label>
-                <NativeSelect id={`phase-${phase.id}`} name="status" defaultValue={phase.status} className="w-full sm:w-48">
+                <NativeSelect key={phase.status} id={`phase-${phase.id}`} name="status" defaultValue={phase.status} className="w-full sm:w-48">
                   {PHASE_STATUSES.map((status) => (
                     <option key={status} value={status}>
                       {PHASE_STATUS_LABEL[status]}

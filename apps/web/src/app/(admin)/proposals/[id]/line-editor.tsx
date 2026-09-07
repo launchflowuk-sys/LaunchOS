@@ -109,7 +109,7 @@ export function LineEditor({
                     <Label htmlFor={`k-${line.id}`} className="label-caps text-muted-foreground">
                       Charged
                     </Label>
-                    <NativeSelect id={`k-${line.id}`} name="kind" defaultValue={line.kind} disabled={!editable} className="h-9">
+                    <NativeSelect key={line.kind} id={`k-${line.id}`} name="kind" defaultValue={line.kind} disabled={!editable} className="h-9">
                       {allowedKinds.map((kind) => (
                         <option key={kind} value={kind}>
                           {LINE_KIND_LABEL[kind]}
@@ -186,7 +186,7 @@ export function LineEditor({
                 <Label htmlFor="new-kind" className="label-caps text-muted-foreground">
                   Charged
                 </Label>
-                <NativeSelect id="new-kind" name="kind" defaultValue={allowedKinds[0]} className="h-9">
+                <NativeSelect key={allowedKinds[0]} id="new-kind" name="kind" defaultValue={allowedKinds[0]} className="h-9">
                   {allowedKinds.map((kind) => (
                     <option key={kind} value={kind}>
                       {LINE_KIND_LABEL[kind]}

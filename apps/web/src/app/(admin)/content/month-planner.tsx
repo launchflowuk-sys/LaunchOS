@@ -60,7 +60,7 @@ export function MonthPlanner({
     >
       <div className="min-w-0 space-y-1.5 sm:w-64">
         <Label htmlFor="planner-client">Client</Label>
-        <NativeSelect id="planner-client" name="clientId" defaultValue={clientId ?? ""} required>
+        <NativeSelect key={clientId ?? ""} id="planner-client" name="clientId" defaultValue={clientId ?? ""} required>
           <option value="" disabled>
             Choose a client
           </option>

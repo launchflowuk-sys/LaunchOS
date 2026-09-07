@@ -123,7 +123,7 @@ export default async function CaseStudiesPage({ searchParams }: PageProps<"/case
       <form action="/case-studies">
         <FilterBar>
           <ToolbarField label="Kind" htmlFor="kind" className="sm:w-48">
-            <NativeSelect id="kind" name="kind" defaultValue={kind}>
+            <NativeSelect key={kind} id="kind" name="kind" defaultValue={kind}>
               {KIND_FILTERS.map((option) => (
                 <option key={option} value={option}>
                   {option === "all" ? "All" : KIND_LABEL[option as CaseStudyKind]}
@@ -132,7 +132,7 @@ export default async function CaseStudiesPage({ searchParams }: PageProps<"/case
             </NativeSelect>
           </ToolbarField>
           <ToolbarField label="Status" htmlFor="status" className="sm:w-48">
-            <NativeSelect id="status" name="status" defaultValue={status}>
+            <NativeSelect key={status} id="status" name="status" defaultValue={status}>
               {STATUS_FILTERS.map((option) => (
                 <option key={option} value={option}>
                   {option === "all" ? "All" : CASE_STUDY_STATUS_LABEL[option]}

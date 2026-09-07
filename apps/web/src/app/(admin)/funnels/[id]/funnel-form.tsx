@@ -34,7 +34,7 @@ export function FunnelForm({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="clientId">Client</Label>
-          <NativeSelect id="clientId" name="clientId" defaultValue={funnel.clientId ?? ""}>
+          <NativeSelect key={funnel.clientId ?? ""} id="clientId" name="clientId" defaultValue={funnel.clientId ?? ""}>
             <option value="">Ours (no client)</option>
             {clients.map((client) => (
               <option key={client.id} value={client.id}>

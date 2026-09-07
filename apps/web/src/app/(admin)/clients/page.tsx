@@ -86,7 +86,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
             <Input id="q" name="q" defaultValue={query ?? ""} placeholder="Name, slug or email" />
           </ToolbarField>
           <ToolbarField label="Status" htmlFor="status" className="sm:w-40">
-            <NativeSelect id="status" name="status" defaultValue={status}>
+            <NativeSelect key={status} id="status" name="status" defaultValue={status}>
               {STATUSES.map((value) => (
                 <option key={value} value={value}>
                   {value === "all" ? "All" : value}

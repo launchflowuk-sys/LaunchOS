@@ -39,7 +39,7 @@ export function TaskStatusForm({
       className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2"
     >
       <input type="hidden" name="taskId" value={taskId} />
-      <NativeSelect name="status" defaultValue={status} aria-label="Status" className="sm:w-36">
+      <NativeSelect key={status} name="status" defaultValue={status} aria-label="Status" className="sm:w-36">
         {statuses.map((v) => (
           <option key={v} value={v}>
             {v.replaceAll("_", " ")}

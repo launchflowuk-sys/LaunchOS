@@ -48,7 +48,7 @@ export function BookingSection({ settings, hosts, canEdit }: { settings: Booking
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <Label htmlFor="booking-timezone">Time zone</Label>
-              <NativeSelect id="booking-timezone" name="timezone" defaultValue={settings.timezone} className="mt-1.5">
+              <NativeSelect key={settings.timezone} id="booking-timezone" name="timezone" defaultValue={settings.timezone} className="mt-1.5">
                 {zones.map((zone) => (
                   <option key={zone} value={zone}>
                     {zone.replaceAll("_", " ")}
@@ -59,7 +59,7 @@ export function BookingSection({ settings, hosts, canEdit }: { settings: Booking
             </div>
             <div>
               <Label htmlFor="booking-hostUserId">Host</Label>
-              <NativeSelect id="booking-hostUserId" name="hostUserId" defaultValue={settings.hostUserId ?? ""} className="mt-1.5">
+              <NativeSelect key={settings.hostUserId ?? ""} id="booking-hostUserId" name="hostUserId" defaultValue={settings.hostUserId ?? ""} className="mt-1.5">
                 <option value="">The owner</option>
                 {hosts.map((host) => (
                   <option key={host.userId} value={host.userId}>

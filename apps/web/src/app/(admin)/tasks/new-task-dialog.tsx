@@ -71,7 +71,7 @@ export function NewTaskDialog({
         >
           <div className="space-y-1.5">
             <Label htmlFor={ids.client}>Client</Label>
-            <NativeSelect id={ids.client} name="clientId" required defaultValue={defaultClientId ?? ""}>
+            <NativeSelect key={defaultClientId ?? ""} id={ids.client} name="clientId" required defaultValue={defaultClientId ?? ""}>
               <option value="" disabled>
                 Choose a client
               </option>

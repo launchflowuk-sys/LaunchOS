@@ -34,7 +34,7 @@ export function RunFilterBar({ agents, current }: { agents: readonly string[]; c
       <FilterBar>
         {selects.map((select) => (
           <ToolbarField key={select.name} label={select.label} htmlFor={`filter-${select.name}`} className="sm:w-48">
-            <NativeSelect id={`filter-${select.name}`} name={select.name} defaultValue={current[select.name] ?? ""}>
+            <NativeSelect key={current[select.name] ?? ""} id={`filter-${select.name}`} name={select.name} defaultValue={current[select.name] ?? ""}>
               <option value="">Any</option>
               {select.options.map((option) => (
                 <option key={option.value} value={option.value}>

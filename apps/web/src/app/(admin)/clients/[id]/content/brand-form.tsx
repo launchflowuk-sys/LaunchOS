@@ -130,7 +130,7 @@ export function BrandForm({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="brand-image-mode">Post images</Label>
-          <NativeSelect id="brand-image-mode" name="imageMode" defaultValue={imageMode}>
+          <NativeSelect key={imageMode} id="brand-image-mode" name="imageMode" defaultValue={imageMode}>
             <option value="template">Branded graphics</option>
             <option value="ai">AI photography</option>
           </NativeSelect>

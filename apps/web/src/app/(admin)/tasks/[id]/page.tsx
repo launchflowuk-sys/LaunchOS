@@ -185,7 +185,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
               className="flex items-end gap-2"
             >
               <input type="hidden" name="taskId" value={task.id} />
-              <NativeSelect
+              <NativeSelect key={task.assigneeUserId ?? ""}
                 name="assigneeUserId"
                 defaultValue={task.assigneeUserId ?? ""}
                 aria-label="Assignee"

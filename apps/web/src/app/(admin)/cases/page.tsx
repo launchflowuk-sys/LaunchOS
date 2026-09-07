@@ -36,7 +36,7 @@ function FilterSelect({
   children: ReactNode;
 }) {
   return (
-    <NativeSelect id={id} name={name} defaultValue={defaultValue} className="sm:w-44">
+    <NativeSelect key={defaultValue} id={id} name={name} defaultValue={defaultValue} className="sm:w-44">
       {children}
     </NativeSelect>
   );

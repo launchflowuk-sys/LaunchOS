@@ -103,7 +103,7 @@ export function CaseStudyForm({ study }: { study: CaseStudyRow }) {
       <Group title="Where it stands" description="Publication and delivery are two different facts, so they are two different fields.">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field id="cs-status" label="Publication">
-            <NativeSelect id="cs-status" name="status" defaultValue={study.status}>
+            <NativeSelect key={study.status} id="cs-status" name="status" defaultValue={study.status}>
               {CASE_STUDY_STATUSES.map((option) => (
                 <option key={option} value={option}>
                   {CASE_STUDY_STATUS_LABEL[option]}
@@ -112,7 +112,7 @@ export function CaseStudyForm({ study }: { study: CaseStudyRow }) {
             </NativeSelect>
           </Field>
           <Field id="cs-delivery" label="The build">
-            <NativeSelect id="cs-delivery" name="deliveryStatus" defaultValue={study.deliveryStatus}>
+            <NativeSelect key={study.deliveryStatus} id="cs-delivery" name="deliveryStatus" defaultValue={study.deliveryStatus}>
               {CASE_STUDY_DELIVERY_STATUSES.map((option) => (
                 <option key={option} value={option}>
                   {DELIVERY_STATUS_LABEL[option]}
@@ -121,7 +121,7 @@ export function CaseStudyForm({ study }: { study: CaseStudyRow }) {
             </NativeSelect>
           </Field>
           <Field id="cs-kind" label="Kind">
-            <NativeSelect id="cs-kind" name="kind" defaultValue={study.kind}>
+            <NativeSelect key={study.kind} id="cs-kind" name="kind" defaultValue={study.kind}>
               {CASE_STUDY_KINDS.map((option) => (
                 <option key={option} value={option}>
                   {KIND_LABEL[option]}

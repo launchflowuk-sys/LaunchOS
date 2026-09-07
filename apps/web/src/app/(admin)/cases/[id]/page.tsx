@@ -321,7 +321,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
               <input type="hidden" name="ticketId" value={ticket.id} />
               {/* A native select: the option list is server data and the form
                   posts without any client JavaScript of its own. */}
-              <NativeSelect
+              <NativeSelect key={ticket.assignedUserId ?? ""}
                 name="assignedUserId"
                 aria-label="Assign to"
                 defaultValue={ticket.assignedUserId ?? ""}

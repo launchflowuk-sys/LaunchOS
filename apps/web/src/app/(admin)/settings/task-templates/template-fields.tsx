@@ -37,7 +37,7 @@ function EnumSelect({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <NativeSelect id={id} name={name} defaultValue={value}>
+      <NativeSelect key={value} id={id} name={name} defaultValue={value}>
         {options.map((option) => (
           <option key={option} value={option}>
             {option.replaceAll("_", " ")}
@@ -83,7 +83,7 @@ export function TemplateFields({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={id("packageId")}>Package</Label>
-          <NativeSelect id={id("packageId")} name="packageId" defaultValue={defaults.packageId}>
+          <NativeSelect key={defaults.packageId} id={id("packageId")} name="packageId" defaultValue={defaults.packageId}>
             <option value="">Every package</option>
             {packages.map((pkg) => (
               <option key={pkg.value} value={pkg.value}>

@@ -173,7 +173,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         {campaign ? <input type="hidden" name="campaign" value={campaign} /> : null}
         <FilterBar>
           <ToolbarField label="Status" htmlFor="status" className="sm:w-44">
-            <NativeSelect id="status" name="status" defaultValue={filter}>
+            <NativeSelect key={filter} id="status" name="status" defaultValue={filter}>
               {FILTERS.map((value) => (
                 <option key={value} value={value}>
                   {value === "all" ? "All" : LEAD_STATUS_LABEL[value]}

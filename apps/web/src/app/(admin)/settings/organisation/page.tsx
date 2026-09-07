@@ -187,7 +187,7 @@ export default async function OrganisationSettingsPage() {
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <Label htmlFor="assignment-support">Support cases</Label>
-                <NativeSelect id="assignment-support" name="support" defaultValue={assignment.support} className="mt-1.5">
+                <NativeSelect key={assignment.support} id="assignment-support" name="support" defaultValue={assignment.support} className="mt-1.5">
                   {SUPPORT_ASSIGNMENT_RULES.map((rule) => (
                     <option key={rule} value={rule}>
                       {SUPPORT_ASSIGNMENT_LABELS[rule]}
@@ -200,7 +200,7 @@ export default async function OrganisationSettingsPage() {
               </div>
               <div>
                 <Label htmlFor="assignment-tasks">Generated tasks</Label>
-                <NativeSelect id="assignment-tasks" name="tasks" defaultValue={assignment.tasks} className="mt-1.5">
+                <NativeSelect key={assignment.tasks} id="assignment-tasks" name="tasks" defaultValue={assignment.tasks} className="mt-1.5">
                   {TASK_ASSIGNMENT_RULES.map((rule) => (
                     <option key={rule} value={rule}>
                       {TASK_ASSIGNMENT_LABELS[rule]}

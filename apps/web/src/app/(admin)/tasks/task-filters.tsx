@@ -49,7 +49,7 @@ export function TaskFilterBar({
         <input type="hidden" name="view" value={current.view ?? "list"} />
         {selects.map((s) => (
           <ToolbarField key={s.name} label={s.label} htmlFor={`filter-${s.name}`} className="sm:w-40">
-            <NativeSelect id={`filter-${s.name}`} name={s.name} defaultValue={current[s.name] ?? ""}>
+            <NativeSelect key={current[s.name] ?? ""} id={`filter-${s.name}`} name={s.name} defaultValue={current[s.name] ?? ""}>
               <option value="">Any</option>
               {s.options.map((o) => (
                 <option key={o.value} value={o.value}>

@@ -169,7 +169,15 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
                 <input type="hidden" name="leadId" value={lead.id} />
                 <div className="space-y-1.5">
                   <Label htmlFor="lead-status">Status</Label>
-                  <NativeSelect id="lead-status" name="status" defaultValue={lead.status}>
+                  {/*
+                    Keyed on the saved status so the select is a new element
+                    each time the status really changes. `defaultValue` is only
+                    read when an uncontrolled input mounts, so without this the
+                    box goes on showing the status the page was first opened
+                    with — and the next "Save status", pressed without touching
+                    the dropdown, quietly puts the lead back to it.
+                  */}
+                  <NativeSelect key={lead.status} id="lead-status" name="status" defaultValue={lead.status}>
                     {MANUAL_LEAD_STATUSES.map((status) => (
                       <option key={status} value={status}>
                         {LEAD_STATUS_LABEL[status]}

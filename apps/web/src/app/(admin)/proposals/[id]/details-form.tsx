@@ -59,7 +59,7 @@ export function DetailsForm({ proposal }: { proposal: ProposalRow }) {
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="shape">How it is paid for</Label>
-          <NativeSelect id="shape" name="shape" defaultValue={proposal.pricing.shape} className="h-9">
+          <NativeSelect key={proposal.pricing.shape} id="shape" name="shape" defaultValue={proposal.pricing.shape} className="h-9">
             {SHAPES.map((value) => (
               <option key={value} value={value}>
                 {SHAPE_OPTION_LABEL[value]}
