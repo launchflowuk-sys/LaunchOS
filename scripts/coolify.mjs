@@ -135,6 +135,64 @@ if (cmd === "apps") {
       console.log(`  ${k} = ${JSON.stringify(hide(v))}`);
     }
   }
+} else if (cmd === "snapshot") {
+  // The whole resource config, saved before a risky UI change so it can be
+  // diffed afterwards. Answers "what did that actually alter?" with a file
+  // rather than a memory.
+  const fsMod = await import("node:fs");
+  const app = await findApp(rest[0]);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
+  const out = `.env.coolify-config-${app.name}-${stamp}.json`;
+  fsMod.writeFileSync(out, JSON.stringify(app, null, 2));
+  console.log(`${app.name}: config saved to ${out}`);
+  for (const k of ["source_type", "source_id", "git_repository", "git_branch",
+                   "pre_deployment_command", "fqdn", "ports_exposes", "build_pack",
+                   "dockerfile_location", "docker_compose_location", "base_directory"]) {
+    if (k in app) console.log(`   ${k} = ${JSON.stringify(app[k])}`);
+  }
+} else if (cmd === "backupenv") {
+  // Write a resource's environment to a local, gitignored file before anyone
+  // changes its git source. Values are never printed — only counts and names.
+  const fsMod = await import("node:fs");
+  const app = await findApp(rest[0]);
+  const r = await api(`/applications/${app.uuid}/envs`);
+  if (r.status !== 200) fail(`GET envs -> ${r.status}`);
+  const list = asList(r.body);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "");
+  const out = `.env.coolify-backup-${app.name}-${stamp}`;
+  const NL = String.fromCharCode(10);
+  const body = list
+    .map((e) => `${e.key}=${e.value ?? ""}`)
+    .sort()
+    .join(NL);
+  const header = `# ${app.name} (${app.uuid}) taken ${new Date().toISOString()}`;
+  fsMod.writeFileSync(out, header + NL + body + NL);
+  console.log(`${app.name}: ${list.length} variables saved to ${out}`);
+  console.log(`names only: ${list.map((e) => e.key).sort().join(", ")}`);
+} else if (cmd === "sourcecheck") {
+  // Compare how each application is wired to git. An app created through the
+  // Coolify UI picks a GitHub App *source*; one created straight over the API
+  // can end up naming the type without a real source behind it, and it is the
+  // source that owns the webhook.
+  const r = await api("/applications");
+  for (const a of asList(r.body)) {
+    console.log(`${a.name}`);
+    console.log(`   source_type=${a.source_type}  source_id=${a.source_id}  repo=${a.git_repository}  branch=${a.git_branch}`);
+    const d = await api(`/deployments/applications/${a.uuid}`);
+    const list = asList(d.body);
+    const byHook = list.filter((x) => x.is_webhook).length;
+    console.log(`   deployments=${list.length}  triggered_by_webhook=${byHook}`);
+  }
+} else if (cmd === "selfurl") {
+  // What Coolify believes its own address is. A GitHub App webhook is built
+  // from this, so if it names a host that does not resolve, deliveries fail
+  // silently and pushes never deploy.
+  const app = await findApp(rest[0]);
+  const r = await api(`/deployments/applications/${app.uuid}`);
+  for (const d of asList(r.body).slice(0, 3)) {
+    console.log(`${d.created_at}  webhook=${d.is_webhook} api=${d.is_api}`);
+    console.log(`   deployment_url = ${d.deployment_url}`);
+  }
 } else if (cmd === "instance") {
   const r = await api("/settings");
   console.log(`GET /settings -> ${r.status}`);
@@ -152,6 +210,14 @@ if (cmd === "apps") {
         console.log(`     ${k} = ${JSON.stringify(typeof v === "string" && v.length > 60 ? "<long>" : v)}`);
       }
     }
+  }
+} else if (cmd === "settings") {
+  const app = await findApp(rest[0]);
+  const r = await api(`/applications/${app.uuid}`);
+  const o = r.body?.settings ?? {};
+  console.log(`${app.name}: settings (${r.status})`);
+  for (const [k, v] of Object.entries(o)) {
+    if (/container|name|deploy|label|raw/i.test(k)) console.log(`  ${k} = ${JSON.stringify(v)}`);
   }
 } else if (cmd === "autodeploy") {
   const app = await findApp(rest[0]);
