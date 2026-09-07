@@ -246,6 +246,13 @@
       "when": 1788760143190,
       "tag": "0034_message_channel",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1788761680819,
+      "tag": "0035_content_source_item",
+      "breakpoints": true
     }
   ]
 }

@@ -82,6 +82,15 @@ export const contentItems = pgTable("content_items", {
   imageUrl: text("image_url"),
   imagePrompt: text("image_prompt"),
   linkUrl: text("link_url"),
+  /**
+   * The published item this one was spun out of.
+   *
+   * A blog post fans out to a Facebook post and a GBP update that link
+   * back to it. Knowing which post a share came from is what keeps a
+   * fan-out from happening twice, and what lets the monthly allowance
+   * ignore it — the client paid for the article, not for the sharing.
+   */
+  sourceItemId: uuid("source_item_id"),
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
   publishedAt: timestamp("published_at", { withTimezone: true }),
   externalId: text("external_id"),

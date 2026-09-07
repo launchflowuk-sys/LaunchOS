@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { fanOutPublishedPost, type FanOutResult } from "./fan-out.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { truncate, MAX_ERROR_CHARS } from "../text.js";
 import { ActorKindSchema, CHANNEL_LABEL, ContentRefused, type ContentItemRow } from "./shared.js";
@@ -141,6 +142,32 @@ export async function markContentPublished(db: Db, organisationId: string, input
     });
     return after;
   });
+}
+
+/**
+ * Marks it published, then shares it if it was an article.
+ *
+ * The fan-out is deliberately outside the transaction that records the
+ * publication. The post really is live on the platform by this point — that is
+ * what `markContentPublished` is recording — so a failure to draft its shares
+ * must not roll back the fact of it. The shares are recoverable (the next call
+ * makes them, since fan-out is keyed on the source item) and the publication is
+ * not.
+ */
+export async function markContentPublishedAndShare(
+  db: Db,
+  organisationId: string,
+  input: MarkContentPublishedInput,
+): Promise<{ item: ContentItemRow; fanOut: FanOutResult }> {
+  const item = await markContentPublished(db, organisationId, input);
+  try {
+    return { item, fanOut: await fanOutPublishedPost(db, organisationId, item) };
+  } catch (error) {
+    console.error("[content] published, but its shares could not be drafted", {
+      itemId: item.id, error: error instanceof Error ? error.message : String(error),
+    });
+    return { item, fanOut: { created: [] } };
+  }
 }
 
 /**

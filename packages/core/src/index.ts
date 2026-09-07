@@ -397,6 +397,11 @@ export {
 export type { InboundEnquiryOutcome, EnquiryVerdict } from "./leads/inbound-enquiry.js";
 export { normalisePhone } from "./leads/phone.js";
 export {
+  fanOutPublishedPost, fanOutSchedule, fanOutBody, FAN_OUT_CHANNELS, FAN_OUT_OFFSET_DAYS,
+} from "./content/fan-out.js";
+export type { FanOutResult } from "./content/fan-out.js";
+export { markContentPublishedAndShare } from "./content/publishing.js";
+export {
   addSuppression, removeSuppression, listSuppressions, AddSuppressionInput, SuppressionRefused,
 } from "./leads/suppression.js";
 export type { SuppressionRow } from "./leads/suppression.js";

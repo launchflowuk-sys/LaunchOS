@@ -158,13 +158,26 @@ async function payingClients(db: Db, organisationId: string): Promise<PayingClie
   return [...byClient.values()];
 }
 
-/** Published items this month, keyed `<clientId>:<kind>`. Counted the same way as the snapshot's own content figures: published is published. */
+/**
+ * Published items this month, keyed `<clientId>:<kind>`. Counted the same way
+ * as the snapshot's own content figures: published is published.
+ *
+ * Shares spun out of a blog post are excluded. The allowance pays for someone
+ * to think of a post and write it; posting an article the client has already
+ * paid for is not a second piece of work, and counting it would report a
+ * client as over their limit every month they blogged.
+ */
 async function publishedThisMonth(db: Db, organisationId: string, periodKey: string): Promise<Map<string, number>> {
   const item = schema.contentItems;
   const rows = await db
     .select({ clientId: item.clientId, kind: item.kind, used: sql<number>`count(*)::int` })
     .from(item)
-    .where(and(eq(item.organisationId, organisationId), eq(item.periodKey, periodKey), isNotNull(item.publishedAt)))
+    .where(and(
+      eq(item.organisationId, organisationId),
+      eq(item.periodKey, periodKey),
+      isNotNull(item.publishedAt),
+      isNull(item.sourceItemId),
+    ))
     .groupBy(item.clientId, item.kind);
   return new Map(rows.map((row) => [`${row.clientId}:${row.kind}`, row.used]));
 }
