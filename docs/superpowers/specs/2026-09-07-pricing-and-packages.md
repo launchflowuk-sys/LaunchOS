@@ -100,6 +100,18 @@ account. Build the catalogue in **test mode first** so the whole thing can be
 reviewed before anything touches live. `STRIPE_SECRET_KEY` is already set on
 both Coolify resources, so no new credential is needed.
 
+**No tax.** *(Shoji, 7 Sep 2026.)* Stripe Tax stays off and every new Price is
+created without automatic tax — `tax_behavior: "unspecified"`, no tax code, no
+tax rate attached. The published figure is the figure that is charged: £45 is
+£45. This matches the proposals, which already say "No VAT is charged", and the
+`VAT_RATE` the deployment runs on.
+
+Worth knowing rather than acting on: UK VAT registration becomes compulsory
+above the turnover threshold, and at that point these prices become
+VAT-inclusive or VAT is added — a decision with a real effect on a £45 tier.
+Not a today problem, and not one to pre-empt by switching tax on early; just the
+thing to revisit if the book grows into it.
+
 ## Decided, 7 Sep 2026 — the ladder
 
 Content, social and GBP is **£65/month**. With that, every published price is
