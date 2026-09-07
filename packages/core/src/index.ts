@@ -391,6 +391,11 @@ export {
   LEAD_STATUSES, LEAD_NOTIFICATION_KIND,
 } from "./leads/leads.js";
 export type { LeadRow, LeadCampaignCount } from "./leads/leads.js";
+export {
+  ingestInboundEnquiry, classifyEnquiry, isSuppressed, InboundEnquiryInput,
+} from "./leads/inbound-enquiry.js";
+export type { InboundEnquiryOutcome, EnquiryVerdict } from "./leads/inbound-enquiry.js";
+export { normalisePhone } from "./leads/phone.js";
 
 // ---- Client workflow (X1): lead acknowledgement, attribution, qualifier reply, meetings ----
 export {
