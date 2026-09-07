@@ -1,7 +1,7 @@
 import { createDb } from "@launchos/db";
 import { setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
-import { createEmailAdapter, createPushAdapterFromEnv } from "@launchos/channels";
+import { createEmailAdapter, createPushAdapterFromEnv, smsAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
 import { loadEnv } from "./env.js";
 import { FakeAgentLlmClient } from "./llm/fake.js";
@@ -64,7 +64,9 @@ async function main() {
   });
   const integrations = createIntegrations(process.env);
   const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : AnthropicLlmClient.fromEnv(env);
-  const emailAdapter = createEmailAdapter(process.env);
+  const emailAdapter = createEmailAdapter(process.env);
+  // Mock until the Twilio keys are set, exactly like the mail adapter.
+  const smsAdapter = smsAdapterFromEnv();
   const pushAdapter = createPushAdapterFromEnv(process.env);
   // The Ad Performance Sentinel emails clients a portal link once a human
   // approves the send, so the registry needs the same adapter and base URL the
@@ -112,7 +114,7 @@ async function main() {
     await handleInboundMessage({ db, logger: console }, job!.data);
   });
   await boss.work<OutboundMessageJob>(QUEUE.outboundMessage, async ([job]) => {
-    await handleOutboundMessage({ db, adapter: emailAdapter, logger: console }, job!.data);
+    await handleOutboundMessage({ db, adapter: emailAdapter, sms: smsAdapter, logger: console }, job!.data);
   });
   await boss.work<GenerateOnboardingJob>(QUEUE.tasksGenerateOnboarding, async ([job]) => {
     const result = await handleGenerateOnboarding(db, job!.data);

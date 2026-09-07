@@ -37,7 +37,11 @@ export const LeadReplyPayload = z.object({
   leadId: z.string().uuid(),
   leadName: z.string(),
   leadBusiness: z.string().nullable(),
+  /** Empty when the enquiry arrived on a number rather than an address. */
   leadEmail: z.string(),
+  leadPhone: z.string().nullable().default(null),
+  /** How the reply travels: the way the enquiry arrived. */
+  replyChannel: z.enum(["email", "sms", "whatsapp"]).default("email"),
   leadMessage: z.string().nullable(),
   leadSource: z.string(),
   subject: z.string(),
@@ -72,6 +76,23 @@ export const RequestLeadReplyInput = z.object({
 export type RequestLeadReplyInput = z.input<typeof RequestLeadReplyInput>;
 
 /**
+ * Which way a reply to this lead should travel.
+ *
+ * The source is the record of how they reached us — `sms` and `whatsapp` are
+ * written by `ingestInboundEnquiry` — and answering on the channel somebody
+ * chose is both what they expect and, for a lead that left only a number, the
+ * only thing possible. Anything else is email, which is every lead that came
+ * from a form.
+ */
+export function replyChannelFor(lead: { source: string; email: string | null; phone: string | null }): "email" | "sms" | "whatsapp" {
+  if (lead.source === "whatsapp") return "whatsapp";
+  if (lead.source === "sms") return "sms";
+  // A form lead that somehow arrived without an address but with a number is
+  // still answerable; refusing it would lose real business to a typo.
+  if (!lead.email && lead.phone) return "sms";
+  return "email";
+}
+/**
  * Puts a drafted first reply in front of the owner as a `lead_reply` approval
  * — run-less, decided on /approvals, carried out by `applyLeadReplyDecision`.
  * Nothing is sent here. Refused for a lead with no email, one already
@@ -89,7 +110,16 @@ export async function requestLeadReply(
   const [lead] = await db.select().from(schema.leads)
     .where(and(eq(schema.leads.id, v.leadId), eq(schema.leads.organisationId, organisationId)));
   if (!lead) throw new LeadReplyRefused("not_found", "That lead could not be found.");
-  if (!lead.email) throw new LeadReplyRefused("no_email", "This lead left no email address, so there is nobody to reply to.");
+  // A reply follows the way the enquiry arrived. An emailed enquiry needs an
+  // address; one that came in on a number needs the number. Only a lead with
+  // neither has nobody to answer.
+  const replyChannel = replyChannelFor(lead);
+  if (replyChannel === "email" && !lead.email) {
+    throw new LeadReplyRefused("no_email", "This lead left no email address, so there is nobody to reply to.");
+  }
+  if (replyChannel !== "email" && !lead.phone) {
+    throw new LeadReplyRefused("no_email", "This lead left no number, so there is nobody to reply to.");
+  }
   if (lead.status === "converted") throw new LeadReplyRefused("converted", "This lead is already a client; write to them from their client page.");
 
   const [pkg] = v.suggestedPackageSlug
@@ -103,7 +133,9 @@ export async function requestLeadReply(
     leadId: lead.id,
     leadName: lead.name,
     leadBusiness: lead.business,
-    leadEmail: lead.email,
+    leadEmail: lead.email ?? "",
+    leadPhone: lead.phone,
+    replyChannel,
     leadMessage: lead.message,
     leadSource: lead.source,
     subject: v.subject,
@@ -138,7 +170,7 @@ export async function requestLeadReply(
   await notifyOwner(db, organisationId, {
     kind: "approval.requested",
     title: `Approve: reply to ${lead.business ?? lead.name}`,
-    body: `${v.subject}${pkg ? ` — suggests ${pkg.name}` : ""}. Approve to email ${lead.email}.`,
+    body: `${v.subject}${pkg ? ` — suggests ${pkg.name}` : ""}. Approve to ${replyChannel === "email" ? `email ${lead.email}` : `text ${lead.phone}`}.`,
     link: "/approvals",
   });
   return { approval, payload };
@@ -235,8 +267,11 @@ export async function applyLeadReplyDecision(
       authorKind: "user",
       authorId: v.actorId,
       body: leadReplyBody(v.body ?? payload.body, bookingUrl),
-      fromEmail: brandSupportAddress(env),
-      toEmail: payload.leadEmail,
+      // A text has no from-address and no subject line; an email has both.
+      fromEmail: payload.replyChannel === "email" ? brandSupportAddress(env) : null,
+      toEmail: payload.replyChannel === "email" ? payload.leadEmail : null,
+      channel: payload.replyChannel,
+      toPhone: payload.replyChannel === "email" ? null : payload.leadPhone,
       subject: payload.subject,
       status: "queued",
       metadata: { kind: LEAD_REPLY_KIND, leadId: lead.id, approvalId: v.approvalId, bookingUrl, draftedBy: payload.requestedById, edited: !!v.body },
@@ -252,7 +287,7 @@ export async function applyLeadReplyDecision(
     await recordActivity(tx, organisationId, {
       actorKind: "user", actorId: v.actorId, kind: "lead.replied",
       title: `Replied to ${lead.business ?? lead.name}: ${payload.subject}`,
-      body: `Emailed ${payload.leadEmail}${payload.suggestedPackageName ? `; suggested ${payload.suggestedPackageName}` : ""}.`,
+      body: `${payload.replyChannel === "email" ? `Emailed ${payload.leadEmail}` : `Texted ${payload.leadPhone}`}${payload.suggestedPackageName ? `; suggested ${payload.suggestedPackageName}` : ""}.`,
       link: `/leads/${lead.id}`,
     });
     return { message: message! };

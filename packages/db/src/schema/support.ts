@@ -58,6 +58,15 @@ export const messages = pgTable("messages", {
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
   fromEmail: text("from_email"),
   toEmail: text("to_email"),
+  /**
+   * How this message travels. `email` for everything that predates the
+   * message channels, which is why it defaults rather than being
+   * backfilled; `sms` and `whatsapp` for a reply to somebody who only
+   * ever gave us a number.
+   */
+  channel: text("channel").default("email").notNull(),
+  /** Where it goes when `channel` is not email. E.164, as core normalises it. */
+  toPhone: text("to_phone"),
   subject: text("subject"),
   rawHeaders: jsonb("raw_headers").$type<Record<string, string>>().default({}).notNull(),
   attachments: jsonb("attachments").$type<StoredAttachment[]>().default([]).notNull(),

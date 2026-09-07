@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { paragraphsFromBody, renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
+import { paragraphsFromBody, renderBrandedEmail, type EmailAdapter, type SmsAdapter } from "@launchos/channels";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
@@ -387,6 +387,67 @@ async function announceSendFailure(db: Db, organisationId: string, message: Mess
     .where(and(eq(schema.messages.id, message.id), eq(schema.messages.organisationId, organisationId)));
 }
 
+
+/**
+ * The same job as the email path, over a number.
+ *
+ * Deliberately shares `claim`, `patchMessage` and the attempt ceiling rather
+ * than keeping its own: the hard-won parts of sending are the retry and the
+ * give-up, and a second copy of them would drift. What differs is only the
+ * adapter and that there is no subject and no branded HTML — a text is the
+ * body and nothing else.
+ */
+async function sendQueuedSms(
+  db: Db,
+  organisationId: string,
+  messageId: string,
+  message: typeof schema.messages.$inferSelect,
+  sms: SmsAdapter,
+) {
+  if (!message.toPhone) throw new Error(`message ${messageId} has no number to send to`);
+
+  const claimed = await claim(db, organisationId, messageId);
+  if (!claimed) return message;
+
+  try {
+    const result = await sms.send({ to: claimed.toPhone!, body: claimed.body });
+    const sent = await patchMessage(db, organisationId, messageId, {
+      // A mock reports delivered: false. Saying "sent" then would tell Shoji a
+      // client had been answered when nothing left the building.
+      status: result.delivered ? "sent" : "queued",
+      ...(result.delivered ? { deliveredAt: new Date(), externalId: result.externalId } : {}),
+      metadata: released(claimed.metadata),
+    });
+    await recordAudit(db, organisationId, {
+      actorKind: "system",
+      action: result.delivered ? "message.sent" : "message.send_skipped",
+      targetType: "message", targetId: messageId, before: message, after: sent,
+    });
+    return sent;
+  } catch (err) {
+    const lastError = err instanceof Error ? err.message : String(err);
+    const attempts = attemptsOf(claimed) + 1;
+    const exhausted = attempts >= MAX_SEND_ATTEMPTS;
+    const after = await patchMessage(db, organisationId, messageId, {
+      status: exhausted ? "failed" : "queued",
+      metadata: { ...released(claimed.metadata), attempts, lastError },
+    });
+    await recordAudit(db, organisationId, {
+      actorKind: "system",
+      action: exhausted ? "message.send_failed" : "message.send_retry",
+      targetType: "message", targetId: messageId, before: message, after,
+    });
+    if (exhausted) {
+      if (typeof claimed.metadata[SEND_FAILURE_NOTIFIED] !== "string") {
+        await announceSendFailure(db, organisationId, after, lastError).catch((notifyErr: unknown) => {
+          console.error("[sms] giving up on a message, and the alert about it also failed", notifyErr);
+        });
+      }
+      return after;
+    }
+    throw err;
+  }
+}
 /**
  * Sends one queued message through the adapter. Called by the worker's
  * `outbound.message` job, which is the only thing in LaunchOS that talks to a
@@ -398,6 +459,8 @@ export async function sendQueuedMessage(
   input: SendQueuedMessageInput,
   adapter: EmailAdapter,
   env: NodeJS.ProcessEnv = process.env,
+  /** Needed only for a message whose channel is not email. */
+  sms?: SmsAdapter,
 ) {
   const v = SendQueuedMessageInput.parse(input);
   const [message] = await db
@@ -405,6 +468,14 @@ export async function sendQueuedMessage(
     .from(schema.messages)
     .where(and(eq(schema.messages.id, v.messageId), eq(schema.messages.organisationId, organisationId)));
   if (!message) throw new Error(`message ${v.messageId} not found in organisation`);
+
+  // A message channel reply travels a different road but through the same
+  // claim, the same attempt counting and the same give-up, so the two cannot
+  // drift apart on retries.
+  if (message.channel !== "email") {
+    if (!sms) throw new Error(`message ${v.messageId} is a ${message.channel} reply and no SMS adapter was given`);
+    return sendQueuedSms(db, organisationId, v.messageId, message, sms);
+  }
   if (!message.toEmail || !message.fromEmail) throw new Error(`message ${v.messageId} is not addressable`);
 
   // Already sent, already given up on, or in another worker's hands.
