@@ -701,3 +701,14 @@ export {
   ListAgentRunsInput, AGENT_RUN_STATUSES, AGENT_RUN_TRIGGERS,
 } from "./agent-runs/list-runs.js";
 export type { AgentRunRow, AgentRunSummary, ListAgentRunsResult } from "./agent-runs/list-runs.js";
+
+// --- API tokens: the key Mr. Green and anything else outside this repo holds ---
+export { issueApiToken, IssueApiTokenInput } from "./api-tokens/issue-api-token.js";
+export type { IssuedApiToken } from "./api-tokens/issue-api-token.js";
+export { verifyApiToken } from "./api-tokens/verify-api-token.js";
+export type { VerifiedApiToken } from "./api-tokens/verify-api-token.js";
+export { listApiTokens } from "./api-tokens/list-api-tokens.js";
+export type { ApiTokenRow } from "./api-tokens/list-api-tokens.js";
+export { revokeApiToken } from "./api-tokens/revoke-api-token.js";
+export type { RevokeApiTokenInput } from "./api-tokens/revoke-api-token.js";
+export { bearerFrom, generateApiToken, hashApiToken, looksLikeApiToken } from "./api-tokens/token.js";

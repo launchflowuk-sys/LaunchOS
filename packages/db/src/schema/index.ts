@@ -26,3 +26,4 @@ export * from "./projects.js";
 export * from "./delivery.js";
 export * from "./case-studies.js";
 export * from "./funnels.js";
+export * from "./api.js";

@@ -10,7 +10,7 @@
     "build": "pnpm -r build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
+    "test": "pnpm -r --workspace-concurrency=1 test",
     "db:generate": "pnpm --filter @launchos/db generate",
     "db:migrate": "pnpm --filter @launchos/db migrate",
     "db:seed": "pnpm --filter @launchos/db seed",

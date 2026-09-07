@@ -215,10 +215,12 @@ describe("worker env", () => {
       // each, are the four adapters production tolerates on their mocks — the
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
-      // hosting, dns, cms, ads, social, push, meetings and, since the branded
-      // post images landed, the image generator.
-      expect(warnings).toHaveLength(8);
+      // hosting, dns, cms, ads, social, push, meetings, the image generator
+      // since the branded post images landed, and search console since the
+      // client traffic panels started.
+      expect(warnings).toHaveLength(9);
       expect(warnings.some((w) => w.startsWith("meetings adapter is the MOCK"))).toBe(true);
+      expect(warnings.join(" ")).toMatch(/search-console adapter is the MOCK/);
       expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
       expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
