@@ -267,6 +267,13 @@
       "when": 1788762080819,
       "tag": "0037_retire_legacy_packages",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1788762280819,
+      "tag": "0038_ama_facilities_case_study",
+      "breakpoints": true
     }
   ]
 }
