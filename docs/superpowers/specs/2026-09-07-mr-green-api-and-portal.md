@@ -92,10 +92,47 @@ walks, the token dies from Settings — scoped read-only per token, scoped to on
 organisation, and audited like every other write. It is an hour more work and it
 is the difference between a secret in a file and something a business runs on.
 
+## Decided, 7 Sep 2026 (second pass)
+
+**9. What Mr. Green may do is a catalogue, not a hardcoded list.** Shoji's idea
+and a better one: LaunchOS enumerates everything it can do — every agent, every
+tool, every panel action — and holiday mode is a selection from that list.
+
+A hardcoded list goes stale the moment a capability is added, and goes stale
+silently: the new thing simply never appears, and nobody notices until somebody
+asks why Mr. Green cannot do the obvious. A catalogue means a tool registered
+next year shows up in the picker the day it lands. It is also the only honest
+way to answer "what can it actually do?" — the answer is generated rather than
+remembered.
+
+The tool definitions already carry `risk: "safe" | "requires_approval"`, so the
+catalogue has somewhere to start and the picker has a sane default: safe things
+offered, approval-gated things offered with a warning, and the hard floor
+(price, dates, money, legal) not offered at all.
+
+**10. Told as it happens, and able to be handed on.** Shoji wants to know at the
+time, not in a digest — but he also said he needs to lay that information down
+to employees when he has them running it.
+
+That second half is a requirement, not a nicety, and it changes the shape: the
+brief is not a private feed to one man's assistant, it is a view of the business
+that can be handed to somebody else. So awareness is built as something with an
+audience — assignable, shareable, and scoped by what a team member is allowed to
+see — rather than as a pipe from LaunchOS to Mr. Green. Building it the narrow
+way first and widening it later would mean rewriting it.
+
+**11. A portal request makes a case, and the case raises a task.** Both, and in
+that order. The case is the client's side: a thread, a promised response time,
+replies they can see, so a request never disappears into a black box. The task
+is the work: it lands on the board with everything else and is picked up the
+same way. They are not two records of one thing — a case is a conversation and a
+task is a job, and this is exactly the relationship they already have.
+
 ## Open
 
-1. What Mr. Green may do **inside** holiday mode, positively stated. The floor
-   above says what it may never do; the list of what it may is not written yet.
-2. Whether a holiday-mode action notifies Shoji as it happens or only in a
-   summary at the end.
-3. Whether the request box in the portal creates a task, a case, or both.
+1. Whether a holiday-mode notification interrupts (push to the phone) or
+   accumulates somewhere he chooses to look. "As it happens" settles the timing,
+   not the loudness, and a week away with a phone buzzing every twenty minutes
+   is not a holiday.
+2. What a staff member sees of the brief compared with Shoji — the same view
+   scoped by permission, or a deliberately smaller one.
