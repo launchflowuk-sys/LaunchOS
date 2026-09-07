@@ -1,7 +1,8 @@
 "use server";
 
 import { createPackage, updatePackage } from "@launchos/core";
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
+import { PACKAGES_CACHE_TAG } from "@/lib/marketing/packages";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
 import {
@@ -38,6 +39,11 @@ export async function createPackageAction(formData: FormData): Promise<ActionRes
     });
     revalidatePath("/settings/packages");
     revalidatePath("/clients");
+    // The public pricing page caches this read under the "packages" tag. Without
+    // this line a package can be renamed, repriced or switched off and the page
+    // goes on selling the old one — which is exactly what happened: fourteen
+    // retired plans stayed on the front page while the database had them off.
+    updateTag(PACKAGES_CACHE_TAG);
     return { status: "ok", id: pkg.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };
@@ -74,6 +80,11 @@ export async function updatePackageAction(formData: FormData): Promise<ActionRes
     });
     revalidatePath("/settings/packages");
     revalidatePath("/clients");
+    // The public pricing page caches this read under the "packages" tag. Without
+    // this line a package can be renamed, repriced or switched off and the page
+    // goes on selling the old one — which is exactly what happened: fourteen
+    // retired plans stayed on the front page while the database had them off.
+    updateTag(PACKAGES_CACHE_TAG);
     return { status: "ok", id: pkg.id };
   } catch (error) {
     return { status: "error", message: errorMessage(error) };

@@ -15,6 +15,16 @@ export type PricingPackage = {
   includes: readonly string[];
 };
 
+/**
+ * The tag the admin busts when a package changes.
+ *
+ * Exported so the actions import it rather than retyping the string: they
+ * did not match once already, and a package could be switched off while the
+ * public page went on offering it until the five minutes were up — or, if the
+ * entry was being refreshed on read, indefinitely.
+ */
+export const PACKAGES_CACHE_TAG = "packages";
+
 /** Seconds a pricing read is reused before the database is asked again. */
 export const PRICING_REVALIDATE_SECONDS = 300;
 
@@ -57,5 +67,5 @@ async function readPricingPackages(): Promise<PricingPackage[]> {
  */
 export const pricingPackages = unstable_cache(readPricingPackages, ["marketing-pricing-packages"], {
   revalidate: PRICING_REVALIDATE_SECONDS,
-  tags: ["packages"],
+  tags: [PACKAGES_CACHE_TAG],
 });
