@@ -139,6 +139,48 @@ management alone. Standard is £110 for that *plus* the website. The gap is not
 a discount, it is the agents in this repo doing the work — which is why it can
 be held rather than merely offered.
 
+## What the ladder actually sells — attention, not features
+
+Shoji's correction, 7 Sep 2026, and it is a better story than the feature grid:
+**£45 is the machine looking after you; the tiers above are how much of Shoji
+you get.** Competitors can copy a feature list. They cannot copy him, and they
+cannot afford to include his time at these prices.
+
+**The £45 retention problem, and the answer already built.** Hosting alone gets
+cancelled, because a client who sees nothing happen concludes nothing is
+happening. The work *is* happening — security updates, monitoring, backups, SSL
+— it is simply silent. The monthly account report the worker already generates
+turns it visible: uptime, updates applied, backups verified, changes made, every
+month. Reported work gets renewed; silent work gets cancelled. That report
+belongs in the £45 tier and costs nothing to include.
+
+**Small changes are bounded by time, not by a counter.** "Any change that takes
+under 30 minutes, as often as you need." The client hears *unlimited* and never
+feels rationed; LaunchOS never does a redesign for £45; and there is no argument
+about whether a request counts. A number like "two a month" reads stingy and
+works against the retention the tier exists to buy.
+
+**What Growth's attention means, in promises a client can hold him to**
+*(Shoji, 7 Sep 2026)*: a monthly call, same-day replies, and him on WhatsApp.
+
+All three should be held in the system rather than on a phone, and the pieces
+exist: the Zoom booking flow schedules the call, `core/src/sla` can carry
+same-day as a measured target per package, and `packages/channels` has a
+**whatsapp adapter that is still a stub** — finishing it puts those messages in
+the client's thread. Left on a personal phone the promise is invisible work
+again: nothing logged, no SLA, and nobody able to see what was promised to whom
+if Shoji is ill or on a job.
+
+"Same day" needs defining as *same working day, weekdays, within stated hours*,
+or it quietly means Sunday.
+
+**The capacity ceiling this creates, which shapes the whole business.** A
+monthly call plus an hour of messages is roughly 1.5 hours per Growth client per
+month: 30 clients is 45 hours, 50 clients is 75. Presence and Standard scale
+without limit because the agents do that work. **Growth is capped by one person
+at roughly 40–50 clients** — so it is the tier whose price should rise as it
+fills, because scarcity there is real in a way it never is at £45.
+
 ## What each package contains, as the database needs it
 
 `packages.includes` is not decoration — the recurring-task engine generates a
