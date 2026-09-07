@@ -6,3 +6,7 @@ export * from "./email/factory.js";
 export * from "./email/inbound.js";
 export * from "./storage/attachments.js";
 export * from "./push/index.js";
+export * from "./sms/types.js";
+export * from "./sms/mock.js";
+export * from "./sms/twilio.js";
+export * from "./sms/factory.js";
