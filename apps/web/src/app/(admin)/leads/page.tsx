@@ -73,7 +73,7 @@ async function countsByStatus(organisationId: string): Promise<Record<LeadStatus
     .from(schema.leads)
     .where(and(eq(schema.leads.organisationId, organisationId), isNull(schema.leads.deletedAt)))
     .groupBy(schema.leads.status);
-  const counts: Record<LeadStatus, number> = { new: 0, contacted: 0, converted: 0, lost: 0 };
+  const counts: Record<LeadStatus, number> = { new: 0, contacted: 0, qualified: 0, converted: 0, lost: 0 };
   for (const row of rows) counts[row.status] = row.value;
   return counts;
 }

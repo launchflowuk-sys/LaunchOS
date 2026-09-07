@@ -3,7 +3,7 @@ import { withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { seedOrgWithClient } from "../tasks/test-fixtures.js";
-import { convertLeadToClient, createLead, getLead, listLeads, updateLeadStatus } from "./leads.js";
+import { LEAD_STATUSES, convertLeadToClient, createLead, getLead, listLeads, updateLeadStatus } from "./leads.js";
 
 describe("leads", () => {
   it("creates with bounded fields, bells the owner urgently, lists newest first with a total and a status filter", async () => {
@@ -61,6 +61,33 @@ describe("leads", () => {
       await expect(updateLeadStatus(db, b.organisationId, { leadId: lead.id, status: "contacted", actorId: b.ownerUserId })).rejects.toThrow(/not found in organisation/);
       await expect(convertLeadToClient(db, b.organisationId, { leadId: lead.id, actorId: b.ownerUserId })).rejects.toThrow(/not found in organisation/);
       await expect(convertLeadToClient(db, a.organisationId, { leadId: lead.id, actorId: a.ownerUserId, packageId: b.packageId })).rejects.toThrow(/not found in organisation/);
+    });
+  });
+
+  it("carries a lead through qualified — set by hand, filtered on, and sitting between contacted and converted", async () => {
+    await withTestDb(async (db) => {
+      const { organisationId, ownerUserId } = await seedOrgWithClient(db);
+      const lead = await createLead(db, organisationId, { name: "Wajahat Chaudary", business: "Chaudary Builders", email: "w@example.test", source: "website" });
+
+      // The order is the order the work runs in, so the board reads left to right.
+      expect(LEAD_STATUSES).toEqual(["new", "contacted", "qualified", "converted", "lost"]);
+
+      const contacted = await updateLeadStatus(db, organisationId, { leadId: lead.id, status: "contacted", actorId: ownerUserId });
+      expect(contacted.status).toBe("contacted");
+      const qualified = await updateLeadStatus(db, organisationId, { leadId: lead.id, status: "qualified", actorId: ownerUserId });
+      expect(qualified.status).toBe("qualified");
+
+      // It is a real filter, not just a label: the board can show only these.
+      expect((await listLeads(db, organisationId, { status: "qualified" })).leads.map((l) => l.id)).toEqual([lead.id]);
+      expect((await listLeads(db, organisationId, { status: "contacted" })).leads).toHaveLength(0);
+
+      // Qualifying is a judgement somebody made, so it is attributed like any other write.
+      const audits = await db.select().from(schema.auditLog).where(eq(schema.auditLog.targetId, lead.id));
+      expect(audits.filter((a) => a.action === "lead.status_changed")).toHaveLength(2);
+
+      // And it still cannot be used to sneak past the conversion path.
+      await expect(updateLeadStatus(db, organisationId, { leadId: lead.id, status: "converted", actorId: ownerUserId }))
+        .rejects.toThrow(/convertLeadToClient/);
     });
   });
 });

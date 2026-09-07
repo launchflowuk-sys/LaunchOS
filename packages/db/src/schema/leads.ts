@@ -2,7 +2,7 @@ import { index, pgEnum, pgTable, text, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 
-export const leadStatusEnum = pgEnum("lead_status", ["new", "contacted", "converted", "lost"]);
+export const leadStatusEnum = pgEnum("lead_status", ["new", "contacted", "qualified", "converted", "lost"]);
 export type LeadStatus = (typeof leadStatusEnum.enumValues)[number];
 
 /**

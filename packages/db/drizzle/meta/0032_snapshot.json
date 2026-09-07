@@ -1,6 +1,6 @@
 {
-  "id": "56b08a46-0e6c-43a8-8ff0-4b58817b9f8d",
-  "prevId": "9d20f634-380f-4cc2-9a18-f95076a414e5",
+  "id": "3ef20f33-0ace-4418-8982-150f6ef2675c",
+  "prevId": "56b08a46-0e6c-43a8-8ff0-4b58817b9f8d",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -12484,6 +12484,7 @@
       "values": [
         "new",
         "contacted",
+        "qualified",
         "converted",
         "lost"
       ]

@@ -16,6 +16,7 @@ export const MANUAL_LEAD_STATUSES = LEAD_STATUSES.filter((status) => status !== 
 export const LEAD_STATUS_LABEL: Record<(typeof LEAD_STATUSES)[number], string> = {
   new: "New",
   contacted: "Contacted",
+  qualified: "Qualified",
   converted: "Converted",
   lost: "Lost",
 };

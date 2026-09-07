@@ -225,6 +225,13 @@
       "when": 1788701200000,
       "tag": "0031_feature_lifestyle_windows",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1788745749182,
+      "tag": "0032_lead_qualified_status",
+      "breakpoints": true
     }
   ]
 }

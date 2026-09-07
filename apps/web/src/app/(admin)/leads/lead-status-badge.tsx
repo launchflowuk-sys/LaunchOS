@@ -6,6 +6,7 @@ import { LEAD_STATUS_LABEL } from "./schemas";
 const TONE: Record<LeadStatus, StatusTone> = {
   new: "warn",
   contacted: "info",
+  qualified: "success",
   converted: "success",
   lost: "neutral",
 };
