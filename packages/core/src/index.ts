@@ -712,3 +712,11 @@ export type { ApiTokenRow } from "./api-tokens/list-api-tokens.js";
 export { revokeApiToken } from "./api-tokens/revoke-api-token.js";
 export type { RevokeApiTokenInput } from "./api-tokens/revoke-api-token.js";
 export { bearerFrom, generateApiToken, hashApiToken, looksLikeApiToken } from "./api-tokens/token.js";
+
+// --- Read models the v1 API serves (Plan 6, phase 2) ---
+export { listApprovals, ListApprovalsInput } from "./approvals/list-approvals.js";
+export type { ApprovalListRow } from "./approvals/list-approvals.js";
+export { listIncidents, ListIncidentsInput } from "./incidents/list-incidents.js";
+export type { IncidentListRow } from "./incidents/list-incidents.js";
+export { listInvoices, ListInvoicesInput } from "./billing/list-invoices.js";
+export type { InvoiceListRow, ListInvoicesResult } from "./billing/list-invoices.js";

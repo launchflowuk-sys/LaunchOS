@@ -40,7 +40,7 @@ he still says Jarvis in conversation.
 | # | Phase | State |
 |---|---|---|
 | 1 | **The key and the door** — `api_tokens`, auth, rate limit, `GET /api/v1/brief` | **done, 7 Sep** |
-| 2 | The rest of the reads — clients, leads, approvals, incidents, invoices | not started |
+| 2 | The rest of the reads — clients, leads, approvals, incidents, invoices | **done, 7 Sep** |
 | 3 | Capability catalogue — `GET /api/v1/capabilities`, generated from the registry | not started |
 | 4 | Acting through the OS — `POST /api/v1/actions/{key}`, policy gate, hard floor server-side | not started |
 | 5 | Awareness by push — durable outbox, ack cursor, notify-by-exception | not started |
@@ -120,6 +120,54 @@ seven sections those cover, with `omitted: ["content","approvals","agents","team
 
 ---
 
+## Phase 2 — what it contains
+
+`GET /api/v1/clients`, `/leads`, `/approvals`, `/incidents`, `/invoices`, each
+scoped, paged and filterable.
+
+Three read models had to be written first — `listApprovals`, `listIncidents`
+and `listInvoices` did not exist; the admin screens queried Drizzle directly.
+They now live in `core` where CLAUDE.md says they belong, with tests.
+
+**Verified live**, wide token vs billing-only token: all five return data for a
+token holding their scope, and 403 naming the missing scope otherwise. Bad
+input is 400 in every case — `limit=999`, `status=pendign`, a malformed
+`clientId`, a negative offset.
+
+### Decisions
+
+- **Scopes are stricter than the admin.** The sidebar shows Clients and Leads
+  to any signed-in member with no permission at all; the API puts both behind
+  `support`. An admin session is a person who authenticated as themselves; a
+  token is a key that might be on a lost laptop, so it starts able to read
+  nothing.
+- **`listApprovals` never returns `payload`.** That field holds the actual
+  outward action — the message body about to reach a client, the DNS record. A
+  reader needs to know a decision is waiting, of what kind, and for how long.
+  Deciding it stays a human act in the admin, where the payload is shown to the
+  person taking responsibility.
+- **There is no decide endpoint, and there should not be one in this phase.**
+  Rule 2 exists to keep that in a person's hands.
+- **`listInvoices` totals every matching row, not the page.** "How much am I
+  owed" is the real question; an assistant adding up one page answers it
+  confidently and wrongly. Postgres `sum()` returns a numeric *string* (and
+  null over no rows), so it is cast — otherwise addition becomes concatenation.
+- **An unknown filter value is refused, not ignored.** `?status=pendign`
+  quietly returning everything is how a caller comes to believe a filter is
+  applied when it is not.
+- **`listIncidents` joins the client and site names in.** An incident read
+  aloud as "site 4f2a…" is useless, and a lookup per row is what makes an
+  assistant slow and chatty.
+
+### A bug this turned up
+
+`InvoiceListRow` typed `number`, `issuedAt` and `dueAt` as nullable. All three
+are NOT NULL in the schema — the types were lying, and the `dueAt !== null`
+guard in the overdue calculation was dead code. Found because a test fixture
+would not insert without them.
+
+---
+
 ## Also changed
 
 `pnpm test` now runs one package at a time (`--workspace-concurrency=1`). Four
@@ -133,6 +181,9 @@ suite whose whole job is to be believed before a deploy.
 One, non-blocking: **is numbers-without-prose the right call for the brief?**
 Reasoning above. Easy to add stored prose later if he disagrees.
 
+Next: phase 3 (capability catalogue) or pivot to the client portal panels.
+Recommendation stands — use the API for a few days first.
+
 Standing, non-blocking:
 - Setup fee, minimum term, and whether new pages count as "changes" or
   "builds" — pricing decisions from 7 Sep, still unanswered.
@@ -143,7 +194,35 @@ Standing, non-blocking:
 
 - GitHub source reconnect on `launchos-web` and `launchos-worker`
   (`source_id = 0` — no push has ever triggered a deploy).
+- Optional: raise Coolify's `server_disk_usage_check_frequency` from daily
+  (`0 23 * * *`) to hourly and drop the threshold to 75, so a filling disk is
+  warned about early. See the outage note below.
 - Rotate the Coolify API token: it was pasted into a chat and travels over
   plain HTTP to `:8000`.
 - `GSC_SERVICE_ACCOUNT_JSON` — a **new** service account in `cabio-master`,
   no roles, added to Search Console as Restricted. Not the Play-publishing one.
+
+
+---
+
+## The 7 Sep outage, and what was done about it
+
+The host filled to 100% (0 bytes free) after a night of repeated deploys, and
+every site on it returned 503 — `launchflow.co.uk`, `os.launchflow.co.uk` and
+Coolify's own API. 61.7GB was reclaimed: 54.9GB of stale images, 6.9GB of build
+cache. No volume was touched; all 8 total 384MB and every database was intact.
+
+**Coolify's own cleanup could not save it, structurally.** The cleanup lives
+inside Coolify, so when the disk fills Coolify is the first thing to stop
+working and the cleanup dies with it. Its settings were already sensible —
+daily at midnight, 80% threshold, force on — and none of it ran, because by
+midnight there was nothing left running to run it. Its disk-usage *check* is
+also only daily (`0 23 * * *`), so the 80%-to-100% climb happened entirely
+inside one check window.
+
+`/etc/cron.d/docker-prune` now runs on the host every 6 hours, outside Coolify,
+pruning images and build cache older than a week. Proved with a one-minute
+sentinel cron rather than assumed. It can touch no volume.
+
+The box is shared — hostname `Nexusedu`, 14 containers — so LaunchOS builds
+filling the disk take every other site down with them. Worth separating.
