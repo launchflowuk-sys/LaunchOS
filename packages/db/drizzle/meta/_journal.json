@@ -260,6 +260,13 @@
       "when": 1788761880819,
       "tag": "0036_public_packages",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1788762080819,
+      "tag": "0037_retire_legacy_packages",
+      "breakpoints": true
     }
   ]
 }
