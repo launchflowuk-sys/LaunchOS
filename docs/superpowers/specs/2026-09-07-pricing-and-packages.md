@@ -139,7 +139,32 @@ management alone. Standard is £110 for that *plus* the website. The gap is not
 a discount, it is the agents in this repo doing the work — which is why it can
 be held rather than merely offered.
 
-## The AMO client, and the component prices hiding inside it
+## What each package contains, as the database needs it
+
+`packages.includes` is not decoration — the recurring-task engine generates a
+month's work from these numbers, and `packageUsagePressure` measures a client
+against them to decide who the Ops Brief names as over their allowance. A
+package cannot be created without them.
+
+| | website | seo | ads | social/mo | blog/mo | GBP/mo |
+|---|---|---|---|---|---|---|
+| **Presence** | ✓ | — | — | 0 | 0 | 0 |
+| **Standard** | ✓ | ✓ | — | 8 | **4** | 4 |
+| **Growth** | ✓ | ✓ | ✓ | 8 | **6** | 4 |
+
+*(Blog counts set by Shoji, 7 Sep 2026.)*
+
+Standard is therefore **16 pieces of content a month for £110, website
+included** — against agencies charging £400–£800 for four blog posts alone. It
+is a strong offer and it is deliverable, because the writer drafts and the
+fan-out publishes.
+
+**The constraint is not cost, it is approval.** Nothing reaches a client without
+a human tick — rule 2, and rightly. Sixteen items a month is sixteen approvals
+per Standard client: twenty such clients is 320 decisions a month landing on one
+person. Before selling this widely, the approvals screen needs to be usable in
+bulk, or the package that sells best becomes the one that cannot be served.
+Worth measuring after the first few clients rather than guessing now.
 
 The one piece of real evidence in the business. AMO pays **£200/month** for two
 websites — AMO Rendering and AMO Services — plus ad management on Rendering
