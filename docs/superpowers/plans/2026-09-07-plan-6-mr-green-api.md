@@ -43,8 +43,8 @@ he still says Jarvis in conversation.
 | 2 | The rest of the reads — clients, leads, approvals, incidents, invoices | **done, 7 Sep** |
 | 3 | Capability catalogue — `GET /api/v1/capabilities`, generated from the registry | **done, 7 Sep** |
 | 4 | Acting through the OS — `POST /api/v1/actions/{key}`, policy gate, hard floor server-side | **done, 7 Sep** |
-| 5 | Awareness by push — durable outbox, ack cursor, notify-by-exception | not started |
-| 6 | The autonomy dial — time-boxed, catalogue-selected, auto-expiry | not started |
+| 5 | Awareness by push — durable outbox, ack cursor, notify-by-exception | **held — see below** |
+| 6 | The autonomy dial — time-boxed, catalogue-selected, auto-expiry | **held — see below** |
 
 **Separate track, stronger money argument:** the client portal panels (spec
 points 6, 7, 8, 11). Decide between continuing 2–4 and pivoting to the panels
@@ -54,6 +54,37 @@ points 6, 7, 8, 11). Decide between continuing 2–4 and pivoting to the panels
 alert fatigue, and what deserves to interrupt him cannot be calibrated before
 he has lived with the brief. Building the rules early means building the wrong
 ones and then muting the channel.
+
+---
+
+## Stopped here deliberately, 8 Sep 2026
+
+**Shoji's call, and it is the right one.** In his words: *"right now I'm
+building building building and I haven't even tested one workflow — once I add
+my own businesses that's when we will finally know, that's where I will find
+the gaps, that's how I will fix it."*
+
+Phases 1-4 are built and pushed. Phases 5 and 6 wait for **real data**: his own
+businesses running through LaunchOS for a week or so, and then supervised
+autonomy switched on and tested against work that actually happened.
+
+Why this is not merely reasonable but necessary for these two phases
+specifically:
+
+- **Phase 5 is notify-by-exception (point 13).** Its entire design is deciding
+  what deserves to interrupt him. That cannot be calibrated against seed data —
+  it can only be learned from noticing what he actually checks for, and what he
+  wished he had been told. Build the rules now and they get built wrong, and a
+  channel that cries wolf is muted before the day it matters.
+- **Phase 6 is the autonomy dial.** Handing over categories of work is only
+  safe once there is evidence of what those categories look like in practice.
+  Phase 3 already found that the hard floor lives in message *content* rather
+  than in tool identity — that finding came from looking at real tools, and the
+  rest of the design needs the same treatment against real messages.
+
+**When it resumes:** a week or so of live use, then switch on supervised
+autonomy in a time-boxed window and test it against real work. The gaps found
+there are the specification for phases 5 and 6.
 
 ---
 
