@@ -32,3 +32,12 @@ test-results/
 /storage/
 /apps/*/storage/
 /packages/*/storage/
+
+# Google service account keys. A key file reached docs/ on 8 Sep 2026 and was
+# one `git add -A` from being pushed to GitHub; these patterns mean the next one
+# cannot be, wherever in the tree it lands.
+*-service-account*.json
+service-account*.json
+gcp-*.json
+cabio-master-*.json
+**/*.iam.gserviceaccount.com.json
