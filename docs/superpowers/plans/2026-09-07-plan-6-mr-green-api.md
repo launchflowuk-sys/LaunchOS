@@ -310,8 +310,22 @@ Standing, non-blocking:
   warned about early. See the outage note below.
 - Rotate the Coolify API token: it was pasted into a chat and travels over
   plain HTTP to `:8000`.
-- `GSC_SERVICE_ACCOUNT_JSON` — a **new** service account in `cabio-master`,
-  no roles, added to Search Console as Restricted. Not the Play-publishing one.
+- ~~`GSC_SERVICE_ACCOUNT_JSON`~~ **done, 8 Sep 2026.** Service account
+  `launch-os-search-console@cabio-master`, key in `.env`, raw file kept outside
+  the repo at `C:\Users\shoji\.gcloud-keys\`. Two gotchas cost an hour and are
+  worth remembering: enabling the Search Console API in *one* Google Cloud
+  project does not enable it in another, and Search Console permissions
+  (search.google.com) are a different thing entirely from enabling the API
+  (console.cloud.google.com).
+
+  **The property is a domain property: `sc-domain:launchflow.co.uk`.** The
+  URL-prefix form `https://launchflow.co.uk/` 403s because it does not exist.
+  Whatever column eventually holds a client's property must store the full
+  identifier including the `sc-domain:` prefix, not a bare hostname.
+
+  Outstanding: the permission was granted as **Full**. The adapter only ever
+  requests `webmasters.readonly`, so nothing can be written either way, but it
+  should be downgraded to Restricted on principle.
 
 
 ---
