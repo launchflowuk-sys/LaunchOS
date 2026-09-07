@@ -128,11 +128,42 @@ is the work: it lands on the board with everything else and is picked up the
 same way. They are not two records of one thing — a case is a conversation and a
 task is a job, and this is exactly the relationship they already have.
 
+**12. It is not holiday mode. It is supervised autonomy, with a dial.** Shoji's
+correction, and it matters enough to change the name before anything is built.
+What he wants is to watch the business run itself while choosing what Mr. Green
+may do and what reaches him, with the ability to turn it off. Being away is one
+setting of that dial, not the purpose of it — he is still needed and still
+involved.
+
+A feature called "holiday mode" gets built as though it is only for holidays:
+switched on rarely, tested rarely, and awkward for the everyday case that is
+actually the common one. Everything decided above still holds — time-boxed,
+deliberately switched on, hard floor intact — but it is a level of autonomy, not
+an absence.
+
+**13. Notify by exception, never by activity.** *(Shoji asked for a
+recommendation; this is it.)*
+
+A notification means **"you need to do something"**. If it means "something
+happened", it is a feed item. That one rule decides every case:
+
+- **Interrupts, immediately:** anything that hit the hard floor and is waiting on
+  him; anything that failed; anything a client escalated or complained about.
+  All rare, all genuinely his.
+- **Accumulates silently:** every successful action, in a feed he opens when he
+  wants, plus one summary a day.
+
+The failure mode to design against is not missing something. It is being pinged
+so often that he mutes it — and a muted channel cannot reach him on the day it
+matters. An alert is worth exactly the trust that it is worth reading, and that
+trust is spent every time one arrives that did not need to.
+
+**14. Staff see what they are permitted to see.** Scoped by permission, changed
+when Shoji wants, from the permission options that already exist rather than a
+parallel set invented for the brief. `PERMISSION_KEYS` already governs the
+admin; the brief is a view of the same business and should answer to the same
+keys. A second permission system is a second place to get it wrong.
+
 ## Open
 
-1. Whether a holiday-mode notification interrupts (push to the phone) or
-   accumulates somewhere he chooses to look. "As it happens" settles the timing,
-   not the loudness, and a week away with a phone buzzing every twenty minutes
-   is not a holiday.
-2. What a staff member sees of the brief compared with Shoji — the same view
-   scoped by permission, or a deliberately smaller one.
+1. Nothing outstanding on Mr. Green. The build order is the next conversation.
