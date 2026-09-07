@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { isMarketingHost, marketingHostFromEnv, marketingRewriteTarget, requestHost } from "@/lib/marketing/hosts";
+import { isMarketingHost, marketingCanonicalRedirect, marketingHostFromEnv, marketingRewriteTarget, requestHost } from "@/lib/marketing/hosts";
 
 /**
  * Serves the marketing site on its own hostname.
@@ -26,6 +26,15 @@ export function proxy(request: NextRequest): NextResponse {
     url.host = marketingHost;
     url.protocol = "https:";
     url.port = "";
+    return NextResponse.redirect(url, 308);
+  }
+
+  // `/site/...` is the same page as `/...` here. One address per page, so a
+  // search engine spends its crawl on pages rather than on being told twice.
+  const canonical = marketingCanonicalRedirect(request.nextUrl.pathname);
+  if (canonical) {
+    const url = request.nextUrl.clone();
+    url.pathname = canonical;
     return NextResponse.redirect(url, 308);
   }
 

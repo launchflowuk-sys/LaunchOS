@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  appHostFromEnv,
-  isMarketingHost,
-  marketingHostFromEnv,
-  marketingPrefixFor,
-  marketingRewriteTarget,
-  requestHost,
-} from "./hosts";
+import { appHostFromEnv, isMarketingHost, marketingCanonicalRedirect, marketingHostFromEnv, marketingPrefixFor, marketingRewriteTarget, requestHost } from "./hosts.js";
 
 describe("marketing hosts", () => {
   it("defaults the two hosts and treats a blank value as unset", () => {
@@ -75,5 +68,23 @@ describe("marketing hosts", () => {
     expect(marketingPrefixFor("www.launchflow.co.uk", "launchflow.co.uk")).toBe("");
     expect(marketingPrefixFor("localhost", "launchflow.co.uk")).toBe("/site");
     expect(marketingPrefixFor("os.launchflow.co.uk", "launchflow.co.uk")).toBe("/site");
+  });
+});
+
+describe("marketingCanonicalRedirect", () => {
+  it("sends every /site address to the one the page actually has", () => {
+    expect(marketingCanonicalRedirect("/site")).toBe("/");
+    expect(marketingCanonicalRedirect("/site/")).toBe("/");
+    expect(marketingCanonicalRedirect("/site/pricing")).toBe("/pricing");
+    expect(marketingCanonicalRedirect("/site/work")).toBe("/work");
+    expect(marketingCanonicalRedirect("/site/work/ama-facilities")).toBe("/work/ama-facilities");
+  });
+
+  it("leaves everything else to the caller", () => {
+    expect(marketingCanonicalRedirect("/")).toBeNull();
+    expect(marketingCanonicalRedirect("/pricing")).toBeNull();
+    // A page that merely begins with the same letters is not under /site.
+    expect(marketingCanonicalRedirect("/sitemap.xml")).toBeNull();
+    expect(marketingCanonicalRedirect("/sites")).toBeNull();
   });
 });

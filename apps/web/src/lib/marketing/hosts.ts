@@ -83,6 +83,28 @@ const PASS_THROUGH = ["/api", "/_next", "/sign-in", "/signup", "/after-sign-in",
  * file with an extension such as `/robots.txt`) are left alone, and so is a
  * path already under `/site` so a double prefix cannot happen.
  */
+/**
+ * The canonical path for a `/site/...` URL asked for on the marketing host.
+ *
+ * `/site` exists so the marketing pages stay reachable on the app host and in
+ * Playwright. On the marketing host it is a second address for a page that
+ * already has one: `launchflow.co.uk/site/pricing` and
+ * `launchflow.co.uk/pricing` both answered 200 with the same content.
+ *
+ * The canonical tags were right and Google honoured them, which is why nothing
+ * was ranking twice — but it still crawled twenty-eight of these to be told
+ * each was a duplicate, and they were the largest single line in the coverage
+ * report. A redirect removes the surface rather than apologising for it.
+ *
+ * Null when the path is not one of these, so the caller carries on.
+ */
+export function marketingCanonicalRedirect(pathname: string): string | null {
+  if (pathname === MARKETING_PREFIX) return "/";
+  if (!pathname.startsWith(`${MARKETING_PREFIX}/`)) return null;
+  const rest = pathname.slice(MARKETING_PREFIX.length);
+  // `/site/` alone is the home page with a trailing slash, not a child.
+  return rest === "/" ? "/" : rest;
+}
 export function marketingRewriteTarget(pathname: string): string | null {
   if (pathname === MARKETING_PREFIX || pathname.startsWith(`${MARKETING_PREFIX}/`)) return null;
   if (PASS_THROUGH.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) return null;
