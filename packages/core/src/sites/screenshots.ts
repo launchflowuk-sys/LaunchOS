@@ -114,10 +114,17 @@ export async function sitesMissingScreenshot(
       and(
         eq(schema.sites.organisationId, organisationId),
         inArray(schema.sites.status, ["live", "building"]),
-        // No row at all, or a row that has only ever recorded failures. The
-        // second case is what lets a site that was unreachable last week get
-        // another go once it is back, without re-shooting the other sixteen.
-        sql`${schema.siteScreenshots.capturedAt} is null`,
+        // No row at all, or a row that has only ever recorded failures — the
+        // second case lets a site that was unreachable last week get another go
+        // once it is back, without re-shooting the other sixteen.
+        //
+        // A *mock* capture does not count as a picture either. It is a coloured
+        // placeholder, and treating it as done would mean that configuring a
+        // real provider changed nothing until somebody pressed Refresh on every
+        // site by hand. This way the first scheduled run after the provider
+        // arrives quietly replaces every placeholder, and a deployment that
+        // loses its key degrades to placeholders that will heal themselves.
+        sql`(${schema.siteScreenshots.capturedAt} is null or ${schema.siteScreenshots.adapter} = 'mock')`,
       ),
     )
     // Newest first, so a site added today is photographed before a backlog.

@@ -29,6 +29,19 @@ async function seedSite(
   return site!;
 }
 
+const REAL_ADAPTER: ScreenshotAdapter = {
+  name: "screenshotone",
+  async capture() {
+    return {
+      bytes: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      mime: "image/png",
+      width: 960,
+      height: 600,
+      adapter: "screenshotone",
+    };
+  },
+};
+
 describe("site screenshots", () => {
   it("stores the bytes and reports the site as having an image", async () => {
     await withTestDb(async (db) => {
@@ -219,7 +232,7 @@ describe("site screenshots", () => {
         db,
         orgId,
         { siteId: shot.id, url: shot.primaryUrl },
-        new MockScreenshotAdapter(),
+        REAL_ADAPTER,
       );
 
       const due = await sitesMissingScreenshot(db, orgId, 10);
@@ -263,6 +276,24 @@ describe("site screenshots", () => {
         .from(schema.siteScreenshots)
         .where(eq(schema.siteScreenshots.siteId, site.id));
       expect(rows).toHaveLength(1);
+    });
+  });
+
+  it("treats a mock capture as no picture, so a real provider replaces placeholders on its own", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await contentFixture(db, { withSubscription: false });
+      const site = await seedSite(db, orgId, clientId, "https://placeholder.example");
+      // Captured by the mock: a coloured square, not a picture of the site.
+      await captureSiteScreenshot(db, orgId, { siteId: site.id, url: site.primaryUrl }, new MockScreenshotAdapter());
+
+      // Still offered, because configuring a real provider must not require
+      // pressing Refresh on every site by hand.
+      expect((await sitesMissingScreenshot(db, orgId, 10)).map((r) => r.id)).toContain(site.id);
+
+      await captureSiteScreenshot(db, orgId, { siteId: site.id, url: site.primaryUrl }, REAL_ADAPTER);
+
+      // Once it is a real picture it stops being offered.
+      expect((await sitesMissingScreenshot(db, orgId, 10)).map((r) => r.id)).not.toContain(site.id);
     });
   });
 });
