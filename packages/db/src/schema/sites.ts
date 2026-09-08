@@ -1,4 +1,4 @@
-import { boolean, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 
@@ -76,4 +76,50 @@ export const siteCredentials = pgTable(
   // One credential of each kind per site: setting it again replaces it, so a
   // rotated application password cannot leave the superseded one behind.
   (t) => [uniqueIndex("site_credentials_site_kind").on(t.siteId, t.kind)],
+);
+
+/** Raw bytes. Drizzle has no `bytea` column, and `node-postgres` hands one back as a Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/**
+ * The most recent thumbnail of each site, and what happened last time we tried.
+ *
+ * **Telemetry, not a business record.** It is refreshed on a schedule, nobody
+ * edits it, and losing the table costs a set of pictures — so it is exempt from
+ * `audit_log` the way `uptime_checks` is, and lives in its own table rather
+ * than as columns on `sites` precisely so that a daily refresh cannot look like
+ * somebody editing a client's website record twenty times a week.
+ *
+ * **The bytes live in Postgres.** A thumbnail is tens of kilobytes and there is
+ * one per site, so the whole set is a megabyte or two — small enough that
+ * putting it in the database buys a great deal: it is in the backup, it needs
+ * no volume mounted into the worker *and* the web app, and it cannot fill a
+ * disk. That last one is not hypothetical on this infrastructure.
+ * `MAX_SCREENSHOT_BYTES` is what keeps the assumption true.
+ *
+ * One row per site: a capture replaces the last one. There is no history
+ * because nothing asks for one, and a year of daily screenshots per site is
+ * the version of this table that does fill a disk.
+ */
+export const siteScreenshots = pgTable(
+  "site_screenshots",
+  {
+    ...tenantColumns(),
+    siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+    /** Null when every attempt so far has failed — the row still records why. */
+    bytes: bytea("bytes"),
+    mime: text("mime"),
+    width: integer("width"),
+    height: integer("height"),
+    sizeBytes: integer("size_bytes").default(0).notNull(),
+    /** Which adapter produced it, so the UI can say "placeholder" honestly. */
+    adapter: text("adapter").notNull(),
+    /** When the bytes above were taken. Null while only failures have happened. */
+    capturedAt: timestamp("captured_at", { withTimezone: true }),
+    /** When it was last tried, successfully or not. Drives "which is stalest". */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow().notNull(),
+    /** A sentence, not a stack: shown under the empty thumbnail slot. */
+    failureReason: text("failure_reason"),
+  },
+  (t) => [uniqueIndex("site_screenshots_site").on(t.siteId)],
 );

@@ -23,6 +23,7 @@ import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type Gene
 import { dispatchEvent } from "./jobs/dispatch-event.js";
 import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-webhook.js";
 import { runAdsCampaignIngest, runAdsIngest } from "./jobs/ads-ingest.js";
+import { runSiteScreenshots } from "./jobs/site-screenshots.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { STRIPE_RECONCILE_CRON, runStripeReconcile } from "./jobs/stripe-reconcile.js";
@@ -64,7 +65,8 @@ async function main() {
   });
   const integrations = createIntegrations(process.env);
   const llm = env.LLM === "fake" ? new FakeAgentLlmClient() : AnthropicLlmClient.fromEnv(env);
-  const emailAdapter = createEmailAdapter(process.env);
+  const emailAdapter = createEmailAdapter(process.env);
+
   // Mock until the Twilio keys are set, exactly like the mail adapter.
   const smsAdapter = smsAdapterFromEnv();
   const pushAdapter = createPushAdapterFromEnv(process.env);
@@ -160,6 +162,20 @@ async function main() {
     // snapshot, which the client report and the Sentinel both read.
     await sweepOrganisations(db, "ads campaign ingest", async (organisationId) => {
       console.info(await runAdsCampaignIngest(db, organisationId, integrations.ads, { now }), "ads campaign ingest");
+    });
+  });
+
+  // Thumbnails for the websites list. Nightly and late, because a capture is a
+  // paid call and nobody is looking at the list at 03:40; the batch ceiling in
+  // ./jobs/site-screenshots.ts is what stops a growing roster becoming a
+  // growing bill.
+  await boss.work(QUEUE.siteScreenshots, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "site screenshots", async (organisationId) => {
+      console.info(
+        await runSiteScreenshots(db, organisationId, integrations.screenshots, { now }),
+        "site screenshots",
+      );
     });
   });
 
@@ -289,6 +305,7 @@ async function main() {
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.siteScreenshots, "40 3 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics

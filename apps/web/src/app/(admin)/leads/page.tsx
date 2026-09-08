@@ -20,10 +20,14 @@ import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { CostPerLeadStrip } from "./cost-per-lead-strip";
+import { LeadBoard } from "./lead-board";
 import { LeadStatusBadge } from "./lead-status-badge";
-import { LEAD_SOURCE_LABEL, LEAD_STATUS_LABEL, LEAD_STATUSES } from "./schemas";
+import { LEAD_SOURCE_LABEL, LEAD_STATUS_LABEL, LEAD_STATUSES, MANUAL_LEAD_STATUSES } from "./schemas";
 
 export const dynamic = "force-dynamic";
+
+/** The board shows the whole pipeline; `listLeads` caps a request at 200. */
+const BOARD_LIMIT = 200;
 
 const FILTERS = ["all", ...LEAD_STATUSES] as const;
 type Filter = (typeof FILTERS)[number];
@@ -91,7 +95,12 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   const statusParam = typeof params.status === "string" ? params.status : "all";
   const filter: Filter = FILTERS.includes(statusParam as Filter) ? (statusParam as Filter) : "all";
   const campaign = typeof params.campaign === "string" && params.campaign.trim().length > 0 ? params.campaign.trim().slice(0, 200) : null;
-  const page = pageParam(params.page);
+  // Same contract as the Tasks board: the view lives in the URL, so a
+  // bookmarked board stays a board and the toggle is a plain link.
+  const view = typeof params.view === "string" && params.view === "board" ? "board" : "list";
+  // The board reads the whole pipeline at once — a lane showing "page 1 of the
+  // new leads" is not a pipeline — so it skips paging and takes the cap.
+  const page = view === "list" ? pageParam(params.page) : 1;
 
   // The same thirty days the campaign pills cover, as the ISO calendar dates
   // the ad platforms report in.
@@ -103,15 +112,16 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
     listLeads(getDb(), session.organisationId, {
       ...(filter === "all" ? {} : { status: filter }),
       ...(campaign ? { utmCampaign: campaign } : {}),
-      limit: PAGE_SIZE + 1,
-      offset: (page - 1) * PAGE_SIZE,
+      ...(view === "board"
+        ? { limit: BOARD_LIMIT }
+        : { limit: PAGE_SIZE + 1, offset: (page - 1) * PAGE_SIZE }),
     }),
     countsByStatus(session.organisationId),
     leadCampaignCounts(getDb(), session.organisationId, { days: 30 }),
     costPerLeadByCampaign(getDb(), session.organisationId, { from: isoDay(since), to: isoDay(today) }),
   ]);
   const attributed = campaigns.campaigns.filter((row) => row.campaign !== null);
-  const hasNext = fetched.length > PAGE_SIZE;
+  const hasNext = view === "list" && fetched.length > PAGE_SIZE;
   const rows = hasNext ? fetched.slice(0, PAGE_SIZE) : fetched;
 
   return (
@@ -121,9 +131,16 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         description="New business coming in: the website form, self-serve sign-ups and anyone you add by hand. Convert the ones that say yes."
         category="delivery"
         actions={
-          <Button asChild variant="secondary">
-            <Link href="/leads/blocked">Blocked numbers</Link>
-          </Button>
+          <>
+            <Button asChild variant="secondary">
+              <Link href={{ pathname: "/leads", query: { ...params, view: view === "board" ? "list" : "board" } }}>
+                {view === "board" ? "List view" : "Board view"}
+              </Link>
+            </Button>
+            <Button asChild variant="secondary">
+              <Link href="/leads/blocked">Blocked numbers</Link>
+            </Button>
+          </>
         }
       />
 
@@ -233,6 +250,9 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
         </FilterBar>
       </form>
 
+      {view === "board" ? (
+        <LeadBoard leads={rows} statuses={MANUAL_LEAD_STATUSES} />
+      ) : (
       <DataList
         rows={rows}
         columns={COLUMNS}
@@ -250,7 +270,10 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
           </EmptyState>
         }
       />
-      <Pager basePath="/leads" query={{ status: filter, ...(campaign ? { campaign } : {}) }} page={page} hasNext={hasNext} />
+      )}
+      {view === "list" ? (
+        <Pager basePath="/leads" query={{ status: filter, ...(campaign ? { campaign } : {}) }} page={page} hasNext={hasNext} />
+      ) : null}
     </>
   );
 }

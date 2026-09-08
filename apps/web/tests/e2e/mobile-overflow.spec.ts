@@ -61,6 +61,12 @@ const ADMIN_ROUTES = [
   "/settings/email",
   "/settings/packages",
   "/settings/task-templates",
+  // The alternate views are separate screens, not a restyle of the list: a
+  // board scrolls lanes sideways and a grid lays out cards, and both are new
+  // ways to push a phone past 375px.
+  "/leads?view=board",
+  "/clients?view=grid",
+  "/websites?view=grid",
 ] as const;
 
 /**

@@ -88,6 +88,14 @@ export { upsertBillingProfile, getBillingProfile, UpsertBillingProfileInput } fr
 export { updateSite, UpdateSiteInput } from "./sites/update-site.js";
 export { listSites, getSite, ListSitesInput } from "./sites/list-sites.js";
 export {
+  captureSiteScreenshot,
+  readSiteThumbnail,
+  siteThumbnails,
+  sitesDueForScreenshot,
+  type CaptureResult,
+  type SiteThumbnail,
+} from "./sites/screenshots.js";
+export {
   encryptSecret, decryptSecret, loadEncryptionKey, parseEncryptionKey, isEncryptionConfigured,
   SecretsKeyError, SecretsDecryptError, SECRETS_ENCRYPTION_KEY_ENV,
 } from "./secrets/encryption.js";

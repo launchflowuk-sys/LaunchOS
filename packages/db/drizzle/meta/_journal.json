@@ -281,6 +281,13 @@
       "when": 1788814737918,
       "tag": "0039_api_tokens",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1788869382990,
+      "tag": "0040_brave_barracuda",
+      "breakpoints": true
     }
   ]
 }

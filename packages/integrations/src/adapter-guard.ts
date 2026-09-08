@@ -29,6 +29,7 @@ import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
 import { ZOOM_ENV_KEYS } from "./meetings/index.js";
 import { IMAGEGEN_ADAPTER_NAMES, IMAGEGEN_ADAPTER_VARIABLE, IMAGEGEN_ENV_KEYS } from "./imagegen/index.js";
 import { SEARCH_CONSOLE_ENV_KEYS } from "./search-console/index.js";
+import { SCREENSHOT_ADAPTER_NAMES, SCREENSHOT_ADAPTER_VARIABLE, SCREENSHOT_ENV_KEYS } from "./screenshots/index.js";
 
 /**
  * The env fields adapter selection reads. Structural, so both
@@ -81,6 +82,8 @@ export interface AdapterEnv {
   readonly ZOOM_CLIENT_ID?: string | undefined;
   readonly ZOOM_CLIENT_SECRET?: string | undefined;
   readonly IMAGEGEN_ADAPTER?: string | undefined;
+  readonly SCREENSHOT_ADAPTER?: string | undefined;
+  readonly SCREENSHOTONE_ACCESS_KEY?: string | undefined;
   readonly OPENAI_API_KEY?: string | undefined;
   readonly FAL_KEY?: string | undefined;
   readonly NODE_ENV?: string | undefined;
@@ -265,6 +268,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "AI post images are a flat blue placeholder; branded template graphics, which is what most posts use, are unaffected",
+    },
+    {
+      name: "screenshots",
+      variable: SCREENSHOT_ADAPTER_VARIABLE,
+      ...resolveScreenshots(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "every website thumbnail is a coloured placeholder rather than the site; the list still works and nothing else uses them",
     },
     {
       name: "search-console",
@@ -607,6 +618,27 @@ function resolveImageGen(env: AdapterEnv): SelectionOutcome {
     };
   }
   const key = IMAGEGEN_ENV_KEYS[requested];
+  if (trimmedOrUnset(env[key]) === undefined) return { requested, ...builds("mock", `Missing: ${key}.`) };
+  return { requested, ...builds(requested) };
+}
+
+/**
+ * Selected by name like imagegen, and refused the same way: a capture costs
+ * money per call, so `SCREENSHOTONE_ACCESS_KEY` appearing on its own must not
+ * start photographing every client site. A name with no key builds the mock
+ * and is reported, because a placeholder that nobody was told about looks like
+ * twenty broken websites.
+ */
+function resolveScreenshots(env: AdapterEnv): SelectionOutcome {
+  const requested = trimmedOrUnset(env.SCREENSHOT_ADAPTER);
+  if (requested === undefined || requested === "mock") return { requested: "mock", ...builds("mock") };
+  if (requested !== "screenshotone") {
+    return {
+      requested,
+      ...builds("mock", `${SCREENSHOT_ADAPTER_VARIABLE} must be one of ${SCREENSHOT_ADAPTER_NAMES.join(", ")}.`),
+    };
+  }
+  const key = SCREENSHOT_ENV_KEYS.screenshotone;
   if (trimmedOrUnset(env[key]) === undefined) return { requested, ...builds("mock", `Missing: ${key}.`) };
   return { requested, ...builds(requested) };
 }

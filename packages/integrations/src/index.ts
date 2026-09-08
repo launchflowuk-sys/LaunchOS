@@ -9,6 +9,7 @@ import { createSocialPublisherFromEnv, type SocialPublisher } from "./social/ind
 import { createMeetingsAdapterFromEnv, type MeetingsAdapter } from "./meetings/index.js";
 import { createImageGenAdapterFromEnv, type ImageGenAdapter } from "./imagegen/index.js";
 import { createSearchConsoleFromEnv, type SearchConsoleAdapter } from "./search-console/index.js";
+import { createScreenshotAdapterFromEnv, type ScreenshotAdapter } from "./screenshots/index.js";
 
 export * from "./uptime/index.js";
 export * from "./coolify/index.js";
@@ -21,6 +22,7 @@ export * from "./social/index.js";
 export * from "./meetings/index.js";
 export * from "./imagegen/index.js";
 export * from "./search-console/index.js";
+export * from "./screenshots/index.js";
 export * from "./adapter-guard.js";
 
 export interface Integrations {
@@ -39,6 +41,8 @@ export interface Integrations {
   imagegen: ImageGenAdapter;
   /** Google Search Console, read-only. Which property belongs to whom is a database question, not this one. */
   searchConsole: SearchConsoleAdapter;
+  /** Thumbnails of a client's live site, for the websites list. Mock draws a placeholder in process. */
+  screenshots: ScreenshotAdapter;
 }
 
 /**
@@ -86,5 +90,6 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     meetings: createMeetingsAdapterFromEnv(env),
     imagegen: createImageGenAdapterFromEnv(env),
     searchConsole: createSearchConsoleFromEnv(env),
+    screenshots: createScreenshotAdapterFromEnv(env),
   };
 }

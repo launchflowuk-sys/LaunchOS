@@ -1,6 +1,7 @@
 import { clientPortfolioMetrics, listClients, listPackages } from "@launchos/core";
 import { Building2, Repeat, Users, Wallet, Workflow } from "lucide-react";
 import Link from "next/link";
+import { ClientGrid } from "./client-grid";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { StatCard } from "@/components/stat-card";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -52,6 +53,11 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
   const query = typeof params.q === "string" ? params.q : undefined;
   const statusParam = typeof params.status === "string" ? params.status : "active";
   const status = STATUSES.includes(statusParam as (typeof STATUSES)[number]) ? statusParam : "active";
+  // The view lives in the URL, like the Tasks and Leads boards, so a
+  // bookmarked grid stays a grid and the toggle is a plain link. Both views
+  // page the same way — the grid is a different shape for the same screenful,
+  // not a licence to load the whole roster.
+  const view = typeof params.view === "string" && params.view === "grid" ? "grid" : "list";
   const page = pageParam(params.page);
 
   // One screenful at a time: the roster grows without bound and under `md` a
@@ -80,7 +86,16 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
         title="Clients"
         description="Every client, their support address, websites and domains."
         category="delivery"
-        actions={<NewClientDialog packages={packages.map((pkg) => ({ value: pkg.id, label: pkg.name }))} />}
+        actions={
+          <>
+            <Button asChild variant="secondary">
+              <Link href={{ pathname: "/clients", query: { ...params, view: view === "grid" ? "list" : "grid" } }}>
+                {view === "grid" ? "List view" : "Grid view"}
+              </Link>
+            </Button>
+            <NewClientDialog packages={packages.map((pkg) => ({ value: pkg.id, label: pkg.name }))} />
+          </>
+        }
       />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -138,6 +153,9 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
         </FilterBar>
       </form>
 
+      {view === "grid" && rows.length > 0 ? (
+        <ClientGrid clients={rows} />
+      ) : (
       <DataList
         rows={rows}
         columns={COLUMNS}
@@ -151,9 +169,10 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
           </EmptyState>
         }
       />
-      {/* Outside the empty check on purpose: a page past the end has no rows
+      )}
+      {/* Outside the view switch on purpose: a page past the end has no rows
           and still needs the "Newer" link back. */}
-      <Pager basePath="/clients" query={{ q: query, status }} page={page} hasNext={hasNext} />
+      <Pager basePath="/clients" query={{ q: query, status, ...(view === "grid" ? { view } : {}) }} page={page} hasNext={hasNext} />
     </>
   );
 }
