@@ -351,3 +351,37 @@ sentinel cron rather than assumed. It can touch no volume.
 
 The box is shared — hostname `Nexusedu`, 14 containers — so LaunchOS builds
 filling the disk take every other site down with them. Worth separating.
+
+---
+
+## Outlook — ideas from a dashboard mockup, 8 Sep 2026
+
+**Not decisions. Not a specification. Nothing here is agreed**, and Shoji said
+so explicitly when he shared it: *"yes but for outlook not what i want"*. Kept
+only so two good ideas are not lost.
+
+Source: a dark-themed LaunchFlow OS dashboard mockup
+(`C:\Users\shoji\Downloads\lf dash.png`). Its numbers are decoration — 28
+clients, £24,800/month, and a date in 2025 — so nothing about the data shapes
+should be taken from it.
+
+**1. A "Needs attention" panel.** Five rows: an approval overdue two days, a
+domain expiring in five, an open ticket, content waiting three days, an invoice
+seven days overdue. That is notify-by-exception (spec point 13) drawn as a
+screen — the brief endpoint rendered rather than read aloud. Worth remembering
+when phase 5 resumes, because it is a better starting point than a blank page.
+
+**2. A "Mr Green AI activity" feed inside LaunchOS.** The mockup shows recent
+agent actions — leads analysed, a brief generated, content suggested, websites
+checked — in the admin itself. That differs from the spec, which has Mr. Green
+as a private front end that never ships. Surfacing his activity *inside*
+LaunchOS may be better: `agent_runs` and `agent_steps` already hold exactly this
+and it would appear where Shoji is already looking. An addition to consider, not
+a replacement for the API.
+
+**One open question the mockup raises.** It is dark. `CLAUDE.md` and Shoji's own
+standing preference both say white/light and professional, no dark decorative
+themes. That rule was written with client-facing work in mind, and the admin is
+neither client-facing nor decorative — but the client portal shares this
+codebase, and the two must not end up fighting. Worth settling deliberately
+before any of it is built.
