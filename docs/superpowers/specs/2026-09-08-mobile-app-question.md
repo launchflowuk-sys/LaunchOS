@@ -1,6 +1,19 @@
 # A mobile app, or a mobile web app?
 
-**Status: asked, deliberately not answered yet.** Shoji raised this on 8 Sep
+**Status: DECIDED, 8 Sep 2026 — no app. Mobile web, done properly.**
+
+Shoji's call, same day: *"I don't think the second codebase is worth it. We are
+going to make sure the mobile view on the mobile is the bollocks."*
+
+So every screen gets real mobile design as part of the redesign — designed, not
+merely responsive. The rest of this file is kept because the reasoning still
+matters: if push notifications on iOS ever become the thing that decides it, the
+installed-PWA path and the existing `VAPID_*` web-push adapter are where to look
+before anyone reaches for a second codebase.
+
+---
+
+**Original framing, kept for the record.** Shoji raised this on 8 Sep
 2026 and said explicitly: talk about it *after* the platform redesign is
 finished. This file exists so the question and its constraints survive until
 then, not to settle it.

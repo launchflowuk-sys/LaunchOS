@@ -2,6 +2,7 @@ import { deliveryPipeline, latestOpsBrief, listActivity, listTasks, nextMeeting,
 import { schema } from "@launchos/db";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
 import {
+  Activity,
   AlarmClock,
   CalendarClock,
   Link2,
@@ -12,21 +13,20 @@ import {
   Rocket,
   ShieldCheck,
   Siren,
+  Sunrise,
   Users,
   Video,
   Wallet,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
-import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
 import { StageBar } from "@/components/progress-bar";
-import { RevenueChart } from "@/components/revenue-chart";
-import { Section } from "@/components/section";
-import { StatCard, type StatCardProps } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
+import { RevenueChart } from "@/components/revenue-chart";
+import { StatCard, type StatCardProps } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { formatInZone } from "@/lib/booking/slot-days";
 import { getDb } from "@/lib/db";
@@ -53,63 +53,6 @@ const REVENUE_MONTHS = 6;
 type ApprovalRow = { id: string; title: string; kind: string; createdAt: Date };
 type TaskRow = Awaited<ReturnType<typeof listTasks>>[number];
 type ActivityRow = Awaited<ReturnType<typeof listActivity>>[number];
-
-const APPROVAL_COLUMNS: readonly DataListColumn<ApprovalRow>[] = [
-  { key: "title", header: "Waiting on you", primary: true, cell: (row) => row.title },
-  { key: "kind", header: "Kind", cell: (row) => row.kind.replaceAll("_", " ") },
-  { key: "requested", header: "Requested", cell: (row) => formatDateTime(row.createdAt) },
-  { key: "status", header: "Status", status: true, cell: () => <StatusBadge value="pending" /> },
-  {
-    key: "action",
-    header: "Decide",
-    action: true,
-    cell: () => (
-      <Button asChild variant="secondary" size="sm">
-        <Link href="/approvals">Decide</Link>
-      </Button>
-    ),
-  },
-];
-
-const TASK_COLUMNS: readonly DataListColumn<TaskRow>[] = [
-  {
-    key: "title",
-    header: "Task",
-    primary: true,
-    cell: (row) => (
-      <Link href={`/tasks/${row.id}`} className="hover:underline">
-        {row.title}
-      </Link>
-    ),
-  },
-  { key: "client", header: "Client", cell: (row) => row.clientName },
-  { key: "due", header: "Due", numeric: true, cell: (row) => formatDate(row.dueAt) },
-  {
-    key: "assignee",
-    header: "Assignee",
-    hideOnMobile: true,
-    cell: (row) => row.assigneeName ?? "Unassigned",
-  },
-  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
-];
-
-const ACTIVITY_COLUMNS: readonly DataListColumn<ActivityRow>[] = [
-  {
-    key: "title",
-    header: "What happened",
-    primary: true,
-    cell: (row) =>
-      isInAppPath(row.link) ? (
-        <Link href={row.link} className="hover:underline">
-          {row.title}
-        </Link>
-      ) : (
-        row.title
-      ),
-  },
-  { key: "kind", header: "Kind", cell: (row) => row.kind.replaceAll("_", " ") },
-  { key: "when", header: "When", numeric: true, cell: (row) => formatDateTime(row.createdAt) },
-];
 
 export default async function DashboardPage() {
   const session = await requireAdmin();
@@ -396,46 +339,114 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <Section title="This morning's brief" description="What the Ops Brief agent saw at 07:00, and what it says needs you.">
-        <BriefCard brief={brief} />
-      </Section>
-
-      <Section
-        title="Waiting on a decision"
-        description="Nothing here reaches a client, moves money or changes DNS until you release it."
-      >
-        <DataList
-          rows={approvalQueue}
-          columns={APPROVAL_COLUMNS}
-          getRowKey={(row) => row.id}
-          caption="Approvals waiting on a decision"
-          empty={
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <Panel
+          title="Waiting on a decision"
+          description="Nothing here reaches a client, moves money or changes DNS until you release it."
+          icon={ShieldCheck}
+          category="automation"
+          action={{ label: "Approvals", href: "/approvals" }}
+        >
+          {approvalQueue.length === 0 ? (
             <EmptyState icon={ShieldCheck}>
               Nothing is waiting for a decision. Agents park outward actions here before they happen.
             </EmptyState>
-          }
-        />
-      </Section>
+          ) : (
+            <ul className="divide-y">
+              {approvalQueue.map((row) => (
+                // Stacks on a phone and sits on one line from `sm` up. The old
+                // table did the opposite: it squeezed five columns into 360px
+                // and made every one of them unreadable.
+                <li key={row.id} className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{row.title}</p>
+                    <p className="mt-0.5 text-meta text-muted-foreground">
+                      {row.kind.replaceAll("_", " ")} · {formatDateTime(row.createdAt)}
+                    </p>
+                  </div>
+                  <Button asChild variant="secondary" size="sm" className="shrink-0 self-start sm:self-auto">
+                    <Link href="/approvals">Decide</Link>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
 
-      <Section title="Overdue tasks" description="Past their due date and not finished.">
-        <DataList
-          rows={overdueQueue}
-          columns={TASK_COLUMNS}
-          getRowKey={(row) => row.id}
-          caption="Overdue tasks"
-          empty={<EmptyState icon={ListChecks}>Nothing is overdue. Work due this week is on the Tasks board.</EmptyState>}
-        />
-      </Section>
+        <Panel
+          title="Overdue tasks"
+          description="Past their due date and not finished."
+          icon={AlarmClock}
+          category="delivery"
+          action={{ label: "All tasks", href: "/tasks" }}
+        >
+          {overdueQueue.length === 0 ? (
+            <EmptyState icon={ListChecks}>Nothing is overdue. Work due this week is on the Tasks board.</EmptyState>
+          ) : (
+            <ul className="divide-y">
+              {overdueQueue.map((row) => (
+                <li key={row.id} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/tasks/${row.id}`} className="block truncate text-sm font-semibold hover:underline">
+                      {row.title}
+                    </Link>
+                    <p className="mt-0.5 truncate text-meta text-muted-foreground">
+                      {row.clientName} · {row.assigneeName ?? "Unassigned"}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-meta font-semibold whitespace-nowrap text-danger-fg">
+                    {formatDate(row.dueAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
 
-      <Section title="Recent activity" description="The last few things that happened across every client.">
-        <DataList
-          rows={activity}
-          columns={ACTIVITY_COLUMNS}
-          getRowKey={(row) => row.id}
-          caption="Recent activity"
-          empty={<EmptyState icon={Link2}>Nothing has happened yet. Add a client to start the timeline.</EmptyState>}
-        />
-      </Section>
+      <div className="mt-8 grid gap-6 lg:grid-cols-2">
+        <Panel
+          title="This morning's brief"
+          description="What the Ops Brief agent saw at 07:00, and what it says needs you."
+          icon={Sunrise}
+          category="automation"
+          action={{ label: "All briefs", href: "/briefs" }}
+        >
+          <BriefCard brief={brief} />
+        </Panel>
+
+        <Panel
+          title="Recent activity"
+          description="The last few things that happened across every client."
+          icon={Activity}
+          action={{ label: "Everything", href: "/activity" }}
+        >
+          {activity.length === 0 ? (
+            <EmptyState icon={Link2}>Nothing has happened yet. Add a client to start the timeline.</EmptyState>
+          ) : (
+            <ul className="divide-y">
+              {activity.map((row) => (
+                <li key={row.id} className="flex items-baseline gap-4 py-3.5 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    {isInAppPath(row.link) ? (
+                      <Link href={row.link} className="text-sm hover:underline">
+                        {row.title}
+                      </Link>
+                    ) : (
+                      <span className="text-sm">{row.title}</span>
+                    )}
+                    <p className="mt-0.5 text-meta text-muted-foreground">{row.kind.replaceAll("_", " ")}</p>
+                  </div>
+                  <span className="shrink-0 text-meta whitespace-nowrap text-muted-foreground">
+                    {formatDateTime(row.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+      </div>
+
     </>
   );
 }
