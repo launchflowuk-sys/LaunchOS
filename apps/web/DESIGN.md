@@ -156,4 +156,5 @@ And, added after each one shipped once:
 - **A control that disagrees with the control beside it** on height or corner. See Geometry.
 - **`text-xs` on anything a person reads.**
 - **A grid or flex child without `min-w-0` when it can hold a table.**
+- **A custom font-size token in the same `cn()` as a text colour.** `tailwind-merge` cannot tell `text-kpi` or `text-meta` from `text-white`, so the colour wins and the size is silently dropped — a 44px figure renders at body size and nothing errors. Use an arbitrary length (`text-[2.75rem]`) wherever a size and a colour meet. This has shipped twice.
 - **A JSX comment inside `actions={…}` or a ternary branch.** Both take a single expression; a comment there is a parse error, and it has broken the build more than once. Put the note above the expression.

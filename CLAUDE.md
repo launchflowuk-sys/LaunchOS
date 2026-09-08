@@ -63,6 +63,15 @@ pnpm test             # vitest across the workspace (needs db:up)
 pnpm typecheck
 ```
 
+**Do not run `pnpm build` while `pnpm dev` is running.** `next build` and
+`next dev` share `.next`, and the build leaves the running dev server in a
+state where sessions stop resolving — sign-in succeeds, `/after-sign-in`
+bounces back to `/sign-in`, and every Playwright run fails as a two-minute
+navigation timeout that looks like a product bug and is not. Stop the dev
+server first, or build in a separate checkout. If it has already happened,
+kill whatever is listening on port 3000 and start `pnpm dev` again — stopping
+the shell alone leaves the node process holding the port.
+
 ## How to add things
 
 - **New table:** `packages/db/src/schema/<domain>.ts` → export from `index.ts` → `pnpm db:generate` → review SQL → `pnpm db:migrate`.
