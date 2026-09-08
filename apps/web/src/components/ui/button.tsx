@@ -27,11 +27,11 @@ const buttonVariants = cva(
     variants: {
       variant: {
         primary: "bg-primary text-primary-foreground hover:bg-primary/90",
-        secondary: "border-border bg-secondary text-foreground hover:bg-accent",
+        secondary: "border-border bg-card text-foreground hover:bg-muted",
         ghost: "text-foreground hover:bg-muted",
         destructive: "bg-destructive text-white hover:bg-destructive/90",
-        "destructive-quiet": "border-danger-border/70 bg-transparent text-danger-fg hover:border-danger-border hover:bg-danger-bg",
-        success: "bg-success-solid text-white hover:bg-success-solid/90",
+        "destructive-quiet": "border-border bg-card text-danger-fg hover:border-danger-border hover:bg-danger-bg",
+        success: "bg-success-fg text-white hover:bg-success-fg/90",
       },
       size: {
         sm: "h-8 px-3 text-[0.8125rem] [&_svg:not([class*='size-'])]:size-3.5",

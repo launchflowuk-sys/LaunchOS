@@ -1,8 +1,6 @@
 # LaunchOS — design system
 
-Committed world: **the agency control room**. A confident, colourful-where-it-counts SaaS product: a **dark workspace** on the logo's navy, saturated KPI panels carrying the headline figures, one strong LaunchFlow blue for actions, and a fixed vocabulary of state colours so "needs you" is never mistaken for "fine". Operate mode throughout. Familiar SaaS conventions on purpose; personality lives in precision and colour discipline, not decoration.
-
-**The workspace is dark and the public site is light. That split is deliberate and is not a bug to be tidied up.** A stranger meeting launchflow.co.uk should find something calm, white and professional; a person running their agency inside the admin for eight hours should not be stared at by a white page. The two never touch: the marketing site re-points every token under `.marketing` (`site/marketing.css`), so changing `:root` cannot reach it. The admin and the client portal share `:root` and get the same treatment as each other.
+Committed world: **the agency control room**. A confident, colourful-where-it-counts SaaS product: dark navy rail on the left, calm cool-white workspace, one strong LaunchFlow blue for actions, and a fixed vocabulary of state colours so "needs you" is never mistaken for "fine". Operate mode throughout. Familiar SaaS conventions on purpose; personality lives in precision and colour discipline, not decoration.
 
 The previous look (default shadcn greys, serif fallback font, bare tables) is the anti-reference. So is the indigo the palette was guessed at before the logo was sampled.
 
@@ -14,48 +12,34 @@ The wordmark appears in exactly three places — the admin rail header, the port
 
 ## Tokens
 
-Declared in `src/app/globals.css` as CSS variables, exposed to Tailwind through `@theme inline`. The workspace is dark; the rail is darker still, so it stays a distinct plane rather than dissolving into the page.
-
-Every ratio below is **calculated, not estimated** — `oklch` converted to sRGB and run through the WCAG formula, the same bar the light palette was held to.
+Declared in `src/app/globals.css` as CSS variables, exposed to Tailwind through `@theme inline`. Light only in the workspace; the sidebar is a dark surface by design.
 
 | Token | Value | Use |
 |---|---|---|
-| `--background` | `oklch(0.185 0.02 264)` = `#0e131c` | workspace ground |
-| `--card` | `oklch(0.225 0.021 263)` = `#171c26` | panels above the ground; foreground on it **15.46:1** |
-| `--foreground` | `oklch(0.965 0.004 260)` | ink |
-| `--muted-foreground` | `oklch(0.74 0.018 260)` | secondary text (**7.42:1** on card) |
-| `--border` | `oklch(0.32 0.02 261)` | hairlines (1.35:1 on card — an edge, not a shout) |
-| `--input` | `oklch(0.36 0.022 261)` | field borders, a touch brighter: a field has no fill, so its border is the only way to find it |
-| `--primary` | `oklch(0.56 0.14 245)` = `#037ac0` | the one action colour. White on it **4.61:1**, and it stands off the card at 3.71:1. Solid and opaque — never a translucent pill |
-| `--primary-soft` | `oklch(0.3 0.06 245)` | selected rows, pressed states |
-| `--brand-cyan` | `oklch(0.75 0.13 216)` = `#18C2E2` | the swoosh's cyan. **8.00:1 on a card**, so unlike the light palette it may now carry text. It is also `--ring` |
-| `--success-solid` | `oklch(0.52 0.14 155)` | the *approve* button. `--success-fg` is far too bright to carry a white label (2.2:1); this clears **5.09:1** |
-| `--sidebar` | `oklch(0.145 0.022 265)` | the rail — the darkest surface in the product |
-| `--ring` | `--brand-cyan` | focus, everywhere. The light palette had to ban cyan here at 2.14:1 on white; on dark it is the clearest thing available |
+| `--background` | `oklch(0.985 0.004 250)` | workspace ground (cool off-white, never pure white) |
+| `--card` | `oklch(1 0 0)` | content surfaces, tables, forms |
+| `--foreground` | `oklch(0.21 0.02 262)` | ink |
+| `--muted-foreground` | `oklch(0.49 0.02 262)` | secondary text (4.5:1 on white) |
+| `--border` | `oklch(0.905 0.01 255)` | hairlines |
+| `--primary` | `oklch(0.53 0.13 245)` = `#0A71B1` | the one action colour — the logo's sky-blue hue, darkened until white on it is **5.23:1**; `--primary-foreground` white |
+| `--primary-soft` | `oklch(0.955 0.022 245)` = `#E4F2FE` | selected rows, active nav on light, soft buttons. `--primary` text on it is **4.60:1** |
+| `--brand-cyan` | `oklch(0.75 0.13 216)` = `#18C2E2` | the swoosh's cyan. Highlights, the active rail marker, focus **on the rail** (8.48:1 there) |
+| `--sidebar` | `oklch(0.2 0.03 265)` | the logo navy as a rail; `--sidebar-foreground` `oklch(0.86 0.02 262)` (11.85:1), `--sidebar-muted` `oklch(0.66 0.02 262)` (5.83:1) |
+| `--sidebar-active` | `oklch(0.31 0.05 250)` | active item pill on the rail (white on it 13.13:1) |
+| `--sidebar-ring` / `--sidebar-primary` | `--brand-cyan` | focus and the active marker on the rail |
+| `--ring` | `--primary` | focus **on the workspace**. Never `--brand-cyan`: it is 2.14:1 on white |
 | `--radius` | `0.75rem` | cards; controls use `--radius-md` (0.5rem); pills full |
 
-KPI grounds — the filled panels a `StatCard` wears. Each carries a white figure with room to spare:
+Every value above is inside the sRGB gamut and every ratio is calculated, not estimated. The obvious brighter reading of the logo — `oklch(0.55 0.16 235)` — is **not** in gamut; a browser clipping it lands on `#007CC0`, which is 4.51:1 against white, i.e. AA with 0.01 of headroom. Hence 0.53 / 0.13 / hue 245.
 
-| Token | Value | White on it |
-|---|---|---|
-| `--kpi-slate` | `oklch(0.26 0.03 262)` | 15.55:1 |
-| `--kpi-blue` | `oklch(0.45 0.15 250)` | 7.35:1 |
-| `--kpi-indigo` | `oklch(0.42 0.16 275)` | 8.92:1 |
-| `--kpi-violet` | `oklch(0.44 0.2 300)` | 8.65:1 |
-| `--kpi-teal` | `oklch(0.45 0.09 190)` | 6.97:1 |
-| `--kpi-danger` | `oklch(0.45 0.18 25)` | 8.18:1 |
-| `--kpi-warning` | `oklch(0.46 0.12 70)` | 7.29:1 |
-
-**Support is indigo, not amber, and amber means warning and nothing else.** A ground deep enough to carry white cannot be a vivid amber — it lands on brown — and the brown then sat beside the warning ground looking identical to it.
-
-Semantic (each a `-bg`, `-fg`, `-border` trio, every `-fg` AA on `--card`). The `-bg` values are dark tints of their own hue, not the pale washes the light palette used — a pale wash on a dark ground is a glare:
+Semantic (each a `-bg`, `-fg`, `-border` trio, all AA on white):
 
 | State | fg | bg |
 |---|---|---|
-| success | `oklch(0.72 0.16 155)` — 7.38:1 | `oklch(0.27 0.06 155)` |
-| warning | `oklch(0.78 0.15 75)` — 8.37:1 | `oklch(0.29 0.06 75)` |
-| danger | `oklch(0.66 0.19 25)` — 5.03:1 | `oklch(0.28 0.08 25)` |
-| info | `oklch(0.7 0.14 245)` — 6.47:1 | `oklch(0.27 0.06 245)` |
+| success | `oklch(0.42 0.13 155)` | `oklch(0.95 0.05 155)` |
+| warning | `oklch(0.47 0.13 70)` | `oklch(0.96 0.06 85)` |
+| danger | `oklch(0.48 0.19 25)` | `oklch(0.95 0.04 20)` |
+| info | `oklch(0.45 0.15 245)` | `oklch(0.94 0.04 245)` |
 
 Category hues, used for nav group markers, page-header accent dot and stat cards only (never for buttons):
 
@@ -89,9 +73,9 @@ Fixed rem scale, ratio ≈1.2: 12 (meta) · 13 (table body, labels) · 14 (body)
 - **StatusBadge**: pill with a leading dot, colour from the semantic map; value text humanised. Same component in admin and portal.
 - **PageHeader** with category accent dot; **EmptyState** with a lucide icon, one sentence, optional primary action.
 - **DataList**: the one way to show rows. Renders a real `<table>` inside `overflow-x-auto rounded-xl border bg-card` at `md+`; under `md` renders stacked row cards from the same column definitions (primary column as card title, status pill top-right, remaining columns as label/value pairs, row action as a full-width link). Nothing may overflow the viewport.
-- **StatCard**: a headline figure as a **filled panel** — the whole surface is the category hue and the figure sits on it in white. On a dark workspace a card differs from the page by a shade and a hairline, so a coloured *detail* disappears; the colour had to become the surface. `attention` with a non-zero value abandons the category for the danger (or warning) ground and a "Needs you" pill; a zero falls back to slate, because a bright 0 reads as data when it is the absence of it. Not dashboard-only any more: any panel with a figure worth reading across the room may use it.
+- **StatCard**: dashboard only — number, label, delta or hint, link, category colour on the number.
 - **Toolbar / FilterBar**, **KeyValue** (label/value rows for detail pages), **Section** (heading + description + content), **Skeleton** rows for loading, **Alert** for inline warnings (send failed, access revoked).
-- Forms use shadcn `Input`, `Select`, `Textarea`, `Label` everywhere; no bare `<input>` with ad-hoc classes. **A field is a border and nothing else** — no fill, no shadow, no plate floating on the page. Focus takes `--ring` (the brand cyan) on the border and a soft ring around it.
+- Forms use shadcn `Input`, `Select`, `Textarea`, `Label` everywhere; no bare `<input>` with ad-hoc classes.
 - Icons: lucide, 16px in buttons and nav, 20px in empty states, `stroke-width 1.75`.
 
 ## States that must be visible at a glance
@@ -102,10 +86,6 @@ Pending approval (warning pill + count badge in the rail), overdue (danger), una
 
 150–200ms colour/opacity transitions on interactive elements; sheet and dialog use the library defaults; nothing else moves. Respect `prefers-reduced-motion`.
 
-## Printing
-
-The workspace is dark; paper is not. `globals.css` re-points the tokens inside `@media print` to the light palette this product used before, so every screen prints as ink on white without a single component knowing it is being printed. KPI panels drop their fill for a hairline there too — a solid block of colour is a page of wasted ink. Anything added that hardcodes a colour instead of reading a token will print wrong, and that is the main reason not to hardcode one.
-
 ## Never
 
-Gradient text, eyebrows above headings, nested cards, coloured left borders thicker than 1px, emoji as icons, serif anywhere, tables that scroll the page body sideways, three-row wrapped navs, the logo on a coloured or dark ground without its white chip, a translucent "glass" pill where a solid button belongs, a field with a background fill, white cards floating on grey with shadows, `--success-fg` as a button ground (2.2:1 under a white label — use `--success-solid`), a second "dark mode" (the workspace *is* dark; the light one is the public site and it has its own palette).
+Gradient text, eyebrows above headings, nested cards, coloured left borders thicker than 1px, emoji as icons, serif anywhere, tables that scroll the page body sideways, three-row wrapped navs, the logo on a coloured or dark ground without its white chip, `--brand-cyan` as a text or button colour.

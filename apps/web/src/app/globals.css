@@ -7,12 +7,10 @@
    notes) rely on it. */
 @plugin "@tailwindcss/typography";
 
-/* No `.dark` palette is declared below, and it is not an oversight. The
-   workspace *is* dark — that is what `:root` says — so a second "dark mode"
-   would be a mode of a mode. The public marketing site is the light one, and it
-   carries its own palette under `.marketing`. The variant stays registered so
-   the `dark:` classes shadcn ships compile to a selector that never matches,
-   rather than to a build error. */
+/* No `.dark` palette is declared below: LaunchOS is a light product with one
+   dark surface (the admin rail), and DESIGN.md pins it there. The variant stays
+   registered so the `dark:` classes shadcn ships compile to a selector that
+   simply never matches, rather than to a build error. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -31,6 +29,7 @@
   --text-row: 0.8125rem; /* 13 — table body, form labels */
   --text-title: 1.375rem; /* 22 — page title */
   --text-figure: 1.75rem; /* 28 — dashboard numbers */
+  --text-kpi: 2.75rem; /* 44 — the four headline figures, per the UI brief */
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -68,21 +67,21 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  /* KPI card grounds — the saturated panels across the top of a dashboard. */
-  --color-kpi-slate: var(--kpi-slate);
-  --color-kpi-blue: var(--kpi-blue);
-  --color-kpi-violet: var(--kpi-violet);
+  /* The dark KPI grounds — the four saturated panels across the top of a
+     dashboard. Dark on a light canvas, which is the whole point: they read as
+     important *because* everything around them is white. */
+  --color-kpi-navy: var(--kpi-navy);
+  --color-kpi-cobalt: var(--kpi-cobalt);
+  --color-kpi-purple: var(--kpi-purple);
   --color-kpi-teal: var(--kpi-teal);
-  --color-kpi-indigo: var(--kpi-indigo);
-  --color-kpi-danger: var(--kpi-danger);
-  --color-kpi-warning: var(--kpi-warning);
+  --color-kpi-coral: var(--kpi-coral);
+  --color-kpi-amber: var(--kpi-amber);
   --color-kpi-foreground: var(--kpi-foreground);
 
   /* The state vocabulary. Every trio is AA on white, so "needs you" can never
      be mistaken for "fine". Used by StatusBadge, InlineAlert and row emphasis —
      never by a button. */
   --color-success-fg: var(--success-fg);
-  --color-success-solid: var(--success-solid);
   --color-success-bg: var(--success-bg);
   --color-success-border: var(--success-border);
   --color-warning-fg: var(--warning-fg);
@@ -126,179 +125,104 @@
 }
 
 :root {
-  /* The workspace is dark. This is a deliberate split, not a drift: the public
-     marketing site is light and professional because that is what a stranger
-     should meet, and it keeps its own palette entirely (`.marketing` re-points
-     every token below, so nothing here reaches it). The admin and the client
-     portal are tools people stare at for hours, and they are dark because Shoji
-     asked for it and because the brand already had the navy — the rail was
-     always this colour; the workspace has simply stopped being the exception.
+  color-scheme: light;
 
-     Every ratio below is calculated, not estimated, the same as the light
-     palette before it. */
-  color-scheme: dark;
+  --background: oklch(0.985 0.004 250);
+  --foreground: oklch(0.21 0.02 262);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 262);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 262);
 
-  /* Surfaces, darkest to lightest, all on the logo navy's hue. The rail stays
-     the darkest thing on screen so it still reads as a distinct plane rather
-     than dissolving into the workspace. */
-  --background: oklch(0.185 0.02 264);   /* #0e131c — workspace ground */
-  --foreground: oklch(0.965 0.004 260);  /* #f2f3f6 — 16.85:1 on the ground */
-  --card: oklch(0.225 0.021 263);        /* #171c26 — panels above the ground */
-  --card-foreground: oklch(0.965 0.004 260); /* 15.46:1 on card */
-  --popover: oklch(0.245 0.021 263);
-  --popover-foreground: oklch(0.965 0.004 260);
-
-  /* The action colour. The light palette had to *darken* the logo's sky blue
-     until white text cleared AA on a white page; here there is no such tax, so
-     this is much closer to what the logo actually is. #037ac0 carries white at
-     4.61:1 and stands off the card at 3.71:1 — a solid, opaque button, never a
-     translucent pill. `--primary-soft` is the pressed/selected surface. */
-  --primary: oklch(0.56 0.14 245);
+  /* The LaunchFlow blue, taken from the logo rather than guessed. "Launch" and
+     the swoosh run #1090E0 -> #10C0E0, which is oklch hue 245 -> 216; the
+     action colour is that first hue, darkened until white text on it clears AA.
+     Verified, not eyeballed: #0A71B1 against white is 5.23:1 (AA needs 4.5),
+     and it is inside the sRGB gamut — the obvious brighter reading of the logo,
+     oklch(0.55 0.16 235), is not, and a browser clipping it lands on 4.51:1
+     with no headroom at all. `--primary-soft` is the same hue as a tint, kept
+     light enough that `--primary` text on it is 4.60:1 (the active portal tab
+     and the account avatar are exactly that pairing). */
+  --primary: oklch(0.53 0.13 245);
   --primary-foreground: oklch(1 0 0);
-  --primary-soft: oklch(0.3 0.06 245);
-  /* The swoosh's cyan, banned as text on the light palette at 2.14:1. On this
-     ground it is 8.00:1, so on dark it can finally carry meaning: links,
-     the active rail marker, focus. */
+  --primary-soft: oklch(0.955 0.022 245);
+  /* #18C2E2 — the swoosh's cyan. Highlights, the active rail marker and focus
+     on the navy rail (8.48:1 there). Never focus on the workspace: it is
+     2.14:1 on white, which is why `--ring` stays `--primary`. */
   --brand-cyan: oklch(0.75 0.13 216);
 
-  --secondary: oklch(0.265 0.022 262);
-  --secondary-foreground: oklch(0.965 0.004 260);
-  --muted: oklch(0.245 0.02 262);
-  --muted-foreground: oklch(0.74 0.018 260); /* #a4abb6 — 7.42:1 on card */
-  --accent: oklch(0.285 0.022 262);
-  --accent-foreground: oklch(0.965 0.004 260);
+  --secondary: oklch(0.97 0.005 262);
+  --secondary-foreground: oklch(0.21 0.02 262);
+  --muted: oklch(0.968 0.005 262);
+  --muted-foreground: oklch(0.49 0.02 262);
+  --accent: oklch(0.96 0.008 262);
+  --accent-foreground: oklch(0.21 0.02 262);
 
-  --destructive: oklch(0.55 0.2 25);
+  --destructive: oklch(0.48 0.19 25);
   --destructive-foreground: oklch(1 0 0);
 
-  /* Hairlines have to work harder on dark: 1.35:1 against the card is a visible
-     edge without becoming a line that shouts. `--input` is a touch brighter,
-     because a field is only findable by its border now that it has no fill. */
-  --border: oklch(0.32 0.02 261);
-  --input: oklch(0.36 0.022 261);
-  --ring: var(--brand-cyan);
+  --border: oklch(0.905 0.01 255);
+  --input: oklch(0.905 0.01 255);
+  --ring: var(--primary);
   --radius: 0.75rem;
 
-  /* The rail: the same navy, taken darker so it still separates from a
-     workspace that is now also dark. */
-  --sidebar: oklch(0.145 0.022 265);
-  --sidebar-foreground: oklch(0.88 0.012 260);
-  --sidebar-muted: oklch(0.66 0.018 260);
-  --sidebar-active: oklch(0.28 0.045 250);
-  --sidebar-border: oklch(0.26 0.025 262);
-  --sidebar-accent: oklch(0.235 0.03 258);
-  --sidebar-accent-foreground: oklch(0.97 0.008 262);
+  /* KPI card grounds, from the commercial UI brief. Every one carries white
+     with room to spare, and every one stands well clear of the canvas. */
+  --kpi-navy: #0B1020;    /* white 18.93:1 */
+  --kpi-cobalt: #2457FF;  /* white  5.41:1 */
+  --kpi-purple: #7857FF;  /* white  4.56:1 */
+  --kpi-teal: #0D6E63;    /* white  6.13:1 */
+  --kpi-coral: #B3242F;   /* the alarm ground */
+  --kpi-amber: #8A5200;   /* the warning ground */
+  --kpi-foreground: #FFFFFF;
+
+  /* The rail is the logo's own navy (#101020 reads as oklch 0.18 0.03 283),
+     lifted just enough that the border, hover and active pill can all sit above
+     it and still be told apart. */
+  --sidebar: oklch(0.2 0.03 265);
+  --sidebar-foreground: oklch(0.86 0.02 262);
+  /* Group labels and the identity block sit below the item text on the rail. */
+  --sidebar-muted: oklch(0.66 0.02 262);
+  /* The active pill: a lighter navy, pulled towards the brand hue. White on it
+     is 13.13:1, and it is 1.38:1 against the rail — a surface, not a shout;
+     the cyan marker beside it is what carries "you are here". */
+  --sidebar-active: oklch(0.31 0.05 250);
+  --sidebar-border: oklch(0.28 0.03 258);
+  --sidebar-accent: oklch(0.26 0.04 255);
+  --sidebar-accent-foreground: oklch(0.97 0.01 262);
   --sidebar-primary: var(--brand-cyan);
-  --sidebar-primary-foreground: oklch(0.145 0.022 265);
+  --sidebar-primary-foreground: oklch(0.2 0.03 265);
   --sidebar-ring: var(--brand-cyan);
 
-  /* The state vocabulary, re-derived for a dark ground. Every `-fg` is AA on
-     `--card`; the `-bg` values are dark tints of the same hue rather than the
-     pale washes the light palette used, because a pale wash on dark is a
-     glare. "Needs you" still cannot be mistaken for "fine". */
-  --success-fg: oklch(0.72 0.16 155);   /* 7.38:1 as text on card */
-  /* A *button* cannot use `--success-fg`: white on that bright green is 2.2:1.
-     This is the same hue taken down until a white label clears AA (5.09:1),
-     so every solid button in the product carries a white label and none of
-     them is a special case to remember. */
-  --success-solid: oklch(0.52 0.14 155);
-  --success-bg: oklch(0.27 0.06 155);
-  --success-border: oklch(0.38 0.09 155);
-  --warning-fg: oklch(0.78 0.15 75);    /* 8.37:1 */
-  --warning-bg: oklch(0.29 0.06 75);
-  --warning-border: oklch(0.4 0.09 75);
-  --danger-fg: oklch(0.66 0.19 25);     /* 5.03:1 */
-  --danger-bg: oklch(0.28 0.08 25);
-  --danger-border: oklch(0.4 0.12 25);
-  --info-fg: oklch(0.7 0.14 245);       /* 6.47:1 */
-  --info-bg: oklch(0.27 0.06 245);
-  --info-border: oklch(0.38 0.09 245);
-  --neutral-fg: oklch(0.74 0.018 260);
-  --neutral-bg: oklch(0.26 0.02 262);
-  --neutral-border: oklch(0.34 0.02 261);
+  --success-fg: oklch(0.42 0.13 155);
+  --success-bg: oklch(0.95 0.05 155);
+  --success-border: oklch(0.85 0.07 155);
+  --warning-fg: oklch(0.47 0.13 70);
+  --warning-bg: oklch(0.96 0.06 85);
+  --warning-border: oklch(0.86 0.09 80);
+  --danger-fg: oklch(0.48 0.19 25);
+  --danger-bg: oklch(0.95 0.04 20);
+  --danger-border: oklch(0.86 0.07 22);
+  --info-fg: oklch(0.45 0.15 245);
+  --info-bg: oklch(0.94 0.04 245);
+  --info-border: oklch(0.85 0.06 245);
+  /* The calm state. It is part of the same vocabulary so a "closed" pill and an
+     "open" pill are built the same way. */
+  --neutral-fg: oklch(0.44 0.02 262);
+  --neutral-bg: oklch(0.965 0.005 262);
+  --neutral-border: oklch(0.89 0.01 255);
 
-  /* Category hues — nav group markers, the page-header accent dot, stat cards.
-     Brightened from the light palette so they read against a dark ground.
-     Still never a button. */
-  --category-delivery: oklch(0.7 0.15 245);
-  --category-support: oklch(0.75 0.16 50);
-  --category-money: oklch(0.72 0.15 155);
-  --category-automation: oklch(0.7 0.19 305);
-  --category-organisation: oklch(0.7 0.03 255);
+  --category-delivery: oklch(0.6 0.15 245);
+  --category-support: oklch(0.66 0.16 50);
+  --category-money: oklch(0.6 0.14 155);
+  --category-automation: oklch(0.6 0.19 305);
+  --category-organisation: oklch(0.58 0.04 255);
 
-  /* KPI card grounds. Saturated, opaque panels — the four across the top of the
-     dashboard. White on each is 6.8:1 or better, so the figure is legible with
-     room to spare; blue and teal clip a fraction outside sRGB, which is
-     acceptable on a *background* carrying that much headroom in a way it would
-     not be on text. */
-  --kpi-slate: oklch(0.26 0.03 262);    /* white 15.55:1 */
-  --kpi-blue: oklch(0.45 0.15 250);     /* 7.35:1 */
-  --kpi-violet: oklch(0.44 0.2 300);    /* 8.65:1 */
-  --kpi-teal: oklch(0.45 0.09 190);     /* 6.97:1 */
-  /* Support gets indigo rather than an amber, and the reason is worth keeping:
-     a ground deep enough to carry white *cannot* be a vivid amber — it lands on
-     brown. Worse, it then sat beside the warning ground and the two were one
-     colour. Amber now means warning and nothing else. */
-  --kpi-indigo: oklch(0.42 0.16 275);   /* 8.92:1 */
-  --kpi-danger: oklch(0.45 0.18 25);    /* 8.18:1 */
-  --kpi-warning: oklch(0.46 0.12 70);   /* 7.29:1 */
-  --kpi-foreground: oklch(1 0 0);
-}
-
-/* Paper is white and always was.
-   The workspace went dark, and an invoice printed from it would have been white
-   ink on white paper — `print:bg-white` was already on both shells, but nothing
-   turned the *text* back. Re-pointing the tokens for print fixes every screen at
-   once, because every screen reads them: no component knows it is being printed
-   and none of them needs to. The values are the light palette this product used
-   before, which was designed against white in the first place. */
-@media print {
-  :root {
-    color-scheme: light;
-
-    --background: #ffffff;
-    --foreground: oklch(0.21 0.02 262);
-    --card: #ffffff;
-    --card-foreground: oklch(0.21 0.02 262);
-    --popover: #ffffff;
-    --popover-foreground: oklch(0.21 0.02 262);
-    --muted: oklch(0.968 0.005 262);
-    --muted-foreground: oklch(0.42 0.02 262);
-    --secondary: oklch(0.97 0.005 262);
-    --secondary-foreground: oklch(0.21 0.02 262);
-    --accent: oklch(0.96 0.008 262);
-    --accent-foreground: oklch(0.21 0.02 262);
-    --border: oklch(0.82 0.01 255);
-    --input: oklch(0.82 0.01 255);
-    /* The darkened logo blue: readable as ink, and it survives a mono printer. */
-    --primary: oklch(0.53 0.13 245);
-    --primary-foreground: #ffffff;
-
-    /* State ink, back to the AA-on-white trio. A pale tint behind it is dropped
-       below rather than kept — most printers render it as a grey wash. */
-    --success-fg: oklch(0.42 0.13 155);
-    --warning-fg: oklch(0.47 0.13 70);
-    --danger-fg: oklch(0.48 0.19 25);
-    --info-fg: oklch(0.45 0.15 245);
-    --neutral-fg: oklch(0.42 0.02 262);
-    --success-bg: transparent;
-    --warning-bg: transparent;
-    --danger-bg: transparent;
-    --info-bg: transparent;
-    --neutral-bg: transparent;
-  }
-
-  /* A KPI panel is a block of solid colour; on paper it is a page of wasted
-     ink and white figures on a mid-tone. Printed, it becomes ink on white with
-     a hairline, which is what a figure on paper should have been all along. */
-  [class*="bg-kpi-"] {
-    background: #ffffff !important;
-    border: 1px solid oklch(0.82 0.01 255);
-    color: oklch(0.21 0.02 262) !important;
-  }
-  [class*="bg-kpi-"] * {
-    color: oklch(0.21 0.02 262) !important;
-  }
+  --chart-1: var(--category-delivery);
+  --chart-2: var(--category-support);
+  --chart-3: var(--category-money);
+  --chart-4: var(--category-automation);
+  --chart-5: var(--category-organisation);
 }
 
 @layer base {
