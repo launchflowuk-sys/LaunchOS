@@ -91,7 +91,12 @@ const ATTENTION_GROUND: Record<AttentionTone, string> = {
  */
 function figureSize(value: string | number): string {
   const length = String(value).length;
-  if (length <= 7) return "text-kpi";
+  // Arbitrary values, not the `text-kpi` token, and not by accident:
+  // tailwind-merge cannot tell a custom font-size utility from a text colour,
+  // so `text-kpi` was dropped whenever `text-white/60` sat beside it in the
+  // same `cn()` — every "all clear" card rendered its 0 at body size. An
+  // arbitrary length is recognised as a size and survives.
+  if (length <= 7) return "text-[2.75rem]";
   if (length <= 9) return "text-[2.25rem]";
   if (length <= 12) return "text-[1.75rem]";
   return "text-[1.5rem]";
@@ -135,6 +140,10 @@ export function StatCard({
   spark,
 }: StatCardProps) {
   const numeric = Number(value);
+  // "Needs you" rides under the figure rather than beside the label. In the
+  // header it had to share a 176px line with a 36px icon tile and the label,
+  // so the label wrapped around it — "Pending / approvals" with a pill in the
+  // gap, which reads as broken rather than urgent.
   const isAlarming = attention && numeric > 0;
   const isClear = numeric === 0;
 
@@ -150,7 +159,7 @@ export function StatCard({
 
   const body = (
     <>
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           {Icon ? (
             <span
@@ -164,9 +173,6 @@ export function StatCard({
           ) : null}
           <p className="text-[0.9375rem] leading-tight font-semibold text-white/85">{label}</p>
         </div>
-        {isAlarming ? (
-          <span className="label-caps shrink-0 rounded-full bg-white/20 px-2 py-0.5 whitespace-nowrap">Needs you</span>
-        ) : null}
       </div>
 
       <div className="mt-4">
@@ -180,6 +186,11 @@ export function StatCard({
           >
             {value}
           </p>
+          {isAlarming ? (
+            <span className="label-caps mt-3 inline-flex rounded-full bg-white/20 px-2.5 py-1 whitespace-nowrap">
+              Needs you
+            </span>
+          ) : null}
           {trend ? (
             <span
               className={cn(

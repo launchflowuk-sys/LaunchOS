@@ -48,9 +48,17 @@ async function signInAs(page: Page, credentials: { email: string; password: stri
   await page.goto("/sign-in");
   await page.getByLabel("Email").fill(credentials.email);
   await page.getByLabel("Password").fill(credentials.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
+  // Wait for the credential exchange itself before watching the URL: clicking
+  // and immediately waiting raced the redirect, and /after-sign-in was reached
+  // before the session cookie applied, which bounced the whole flow back to
+  // /sign-in. Matching on `pathname` rather than passing a glob also removes
+  // any question of how "/" resolves in a context built by hand.
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/auth/sign-in/email")),
+    page.getByRole("button", { name: "Sign in" }).click(),
+  ]);
   // /after-sign-in decides between the admin shell and the portal.
-  await page.waitForURL(landing, { timeout: COLD_COMPILE });
+  await page.waitForURL((url) => url.pathname === landing, { timeout: COLD_COMPILE });
 }
 
 /**
