@@ -1,15 +1,15 @@
-import { captureSiteScreenshot, sitesDueForScreenshot } from "@launchos/core";
+import { captureSiteScreenshot, sitesMissingScreenshot } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import type { ScreenshotAdapter } from "@launchos/integrations";
 
 /**
- * How many sites one nightly run photographs.
+ * How many sites one run photographs.
  *
  * A ceiling rather than "all of them", because each capture is a paid call to
  * a third party and a runaway loop over a table is how a provider bill becomes
- * a surprise. `sitesDueForScreenshot` returns the stalest first, so a run that
- * hits the ceiling still makes progress and tomorrow's picks up where this one
- * stopped — the set converges even if it never fits in one night.
+ * a surprise. `sitesMissingScreenshot` returns only sites that have never been
+ * captured, so a run that hits the ceiling still makes progress and the next
+ * one picks up where it stopped.
  */
 export const SCREENSHOT_BATCH = 25;
 
@@ -20,7 +20,13 @@ export interface ScreenshotRunResult {
 }
 
 /**
- * Refreshes the thumbnails on the websites list.
+ * Gives newly added sites their first thumbnail.
+ *
+ * Not a refresh: a thumbnail identifies a site, and that does not change, so
+ * re-shooting all of them on a schedule was paying a provider daily to keep a
+ * correct picture correct. Whether a site is broken is answered by monitors and
+ * incidents, which alert; a picture is not a monitor. A deliberate refresh is
+ * the button on the site card.
  *
  * Sequential, not `Promise.all`: twenty-five simultaneous page renders is a
  * burst a provider rate-limits and a wall of failures we would then have to
@@ -37,7 +43,7 @@ export async function runSiteScreenshots(
   screenshots: ScreenshotAdapter,
   options: { now: Date; limit?: number },
 ): Promise<ScreenshotRunResult> {
-  const due = await sitesDueForScreenshot(db, organisationId, options.limit ?? SCREENSHOT_BATCH);
+  const due = await sitesMissingScreenshot(db, organisationId, options.limit ?? SCREENSHOT_BATCH);
 
   let captured = 0;
   let failed = 0;

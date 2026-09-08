@@ -165,10 +165,11 @@ async function main() {
     });
   });
 
-  // Thumbnails for the websites list. Nightly and late, because a capture is a
-  // paid call and nobody is looking at the list at 03:40; the batch ceiling in
-  // ./jobs/site-screenshots.ts is what stops a growing roster becoming a
-  // growing bill.
+  // First thumbnails for sites that do not have one. Weekly, not nightly: it
+  // exists only to catch newly added sites, and a new site waiting a few days
+  // for its picture is fine when there is a Refresh button for the impatient
+  // case. Nightly re-shot every site every night, which is a provider bill for
+  // keeping an identifier that never changes current.
   await boss.work(QUEUE.siteScreenshots, async () => {
     const now = new Date();
     await sweepOrganisations(db, "site screenshots", async (organisationId) => {
@@ -305,7 +306,7 @@ async function main() {
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
-  await boss.schedule(QUEUE.siteScreenshots, "40 3 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.siteScreenshots, "40 3 * * 0", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics

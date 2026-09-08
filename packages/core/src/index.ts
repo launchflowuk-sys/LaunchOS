@@ -91,7 +91,7 @@ export {
   captureSiteScreenshot,
   readSiteThumbnail,
   siteThumbnails,
-  sitesDueForScreenshot,
+  sitesMissingScreenshot,
   type CaptureResult,
   type SiteThumbnail,
 } from "./sites/screenshots.js";

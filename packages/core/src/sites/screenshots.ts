@@ -84,13 +84,24 @@ export async function readSiteThumbnail(
 }
 
 /**
- * The sites most worth photographing next, stalest first.
+ * Sites that have **never** been photographed successfully.
  *
- * Only `live` and `building` sites: a paused or archived site is not something
- * anyone is looking at, and paying to photograph it every day is spending
- * money to keep a picture of nothing current.
+ * Not "stalest first", which is what this used to be. A thumbnail here answers
+ * "which site is this", and that does not change — so re-photographing all of
+ * them every night was paying a provider, daily, to keep an identifier current
+ * that was already correct. Whether a site is *broken* is a question this
+ * product already answers properly, with monitors, uptime checks and incidents
+ * that actually alert; a picture nobody is looking at is a poor substitute.
+ *
+ * So the scheduled job exists for one purpose: give a newly added site its
+ * first picture. It costs one capture per site, once, and nothing thereafter.
+ * A deliberate refresh — after a redesign, before a case study — is a button,
+ * not a cron.
+ *
+ * Only `live` and `building` sites: nobody is looking at a paused or archived
+ * one, and paying to photograph it is spending money on a picture of nothing.
  */
-export async function sitesDueForScreenshot(
+export async function sitesMissingScreenshot(
   db: Db,
   organisationId: string,
   limit = 25,
@@ -103,13 +114,14 @@ export async function sitesDueForScreenshot(
       and(
         eq(schema.sites.organisationId, organisationId),
         inArray(schema.sites.status, ["live", "building"]),
+        // No row at all, or a row that has only ever recorded failures. The
+        // second case is what lets a site that was unreachable last week get
+        // another go once it is back, without re-shooting the other sixteen.
+        sql`${schema.siteScreenshots.capturedAt} is null`,
       ),
     )
-    // Nulls first is the whole point — a site with no row has never been shot,
-    // and Postgres puts nulls last on an ascending sort by default. Written as
-    // one fragment because the modifier follows the direction: `asc nulls
-    // first`, not `nulls first asc`, which is a syntax error.
-    .orderBy(sql`${schema.siteScreenshots.attemptedAt} asc nulls first`, desc(schema.sites.createdAt))
+    // Newest first, so a site added today is photographed before a backlog.
+    .orderBy(desc(schema.sites.createdAt))
     .limit(limit);
 }
 

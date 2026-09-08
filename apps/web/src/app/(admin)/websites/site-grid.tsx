@@ -5,6 +5,7 @@ import { KeyValue } from "@/components/key-value";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatDateTime } from "@/lib/format";
+import { RefreshScreenshotButton } from "./refresh-screenshot-button";
 import { SiteThumb } from "./site-thumb";
 
 type SiteRow = {
@@ -93,6 +94,9 @@ export function SiteGrid({
                     },
                   ]}
                 />
+                <div className="mt-5">
+                  <RefreshScreenshotButton siteId={site.id} name={site.name} />
+                </div>
               </DetailDrawer>
             </div>
           </li>

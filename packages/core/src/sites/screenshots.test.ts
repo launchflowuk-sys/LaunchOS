@@ -12,7 +12,7 @@ import {
   captureSiteScreenshot,
   readSiteThumbnail,
   siteThumbnails,
-  sitesDueForScreenshot,
+  sitesMissingScreenshot,
 } from "./screenshots.js";
 
 async function seedSite(
@@ -191,7 +191,7 @@ describe("site screenshots", () => {
     });
   });
 
-  it("offers the never-captured site before one photographed already, and skips archived sites", async () => {
+  it("offers only sites never captured, and skips archived ones", async () => {
     await withTestDb(async (db) => {
       const { orgId, clientId } = await contentFixture(db, {
         withSubscription: false,
@@ -222,11 +222,13 @@ describe("site screenshots", () => {
         new MockScreenshotAdapter(),
       );
 
-      const due = await sitesDueForScreenshot(db, orgId, 10);
+      const due = await sitesMissingScreenshot(db, orgId, 10);
       const ids = due.map((row) => row.id);
 
-      expect(ids[0]).toBe(fresh.id);
-      expect(ids).toContain(shot.id);
+      expect(ids).toContain(fresh.id);
+      // The one already photographed is not re-shot: a thumbnail identifies a
+      // site and that does not change, so a second capture is money for nothing.
+      expect(ids).not.toContain(shot.id);
       expect(ids).not.toContain(archived.id);
     });
   });
