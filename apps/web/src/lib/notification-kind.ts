@@ -102,11 +102,33 @@ function eventOf(kind: string): string {
   return dot === -1 ? "" : kind.slice(dot + 1);
 }
 
+/**
+ * Whether `event` contains `token` as a whole `_`-delimited word.
+ *
+ * A plain `includes` is what you reach for first and it is wrong: every event
+ * here is snake_case, and `calibrated`, `generated`, `migrated` and
+ * `integrated` all contain `rated`. That put an unknown kind — the case this
+ * whole module exists to handle gracefully — into the green "good news" tone
+ * on a coin flip. Matching on `_` boundaries is what makes deriving the tone
+ * safe for kinds nobody has written yet.
+ */
+function hasToken(event: string, token: string): boolean {
+  for (let from = 0; ; from += 1) {
+    const at = event.indexOf(token, from);
+    if (at === -1) return false;
+    const startsWord = at === 0 || event[at - 1] === "_";
+    const end = at + token.length;
+    const endsWord = end === event.length || event[end] === "_";
+    if (startsWord && endsWord) return true;
+    from = at;
+  }
+}
+
 export function toneOf(kind: string): NotificationTone {
   const event = eventOf(kind);
-  if (CRITICAL.some((suffix) => event.includes(suffix))) return "critical";
-  if (ATTENTION.some((suffix) => event.includes(suffix))) return "attention";
-  if (GOOD.some((suffix) => event.includes(suffix))) return "good";
+  if (CRITICAL.some((token) => hasToken(event, token))) return "critical";
+  if (ATTENTION.some((token) => hasToken(event, token))) return "attention";
+  if (GOOD.some((token) => hasToken(event, token))) return "good";
   return "info";
 }
 
