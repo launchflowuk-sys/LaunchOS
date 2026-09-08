@@ -121,7 +121,9 @@
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
 
-  /* Cards are `--radius` (12px); controls are `--radius-md` (8px); pills full. */
+  /* shadcn's own scale, still used by the primitives. The product's own
+     geometry does not come from here — see DESIGN.md: KPI cards are 22px,
+     content surfaces 20px, fields and buttons 14px, pills full. */
   --radius-sm: 0.375rem;
   --radius-md: 0.5rem;
   --radius-lg: var(--radius);
