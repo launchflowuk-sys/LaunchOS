@@ -42,7 +42,7 @@ export function ConvertLeadForm({
   }
 
   return (
-    <form onSubmit={onSubmit} aria-label="Convert to client" className="grid gap-4 rounded-xl border bg-card p-4">
+    <form onSubmit={onSubmit} aria-label="Convert to client" className="grid gap-4 rounded-[20px] border bg-card p-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="convert-name">Client name</Label>

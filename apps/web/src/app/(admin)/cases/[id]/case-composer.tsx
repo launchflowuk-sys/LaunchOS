@@ -88,7 +88,7 @@ export function CaseComposer({
       ariaLabel="Case message"
       success={mode === "reply" ? "Reply sent to the client" : "Note added"}
       resetOnSuccess
-      className="space-y-3 rounded-xl border bg-card p-4"
+      className="space-y-3 rounded-[20px] border bg-card p-5"
     >
       <input type="hidden" name="ticketId" value={ticketId} />
 

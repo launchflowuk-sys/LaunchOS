@@ -44,7 +44,7 @@ export function MilestoneList({
       ) : (
         <ul className="grid gap-3">
           {milestones.map((milestone) => (
-            <li key={milestone.id} className="min-w-0 rounded-xl border bg-card p-4">
+            <li key={milestone.id} className="min-w-0 rounded-[20px] border bg-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0">
                   <p className="text-sm font-medium break-words">{milestone.title}</p>
@@ -94,7 +94,7 @@ export function MilestoneList({
         </ul>
       )}
 
-      <div className="mt-4 rounded-xl border bg-card p-4">
+      <div className="mt-4 rounded-[20px] border bg-card p-5">
         <ActionForm
           action={addMilestoneAction}
           success="Milestone added"

@@ -119,7 +119,7 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
       />
 
       <Section>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[
@@ -132,9 +132,12 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
         </div>
       </Section>
 
+      {/* An incident write-up is read, often under pressure, so the body gets
+          real text rather than the 14px `prose-sm` it used to have, in the
+          same geometry as every other content surface. */}
       <Section title="Summary">
         {incident.incident.summaryMd ? (
-          <div className="prose prose-sm max-w-none rounded-xl border bg-card p-4 [&_a]:underline [&_code]:text-xs [&_h1]:text-base [&_h2]:text-sm [&_li]:my-0.5 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5">
+          <div className="prose max-w-none rounded-[20px] border bg-card p-5 text-row sm:p-7 [&_a]:underline [&_code]:text-meta [&_h1]:text-xl [&_h2]:text-lg [&_li]:my-1 [&_p]:my-3 [&_ul]:list-disc [&_ul]:pl-5">
             <Markdown>{incident.incident.summaryMd}</Markdown>
           </div>
         ) : (
@@ -146,7 +149,7 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
 
       <Section title="Linked work">
         <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-[20px] border bg-card p-5">
             <p className="label-caps mb-2 text-muted-foreground">Linked ticket</p>
             {ticket ? (
               <div className="space-y-2 text-sm">
@@ -162,7 +165,7 @@ export default async function IncidentDetailPage({ params }: PageProps<"/inciden
             )}
           </div>
 
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-[20px] border bg-card p-5">
             <p className="label-caps mb-2 text-muted-foreground">Agent run</p>
             {incident.incident.agentRunId ? (
               <Link

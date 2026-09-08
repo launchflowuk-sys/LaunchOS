@@ -43,7 +43,7 @@ export function ItemEditor({ item }: { item: ContentItemDetail }) {
       action={saveContentItemAction}
       ariaLabel="Edit post"
       success="Saved"
-      className="grid gap-4 rounded-xl border bg-card p-4"
+      className="grid gap-4 rounded-[20px] border bg-card p-5"
     >
       <input type="hidden" name="itemId" value={item.id} />
       <div className="space-y-1.5">

@@ -45,7 +45,7 @@ function EnvRows({ names }: { names: readonly string[] }) {
 }
 
 function Panel({ children }: { children: ReactNode }) {
-  return <section className="min-w-0 rounded-xl border bg-card p-4 sm:p-5">{children}</section>;
+  return <section className="min-w-0 rounded-[20px] border bg-card p-5 sm:p-6">{children}</section>;
 }
 
 export default async function BillingSettingsPage() {

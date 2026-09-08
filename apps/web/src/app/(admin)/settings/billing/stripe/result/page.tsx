@@ -16,7 +16,7 @@ const TRIGGER_LABEL = { import: "Import", reconcile: "Sync", webhook: "Stripe we
 
 function Stat({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-[20px] border bg-card p-5">
       <div className="text-figure font-semibold tabular-nums">{value}</div>
       <div className="label-caps mt-1 text-muted-foreground">{label}</div>
     </div>
@@ -26,7 +26,7 @@ function Stat({ label, value }: { label: string; value: ReactNode }) {
 function NamedList({ rows, href, emptyText }: { rows: readonly { id: string; name: string }[]; href: (id: string) => string; emptyText: string }) {
   if (rows.length === 0) return <p className="text-sm text-muted-foreground">{emptyText}</p>;
   return (
-    <ul className="divide-y rounded-xl border bg-card">
+    <ul className="divide-y rounded-[20px] border bg-card">
       {rows.map((row) => (
         <li key={row.id} className="px-4 py-2.5 text-sm">
           <Link href={href(row.id)} className="font-medium text-primary hover:underline">{row.name}</Link>
@@ -98,7 +98,7 @@ export default async function StripeResultPage() {
         {summary.statusChanges.length === 0 ? (
           <p className="text-sm text-muted-foreground">No status changes.</p>
         ) : (
-          <ul className="divide-y rounded-xl border bg-card">
+          <ul className="divide-y rounded-[20px] border bg-card">
             {summary.statusChanges.map((change) => (
               <li key={change.subscriptionId} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 text-sm">
                 <Link href={`/clients/${change.clientId}/billing`} className="font-medium text-primary hover:underline">{change.clientName}</Link>

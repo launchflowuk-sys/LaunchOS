@@ -37,7 +37,7 @@ export function LeadReplyRequest({ approval }: { approval: typeof schema.approva
         nothing.
       </InlineAlert>
 
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-[20px] border bg-card p-5">
         <p className="label-caps text-muted-foreground">Their enquiry</p>
         {reply.leadMessage ? (
           <p className="mt-2 text-sm break-words whitespace-pre-wrap">{reply.leadMessage}</p>

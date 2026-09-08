@@ -41,7 +41,7 @@ type TaskRow = { id: string; title: string; status: string; dueAt: Date | null }
 function ProofChecklists({ items }: { items: readonly { id: string; title: string; checklist: readonly TaskEvidenceChecklistItem[] }[] }) {
   if (items.length === 0) return null;
   return (
-    <div className="mt-4 rounded-xl border bg-card p-4 sm:p-5">
+    <div className="mt-4 rounded-[20px] border bg-card p-5 sm:p-6">
       <p className="text-sm font-semibold">Proof of work</p>
       <ul className="mt-3 grid gap-4">
         {items.map((task) => (

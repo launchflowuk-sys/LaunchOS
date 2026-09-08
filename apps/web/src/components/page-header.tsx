@@ -28,8 +28,14 @@ export function PageHeader({
     <div className={cn("mb-8", className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span aria-hidden className={cn("size-2 shrink-0 rounded-full", CATEGORY_DOT[category])} />
+          {/* `items-start` with a fixed offset, not `items-center`: a title that
+              wraps to two lines on a phone dragged the dot down to the middle
+              of the block, where it read as a stray bullet rather than a marker
+              on the heading. The offset is half of the title's 40px line box
+              less half the dot, which centres it on the *first* line whether
+              the title wraps or not. */}
+          <div className="flex items-start gap-2">
+            <span aria-hidden className={cn("mt-4 size-2 shrink-0 rounded-full", CATEGORY_DOT[category])} />
             <h1 className="text-title font-bold tracking-tight text-balance">{title}</h1>
           </div>
           {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p> : null}

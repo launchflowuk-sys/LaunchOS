@@ -68,7 +68,7 @@ export function ChannelsForm({
             action={saveContentChannelAction}
             ariaLabel={`Connect ${channel}`}
             success="Channel saved"
-            className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] sm:items-end"
+            className="grid gap-3 rounded-[20px] border bg-card p-5 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] sm:items-end"
           >
             <input type="hidden" name="clientId" value={clientId} />
             <input type="hidden" name="channel" value={channel} />

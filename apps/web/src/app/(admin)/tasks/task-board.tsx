@@ -38,7 +38,7 @@ export function TaskBoard({ tasks, statuses }: { tasks: TaskListRow[]; statuses:
                 tasks must not turn the page into a mile of grey. */}
             <div className="grid max-h-[70vh] gap-2 overflow-y-auto">
               {cards.map((task) => (
-                <article key={task.id} className="rounded-lg border bg-card p-3">
+                <article key={task.id} className="rounded-[20px] border bg-card p-3">
                   <div className="flex items-start justify-between gap-2">
                     <Link href={`/tasks/${task.id}`} className="min-w-0 text-sm font-medium break-words hover:underline">
                       {task.title}

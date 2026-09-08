@@ -149,7 +149,7 @@ export function DeviceAlerts({ vapidPublicKey, devices }: { vapidPublicKey: stri
   }
 
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+    <div className="space-y-4 rounded-[20px] border bg-card p-5 sm:p-6">
       <p className="text-sm text-muted-foreground">
         Urgent things — an incident opening, a failed payment, an overdue invoice, a case past its response target, a
         send that failed, an approval waiting, the background worker going quiet — arrive on this device as a

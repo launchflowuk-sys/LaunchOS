@@ -18,7 +18,7 @@ export function FunnelForm({
   bestScore: number;
 }) {
   return (
-    <ActionForm action={updateFunnelAction} success="Funnel saved" ariaLabel="Funnel settings" className="grid gap-5 rounded-xl border bg-card p-5">
+    <ActionForm action={updateFunnelAction} success="Funnel saved" ariaLabel="Funnel settings" className="grid gap-5 rounded-[20px] border bg-card p-5">
       <input type="hidden" name="funnelId" value={funnel.id} />
 
       <div className="grid gap-4 sm:grid-cols-2">

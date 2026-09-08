@@ -14,7 +14,7 @@ import { PackageFields } from "./package-fields";
 
 export const dynamic = "force-dynamic";
 
-const CARD = "space-y-4 rounded-xl border bg-card p-4 sm:p-5";
+const CARD = "space-y-4 rounded-[20px] border bg-card p-5 sm:p-6";
 
 export default async function PackagesPage() {
   const session = await requireAdmin();

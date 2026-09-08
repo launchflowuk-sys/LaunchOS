@@ -58,7 +58,7 @@ export function PhaseSpine({
         return (
           <li key={phase.id} className="relative min-w-0">
             <span aria-hidden className={cn("absolute -left-7 top-4 size-[11px] rounded-full border-2", MARKER[phase.status])} />
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0">
                   <p className="text-base font-semibold">{phase.name}</p>

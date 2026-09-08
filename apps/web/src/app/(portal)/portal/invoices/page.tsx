@@ -1,9 +1,10 @@
 import { schema } from "@launchos/db";
 import { and, desc, eq, ne } from "drizzle-orm";
-import { Receipt } from "lucide-react";
+import { AlertTriangle, Receipt, Wallet } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
@@ -89,6 +90,19 @@ export default async function PortalInvoicesPage() {
     .orderBy(desc(schema.invoices.issuedAt))
     .limit(LIST_LIMIT);
 
+  // Derived from the rows already on the page rather than three more queries.
+  // `outstanding` is what the client actually owes today: sent and overdue.
+  // Drafts never reach this page at all, and a void invoice was never owed.
+  const currency = invoices[0]?.currency ?? "GBP";
+  const outstandingPence = invoices
+    .filter((invoice) => invoice.status === "sent" || invoice.status === "overdue")
+    .reduce((total, invoice) => total + invoice.totalPence, 0);
+  const overdue = invoices.filter((invoice) => invoice.status === "overdue");
+  const overduePence = overdue.reduce((total, invoice) => total + invoice.totalPence, 0);
+  const paidPence = invoices
+    .filter((invoice) => invoice.status === "paid")
+    .reduce((total, invoice) => total + invoice.totalPence, 0);
+
   return (
     <>
       <PageHeader
@@ -96,6 +110,37 @@ export default async function PortalInvoicesPage() {
         description="Your invoices from LaunchFlow. Open one to print it or save it as a PDF."
         category="money"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Outstanding"
+          value={formatPence(outstandingPence, currency)}
+          hint={outstandingPence === 0 ? "Nothing to pay right now" : "Sent and not yet settled"}
+          category="money"
+          icon={Receipt}
+        />
+        <StatCard
+          label="Overdue"
+          value={formatPence(overduePence, currency)}
+          hint={
+            overdue.length === 0
+              ? "Nothing is late"
+              : overdue.length === 1
+                ? "1 invoice past its due date"
+                : `${overdue.length} invoices past their due date`
+          }
+          category="support"
+          icon={AlertTriangle}
+          attention={overdue.length > 0}
+        />
+        <StatCard
+          label="Paid to date"
+          value={formatPence(paidPence, currency)}
+          hint="Everything you have settled with us"
+          category="overview"
+          icon={Wallet}
+        />
+      </div>
 
       <DataList
         rows={invoices}

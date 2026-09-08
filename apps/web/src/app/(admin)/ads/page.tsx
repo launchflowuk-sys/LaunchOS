@@ -226,7 +226,7 @@ export default async function AdsPage() {
             ariaLabel="Add an ad account"
             success="Ad account added"
             resetOnSuccess
-            className="space-y-4 rounded-xl border bg-card p-4"
+            className="space-y-4 rounded-[20px] border bg-card p-5"
           >
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div className="space-y-1.5">

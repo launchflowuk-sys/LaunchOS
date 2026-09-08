@@ -77,7 +77,7 @@ export default async function CaseStudyDetailPage({ params }: PageProps<"/case-s
         title="The story"
         description="Ours to edit for ever: nobody signed it, and the point of publishing from a table is that a typo can be fixed on a Sunday without a deploy."
       >
-        <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-6">
           <CaseStudyForm study={study} />
         </div>
       </Section>

@@ -151,7 +151,7 @@ export default async function ClientTasksPage({ params }: PageProps<"/clients/[i
       <ClientTabs clientId={client.id} active="tasks" />
 
       <Section title="Progress">
-        <div className="grid gap-5 rounded-xl border bg-card p-4 sm:grid-cols-2">
+        <div className="grid gap-5 rounded-[20px] border bg-card p-5 sm:grid-cols-2">
           <ProgressBar label="Onboarding" done={onboarding.done} total={onboarding.total} />
           <ProgressBar label="Recurring service work" done={recurring.done} total={recurring.total} />
           <p className="text-meta text-muted-foreground sm:col-span-2">

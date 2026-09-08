@@ -72,7 +72,7 @@ function ProjectPanel({ detail }: { detail: ProjectDetail }) {
 
   return (
     <Section title={project.name} {...(description ? { description } : {})}>
-      <div className="rounded-xl border bg-card p-4 sm:p-5">
+      <div className="rounded-[20px] border bg-card p-5 sm:p-6">
         <ProgressHeadline percent={progress.percent} delivered={progress.delivered} description={describeProgress(progress)} label={project.name} />
 
         {phases.length > 0 ? (

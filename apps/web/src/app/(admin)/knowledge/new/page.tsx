@@ -22,7 +22,7 @@ export default async function NewArticlePage({ searchParams }: PageProps<"/knowl
 
       <FormError message={error} />
 
-      <form action={createArticleAction} className="rounded-xl border bg-card p-4 sm:p-6">
+      <form action={createArticleAction} className="rounded-[20px] border bg-card p-5 sm:p-7">
         <ArticleFields defaults={EMPTY_ARTICLE} />
         <div className="mt-6 flex flex-col gap-2 border-t pt-4 sm:flex-row sm:justify-end">
           <Button asChild variant="secondary">

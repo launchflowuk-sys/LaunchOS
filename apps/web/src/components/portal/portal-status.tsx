@@ -4,8 +4,8 @@ import { StatusBadge, type StatusTone } from "@/components/status-badge";
  * Portal wording for the two states a client sees on infrastructure they do not
  * administer.
  *
- * The pill itself is the shared `StatusBadge` — same shape, same colour
- * vocabulary, same dot — driven through its documented `label` and `tone`
+ * The pill itself is the shared `StatusBadge` — same shape, same solid colour
+ * vocabulary — driven through its documented `label` and `tone`
  * overrides. Only the words change: "live" and "transferring" are our nouns for
  * our own records, and a small-business owner reading this twice a year should
  * not have to translate them. The `data-status` attribute still carries the

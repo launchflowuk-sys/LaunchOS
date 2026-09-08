@@ -129,7 +129,7 @@ export function InvoiceDocument({
   );
 
   return (
-    <article className="mx-auto max-w-3xl rounded-xl border bg-card p-6 sm:p-8 print:max-w-none print:rounded-none print:border-0 print:p-0">
+    <article className="mx-auto max-w-3xl rounded-[20px] border bg-card p-6 sm:p-8 print:max-w-none print:rounded-none print:border-0 print:p-0">
       <header className="flex flex-wrap items-start justify-between gap-6 border-b pb-6">
         <div className="min-w-0 text-sm text-muted-foreground">
           <p className="text-lg font-semibold tracking-tight text-foreground">

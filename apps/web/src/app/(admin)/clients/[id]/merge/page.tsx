@@ -60,7 +60,7 @@ export default async function MergeClientPage({ params, searchParams }: PageProp
           {candidates.length === 0 ? (
             <EmptyState icon={Users}>There is no other active client to merge into.</EmptyState>
           ) : (
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeepClientPicker clients={candidates} />
             </div>
           )}
@@ -94,7 +94,7 @@ export default async function MergeClientPage({ params, searchParams }: PageProp
 /** One side of the merge: a card, not a Section, so the two sit level in a grid. */
 function Party({ heading, description, party }: { heading: string; description: string; party: MergePreview["keep"] }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-[20px] border bg-card p-5">
       <h2 className="text-base font-semibold">{heading}</h2>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
       <KeyValue
@@ -139,7 +139,7 @@ function ConfirmScreen({ client, preview, back }: { client: ClientRecord; previe
       </Section>
 
       <Section title="What happens" description="Counted now, from the records as they stand.">
-        <dl className="grid gap-4 rounded-xl border bg-card p-4 sm:grid-cols-3">
+        <dl className="grid gap-4 rounded-[20px] border bg-card p-5 sm:grid-cols-3">
           <CountLine heading="Moves to the kept client" counts={preview.moved} nothing="Nothing — the duplicate has no records of its own." />
           <CountLine heading="Stays on the archived client" counts={preview.left} nothing="Nothing." />
           <CountLine heading="Dropped" counts={preview.dropped} nothing="Nothing." />
@@ -154,7 +154,7 @@ function ConfirmScreen({ client, preview, back }: { client: ClientRecord; previe
       </Section>
 
       <Section title="Confirm" description={`Everything above moves to ${preview.keep.name}; ${client.name} is archived.`}>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <MergeForm keepId={preview.keep.id} keepName={preview.keep.name} mergeId={client.id} mergeName={client.name} movedSummary={moved} />
         </div>
       </Section>

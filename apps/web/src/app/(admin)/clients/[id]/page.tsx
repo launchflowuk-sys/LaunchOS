@@ -104,7 +104,7 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
   return (
     <>
     <Section title="Details" description="The name on their record, and how we reach them. Support mail keeps routing to the same address.">
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-[20px] border bg-card p-5">
         <ClientDetailsForm
           clientId={client.id}
           defaults={{
@@ -134,7 +134,7 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
       ) : (
         <ol className="grid gap-3">
           {events.map((event) => (
-            <li key={event.id} className="rounded-xl border bg-card p-4">
+            <li key={event.id} className="rounded-[20px] border bg-card p-5">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="min-w-0 text-sm font-medium break-words">
                   {/* `activity_events.link` is free text a service or an agent
@@ -163,7 +163,7 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
 
     {permissions.settings && client.status !== "archived" ? (
       <Section title="Admin" description="Housekeeping for this record. Archive is at the top of the page.">
-        <div className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-3 rounded-[20px] border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0 text-sm">
             <p className="font-medium">Two records for one business?</p>
             <p className="mt-0.5 text-muted-foreground">
@@ -214,7 +214,7 @@ async function ContactsTab({ clientId }: { clientId: string }) {
   return (
     <>
       <Section title="Contacts" description="Who we talk to. The primary contact receives the invoices.">
-        <div className="mb-4 rounded-xl border bg-card p-4">
+        <div className="mb-4 rounded-[20px] border bg-card p-5">
           <AddContactForm clientId={clientId} />
         </div>
         <DataList
@@ -227,7 +227,7 @@ async function ContactsTab({ clientId }: { clientId: string }) {
       </Section>
 
       <Section title="Billing" description="Card and bank numbers are never stored. Payment methods live with Stripe.">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <BillingForm
             clientId={clientId}
             defaults={{
@@ -295,7 +295,7 @@ async function SitesTab({ clientId }: { clientId: string }) {
   return (
     <>
       <Section title="Websites" description="Every site we build, host or look after for this client.">
-        <div className="mb-4 rounded-xl border bg-card p-4">
+        <div className="mb-4 rounded-[20px] border bg-card p-5">
           <AddSiteForm clientId={clientId} />
         </div>
         <DataList
@@ -308,7 +308,7 @@ async function SitesTab({ clientId }: { clientId: string }) {
       </Section>
 
       <Section title="Domains" description="A domain can be added before the website it will point at exists.">
-        <div className="mb-4 rounded-xl border bg-card p-4">
+        <div className="mb-4 rounded-[20px] border bg-card p-5">
           <AddDomainForm clientId={clientId} />
         </div>
         <DataList

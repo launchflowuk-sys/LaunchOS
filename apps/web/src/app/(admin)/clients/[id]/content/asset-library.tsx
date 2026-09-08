@@ -63,7 +63,7 @@ export function AssetLibrary({
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-[20px] border bg-card p-5">
         <ImageUploadForm
           endpoint={`/api/clients/${clientId}/assets`}
           idPrefix="asset"

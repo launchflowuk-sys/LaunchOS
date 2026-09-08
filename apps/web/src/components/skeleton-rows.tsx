@@ -17,7 +17,7 @@ export function SkeletonRows({
   className?: string;
 }) {
   return (
-    <div role="status" aria-live="polite" className={cn("rounded-xl border bg-card", className)}>
+    <div role="status" aria-live="polite" className={cn("rounded-[20px] border bg-card", className)}>
       <span className="sr-only">Loading</span>
       {Array.from({ length: rows }, (_, row) => (
         <div key={row} className="flex items-center gap-4 border-b px-4 py-3.5 last:border-0" aria-hidden>

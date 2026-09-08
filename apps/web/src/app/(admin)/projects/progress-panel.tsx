@@ -21,7 +21,7 @@ export function ProgressPanel({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-card p-4 sm:p-5", className)}>
+    <div className={cn("rounded-[20px] border bg-card p-5 sm:p-6", className)}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-1">
         <div className="min-w-0">
           <p className="label-caps text-muted-foreground">Progress</p>

@@ -63,7 +63,7 @@ export function WordPressConnection({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-4">
+    <div className="space-y-4 rounded-[20px] border bg-card p-5">
       {isWordPress ? null : (
         <InlineAlert tone="warning">
           This website is recorded as {platform}. Application passwords only apply to WordPress — change the platform on

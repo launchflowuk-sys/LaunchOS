@@ -125,7 +125,7 @@ export default async function TeamPage() {
         {current.length === 0 ? (
           <EmptyState icon={ShieldCheck}>Permissions appear here once there are members.</EmptyState>
         ) : (
-          <div className="divide-y rounded-xl border bg-card px-4">
+          <div className="divide-y rounded-[20px] border bg-card px-4">
             {current.map((member) => (
               <PermissionsForm
                 key={member.id}

@@ -73,7 +73,7 @@ export default async function PortalReportPage({ params }: PageProps<"/portal/re
 
       {/* The summary is the document a client may save or forward, so it prints
           as plain text on white with no card around it. */}
-      <article className="mt-6 rounded-xl border bg-card p-5 sm:p-8 print:mt-0 print:border-0 print:p-0">
+      <article className="mt-6 rounded-[20px] border bg-card p-5 sm:p-8 print:mt-0 print:border-0 print:p-0">
         {/* `react-markdown` renders text, not HTML: no rehype-raw, so nothing in
             a summary can inject markup into the portal. */}
         {/* The page already carries the period as its `h1`, so the summary's own

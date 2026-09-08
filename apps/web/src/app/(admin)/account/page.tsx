@@ -59,7 +59,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
       />
 
       <Section title="Signed in as">
-        <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-6">
           <KeyValue
             columns={2}
             items={[
@@ -77,7 +77,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
           ? { description: `You set your own password on ${formatDateTime(me.initialPasswordSetAt)}.` }
           : {})}
       >
-        <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+        <div className="space-y-4 rounded-[20px] border bg-card p-5 sm:p-6">
           {me && me.initialPasswordSetAt === null ? (
             <InlineAlert tone="warning">
               You are still on the password you were issued. Change it here — until you do, an owner can re-issue a new
@@ -92,7 +92,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
         title="Two-factor authentication"
         description="A code from an app on your phone, on top of your password."
       >
-        <div className="space-y-4 rounded-xl border bg-card p-4 sm:p-5">
+        <div className="space-y-4 rounded-[20px] border bg-card p-5 sm:p-6">
           {sentHereToEnrol ? (
             <InlineAlert tone="warning" title="Set this up to carry on">
               Your organisation now requires a second factor on staff accounts. The rest of the portal opens again as
@@ -105,7 +105,7 @@ export default async function AccountPage({ searchParams }: PageProps<"/account"
 
       {session.role === "owner" ? (
         <Section title="Two-factor for the team" description="Owner and staff accounts only — never client portals.">
-          <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <div className="rounded-[20px] border bg-card p-5 sm:p-6">
             <TwoFactorPolicySwitch required={session.twoFactorRequired} pending={unenrolled.length} />
           </div>
         </Section>

@@ -71,7 +71,7 @@ export default async function EmailSettingsPage() {
       />
 
       <Section title="Configuration" description="Read from the environment at request time.">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[
@@ -91,7 +91,7 @@ export default async function EmailSettingsPage() {
       </Section>
 
       <Section title="Inbound webhook" description="Point the inbound provider at this URL.">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <p className="font-mono text-sm break-all">{webhookUrl}</p>
           <p className="mt-2 text-sm text-muted-foreground">
             Send the shared secret in the <code className="font-mono">x-launchos-inbound-secret</code> header.
@@ -114,7 +114,7 @@ export default async function EmailSettingsPage() {
       </Section>
 
       <Section title="Send a test email">
-        <div className="space-y-3 rounded-xl border bg-card p-4">
+        <div className="space-y-3 rounded-[20px] border bg-card p-5">
           <p className="text-sm text-muted-foreground">
             Sends via the {emailAdapter} adapter to the owner notification address, bypassing the approval gate.
           </p>

@@ -41,7 +41,7 @@ export default async function NewPortalTicketPage() {
         }
       />
 
-      <div className="max-w-2xl rounded-xl border bg-card p-5 sm:p-6">
+      <div className="max-w-2xl rounded-[20px] border bg-card p-5 sm:p-6">
         <PortalForm action={createPortalTicket} submitLabel="Raise request" ariaLabel="New support request">
           <div className="space-y-5">
             <div className="space-y-1.5">

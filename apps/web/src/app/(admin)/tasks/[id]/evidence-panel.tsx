@@ -71,7 +71,7 @@ export function EvidencePanel({
     !rule.required && evidence.checklist.length === 0 && evidence.links.length === 0 && evidence.attachments.length === 0;
 
   return (
-    <div className="space-y-4 rounded-xl border bg-card p-4">
+    <div className="space-y-4 rounded-[20px] border bg-card p-5">
       {rule.required ? (
         satisfied ? (
           <InlineAlert tone="success" title="Proof is complete">

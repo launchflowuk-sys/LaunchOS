@@ -133,7 +133,7 @@ export default async function FunnelDetailPage({ params }: PageProps<"/funnels/[
 
 function Stat({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border bg-card p-4">
+    <div className="rounded-[20px] border bg-card p-5">
       <dt className="label-caps text-muted-foreground">{label}</dt>
       <dd className="mt-1 text-2xl font-semibold tabular-nums">{value}</dd>
     </div>

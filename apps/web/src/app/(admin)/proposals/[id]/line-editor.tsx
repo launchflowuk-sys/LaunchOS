@@ -71,7 +71,7 @@ export function LineEditor({
     <div className="min-w-0 space-y-3">
       <ul className="grid gap-3">
         {lines.map((line) => (
-          <li key={line.id} className="rounded-xl border bg-card p-3">
+          <li key={line.id} className="rounded-[20px] border bg-card p-3">
             <form
               aria-label={`Line: ${line.description}`}
               className="grid gap-3"

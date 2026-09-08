@@ -44,7 +44,7 @@ export default async function BlockedNumbersPage() {
         ariaLabel="Block a number"
         success="Number blocked"
         resetOnSuccess
-        className="grid gap-3 rounded-xl border bg-card p-4 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] sm:items-end"
+        className="grid gap-3 rounded-[20px] border bg-card p-5 sm:grid-cols-[minmax(0,16rem)_minmax(0,1fr)_auto] sm:items-end"
       >
         <div className="space-y-1.5">
           <Label htmlFor="blocked-phone">Number</Label>
@@ -65,7 +65,7 @@ export default async function BlockedNumbersPage() {
           after you have explained a sales text to somebody you know.
         </EmptyState>
       ) : (
-        <ul className="divide-y rounded-xl border bg-card">
+        <ul className="divide-y rounded-[20px] border bg-card">
           {rows.map((row) => (
             <li key={row.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
               <div className="min-w-0">

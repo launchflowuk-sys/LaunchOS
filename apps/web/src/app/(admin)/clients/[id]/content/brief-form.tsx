@@ -25,7 +25,7 @@ const FIELDS: readonly Field[] = [
  */
 export function BriefForm({ clientId, brief }: { clientId: string; brief: ContentBriefRow | undefined }) {
   return (
-    <ActionForm action={saveContentBriefAction} ariaLabel="Content brief" success="Brief saved" className="grid gap-4 rounded-xl border bg-card p-4">
+    <ActionForm action={saveContentBriefAction} ariaLabel="Content brief" success="Brief saved" className="grid gap-4 rounded-[20px] border bg-card p-5">
       <input type="hidden" name="clientId" value={clientId} />
       <div className="grid gap-4 sm:grid-cols-2">
         {FIELDS.map((field) => (

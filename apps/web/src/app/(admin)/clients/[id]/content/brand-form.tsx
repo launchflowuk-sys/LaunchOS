@@ -98,7 +98,7 @@ export function BrandForm({
       action={saveClientBrandAction}
       ariaLabel="Brand and post images"
       success="Brand saved"
-      className="grid gap-4 rounded-xl border bg-card p-4"
+      className="grid gap-4 rounded-[20px] border bg-card p-5"
     >
       <input type="hidden" name="clientId" value={clientId} />
       <div className="grid gap-4 sm:grid-cols-2">

@@ -1,7 +1,7 @@
 import { listSites, listTasks } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, notInArray } from "drizzle-orm";
-import { Globe, LifeBuoy, Video } from "lucide-react";
+import { Globe, LifeBuoy, ListChecks, Video } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
@@ -99,7 +99,7 @@ export default async function PortalHomePage() {
         description="Everything we are looking after for you, in one place."
       />
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Websites live"
           value={liveSites.length}
@@ -111,7 +111,8 @@ export default async function PortalHomePage() {
                 : `${sites.length} on your account`
           }
           href="/portal/sites"
-          category="delivery"
+          category="overview"
+          icon={Globe}
         />
         <StatCard
           label="Open requests"
@@ -119,6 +120,7 @@ export default async function PortalHomePage() {
           hint={openRequests.length === 0 ? "Nothing waiting on us" : "We are on it"}
           href="/portal/support"
           category="support"
+          icon={LifeBuoy}
         />
         <StatCard
           label="Work under way"
@@ -126,6 +128,7 @@ export default async function PortalHomePage() {
           hint={openTasks.length === 0 ? "Nothing scheduled right now" : "Jobs in progress for you"}
           href="/portal/tasks"
           category="delivery"
+          icon={ListChecks}
         />
       </div>
 
@@ -133,7 +136,7 @@ export default async function PortalHomePage() {
           the server and pre-fills the name and email from it — nothing
           personal travels in the link. */}
       <Section title="Talk to us" description="A short video call, at a time that suits you.">
-        <div className="flex flex-col gap-4 rounded-xl border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 rounded-[20px] border bg-card p-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span aria-hidden className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
               <Video className="size-4" strokeWidth={1.75} />

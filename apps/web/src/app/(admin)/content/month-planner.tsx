@@ -43,7 +43,7 @@ export function MonthPlanner({
   return (
     <form
       aria-label="Plan a month"
-      className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:flex-wrap sm:items-end"
+      className="flex flex-col gap-3 rounded-[20px] border bg-card p-5 sm:flex-row sm:flex-wrap sm:items-end"
       action={async (formData) => {
         const result = await contentMonthAction(formData);
         if (result.status === "error") return void toast.error(result.message);

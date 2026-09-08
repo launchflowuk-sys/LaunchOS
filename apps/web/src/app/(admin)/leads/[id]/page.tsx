@@ -93,7 +93,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <Section title="Message" description="What they wrote, exactly as it arrived.">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               {lead.message ? (
                 <p className="text-sm break-words whitespace-pre-wrap">{lead.message}</p>
               ) : (
@@ -120,7 +120,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
 
         <div className="min-w-0">
           <Section title="Details">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 items={[
                   { label: "Name", value: lead.name },
@@ -165,7 +165,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
 
           {!isConverted ? (
             <Section title="Status" description="Where this lead is. Converting is the button on the left.">
-              <ActionForm action={updateLeadStatusAction} ariaLabel="Change status" success="Status saved" className="grid gap-3 rounded-xl border bg-card p-4">
+              <ActionForm action={updateLeadStatusAction} ariaLabel="Change status" success="Status saved" className="grid gap-3 rounded-[20px] border bg-card p-5">
                 <input type="hidden" name="leadId" value={lead.id} />
                 <div className="space-y-1.5">
                   <Label htmlFor="lead-status">Status</Label>

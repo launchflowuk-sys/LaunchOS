@@ -81,7 +81,7 @@ export default async function OrganisationSettingsPage() {
       />
 
       <Section title="This organisation">
-        <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-6">
           <KeyValue
             columns={2}
             items={[
@@ -108,7 +108,7 @@ export default async function OrganisationSettingsPage() {
             action={updateOrganisationAction}
             ariaLabel="Organisation invoice details"
             success="Invoice details saved"
-            className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
+            className="space-y-4 rounded-[20px] border bg-card p-5 sm:p-6"
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field
@@ -159,7 +159,7 @@ export default async function OrganisationSettingsPage() {
             </div>
           </ActionForm>
         ) : (
-          <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <div className="rounded-[20px] border bg-card p-5 sm:p-6">
             <KeyValue
               columns={2}
               items={[
@@ -182,7 +182,7 @@ export default async function OrganisationSettingsPage() {
             action={updateAssignmentRulesAction}
             ariaLabel="Assignment rules"
             success="Assignment rules saved"
-            className="space-y-4 rounded-xl border bg-card p-4 sm:p-5"
+            className="space-y-4 rounded-[20px] border bg-card p-5 sm:p-6"
           >
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
@@ -217,7 +217,7 @@ export default async function OrganisationSettingsPage() {
             </div>
           </ActionForm>
         ) : (
-          <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <div className="rounded-[20px] border bg-card p-5 sm:p-6">
             <KeyValue
               columns={2}
               items={[

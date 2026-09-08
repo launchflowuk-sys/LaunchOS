@@ -78,7 +78,7 @@ function StepCard({
   const id = (field: string) => `step-${step.key}-${field}`;
 
   return (
-    <section className="rounded-xl border bg-card p-5">
+    <section className="rounded-[20px] border bg-card p-5">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="label-caps text-muted-foreground">

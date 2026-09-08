@@ -43,7 +43,7 @@ export function BookingSection({ settings, hosts, canEdit }: { settings: Booking
           action={updateBookingSettingsAction}
           ariaLabel="Booking settings"
           success="Booking settings saved"
-          className="space-y-5 rounded-xl border bg-card p-4 sm:p-5"
+          className="space-y-5 rounded-[20px] border bg-card p-5 sm:p-6"
         >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
@@ -99,7 +99,7 @@ export function BookingSection({ settings, hosts, canEdit }: { settings: Booking
           </div>
         </ActionForm>
       ) : (
-        <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-6">
           <KeyValue
             columns={2}
             items={[

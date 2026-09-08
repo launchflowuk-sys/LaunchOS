@@ -147,7 +147,7 @@ export default async function ClientSupportPage({ params }: PageProps<"/clients/
         description="Mail to this address is turned into a conversation and a ticket by the inbound webhook."
       >
         {address ? (
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-[20px] border bg-card p-5">
             <KeyValue
               columns={2}
               items={[
@@ -181,7 +181,7 @@ export default async function ClientSupportPage({ params }: PageProps<"/clients/
         ) : (
           <ul className="grid gap-3">
             {conversations.map((conversation) => (
-              <li key={conversation.id} className="rounded-xl border bg-card p-4">
+              <li key={conversation.id} className="rounded-[20px] border bg-card p-5">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <Link href={`/inbox/${conversation.id}`} className="min-w-0 text-sm font-medium break-words hover:underline">
                     {conversation.subject}

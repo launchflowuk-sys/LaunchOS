@@ -49,7 +49,7 @@ export function ThreadComposer({
       ariaLabel={label}
       success={success}
       resetOnSuccess
-      className="space-y-3 rounded-xl border bg-card p-4"
+      className="space-y-3 rounded-[20px] border bg-card p-5"
     >
       {conversationId ? <input type="hidden" name="conversationId" value={conversationId} /> : null}
       {Object.entries(hidden ?? {}).map(([name, value]) => (

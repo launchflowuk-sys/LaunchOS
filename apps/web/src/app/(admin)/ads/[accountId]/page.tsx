@@ -34,7 +34,7 @@ function WindowCard({ title, window: w, currency }: { title: string; window: Sig
   ] as const;
 
   return (
-    <section className="min-w-0 rounded-xl border bg-card p-4">
+    <section className="min-w-0 rounded-[20px] border bg-card p-5">
       <h2 className="text-base font-semibold">{title}</h2>
       <p className="mt-1 text-meta text-muted-foreground">
         {w.from} to {w.to} · {w.days} {w.days === 1 ? "day" : "days"} of data
@@ -150,7 +150,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
         account. The currency is why this form exists: before it, a mistyped
         code could only be fixed with an UPDATE against production Postgres.
       */}
-      <details className="mb-8 rounded-xl border bg-card p-4">
+      <details className="mb-8 rounded-[20px] border bg-card p-5">
         <summary className="cursor-pointer text-sm font-medium">Edit account</summary>
         <ActionForm
           action={editAdAccount}
@@ -194,7 +194,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
       <div className="grid gap-4 lg:grid-cols-3">
         <WindowCard title="Last 7 days" window={signals.current} currency={account.currency} />
         <WindowCard title="Previous 7 days" window={signals.previous} currency={account.currency} />
-        <section className="min-w-0 rounded-xl border bg-card p-4">
+        <section className="min-w-0 rounded-[20px] border bg-card p-5">
           <h2 className="text-base font-semibold">Signals</h2>
           {signals.flagged ? (
             <ul className="mt-3 list-disc space-y-1 pl-4 text-sm text-danger-fg">
@@ -225,7 +225,7 @@ export default async function AdAccountPage({ params }: PageProps<"/ads/[account
                   ["Clicks", oldestFirst.map((s) => s.clicks)],
                 ] as const
               ).map(([label, values]) => (
-                <section key={label} className="min-w-0 overflow-hidden rounded-xl border bg-card p-4">
+                <section key={label} className="min-w-0 overflow-hidden rounded-[20px] border bg-card p-5">
                   <h3 className="label-caps text-muted-foreground">{label}</h3>
                   <div className="mt-2">
                     <Sparkline values={[...values]} label={`${label}, last 30 days`} />

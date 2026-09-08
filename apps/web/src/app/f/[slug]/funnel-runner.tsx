@@ -93,7 +93,7 @@ export function FunnelRunner({
     <div className="mx-auto w-full max-w-lg">
       <Progress index={index} total={steps.length} />
 
-      <div className="mt-6 rounded-xl border bg-card p-5 sm:p-6">
+      <div className="mt-6 rounded-[20px] border bg-card p-5 sm:p-6">
         <h2 className="text-lg font-semibold tracking-tight sm:text-xl">{step.question}</h2>
         {step.help ? <p className="mt-2 text-sm text-muted-foreground">{step.help}</p> : null}
 
@@ -155,7 +155,7 @@ function ChoiceStep({ step, onPick }: { step: FunnelStep; onPick: (value: string
           <button
             type="button"
             onClick={() => onPick(option.value)}
-            className="flex min-h-14 w-full items-center justify-between gap-3 rounded-lg border bg-card px-4 py-3 text-left text-base font-medium transition-colors hover:border-primary hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-h-14 w-full items-center justify-between gap-3 rounded-[20px] border bg-card px-4 py-3 text-left text-base font-medium transition-colors hover:border-primary hover:bg-primary-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             {option.label}
           </button>
@@ -262,7 +262,7 @@ function ContactStep({
 
 function SuccessScreen({ success }: { success: FunnelSuccess }) {
   return (
-    <div className="mx-auto w-full max-w-lg rounded-xl border bg-card p-6 text-center sm:p-8">
+    <div className="mx-auto w-full max-w-lg rounded-[20px] border bg-card p-6 text-center sm:p-8">
       <span className="mx-auto flex size-11 items-center justify-center rounded-full bg-success-bg text-success-fg">
         <Check className="size-5" strokeWidth={1.75} aria-hidden />
       </span>

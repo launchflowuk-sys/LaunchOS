@@ -90,7 +90,7 @@ export default async function MeetingPage({ params }: PageProps<"/meetings/[id]"
       <div className="grid gap-8 lg:grid-cols-3">
         <div className="min-w-0 lg:col-span-2">
           <Section title="Details">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 columns={2}
                 items={[
@@ -149,7 +149,7 @@ export default async function MeetingPage({ params }: PageProps<"/meetings/[id]"
 
           {meeting.notes ? (
             <Section title="Notes" description={live ? "What the guest wrote when booking." : "From the booking and the outcome."}>
-              <div className="rounded-xl border bg-card p-4">
+              <div className="rounded-[20px] border bg-card p-5">
                 <p className="text-sm break-words whitespace-pre-wrap">{meeting.notes}</p>
               </div>
             </Section>
@@ -160,7 +160,7 @@ export default async function MeetingPage({ params }: PageProps<"/meetings/[id]"
           {live ? (
             <>
               <Section title="Outcome" description="Once the call has happened. Notes are kept on the meeting.">
-                <ActionForm action={markOutcomeAction} ariaLabel="Mark outcome" success="Outcome recorded" className="grid gap-3 rounded-xl border bg-card p-4">
+                <ActionForm action={markOutcomeAction} ariaLabel="Mark outcome" success="Outcome recorded" className="grid gap-3 rounded-[20px] border bg-card p-5">
                   <input type="hidden" name="meetingId" value={meeting.id} />
                   <div className="space-y-1.5">
                     <Label htmlFor="meeting-outcome">How did it go?</Label>
@@ -183,7 +183,7 @@ export default async function MeetingPage({ params }: PageProps<"/meetings/[id]"
               </Section>
 
               <Section title="Cancel" description="The guest is emailed the reason and a link to book again.">
-                <ActionForm action={cancelMeetingAction} ariaLabel="Cancel meeting" success="Meeting cancelled" className="grid gap-3 rounded-xl border bg-card p-4">
+                <ActionForm action={cancelMeetingAction} ariaLabel="Cancel meeting" success="Meeting cancelled" className="grid gap-3 rounded-[20px] border bg-card p-5">
                   <input type="hidden" name="meetingId" value={meeting.id} />
                   <div className="space-y-1.5">
                     <Label htmlFor="cancel-reason">Reason (optional)</Label>
@@ -197,7 +197,7 @@ export default async function MeetingPage({ params }: PageProps<"/meetings/[id]"
             </>
           ) : (
             <Section title="Outcome">
-              <div className="rounded-xl border bg-card p-4">
+              <div className="rounded-[20px] border bg-card p-5">
                 <KeyValue
                   items={[
                     { label: "Status", value: <MeetingStatusBadge status={meeting.status} /> },

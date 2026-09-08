@@ -14,7 +14,7 @@
  */
 export function DocumentPreview({ html, title }: { html: string; title: string }) {
   return (
-    <div className="overflow-hidden rounded-xl border bg-card">
+    <div className="overflow-hidden rounded-[20px] border bg-card">
       <iframe
         title={title}
         srcDoc={html}

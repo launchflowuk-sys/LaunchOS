@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { OWNER } from "./seed-credentials";
+import { CLIENT, OWNER } from "./seed-credentials";
 
 /**
  * No screen may scroll sideways on a phone.
@@ -63,6 +63,25 @@ const ADMIN_ROUTES = [
   "/settings/task-templates",
 ] as const;
 
+/**
+ * The client-facing side. A staff session is bounced out of `/portal`, so
+ * these are walked from their own sign-in.
+ */
+const PORTAL_ROUTES = [
+  "/portal",
+  "/portal/sites",
+  "/portal/domains",
+  "/portal/tasks",
+  "/portal/support",
+  "/portal/proposals",
+  "/portal/invoices",
+  "/portal/plan",
+  "/portal/content",
+  "/portal/reports",
+  "/portal/documents",
+  "/portal/account",
+] as const;
+
 /** A list screen and the shape of the detail links it renders. */
 const DETAIL_FROM = [
   { list: "/clients", pattern: /^\/clients\/[0-9a-f-]{36}$/ },
@@ -72,6 +91,14 @@ const DETAIL_FROM = [
   { list: "/invoices", pattern: /^\/invoices\/[0-9a-f-]{36}$/ },
   { list: "/tasks", pattern: /^\/tasks\/[0-9a-f-]{36}$/ },
 ] as const;
+
+async function signInAs(page: Page, credentials: { email: string; password: string }, landing: string): Promise<void> {
+  await page.goto("/sign-in");
+  await page.getByLabel("Email").fill(credentials.email);
+  await page.getByLabel("Password").fill(credentials.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.waitForURL(landing, { timeout: COLD_COMPILE });
+}
 
 async function widthOf(page: Page): Promise<{ scrollWidth: number; innerWidth: number; culprits: string[] }> {
   return page.evaluate(() => {
@@ -107,11 +134,7 @@ test.describe("every admin screen fits a 375px phone", () => {
     // Forty routes on a cold dev server, each compiled on first request.
     test.setTimeout(COLD_COMPILE * 6);
 
-    await page.goto("/sign-in");
-    await page.getByLabel("Email").fill(OWNER.email);
-    await page.getByLabel("Password").fill(OWNER.password);
-    await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL("**/", { timeout: COLD_COMPILE });
+    await signInAs(page, OWNER, "/");
 
     for (const route of ADMIN_ROUTES) {
       await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
@@ -133,6 +156,21 @@ test.describe("every admin screen fits a 375px phone", () => {
       if (!href) continue;
       await page.goto(href, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
       await expectNoSidewaysScroll(page, href);
+    }
+  });
+});
+
+test.describe("every portal screen fits a 375px phone", () => {
+  test.use({ viewport: PHONE });
+
+  test("no client-facing screen scrolls sideways", async ({ page }) => {
+    test.setTimeout(COLD_COMPILE * 4);
+
+    await signInAs(page, CLIENT, "/portal");
+
+    for (const route of PORTAL_ROUTES) {
+      await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+      await expectNoSidewaysScroll(page, route);
     }
   });
 });

@@ -52,7 +52,7 @@ export function AssetGrid({
         <li
           key={asset.id}
           className={cn(
-            "flex min-w-0 flex-col overflow-hidden rounded-xl border bg-card",
+            "flex min-w-0 flex-col overflow-hidden rounded-[20px] border bg-card",
             selectedId === asset.id && "border-primary ring-2 ring-primary/30",
           )}
         >

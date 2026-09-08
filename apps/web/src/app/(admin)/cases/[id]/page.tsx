@@ -37,7 +37,7 @@ import { hasTriageInFlight } from "./triage-status";
 export const dynamic = "force-dynamic";
 
 /** The surface a form sits on. A card marks a surface, not a paragraph. */
-const PANEL = "rounded-xl border bg-card p-4";
+const PANEL = "rounded-[20px] border bg-card p-5";
 
 // Read in the server component and handed down as a plain array: importing
 // @launchos/db from a client component would pull the postgres driver into the
@@ -207,7 +207,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             {events.length === 0 ? (
               <EmptyState icon={History}>Nothing recorded yet.</EmptyState>
             ) : (
-              <ul className="divide-y rounded-xl border bg-card">
+              <ul className="divide-y rounded-[20px] border bg-card">
                 {events.map((event) => {
                   const detail = eventDetail(event.data);
                   return (
@@ -369,7 +369,7 @@ export default async function CaseDetailPage({ params }: PageProps<"/cases/[id]"
             {tasks.length === 0 ? (
               <EmptyState icon={ListChecks}>No tasks linked to this case.</EmptyState>
             ) : (
-              <ul className="divide-y rounded-xl border bg-card">
+              <ul className="divide-y rounded-[20px] border bg-card">
                 {tasks.map((task) => (
                   <li key={task.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5 text-row">
                     <Link href={`/tasks/${task.id}`} className="font-medium underline-offset-2 hover:underline">

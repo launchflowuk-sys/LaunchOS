@@ -67,7 +67,7 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
         action={updateArticleAction}
         ariaLabel={`Edit ${article.title}`}
         success="Article saved"
-        className="rounded-xl border bg-card p-4 sm:p-6"
+        className="rounded-[20px] border bg-card p-5 sm:p-7"
       >
         <input type="hidden" name="articleId" value={article.id} />
         <ArticleFields
@@ -86,7 +86,7 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
       </ActionForm>
 
       <Section title="Delete this article">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <p className="mb-3 text-sm text-muted-foreground">
             It stops appearing in the list and in agent searches. The row is kept, so an agent run that already cited
             it still resolves.

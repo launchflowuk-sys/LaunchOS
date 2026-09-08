@@ -70,7 +70,7 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
       />
 
       <Section title="Registration">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[
@@ -87,7 +87,7 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
       </Section>
 
       <Section title="Website" description="Which of this client's websites the domain points at.">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <AttachSiteForm domainId={domain.id} siteId={domain.siteId} sites={sites} />
         </div>
       </Section>
@@ -96,7 +96,7 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
         title="DNS records"
         description="This records what DNS should say. Pushing changes to a provider is an approval-gated agent action."
       >
-        <div className="mb-4 rounded-xl border bg-card p-4">
+        <div className="mb-4 rounded-[20px] border bg-card p-5">
           <AddDnsRecordForm domainId={domain.id} />
         </div>
         <DataList

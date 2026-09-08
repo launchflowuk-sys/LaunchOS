@@ -95,7 +95,7 @@ export default async function ProjectDetailPage({ params }: PageProps<"/projects
       <ProgressPanel progress={progress} description={describeProgress(progress)} className="mb-6" />
 
       <Section title="Details" description="The facts on the record. Delivery is its own decision, at the bottom of this page.">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <ProjectDetailsForm
             projectId={project.id}
             defaults={{
@@ -186,7 +186,7 @@ export default async function ProjectDetailPage({ params }: PageProps<"/projects
 
       {project.deliveredAt ? null : (
         <Section title="Deliver by hand" description="Closing it here does everything sign-off does, for a build that was handed over in person. It is what puts the client's page at 100%, and it opens their case study for writing.">
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-[20px] border bg-card p-5">
             <DeliverProjectForm projectId={project.id} outstanding={outstanding} />
           </div>
         </Section>

@@ -25,7 +25,7 @@ export function PortalSelect({
     <div className="relative">
       <NativeSelect
         data-slot="select"
-        className={cn("h-11 appearance-none py-1 pr-9 pl-3 text-base disabled:pointer-events-none", className)}
+        className={cn("h-12 appearance-none py-1 pr-10 pl-3.5 text-base disabled:pointer-events-none", className)}
         {...props}
       >
         {children}

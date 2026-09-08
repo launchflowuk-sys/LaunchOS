@@ -56,23 +56,22 @@ export function SignInForm({ notice }: { notice: string | null }) {
 
   return (
     <main className="flex min-h-screen flex-1 items-center justify-center bg-background px-4 py-10">
+      {/* No card, no shadow, no second ground. The form sits on the page the
+          way a sign-in should: the fields are the only boxes, and they are the
+          fat bordered ones used everywhere else in the product. A white
+          rounded panel floating on an almost-white page adds an edge that
+          means nothing and makes the one thing on the screen look smaller than
+          it is. */}
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center text-center">
+        <div className="mb-9 flex flex-col items-center text-center">
           {/* The wordmark *is* the heading here: the glyph-and-"LaunchOS" pair
               it replaces said nothing a client arriving from an invoice email
               would recognise. `h1` keeps the page's one heading, and the image's
-              alt text is what it says.
-
-              On the chip rather than bare on the ground: the asset carries its
-              own near-white background, which against `--background` reads as a
-              stray pale rectangle. Bordered like the form card below it, it
-              reads as a deliberate lockup instead. */}
+              alt text is what it says. */}
           <h1 className="flex justify-center">
-            <BrandTile width={148} className="rounded-xl border px-5 py-3.5 shadow-sm" priority />
+            <BrandTile width={168} priority />
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Sign in to your account.
-          </p>
+          <p className="mt-5 text-xl font-semibold tracking-tight text-foreground">Sign in to your account</p>
         </div>
 
         {notice ? (
@@ -81,9 +80,9 @@ export function SignInForm({ notice }: { notice: string | null }) {
           </InlineAlert>
         ) : null}
 
-        <form onSubmit={onSubmit} aria-label="Sign in" className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="space-y-4">
-            <div className="space-y-1.5">
+        <form onSubmit={onSubmit} aria-label="Sign in">
+          <div className="space-y-5">
+            <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
@@ -97,11 +96,10 @@ export function SignInForm({ notice }: { notice: string | null }) {
                 suppressHydrationWarning
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="h-11 bg-card"
               />
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
               <Input
                 id="password"
@@ -112,7 +110,6 @@ export function SignInForm({ notice }: { notice: string | null }) {
                 suppressHydrationWarning
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="h-11 bg-card"
               />
             </div>
           </div>
@@ -125,11 +122,11 @@ export function SignInForm({ notice }: { notice: string | null }) {
 
           {/* `loading` keeps the label: the accessible name of the one action on
               this page must not change to "Signing in…" mid-request. */}
-          <Button type="submit" size="lg" loading={pending} className="mt-5 w-full">
+          <Button type="submit" size="lg" loading={pending} className="mt-7 w-full">
             Sign in
           </Button>
 
-          <p className="mt-4 text-center text-meta text-muted-foreground">
+          <p className="mt-5 text-center text-meta text-muted-foreground">
             Forgotten your password? Ask us and we will send you a new one.
           </p>
         </form>

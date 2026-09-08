@@ -60,7 +60,7 @@ export default async function AgentSettingsPage() {
         {agentCatalog().map((agent) => {
           const enabled = enabledByKey.get(agent.key) ?? false;
           return (
-            <li key={agent.key} className="min-w-0 rounded-xl border bg-card p-4">
+            <li key={agent.key} className="min-w-0 rounded-[20px] border bg-card p-5">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
                 <div className="min-w-0">
                   <p className="text-base font-semibold">{agent.name}</p>

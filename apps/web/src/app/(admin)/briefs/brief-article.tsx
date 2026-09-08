@@ -48,7 +48,7 @@ export function Highlights({ items, compact = false }: { items: OpsBrief["highli
 /** One brief in full: its day, what needs you, and the body the agent wrote. */
 export function BriefArticle({ brief }: { brief: OpsBrief }) {
   return (
-    <article className="rounded-xl border bg-card p-4 sm:p-6">
+    <article className="rounded-[20px] border bg-card p-5 sm:p-7">
       <header className="mb-4 border-b pb-4">
         <h2 className="text-lg font-semibold tracking-[-0.01em]">{briefDateLabel(brief.briefDate)}</h2>
         <p className="mt-1 text-meta text-muted-foreground">

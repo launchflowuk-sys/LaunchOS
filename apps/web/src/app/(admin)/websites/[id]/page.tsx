@@ -157,7 +157,7 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
       />
 
       <Section title="Hosting">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[

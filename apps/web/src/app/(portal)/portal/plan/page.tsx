@@ -118,7 +118,7 @@ export default async function PortalPlanPage() {
       ) : (
         <>
           <Section title="Your package">
-            <div className="rounded-xl border bg-card p-5">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 columns={2}
                 items={[
@@ -166,7 +166,7 @@ export default async function PortalPlanPage() {
             title="Need to change something?"
             description="Tell us what you would like to do. Nothing changes until LaunchFlow has confirmed it with you."
           >
-            <div className="max-w-2xl rounded-xl border bg-card p-5 sm:p-6">
+            <div className="max-w-2xl rounded-[20px] border bg-card p-5 sm:p-6">
               {decided && latestKind ? (
                 <InlineAlert
                   tone={decided.status === "approved" ? "success" : "info"}

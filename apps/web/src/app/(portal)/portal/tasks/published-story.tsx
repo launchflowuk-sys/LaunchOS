@@ -26,7 +26,7 @@ export async function PublishedStory({ organisationId, clientId }: { organisatio
     <Section title="Your story on our site" description="We wrote up what we built for you. Have a read, and tell us if anything is wrong.">
       <ul className="grid gap-3">
         {stories.map((story) => (
-          <li key={story.id} className="flex flex-col gap-3 rounded-xl border bg-card p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <li key={story.id} className="flex flex-col gap-3 rounded-[20px] border bg-card p-5 sm:flex-row sm:items-center sm:justify-between sm:p-5">
             <div className="min-w-0">
               <p className="text-base font-semibold">{story.name}</p>
               {story.summary ? <p className="mt-0.5 text-sm text-muted-foreground">{story.summary}</p> : null}

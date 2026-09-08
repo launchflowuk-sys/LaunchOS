@@ -66,7 +66,7 @@ export async function WeeklyUpdate({ organisationId, clientId }: { organisationI
       title="This week"
       description="What moved in the last seven days. We send the same note by email every Friday."
     >
-      <div className="rounded-xl border bg-card p-4 sm:p-5">
+      <div className="rounded-[20px] border bg-card p-5 sm:p-6">
         {moments.length === 0 ? (
           <p className="text-base text-muted-foreground">
             Nothing finished this week. Quiet weeks happen — the work above is where things stand, and Friday&rsquo;s note will

@@ -75,7 +75,7 @@ export default async function ApiTokensPage() {
       />
 
       <Section title="Issue a token">
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <IssueTokenForm scopes={PERMISSION_KEYS.map((key) => ({ key, label: PERMISSION_LABELS[key] }))} />
         </div>
       </Section>
@@ -91,7 +91,7 @@ export default async function ApiTokensPage() {
       </Section>
 
       <Section title="Using it" description="Send the token as a bearer. Every endpoint is read-only.">
-        <div className="space-y-3 rounded-xl border bg-card p-4">
+        <div className="space-y-3 rounded-[20px] border bg-card p-5">
           <p className="font-mono text-sm break-all">GET {appUrl}/api/v1/brief</p>
           <p className="font-mono text-sm break-all text-muted-foreground">Authorization: Bearer los_…</p>
           <p className="text-sm text-muted-foreground">

@@ -27,7 +27,7 @@ const SECTIONS = [
   { phase: "support", heading: "Support", hint: "Blueprints for repeatable support work." },
 ] as const;
 
-const CARD = "space-y-4 rounded-xl border bg-card p-4 sm:p-5";
+const CARD = "space-y-4 rounded-[20px] border bg-card p-5 sm:p-6";
 
 export default async function TaskTemplatesPage() {
   const session = await requireAdmin();

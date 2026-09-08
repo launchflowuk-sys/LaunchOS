@@ -33,7 +33,7 @@ export function BriefCard({ brief }: { brief: OpsBrief | null }) {
   const lines = briefExcerpt(brief.bodyMd, EXCERPT_LINES);
 
   return (
-    <div className="rounded-xl border bg-card p-4 sm:p-5" data-testid="brief-card">
+    <div className="rounded-[20px] border bg-card p-5 sm:p-6" data-testid="brief-card">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <p className="label-caps text-muted-foreground">{briefDateLabel(brief.briefDate)}</p>

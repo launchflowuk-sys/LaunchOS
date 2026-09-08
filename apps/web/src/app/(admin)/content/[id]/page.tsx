@@ -148,7 +148,7 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
                 title="Image"
                 description="Draw one for this post, or pick a photo from the client's library. Facebook, Instagram and WordPress fetch whatever is set here."
               >
-                <div className="rounded-xl border bg-card p-4">
+                <div className="rounded-[20px] border bg-card p-5">
                   <ImageProvenance metadata={item.metadata} imageUrl={item.imageUrl} />
                   <GenerateImage
                     itemId={item.id}
@@ -164,7 +164,7 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
             </>
           ) : (
             <Section title="Post" description={STATUS_NOTE[item.status]}>
-              <div className="rounded-xl border bg-card p-4">
+              <div className="rounded-[20px] border bg-card p-5">
                 {item.body ? (
                   item.channel === "blog" ? (
                     <div className="prose prose-sm max-w-none">
@@ -190,7 +190,7 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
 
         <div className="min-w-0">
           <Section title="Details">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 items={[
                   {
@@ -212,7 +212,7 @@ export default async function ContentItemPage({ params }: PageProps<"/content/[i
           </Section>
 
           <Section title="Publishing">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 items={[
                   {

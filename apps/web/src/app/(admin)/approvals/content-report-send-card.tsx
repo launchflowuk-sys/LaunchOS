@@ -28,7 +28,7 @@ export function ContentReportSendRequest({ approval }: { approval: typeof schema
         posts published — with a link to their portal. Rejecting leaves it unsent.
       </InlineAlert>
 
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-[20px] border bg-card p-5">
         <p className="text-sm break-words whitespace-pre-wrap">{report.summary}</p>
       </div>
 

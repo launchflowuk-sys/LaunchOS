@@ -69,7 +69,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
         <div className="min-w-0 lg:col-span-2">
           <Section title="Description">
             {task.descriptionMd ? (
-              <div className="prose prose-sm max-w-none rounded-xl border bg-card p-4">
+              <div className="prose prose-sm max-w-none rounded-[20px] border bg-card p-5">
                 <Markdown>{task.descriptionMd}</Markdown>
               </div>
             ) : (
@@ -81,7 +81,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
             {task.checklist.length === 0 ? (
               <p className="text-sm text-muted-foreground">No checklist on this task.</p>
             ) : (
-              <ul className="grid gap-2 rounded-xl border bg-card p-4">
+              <ul className="grid gap-2 rounded-[20px] border bg-card p-5">
                 {task.checklist.map((item, index) => (
                   <li key={`${index}-${item.label}`} className="flex items-center gap-3">
                     <ActionForm action={toggleChecklistAction} className="flex">
@@ -127,7 +127,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
           <Section title="Comments">
             <ul className="mb-4 grid gap-3">
               {comments.map((comment) => (
-                <li key={comment.id} className="rounded-xl border bg-card p-4">
+                <li key={comment.id} className="rounded-[20px] border bg-card p-5">
                   <p className="text-meta text-muted-foreground">
                     {comment.authorKind} · {formatDateTime(comment.createdAt)}
                   </p>
@@ -158,7 +158,7 @@ export default async function TaskDetailPage({ params }: PageProps<"/tasks/[id]"
 
         <div className="min-w-0">
           <Section title="Details">
-            <div className="rounded-xl border bg-card p-4">
+            <div className="rounded-[20px] border bg-card p-5">
               <KeyValue
                 items={[
                   { label: "Priority", value: <StatusBadge value={task.priority} /> },

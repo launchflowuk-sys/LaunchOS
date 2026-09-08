@@ -141,7 +141,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
   return (
     // The id is on the card so a test can address exactly one approval: two
     // parked calls on the same thread share a generated title.
-    <li data-approval-id={approval.id} className="min-w-0 overflow-hidden rounded-xl border bg-card">
+    <li data-approval-id={approval.id} className="min-w-0 overflow-hidden rounded-[20px] border bg-card">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3">
         <h3 className="text-base font-semibold">{approval.title}</h3>
         <StatusBadge value={approval.kind} tone="neutral" />
@@ -205,7 +205,7 @@ function PendingApproval({ row }: { row: ApprovalRow }) {
         ) : null}
 
         <Disclosure label={<span className="label-caps">Raw payload</span>}>
-          <pre className="max-h-72 overflow-auto rounded-lg border bg-card p-3 font-mono text-meta text-muted-foreground">
+          <pre className="max-h-72 overflow-auto rounded-[20px] border bg-card p-3 font-mono text-meta text-muted-foreground">
             {formatJson(approval.payload)}
           </pre>
         </Disclosure>

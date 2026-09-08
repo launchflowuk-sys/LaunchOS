@@ -162,7 +162,7 @@ export default async function PortalContentPage() {
         description="Upload photos of your work; posts with photos do far better. We use them on your posts — the shop, the team, a job well done."
       >
         <div className="space-y-4">
-          <div className="max-w-2xl rounded-xl border bg-card p-5 sm:p-6">
+          <div className="max-w-2xl rounded-[20px] border bg-card p-5 sm:p-6">
             <ImageUploadForm
               endpoint="/api/portal/assets"
               idPrefix="portal-photo"
@@ -181,7 +181,7 @@ export default async function PortalContentPage() {
         title="Suggest a post"
         description="Got news, an offer or a photo worth sharing? Tell us and we will write it up, schedule it and let you see it here."
       >
-        <div className="max-w-2xl rounded-xl border bg-card p-5 sm:p-6">
+        <div className="max-w-2xl rounded-[20px] border bg-card p-5 sm:p-6">
           <PortalForm
             action={suggestPostAction}
             submitLabel="Send suggestion"

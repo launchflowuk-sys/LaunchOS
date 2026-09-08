@@ -65,7 +65,7 @@ export async function ClientWorkStrip({ organisationId, clientId }: { organisati
             milestones: milestones.filter((milestone) => milestone.projectId === project.id),
           });
           return (
-            <li key={project.id} className="min-w-0 rounded-xl border bg-card p-4">
+            <li key={project.id} className="min-w-0 rounded-[20px] border bg-card p-5">
               <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
                 <div className="min-w-0">
                   <Link href={`/projects/${project.id}`} className="text-sm font-medium hover:underline">
@@ -89,7 +89,7 @@ export async function ClientWorkStrip({ organisationId, clientId }: { organisati
         })}
 
         {studies.map((study) => (
-          <li key={study.id} className="min-w-0 rounded-xl border bg-card p-4">
+          <li key={study.id} className="min-w-0 rounded-[20px] border bg-card p-5">
             <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
               <div className="min-w-0">
                 <Link href={`/case-studies/${study.id}`} className="text-sm font-medium hover:underline">

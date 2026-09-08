@@ -56,7 +56,7 @@ export default async function PortalAccountPage() {
       />
 
       <Section title="Signed in as">
-        <div className="rounded-xl border bg-card p-5">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[
@@ -89,7 +89,7 @@ export default async function PortalAccountPage() {
       </Section>
 
       <Section title="Password" description="Changing it signs you out everywhere else.">
-        <div className="max-w-xl rounded-xl border bg-card p-5 sm:p-6">
+        <div className="max-w-xl rounded-[20px] border bg-card p-5 sm:p-6">
           <ChangePasswordForm />
         </div>
       </Section>
@@ -102,7 +102,7 @@ export default async function PortalAccountPage() {
         title="Two-factor authentication"
         description="Optional. A code from an app on your phone, on top of your password."
       >
-        <div className="max-w-xl rounded-xl border bg-card p-5 sm:p-6">
+        <div className="max-w-xl rounded-[20px] border bg-card p-5 sm:p-6">
           <TwoFactorPanel enabled={twoFactorEnabled} />
         </div>
       </Section>

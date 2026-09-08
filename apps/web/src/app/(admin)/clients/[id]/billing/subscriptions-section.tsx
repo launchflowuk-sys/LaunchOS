@@ -133,7 +133,7 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
             </p>
           </InlineAlert>
         ) : null}
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           {subscription ? (
             <KeyValue
               columns={2}

@@ -70,15 +70,19 @@ export function TwoFactorChallengeForm() {
   return (
     <main className="flex min-h-screen flex-1 items-center justify-center bg-background px-4 py-10">
       <div className="w-full max-w-sm">
-        <div className="mb-6 flex flex-col items-center text-center">
+        {/* Same treatment as /sign-in, which this is the second half of: no
+            card and no shadow, so the two steps do not look like two different
+            products. */}
+        <div className="mb-9 flex flex-col items-center text-center">
           <h1 className="flex justify-center">
-            <BrandTile width={148} className="rounded-xl border px-5 py-3.5 shadow-sm" priority />
+            <BrandTile width={168} priority />
           </h1>
-          <p className="mt-3 text-sm text-muted-foreground">One more step — your second factor.</p>
+          <p className="mt-5 text-xl font-semibold tracking-tight text-foreground">One more step</p>
+          <p className="mt-1.5 text-sm text-muted-foreground">Your second factor.</p>
         </div>
 
-        <form onSubmit={onSubmit} aria-label="Two-factor code" className="rounded-xl border bg-card p-6 shadow-sm">
-          <div className="space-y-1.5">
+        <form onSubmit={onSubmit} aria-label="Two-factor code">
+          <div className="space-y-2">
             <Label htmlFor="code">{copy.label}</Label>
             <Input
               id="code"
@@ -92,7 +96,7 @@ export function TwoFactorChallengeForm() {
               suppressHydrationWarning
               value={code}
               onChange={(event) => setCode(event.target.value)}
-              className="h-11 bg-card font-mono text-base tracking-[0.25em]"
+              className="font-mono text-base tracking-[0.25em]"
             />
             <p className="text-meta text-muted-foreground">{copy.hint}</p>
           </div>
@@ -103,7 +107,7 @@ export function TwoFactorChallengeForm() {
             </InlineAlert>
           ) : null}
 
-          <Button type="submit" size="lg" loading={pending} className="mt-5 w-full">
+          <Button type="submit" size="lg" loading={pending} className="mt-7 w-full">
             Sign in
           </Button>
 

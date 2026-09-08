@@ -39,7 +39,7 @@ export function ProposalTotals({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-xl border bg-card", className)}>
+    <div className={cn("rounded-[20px] border bg-card", className)}>
       <dl className="grid gap-px overflow-hidden rounded-xl bg-border sm:grid-cols-3">
         {FIGURES.map((figure) => {
           const pence = totals[figure.key];

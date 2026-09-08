@@ -49,7 +49,7 @@ export function ReviewCard({
   };
 
   return (
-    <div className="rounded-xl border bg-card p-4 sm:p-5">
+    <div className="rounded-[20px] border bg-card p-5 sm:p-6">
       <p className="text-base font-semibold">{title}</p>
       <p className="mt-1 text-sm text-muted-foreground">
         Whenever you get a chance. We are carrying on with the build either way — nothing is waiting on this.

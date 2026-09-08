@@ -48,7 +48,7 @@ function ScorePicker({ selected }: { selected: number | null }) {
               required
               className="peer sr-only"
             />
-            <span className="flex flex-col items-center rounded-lg border bg-card px-2 py-3 text-center transition-colors peer-checked:border-primary peer-checked:bg-primary-soft peer-checked:text-primary peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 hover:bg-muted">
+            <span className="flex flex-col items-center rounded-[20px] border bg-card px-2 py-3 text-center transition-colors peer-checked:border-primary peer-checked:bg-primary-soft peer-checked:text-primary peer-focus-visible:ring-3 peer-focus-visible:ring-ring/50 hover:bg-muted">
               <span className="text-lg font-semibold tabular-nums">{score}</span>
               <span className="text-meta">{CSAT_SCORE_LABELS[score]}</span>
             </span>
@@ -129,7 +129,7 @@ export default async function PortalRateTicketPage({ params, searchParams }: Pag
               {formatDateTime(rating.ratedAt)}.
               {rating.comment ? <span className="mt-1 block whitespace-pre-wrap">“{rating.comment}”</span> : null}
             </InlineAlert>
-            <details className="rounded-xl border bg-card p-4 sm:p-5">
+            <details className="rounded-[20px] border bg-card p-5 sm:p-6">
               <summary className="cursor-pointer text-sm font-medium">Change your rating</summary>
               <div className="mt-4">
                 <RatingForm ticketId={ticket.id} selected={selectedFromLink ?? rating.score} submitLabel="Update rating" />
@@ -137,7 +137,7 @@ export default async function PortalRateTicketPage({ params, searchParams }: Pag
             </details>
           </div>
         ) : (
-          <div className="rounded-xl border bg-card p-4 sm:p-5">
+          <div className="rounded-[20px] border bg-card p-5 sm:p-6">
             <p className="mb-4 text-sm text-muted-foreground">
               One tap tells us whether this went well. Your score goes to the person who handled it and to the owner.
             </p>

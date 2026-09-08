@@ -136,7 +136,7 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
 
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {tiles.map((tile) => (
-          <div key={tile.label} className="min-w-0 rounded-xl border bg-card p-4">
+          <div key={tile.label} className="min-w-0 rounded-[20px] border bg-card p-5">
             <dt className="label-caps text-muted-foreground">{tile.label}</dt>
             <dd className="mt-2 text-lg leading-none font-semibold tabular-nums">{tile.value}</dd>
             {tile.note ? <dd className="mt-2 text-meta text-warning-fg">{tile.note}</dd> : null}
@@ -145,7 +145,7 @@ export default async function ReportDetailPage({ params }: PageProps<"/reports/[
       </dl>
 
       <Section title="Summary">
-        <div className="rounded-xl border bg-card p-4 sm:p-6">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-7">
           <div className="prose prose-sm max-w-none prose-headings:font-semibold prose-h1:text-lg prose-h2:text-base prose-h3:text-sm text-foreground">
             <Markdown>{report.summaryMd}</Markdown>
           </div>

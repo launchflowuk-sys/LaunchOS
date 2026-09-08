@@ -32,7 +32,7 @@ export function MarkdownEditor({
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <div className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-hidden rounded-[20px] border bg-card">
         <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
           <Button type="button" size="sm" variant={preview ? "secondary" : "primary"} onClick={() => setPreview(false)}>
             Write

@@ -102,7 +102,7 @@ export default async function FunnelsPage() {
           success="Funnel created"
           resetOnSuccess
           ariaLabel="New funnel"
-          className="grid gap-4 rounded-xl border bg-card p-5 sm:grid-cols-3 sm:items-end"
+          className="grid gap-4 rounded-[20px] border bg-card p-5 sm:grid-cols-3 sm:items-end"
         >
           <div className="space-y-1.5">
             <Label htmlFor="funnel-name">Name</Label>

@@ -238,7 +238,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
           title="Start a project"
           description="For work agreed on a call. An accepted proposal starts its own, with the deliverables already written in as milestones."
         >
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-[20px] border bg-card p-5">
             <NewProjectForm clients={clients.map((client) => ({ id: client.id, name: client.name }))} />
           </div>
         </Section>

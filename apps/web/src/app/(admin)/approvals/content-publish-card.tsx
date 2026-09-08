@@ -64,7 +64,7 @@ export async function ContentPublishRequest({ approval }: { approval: typeof sch
         Rejecting sends it back to draft with your note.
       </InlineAlert>
 
-      <div className="rounded-xl border bg-card p-4">
+      <div className="rounded-[20px] border bg-card p-5">
         {post.title ? <p className="mb-2 text-base font-semibold break-words">{post.title}</p> : null}
         {post.kind === "blog_post" ? (
           <div className="prose prose-sm max-w-none">

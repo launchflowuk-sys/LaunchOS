@@ -233,7 +233,7 @@ export default async function InvoicePage({ params }: PageProps<"/invoices/[id]"
       )}
 
       <Section>
-        <div className="rounded-xl border bg-card p-4 sm:p-5">
+        <div className="rounded-[20px] border bg-card p-5 sm:p-6">
           <KeyValue items={details} columns={2} className="sm:grid-cols-2 lg:grid-cols-4" />
           {settled ? null : (
             <div className="mt-5 flex flex-wrap justify-end gap-2 border-t pt-4">

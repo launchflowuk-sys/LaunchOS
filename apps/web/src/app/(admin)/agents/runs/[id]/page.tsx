@@ -42,7 +42,7 @@ export default async function AgentRunPage({ params }: PageProps<"/agents/runs/[
       />
 
       <Section>
-        <div className="rounded-xl border bg-card p-4">
+        <div className="rounded-[20px] border bg-card p-5">
           <KeyValue
             columns={2}
             items={[
@@ -59,7 +59,7 @@ export default async function AgentRunPage({ params }: PageProps<"/agents/runs/[
 
       {run.summary ? (
         <Section title="Summary">
-          <p className="rounded-xl border bg-card p-4 text-sm whitespace-pre-wrap">{run.summary}</p>
+          <p className="rounded-[20px] border bg-card p-5 text-sm whitespace-pre-wrap">{run.summary}</p>
         </Section>
       ) : null}
 
@@ -77,7 +77,7 @@ export default async function AgentRunPage({ params }: PageProps<"/agents/runs/[
         ) : (
           <ol className="grid min-w-0 gap-4">
             {steps.map((step) => (
-              <li key={step.id} className="min-w-0 overflow-hidden rounded-xl border bg-card">
+              <li key={step.id} className="min-w-0 overflow-hidden rounded-[20px] border bg-card">
                 <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2.5">
                   <span className="font-mono text-meta tabular-nums text-muted-foreground">#{step.seq}</span>
                   <StatusBadge value={step.kind} tone="info" />
