@@ -67,7 +67,14 @@ jobs:
           # --fail-with-body so a 4xx/5xx ends the job instead of quietly
           # reporting success, which is the failure mode this workflow exists
           # to remove.
+          #
+          # -X POST because this endpoint used to accept a GET and no longer
+          # does: without it Coolify answers 405 {"message":"This endpoint has
+          # changed to a POST request."} — an answer that proves the token and
+          # the URL are both fine, so do not go looking at the secrets when you
+          # see it.
           http=$(curl -sS --fail-with-body \
+            -X POST \
             --max-time 60 \
             -w '\n%{http_code}' \
             -H "Authorization: Bearer ${TOKEN}" \
