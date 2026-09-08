@@ -140,7 +140,8 @@ Next.js consumers, which is why it is not the default.
 Publishing is `npm version <patch|minor|major>` then `npm publish --access public`,
 run by hand. No changesets, no release CI — one maintainer, YAGNI.
 
-**Prerequisite:** `npm login` on this machine. Not currently authenticated.
+Authentication is needed at exactly one moment — the first `npm publish` — and
+at no point before it. Everything up to then runs on `workspace:*`.
 
 ## Migrating LaunchOS
 
@@ -225,9 +226,14 @@ Phase 5 it looks like LaunchOS out of the box.
   is a separate job once the package exists.
 - A component playground or Storybook. LaunchOS is the playground.
 
-## Open questions for Shoji
+## Settled, 8 September 2026
 
-1. **Package name** if `@launchflow` is taken — `@launchflowuk/ui` or
-   `@launchflow-os/ui`?
-2. **Does `DESIGN.md` move or copy?** Recommendation: move it into the package
-   and leave a pointer in `apps/web`, so there is one source of truth.
+1. **Package name.** `@launchflow/ui`, falling back to `@launchflowuk/ui` if the
+   scope is claimed. Shoji's call was "whichever" — the fallback is chosen, not
+   left open, so Phase 1 cannot stall on it.
+2. **`DESIGN.md` moves** into the package and becomes its README. A pointer stays
+   at `apps/web/DESIGN.md`. Shoji: *"move the design md."*
+3. **`npm login` is not a prerequisite.** It was listed as one in the first draft
+   and that was wrong. Every phase up to the publish step runs on `workspace:*`
+   against the local package and never contacts the registry. Authentication is
+   needed at one moment — the first `npm publish` — and not before.
