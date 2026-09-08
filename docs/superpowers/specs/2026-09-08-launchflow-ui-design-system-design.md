@@ -78,15 +78,22 @@ These are the real engineering. Everything else is moving files.
 Nearly every component imports `next/link`. Hard-depending on Next.js means the
 package cannot be used in a Vite or Express+React admin.
 
-**Solution:** a `UIProvider` holding a `Link` component in context. The package
-default renders a plain anchor; a Next project wraps its root once and passes
-`next/link`. No component takes a link prop; no consumer configures anything per
-component.
+**Superseded during Phase 4, 8 Sep 2026.** The original plan was a `UIProvider`
+holding a `Link` in context. Building it revealed why that is wrong: **all eight
+composites are server components** — not one carries `"use client"`. React
+context can only be read from a client component, so a provider would force
+`StatCard`, `Panel` and the rest across the client boundary, shipping JavaScript
+for a static card and losing RSC for every screen that renders one. That is a
+real regression traded for a portability nobody has asked for.
 
-```tsx
-// Next project, once, in the root layout
-<UIProvider link={NextLink}>{children}</UIProvider>
-```
+**What was done instead:** `next` is a peer dependency and the two components
+that link (`StatCard`, `Panel`) keep importing `next/link`. Only two of the
+thirty-two extracted components are affected. If a non-Next consumer ever
+appears, those two get a `linkComponent` prop then — a change confined to two
+files, made against a real requirement rather than an imagined one.
+
+The framework coupling this creates is recorded honestly: `@launchflow/ui` is a
+Next.js design system today, not a framework-agnostic one.
 
 ### 2. `@launchos/core` — the business coupling
 

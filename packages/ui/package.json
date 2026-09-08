@@ -16,6 +16,7 @@
     ".": "./src/index.ts",
     "./styles": "./src/styles/globals.css",
     "./ui/*": "./src/components/ui/*.tsx",
+    "./components/*": "./src/components/*.tsx",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -48,6 +49,7 @@
   ],
   "peerDependencies": {
     "react": ">=19",
-    "react-dom": ">=19"
+    "react-dom": ">=19",
+    "next": ">=15"
   }
 }
