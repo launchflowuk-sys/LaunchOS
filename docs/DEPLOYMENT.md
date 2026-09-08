@@ -28,7 +28,20 @@ Three Coolify resources in one project, all on the same internal network:
 2. **web** — Docker build from `infra/Dockerfile.web`. Domain `os.launchflow.co.uk` (or chosen). Health check `GET /api/health`.
 3. **worker** — Docker build from `infra/Dockerfile.worker`. No public port. Health check is the process itself.
 
-Both app resources auto-deploy from `main` on GitHub push. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *pre-deployment command*, before the new container starts serving. See "Migrations" below for why, and for the manual equivalent.
+Both app resources auto-deploy from `main` on GitHub push — **provided each one is attached to the GitHub App source**, which is the part that silently was not true for months.
+
+> **If a push to `main` does not deploy, check the source before anything else.** Coolify holds two: `github_apps` id `0` is "Public GitHub", which has no installation, no app id and no webhook secret and therefore *cannot receive a push event*; id `1` is the real GitHub App. Both LaunchOS resources were pointed at `0` while auto-deploy was switched on, which is the worst combination — the UI reports auto-deploy enabled and nothing ever fires. It looks exactly like a build failure, or like the change simply not being in the push.
+>
+> To read the truth rather than the toggle:
+>
+> ```sql
+> select a.name, a.source_id, g.name as source, s.is_auto_deploy_enabled
+> from applications a
+> join github_apps g on g.id = a.source_id
+> join application_settings s on s.application_id = a.id;
+> ```
+>
+> `source_id` must be `1`. Fix it in the UI (*Configuration → Source*) or, if the API token is stale, by pointing the resource at the working source directly. Compare against a resource that does deploy itself — Glow Flow Booker is the reference. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *pre-deployment command*, before the new container starts serving. See "Migrations" below for why, and for the manual equivalent.
 
 Environment variables are set in Coolify, never committed. `NODE_ENV=production`, `APP_URL`, `BETTER_AUTH_URL` and `DATABASE_URL` point at the internal Postgres hostname.
 
