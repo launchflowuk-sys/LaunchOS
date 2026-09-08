@@ -287,13 +287,13 @@ export default async function DashboardPage() {
               Nothing in delivery. Projects appear here once a proposal is accepted.
             </EmptyState>
           ) : (
-            <ul className="divide-y">
+            <ul className="min-w-0 divide-y">
               {pipeline.map((row) => (
                 // One line that holds together: the name truncates, the bar
                 // takes what is left, and the date drops out below `lg` rather
                 // than wrapping the row into two and breaking the rhythm of the
                 // list.
-                <li key={row.projectId} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+                <li key={row.projectId} className="flex min-w-0 items-center gap-3 py-4 first:pt-0 last:pb-0 sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <Link href={`/projects/${row.projectId}`} className="block truncate text-sm font-semibold hover:underline">
                       {row.name}
@@ -301,7 +301,7 @@ export default async function DashboardPage() {
                     <p className="truncate text-meta text-muted-foreground">{row.clientName}</p>
                   </div>
                   {row.stage ? <StatusBadge value={row.stage} className="hidden shrink-0 sm:inline-flex" /> : null}
-                  <StageBar value={row.progress} className="w-28 shrink-0 lg:w-40" />
+                  <StageBar value={row.progress} className="w-20 shrink-0 sm:w-28 lg:w-40" />
                   <span className="hidden w-24 shrink-0 text-right text-meta whitespace-nowrap text-muted-foreground lg:block">
                     {row.targetDate ? formatDate(new Date(`${row.targetDate}T00:00:00Z`)) : "No date"}
                   </span>
@@ -352,12 +352,12 @@ export default async function DashboardPage() {
               Nothing is waiting for a decision. Agents park outward actions here before they happen.
             </EmptyState>
           ) : (
-            <ul className="divide-y">
+            <ul className="min-w-0 divide-y">
               {approvalQueue.map((row) => (
                 // Stacks on a phone and sits on one line from `sm` up. The old
                 // table did the opposite: it squeezed five columns into 360px
                 // and made every one of them unreadable.
-                <li key={row.id} className="flex flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4">
+                <li key={row.id} className="flex min-w-0 flex-col gap-2 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold">{row.title}</p>
                     <p className="mt-0.5 text-meta text-muted-foreground">
@@ -383,9 +383,9 @@ export default async function DashboardPage() {
           {overdueQueue.length === 0 ? (
             <EmptyState icon={ListChecks}>Nothing is overdue. Work due this week is on the Tasks board.</EmptyState>
           ) : (
-            <ul className="divide-y">
+            <ul className="min-w-0 divide-y">
               {overdueQueue.map((row) => (
-                <li key={row.id} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+                <li key={row.id} className="flex min-w-0 items-center gap-3 py-4 first:pt-0 last:pb-0 sm:gap-4">
                   <div className="min-w-0 flex-1">
                     <Link href={`/tasks/${row.id}`} className="block truncate text-sm font-semibold hover:underline">
                       {row.title}
@@ -424,9 +424,9 @@ export default async function DashboardPage() {
           {activity.length === 0 ? (
             <EmptyState icon={Link2}>Nothing has happened yet. Add a client to start the timeline.</EmptyState>
           ) : (
-            <ul className="divide-y">
+            <ul className="min-w-0 divide-y">
               {activity.map((row) => (
-                <li key={row.id} className="flex items-baseline gap-4 py-3.5 first:pt-0 last:pb-0">
+                <li key={row.id} className="flex min-w-0 items-baseline gap-3 py-3.5 first:pt-0 last:pb-0 sm:gap-4">
                   <div className="min-w-0 flex-1">
                     {isInAppPath(row.link) ? (
                       <Link href={row.link} className="text-sm hover:underline">

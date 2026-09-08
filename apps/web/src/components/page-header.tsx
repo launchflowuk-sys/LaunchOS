@@ -25,14 +25,14 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("mb-6 border-b pb-4", className)}>
+    <div className={cn("mb-8", className)}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[category])} />
-            <h1 className="text-title font-semibold text-balance">{title}</h1>
+            <span aria-hidden className={cn("size-2 shrink-0 rounded-full", CATEGORY_DOT[category])} />
+            <h1 className="text-title font-bold tracking-tight text-balance">{title}</h1>
           </div>
-          {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+          {description ? <p className="mt-1.5 max-w-2xl text-sm text-muted-foreground">{description}</p> : null}
         </div>
         {actions ? (
           <div className="flex shrink-0 flex-wrap items-center gap-2 max-sm:[&>*]:w-full max-sm:[&>form]:w-full">

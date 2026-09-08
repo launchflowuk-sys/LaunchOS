@@ -68,7 +68,7 @@ export function DataList<Row>({
   return (
     <div className={cn("min-w-0", className)}>
       {/* Table, md and up. */}
-      <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
+      <div className="hidden overflow-x-auto rounded-[20px] border bg-card md:block">
         <table className="w-full border-collapse text-row">
           {caption ? <caption className="sr-only">{caption}</caption> : null}
           <thead>
@@ -78,7 +78,7 @@ export function DataList<Row>({
                   key={column.key}
                   scope="col"
                   className={cn(
-                    "label-caps px-4 py-2.5 text-left whitespace-nowrap text-muted-foreground",
+                    "label-caps px-5 py-3.5 text-left whitespace-nowrap text-muted-foreground",
                     (column.numeric || column.action) && "text-right",
                   )}
                 >
@@ -94,7 +94,7 @@ export function DataList<Row>({
                   <td
                     key={column.key}
                     className={cn(
-                      "px-4 py-3 align-middle",
+                      "px-5 py-4 align-middle",
                       column === primary ? "font-medium" : "text-muted-foreground",
                       column.numeric && "text-right tabular-nums",
                       column.action && "text-right whitespace-nowrap",
@@ -113,18 +113,18 @@ export function DataList<Row>({
       {/* Stacked row cards, under md. */}
       <ul className="grid gap-3 md:hidden">
         {rows.map((row, index) => (
-          <li key={getRowKey(row, index)} className="min-w-0 rounded-xl border bg-card p-4">
+          <li key={getRowKey(row, index)} className="min-w-0 rounded-[20px] border bg-card p-5">
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 text-sm font-medium break-words">{primary.cell(row)}</div>
+              <div className="min-w-0 text-sm font-semibold break-words">{primary.cell(row)}</div>
               {status ? <div className="shrink-0">{status.cell(row)}</div> : null}
             </div>
 
             {detail.length > 0 ? (
-              <dl className="mt-3 grid gap-1.5">
+              <dl className="mt-4 grid gap-2.5">
                 {detail.map((column) => (
                   <div key={column.key} className="flex items-baseline justify-between gap-3">
-                    <dt className="label-caps shrink-0 text-muted-foreground">{column.header}</dt>
-                    <dd className={cn("min-w-0 text-row break-words text-right", column.className)}>
+                    <dt className="shrink-0 text-meta font-medium text-muted-foreground">{column.header}</dt>
+                    <dd className={cn("min-w-0 text-row break-words text-right font-medium", column.className)}>
                       {column.cell(row)}
                     </dd>
                   </div>
@@ -133,7 +133,7 @@ export function DataList<Row>({
             ) : null}
 
             {action ? (
-              <div className="mt-3 [&_a]:w-full [&_button]:w-full [&>*]:w-full">{action.cell(row)}</div>
+              <div className="mt-4 [&_a]:w-full [&_button]:w-full [&>*]:w-full">{action.cell(row)}</div>
             ) : null}
           </li>
         ))}

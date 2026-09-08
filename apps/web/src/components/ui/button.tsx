@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * danger tokens either way, so the meaning never changes with the fill.
  */
 const buttonVariants = cva(
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-md border border-transparent text-sm font-medium whitespace-nowrap transition-colors outline-none select-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "inline-flex shrink-0 items-center justify-center gap-2 rounded-[14px] border border-transparent text-sm font-semibold whitespace-nowrap transition-colors outline-none select-none disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
@@ -34,10 +34,10 @@ const buttonVariants = cva(
         success: "bg-success-fg text-white hover:bg-success-fg/90",
       },
       size: {
-        sm: "h-8 px-3 text-[0.8125rem] [&_svg:not([class*='size-'])]:size-3.5",
-        md: "h-9 px-4",
-        lg: "h-10 px-5",
-        icon: "size-9 px-0",
+        sm: "h-9 rounded-xl px-3.5 text-[0.8125rem] [&_svg:not([class*='size-'])]:size-3.5",
+        md: "h-11 px-5",
+        lg: "h-12 px-6 text-[0.9375rem]",
+        icon: "size-11 px-0",
       },
     },
     defaultVariants: {

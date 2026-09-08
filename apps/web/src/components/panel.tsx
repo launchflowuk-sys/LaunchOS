@@ -49,9 +49,15 @@ export function Panel({
   return (
     <section
       className={cn(
-        // No shadow and no second ground: a hairline on a white page, which is
-        // the whole difference between a panel and a box floating on grey.
-        "rounded-[20px] border bg-card p-6 sm:p-7",
+        // `min-w-0` is not optional: a grid or flex item defaults to
+        // `min-width: auto`, so without it this panel refuses to shrink below
+        // the intrinsic width of its widest row and drags the whole page
+        // sideways on a phone. DESIGN.md has said so all along and I wrote it
+        // without.
+        // No shadow and no second ground either: a hairline on a white page,
+        // which is the whole difference between a panel and a box floating on
+        // grey.
+        "min-w-0 rounded-[20px] border bg-card p-5 sm:p-7",
         className,
       )}
     >
@@ -83,7 +89,7 @@ export function Panel({
         </p>
       ) : null}
 
-      <div className={figure ? "mt-4" : "mt-5"}>{children}</div>
+      <div className={cn("min-w-0", figure ? "mt-4" : "mt-5")}>{children}</div>
     </section>
   );
 }
