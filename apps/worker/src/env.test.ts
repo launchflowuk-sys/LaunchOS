@@ -216,15 +216,16 @@ describe("worker env", () => {
       // fixture sets none of their keys — with the consequence spelled out.
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
       // hosting, dns, cms, ads, social, push, meetings, the image generator
-      // since the branded post images landed, and search console since the
-      // client traffic panels started.
-      expect(warnings).toHaveLength(9);
+      // since the branded post images landed, search console since the client
+      // traffic panels started, and screenshots since the websites grid did.
+      expect(warnings).toHaveLength(10);
       expect(warnings.some((w) => w.startsWith("meetings adapter is the MOCK"))).toBe(true);
       expect(warnings.join(" ")).toMatch(/search-console adapter is the MOCK/);
       expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
       expect(warnings.every((w) => /adapter is the MOCK \(/.test(w))).toBe(true);
       expect(warnings.join(" ")).toMatch(/hosting adapter is the MOCK \(COOLIFY_API_URL unset\)/);
       expect(warnings.join(" ")).toMatch(/social adapter is the MOCK/);
+      expect(warnings.join(" ")).toMatch(/screenshots adapter is the MOCK/);
       expect(warnings.join(" ")).not.toMatch(/NODE_ENV/);
       // Cached, so a second call neither re-parses nor re-logs.
       loadEnv({} as NodeJS.ProcessEnv, logger);
