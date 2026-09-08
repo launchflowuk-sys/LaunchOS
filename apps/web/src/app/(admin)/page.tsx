@@ -1,4 +1,4 @@
-import { latestOpsBrief, listActivity, listTasks, nextMeeting } from "@launchos/core";
+import { deliveryPipeline, latestOpsBrief, listActivity, listTasks, nextMeeting, revenueByMonth } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, desc, eq, gte, inArray, isNotNull, isNull, lt, lte, notInArray } from "drizzle-orm";
 import {
@@ -6,23 +6,31 @@ import {
   CalendarClock,
   Link2,
   ListChecks,
+  Globe,
+  LineChart,
   MessageSquare,
   Rocket,
   ShieldCheck,
   Siren,
+  Users,
   Video,
+  Wallet,
+  Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState } from "@/components/empty-state";
 import { PageHeader } from "@/components/page-header";
+import { Panel } from "@/components/panel";
+import { StageBar } from "@/components/progress-bar";
+import { RevenueChart } from "@/components/revenue-chart";
 import { Section } from "@/components/section";
 import { StatCard, type StatCardProps } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { formatInZone } from "@/lib/booking/slot-days";
 import { getDb } from "@/lib/db";
-import { formatDate, formatDateTime } from "@/lib/format";
+import { formatDate, formatDateTime, formatPence } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
 import { requireAdmin } from "@/lib/session";
 import { BriefCard } from "./briefs/brief-card";
@@ -38,6 +46,9 @@ const WEEK_MS = 7 * 86_400_000;
 /** Enough to see the shape of the day without turning the dashboard into a list screen. */
 const NEEDS_YOU_LIMIT = 5;
 const ACTIVITY_LIMIT = 8;
+/** Enough pipeline to see the shape of the month without becoming the Projects page. */
+const PIPELINE_LIMIT = 6;
+const REVENUE_MONTHS = 6;
 
 type ApprovalRow = { id: string; title: string; kind: string; createdAt: Date };
 type TaskRow = Awaited<ReturnType<typeof listTasks>>[number];
@@ -120,6 +131,10 @@ export default async function DashboardPage() {
     activity,
     brief,
     upcomingMeeting,
+    activeClients,
+    liveSites,
+    pipeline,
+    revenue,
   ] = await Promise.all([
     db
       .select({ value: count() })
@@ -192,12 +207,80 @@ export default async function DashboardPage() {
     listActivity(db, org, { limit: ACTIVITY_LIMIT }),
     latestOpsBrief(db, org),
     nextMeeting(db, org, now),
+    db
+      .select({ value: count() })
+      .from(schema.clients)
+      .where(and(eq(schema.clients.organisationId, org), eq(schema.clients.status, "active"))),
+    db
+      .select({ value: count() })
+      .from(schema.sites)
+      .where(and(eq(schema.sites.organisationId, org), eq(schema.sites.status, "live"))),
+    deliveryPipeline(db, org, PIPELINE_LIMIT),
+    revenueByMonth(db, org, REVENUE_MONTHS, now),
   ]);
+
+  // The revenue headline is the month we are in; the trend compares it with the
+  // month before. Both come from the same series the chart draws, so the number
+  // and the bars can never disagree.
+  const thisMonth = revenue[revenue.length - 1]?.pence ?? 0;
+  const lastMonth = revenue[revenue.length - 2]?.pence ?? 0;
+  const revenueTrend = lastMonth === 0
+    ? undefined
+    : {
+        value: `${thisMonth >= lastMonth ? "+" : ""}${Math.round(((thisMonth - lastMonth) / lastMonth) * 100)}%`,
+        direction: thisMonth >= lastMonth ? ("up" as const) : ("down" as const),
+        caption: "vs last month",
+      };
+  const dueThisMonth = pipeline.filter((row) => row.targetDate?.slice(0, 7) === now.toISOString().slice(0, 7)).length;
 
   // Attention-first: the three counts that mean a person has to do something
   // lead, and they take the semantic tint the moment they are above zero. The
   // three behind them are context and keep their category hue.
+  // Four headline figures, not seven tiles. The UI brief is explicit: a row of
+  // small pale cards is unreadable, so the primaries are the four numbers that
+  // describe the business and everything that *needs* a person moves into the
+  // panel below, where it can carry a name and a date rather than only a count.
   const cards: readonly StatCardProps[] = [
+    {
+      label: "Active clients",
+      value: activeClients[0]?.value ?? 0,
+      href: "/clients",
+      hint: `${onboarding[0]?.value ?? 0} still onboarding`,
+      category: "overview",
+      icon: Users,
+    },
+    {
+      label: "Revenue this month",
+      value: formatPence(thisMonth),
+      href: "/invoices",
+      hint: "Collected, paid invoices only",
+      category: "money",
+      icon: Wallet,
+      ...(revenueTrend ? { trend: revenueTrend } : {}),
+      spark: revenue.map((r) => r.pence),
+    },
+    {
+      label: "Projects in delivery",
+      value: pipeline.length,
+      href: "/projects",
+      hint: dueThisMonth > 0 ? `${dueThisMonth} due this month` : "None due this month",
+      category: "delivery",
+      icon: Workflow,
+    },
+    {
+      label: "Websites online",
+      value: liveSites[0]?.value ?? 0,
+      href: "/websites",
+      hint: openIncidents[0]?.value ? `${openIncidents[0].value} with an open incident` : "All healthy",
+      category: "support",
+      icon: Globe,
+    },
+  ];
+
+  // The counts that mean somebody has to do something. Smaller, below the
+  // headline row, and still wearing the semantic tint the moment they are
+  // above zero — "needs you" must never be mistaken for "fine".
+  const attention: readonly StatCardProps[] = [
     {
       label: "Pending approvals",
       value: pendingApprovals[0]?.value ?? 0,
@@ -206,8 +289,6 @@ export default async function DashboardPage() {
       category: "automation",
       icon: ShieldCheck,
       attention: true,
-      // Waiting on a decision is a queue, not a failure — DESIGN.md pairs
-      // pending approval with warning, and open incidents with danger.
       attentionTone: "warning",
     },
     {
@@ -218,7 +299,6 @@ export default async function DashboardPage() {
       category: "support",
       icon: Siren,
       attention: true,
-      attentionTone: "danger",
     },
     {
       label: "Overdue tasks",
@@ -228,34 +308,14 @@ export default async function DashboardPage() {
       category: "delivery",
       icon: AlarmClock,
       attention: true,
-      attentionTone: "danger",
     },
     {
       label: "Open cases",
       value: openTickets[0]?.value ?? 0,
       href: "/cases",
-      hint: "Not resolved or closed",
+      hint: `${dueThisWeek[0]?.value ?? 0} tasks due this week`,
       category: "support",
       icon: MessageSquare,
-      attention: false,
-    },
-    {
-      label: "Due this week",
-      value: dueThisWeek[0]?.value ?? 0,
-      href: "/tasks",
-      hint: "Next seven days",
-      category: "delivery",
-      icon: CalendarClock,
-      attention: false,
-    },
-    {
-      label: "Onboarding in progress",
-      value: onboarding[0]?.value ?? 0,
-      href: "/clients",
-      hint: "On a package, not handed over",
-      category: "delivery",
-      icon: Rocket,
-      attention: false,
     },
   ];
 
@@ -263,23 +323,73 @@ export default async function DashboardPage() {
     <>
       <PageHeader title="Dashboard" description="What needs attention right now." />
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-7">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {cards.map((card) => (
           <StatCard key={card.label} {...card} />
         ))}
-        {/* The next call in the diary, London time. A string figure rather
-            than a count; "None" when the diary is clear. Full width on a
-            phone so seven tiles do not leave an orphan. */}
-        <div className="col-span-2 md:col-span-1">
-          <StatCard
-            label="Next meeting"
-            value={upcomingMeeting ? formatInZone(upcomingMeeting.startsAt, "Europe/London", "short").replace(/ [A-Z]+$/, "") : "None"}
-            href={upcomingMeeting ? `/meetings/${upcomingMeeting.id}` : "/meetings"}
-            hint={upcomingMeeting ? `With ${upcomingMeeting.guestName}` : "Nothing booked"}
-            category="delivery"
-            icon={Video}
-          />
-        </div>
+      </div>
+
+      {/* Delivery and money, side by side — the two questions asked most often
+          about an agency, answered without a click. */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+        <Panel
+          title="Delivery pipeline"
+          description="Active projects from brief to launch."
+          icon={Workflow}
+          category="delivery"
+          action={{ label: "View all", href: "/projects" }}
+        >
+          {pipeline.length === 0 ? (
+            <EmptyState icon={Workflow}>
+              Nothing in delivery. Projects appear here once a proposal is accepted.
+            </EmptyState>
+          ) : (
+            <ul className="divide-y">
+              {pipeline.map((row) => (
+                <li key={row.projectId} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
+                  <div className="min-w-44 flex-1">
+                    <Link href={`/projects/${row.projectId}`} className="text-sm font-semibold hover:underline">
+                      {row.name}
+                    </Link>
+                    <p className="text-meta text-muted-foreground">{row.clientName}</p>
+                  </div>
+                  {row.stage ? <StatusBadge value={row.stage} /> : null}
+                  <StageBar value={row.progress} className="w-full min-w-40 sm:w-52" />
+                  <span className="w-24 shrink-0 text-right text-meta whitespace-nowrap text-muted-foreground">
+                    {row.targetDate ? formatDate(new Date(`${row.targetDate}T00:00:00Z`)) : "No date"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel
+          title="Revenue pulse"
+          description="Collected in the last six months."
+          icon={LineChart}
+          category="money"
+          figure={formatPence(thisMonth)}
+        >
+          <RevenueChart data={revenue} />
+        </Panel>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {attention.map((card) => (
+          <StatCard key={card.label} {...card} />
+        ))}
+      </div>
+
+      <div className="mt-4">
+        <StatCard
+          label="Next meeting"
+          value={upcomingMeeting ? formatInZone(upcomingMeeting.startsAt, "Europe/London", "short").replace(/ [A-Z]+$/, "") : "None"}
+          href={upcomingMeeting ? `/meetings/${upcomingMeeting.id}` : "/meetings"}
+          hint={upcomingMeeting ? `With ${upcomingMeeting.guestName}` : "Nothing booked"}
+          category="organisation"
+          icon={Video}
+        />
       </div>
 
       <Section title="This morning's brief" description="What the Ops Brief agent saw at 07:00, and what it says needs you.">

@@ -722,3 +722,7 @@ export { listInvoices, ListInvoicesInput } from "./billing/list-invoices.js";
 export type { InvoiceListRow, ListInvoicesResult } from "./billing/list-invoices.js";
 export { listAgentEnablement } from "./agents/list-agent-enablement.js";
 export { hasAgentRunInFlight } from "./agents/agent-run-in-flight.js";
+export { deliveryPipeline } from "./projects/delivery-pipeline.js";
+export type { PipelineRow } from "./projects/delivery-pipeline.js";
+export { revenueByMonth } from "./billing/revenue-by-month.js";
+export type { RevenueMonth } from "./billing/revenue-by-month.js";
