@@ -726,3 +726,5 @@ export { deliveryPipeline } from "./projects/delivery-pipeline.js";
 export type { PipelineRow } from "./projects/delivery-pipeline.js";
 export { revenueByMonth } from "./billing/revenue-by-month.js";
 export type { RevenueMonth } from "./billing/revenue-by-month.js";
+export { clientPortfolioMetrics } from "./clients/portfolio-metrics.js";
+export type { PortfolioMetrics } from "./clients/portfolio-metrics.js";

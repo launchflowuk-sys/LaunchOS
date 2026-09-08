@@ -1,7 +1,8 @@
-import { listClients, listPackages } from "@launchos/core";
-import { Building2 } from "lucide-react";
+import { clientPortfolioMetrics, listClients, listPackages } from "@launchos/core";
+import { Building2, Repeat, Users, Wallet, Workflow } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
+import { StatCard } from "@/components/stat-card";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { StatusBadge } from "@/components/status-badge";
@@ -10,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
+import { formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { NewClientDialog } from "./new-client-dialog";
 
@@ -55,7 +57,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
   // One screenful at a time: the roster grows without bound and under `md` a
   // DataList renders a card per row, so an unpaged list is a phone scrolling
   // past every client the agency has ever had.
-  const [fetched, packages] = await Promise.all([
+  const [fetched, packages, metrics] = await Promise.all([
     listClients(getDb(), session.organisationId, {
       query,
       status: status === "all" ? undefined : (status as "active" | "paused" | "archived"),
@@ -66,6 +68,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
       order: "recent",
     }),
     listPackages(getDb(), session.organisationId, { activeOnly: true }),
+      clientPortfolioMetrics(getDb(), session.organisationId),
   ]);
 
   const hasNext = fetched.length > PAGE_SIZE;
@@ -79,6 +82,39 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
         category="delivery"
         actions={<NewClientDialog packages={packages.map((pkg) => ({ value: pkg.id, label: pkg.name }))} />}
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Active clients"
+          value={metrics.activeClients}
+          hint={metrics.onboarding > 0 ? `${metrics.onboarding} still onboarding` : "All handed over"}
+          category="overview"
+          icon={Users}
+        />
+        <StatCard
+          label="Recurring revenue"
+          value={formatPence(metrics.recurringPence)}
+          hint="Per month, active subscriptions"
+          category="money"
+          icon={Repeat}
+        />
+        <StatCard
+          label="Projects in flight"
+          value={metrics.projectsInFlight}
+          hint="Planned, active or on hold"
+          href="/projects"
+          category="delivery"
+          icon={Workflow}
+        />
+        <StatCard
+          label="Collected to date"
+          value={formatPence(metrics.lifetimePence)}
+          hint="Every invoice ever paid"
+          href="/invoices"
+          category="support"
+          icon={Wallet}
+        />
+      </div>
 
       <form action="/clients">
         <FilterBar>
