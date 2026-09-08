@@ -41,6 +41,24 @@ Both app resources auto-deploy from `main` on GitHub push — **provided each on
 > join application_settings s on s.application_id = a.id;
 > ```
 >
+> **The second half of the same trap is on GitHub's side.** A correct `source_id` still delivers nothing if the GitHub App has no webhook URL, and ours had none — `hook_attributes.url` was empty while the App was subscribed to `push` and `pull_request`, so no resource on it had ever auto-deployed. Read it, do not trust the UI:
+>
+> ```
+> docker exec coolify php artisan tinker --execute='
+>   require_once base_path("bootstrap/helpers/github.php");
+>   $g = App\Models\GithubApp::find(1);
+>   $j = Illuminate\Support\Facades\Http::GitHub($g->api_url, generateGithubToken($g, "jwt"))->get("/app")->json();
+>   echo ($j["hook_attributes"]["url"] ?? "NONE");'
+> ```
+>
+> It must be Coolify's own endpoint, set on the **App** (*Developer settings → GitHub Apps → General → Webhook*), not on a repository:
+>
+> ```
+> http://88.198.146.183:8000/webhooks/source/github/events
+> ```
+>
+> A repository webhook points at the same host but is verified against a different secret (`/webhooks/source/github/events/manual`), so setting it in the wrong place delivers events that are rejected as bad signatures — indistinguishable from nothing arriving. That URL is plain HTTP because the Coolify instance has no `fqdn`; giving it a subdomain with TLS is the proper fix.
+>
 > `source_id` must be `1`. Fix it in the UI (*Configuration → Source*) or, if the API token is stale, by pointing the resource at the working source directly. Compare against a resource that does deploy itself — Glow Flow Booker is the reference. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *pre-deployment command*, before the new container starts serving. See "Migrations" below for why, and for the manual equivalent.
 
 Environment variables are set in Coolify, never committed. `NODE_ENV=production`, `APP_URL`, `BETTER_AUTH_URL` and `DATABASE_URL` point at the internal Postgres hostname.
