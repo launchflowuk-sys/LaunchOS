@@ -59,13 +59,13 @@ Both app resources auto-deploy from `main` on GitHub push — **provided each on
 >
 > A repository webhook points at the same host but is verified against a different secret (`/webhooks/source/github/events/manual`), so setting it in the wrong place delivers events that are rejected as bad signatures — indistinguishable from nothing arriving. That URL is plain HTTP because the Coolify instance has no `fqdn`; giving it a subdomain with TLS is the proper fix.
 >
-> `source_id` must be `1`. Fix it in the UI (*Configuration → Source*) or, if the API token is stale, by pointing the resource at the working source directly. Compare against a resource that does deploy itself — Glow Flow Booker is the reference. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *pre-deployment command*, before the new container starts serving. See "Migrations" below for why, and for the manual equivalent.
+> `source_id` must be `1`. Fix it in the UI (*Configuration → Source*) or, if the API token is stale, by pointing the resource at the working source directly. Compare against a resource that does deploy itself — Glow Flow Booker is the reference. **Migrations are a one-shot step, not part of either entrypoint** — Coolify runs `pnpm --filter @launchos/db migrate` as the web resource's *post-deployment command*, in the container that has just started serving. See "Migrations" below for why it is post and not pre, which is not the obvious choice.
 
 Environment variables are set in Coolify, never committed. `NODE_ENV=production`, `APP_URL`, `BETTER_AUTH_URL` and `DATABASE_URL` point at the internal Postgres hostname.
 
 ### Migrations
 
-`drizzle-kit migrate` runs **once per deploy, before the serving container starts**, as Coolify's pre-deployment command on the web resource:
+`drizzle-kit migrate` runs **once per deploy, in the container that has just started**, as Coolify's *post-deployment* command on the web resource:
 
 ```
 pnpm --filter @launchos/db migrate
@@ -76,6 +76,39 @@ It used to be the web container's `CMD` (`pnpm db:migrate && next start`). Three
 - A failing migration became a **crash-loop outage of both portals** rather than a deferred schema change: `&&` short-circuits, the container exits, Coolify restarts it, and it fails identically forever.
 - Scaling web past one replica would run `drizzle-kit migrate` concurrently against one database with no advisory lock.
 - There was no way to apply a migration without restarting the app, and no way to restart the app without applying one.
+
+### Why post-deployment and not pre
+
+It was pre-deployment, and that was wrong in a way that took a broken production
+deploy to see.
+
+Coolify's pre-deployment command is a `docker exec` against the container that
+is **currently running** — which, at that moment, is still the *old* image. That
+image does not contain the migration the deploy is introducing, so
+`drizzle-kit` reads its own (older) migrations folder, finds nothing pending,
+and prints:
+
+```
+[✓] migrations applied successfully!
+```
+
+Which is true, and useless. The new schema is not applied, the new container
+then starts serving code that queries a table which does not exist, and the
+deploy is reported as a success. That is exactly what happened on `0fe2311`:
+`site_screenshots` was missing while the websites list was live and querying it.
+It had to be applied by hand against the new container afterwards.
+
+The failure is silent by construction — the success message is the same one a
+correct run prints — so it cannot be caught by reading the deploy log. Every
+migration would have needed a *second* deploy to actually land.
+
+Post-deployment runs in the new container, which has the new migrations. The
+cost is a short window where new code serves against the old schema. That is
+tolerable **only because migrations here are additive** — a new table, a new
+nullable column. It stops being tolerable the moment one drops or renames
+something a running container still reads, and at that point the change has to
+be split across two deploys (add, deploy, backfill, deploy, remove) rather than
+solved by moving this setting back.
 
 A pre-deployment command runs in a container built from the same image, so nothing else changes: the migrations and `drizzle-kit` are already in `infra/Dockerfile.web` (`COPY packages ./packages` plus the dev dependencies the build installs). If the Coolify version in use has no pre-deployment hook, the equivalent is a manual step before promoting the deploy:
 
@@ -178,7 +211,7 @@ Do not push to GitHub until Shoji approves the local run. Once approved and `mai
    - No domain, no public port.
    - Health check: process-based (no HTTP endpoint); configure Coolify's restart policy to restart on exit.
    - Auto-deploy: enable "auto deploy on push" for `main`.
-   - Deploy after the migration step has run at least once (it is the web resource's pre-deployment command — see **Migrations**). Starting it after the web resource's health check passes is a reasonable ordering, but it is no longer what applies the schema.
+   - Deploy after the migration step has run at least once (it is the web resource's post-deployment command — see **Migrations**). Starting it after the web resource's health check passes is a reasonable ordering, but it is no longer what applies the schema.
    - Env vars: **the full list is the table below** — the schema in `apps/worker/src/env.ts` plus the variables its factories read from `process.env` directly. It is deliberately the same shape as the web table above: anything in both must carry the same value in both.
 
    | Variable | Value | Notes |
