@@ -15,6 +15,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./styles": "./src/styles/globals.css",
+    "./ui/*": "./src/components/ui/*.tsx",
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -24,12 +25,19 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "lucide-react": "^0.550.0",
+    "next-themes": "^0.4.6",
+    "radix-ui": "^1.6.7",
+    "sonner": "^2.0.8",
     "tailwind-merge": "^3.4.1"
   },
   "devDependencies": {
     "typescript": "^5",
-    "@launchos/config": "workspace:*"
+    "@launchos/config": "workspace:*",
+    "@types/react": "^19",
+    "react": "19.2.8"
   },
   "keywords": [
     "design-system",
@@ -37,5 +45,9 @@
     "shadcn",
     "admin",
     "launchflow"
-  ]
+  ],
+  "peerDependencies": {
+    "react": ">=19",
+    "react-dom": ">=19"
+  }
 }
