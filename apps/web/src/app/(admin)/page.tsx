@@ -274,7 +274,7 @@ export default async function DashboardPage() {
 
       {/* Delivery and money, side by side — the two questions asked most often
           about an agency, answered without a click. */}
-      <div className="mt-4 grid gap-4 lg:grid-cols-[1.6fr_1fr]">
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1.6fr_1fr]">
         <Panel
           title="Delivery pipeline"
           description="Active projects from brief to launch."
@@ -322,7 +322,7 @@ export default async function DashboardPage() {
         </Panel>
       </div>
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {attention.map((card) => (
           <StatCard key={card.label} {...card} />
         ))}

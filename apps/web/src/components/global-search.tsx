@@ -135,6 +135,15 @@ export function GlobalSearch() {
         aria-controls="global-search-results"
         aria-label="Search the whole platform"
         placeholder="Search clients, sites, domains, cases, tasks"
+        // A phone keyboard that autocorrects a client's name into an English
+        // word finds nothing, and the capital it adds is wasted on a
+        // case-insensitive match. `enterKeyHint` labels the key for what Enter
+        // actually does here: open the top hit.
+        inputMode="search"
+        enterKeyHint="go"
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
         value={query}
         onChange={(e) => {
           setQuery(e.target.value);

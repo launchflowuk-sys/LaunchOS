@@ -100,6 +100,21 @@ async function signInAs(page: Page, credentials: { email: string; password: stri
   await page.waitForURL(landing, { timeout: COLD_COMPILE });
 }
 
+/**
+ * `next dev` compiles a route the first time it is asked for, and this walk
+ * asks for forty of them in one test. A compile that overruns the timeout has
+ * almost always finished by the time the request is repeated, so one retry
+ * turns a routine cold start into a pause rather than a red suite. A route
+ * that is genuinely broken still fails, because it fails twice.
+ */
+async function goto(page: Page, route: string): Promise<void> {
+  try {
+    await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+  } catch {
+    await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+  }
+}
+
 async function widthOf(page: Page): Promise<{ scrollWidth: number; innerWidth: number; culprits: string[] }> {
   return page.evaluate(() => {
     const limit = window.innerWidth + 1;
@@ -137,12 +152,12 @@ test.describe("every admin screen fits a 375px phone", () => {
     await signInAs(page, OWNER, "/");
 
     for (const route of ADMIN_ROUTES) {
-      await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+      await goto(page, route);
       await expectNoSidewaysScroll(page, route);
     }
 
     for (const { list, pattern } of DETAIL_FROM) {
-      await page.goto(list, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+      await goto(page, list);
       const href = await page
         .locator("a[href]")
         .evaluateAll(
@@ -154,7 +169,7 @@ test.describe("every admin screen fits a 375px phone", () => {
         );
       // An empty list is not a failure — it is a seed with nothing in it.
       if (!href) continue;
-      await page.goto(href, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+      await goto(page, href);
       await expectNoSidewaysScroll(page, href);
     }
   });
@@ -169,7 +184,7 @@ test.describe("every portal screen fits a 375px phone", () => {
     await signInAs(page, CLIENT, "/portal");
 
     for (const route of PORTAL_ROUTES) {
-      await page.goto(route, { timeout: COLD_COMPILE, waitUntil: "domcontentloaded" });
+      await goto(page, route);
       await expectNoSidewaysScroll(page, route);
     }
   });
