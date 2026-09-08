@@ -102,8 +102,16 @@ async function signInAs(page: Page, credentials: { email: string; password: stri
   await page.goto("/sign-in");
   await page.getByLabel("Email").fill(credentials.email);
   await page.getByLabel("Password").fill(credentials.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await page.waitForURL(landing, { timeout: COLD_COMPILE });
+  // Wait for the credential exchange before watching the URL. Clicking and
+  // immediately waiting races the redirect: /after-sign-in can be reached
+  // before the session cookie applies, which bounces the whole flow back to
+  // /sign-in and surfaces two minutes later as a navigation timeout that looks
+  // nothing like the race it is.
+  await Promise.all([
+    page.waitForResponse((response) => response.url().includes("/api/auth/sign-in/email")),
+    page.getByRole("button", { name: "Sign in" }).click(),
+  ]);
+  await page.waitForURL((url) => url.pathname === landing, { timeout: COLD_COMPILE });
 }
 
 /**
