@@ -1,0 +1,41 @@
+{
+  "name": "@launchflow/ui",
+  "version": "0.1.0",
+  "description": "The LaunchFlow design system — tokens, primitives and components for admin portals and client-facing apps.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": [
+    "*.css"
+  ],
+  "files": [
+    "src",
+    "DESIGN.md",
+    "README.md"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./styles": "./src/styles/globals.css",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.4.1"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@launchos/config": "workspace:*"
+  },
+  "keywords": [
+    "design-system",
+    "tailwind",
+    "shadcn",
+    "admin",
+    "launchflow"
+  ]
+}

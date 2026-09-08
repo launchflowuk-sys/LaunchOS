@@ -20,6 +20,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.9.1
         version: 5.9.1(@standard-schema/spec@1.1.0)(ajv-formats@2.1.1(ajv@8.20.0))(ajv@8.20.0)(react-hook-form@7.87.0(react@19.2.8))(zod@4.5.4)
+      '@launchflow/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
       '@launchos/agents':
         specifier: workspace:*
         version: link:../../packages/agents
@@ -384,6 +387,22 @@ importers:
       vitest:
         specifier: ^3
         version: 3.2.7(@types/debug@4.1.13)(@types/node@24.13.3)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.23.13)
+
+  packages/ui:
+    dependencies:
+      clsx:
+        specifier: ^2.1.1
+        version: 2.1.1
+      tailwind-merge:
+        specifier: ^3.4.1
+        version: 3.6.0
+    devDependencies:
+      '@launchos/config':
+        specifier: workspace:*
+        version: link:../config
+      typescript:
+        specifier: ^5
+        version: 5.9.3
 
 packages:
 
