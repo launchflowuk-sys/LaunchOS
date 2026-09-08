@@ -1,10 +1,17 @@
+import { invoiceMetrics } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
-import { Receipt } from "lucide-react";
+import {
+  AlertTriangle,
+  BanknoteArrowDown,
+  Receipt,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { StatusBadge } from "@/components/status-badge";
+import { StatCard } from "@/components/stat-card";
 import { getDb } from "@/lib/db";
 import { formatDate, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -69,6 +76,7 @@ const COLUMNS: readonly DataListColumn<InvoiceRow>[] = [
 
 export default async function InvoicesPage({ searchParams }: PageProps<"/invoices">) {
   const session = await requireAdmin();
+  const metrics = await invoiceMetrics(getDb(), session.organisationId);
   const { status } = await searchParams;
   const active = InvoiceStatusFilter.parse(Array.isArray(status) ? status[0] : status);
 
@@ -98,6 +106,39 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
         description="Every invoice raised for a client, and where it has got to."
         category="money"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Overdue"
+          value={formatPence(metrics.overduePence)}
+          hint={metrics.overdueCount === 1 ? "1 invoice past its due date" : `${metrics.overdueCount} invoices past their due date`}
+          category="support"
+          icon={AlertTriangle}
+          attention
+        />
+        <StatCard
+          label="Outstanding"
+          value={formatPence(metrics.outstandingPence)}
+          hint={"Sent and not yet settled"}
+          category="delivery"
+          icon={Receipt}
+        />
+        <StatCard
+          label="Paid this month"
+          value={formatPence(metrics.paidThisMonthPence)}
+          hint={"Collected since the 1st"}
+          category="money"
+          icon={Wallet}
+        />
+        <StatCard
+          label="Overdue invoices"
+          value={metrics.overdueCount}
+          hint={"Count, not value"}
+          category="overview"
+          icon={BanknoteArrowDown}
+          attention
+        />
+      </div>
 
       <nav aria-label="Filter by status" className="mb-4 flex flex-wrap gap-2">
         <Link href="/invoices" className={cn(FILTER_BASE, active ? FILTER_OFF : FILTER_ON)}>

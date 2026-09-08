@@ -1,8 +1,13 @@
-import { attributionOf, attributionSummary, costPerLeadByCampaign, leadCampaignCounts, type LeadRow, listLeads } from "@launchos/core";
+import { attributionOf, attributionSummary, costPerLeadByCampaign, leadCampaignCounts, leadMetrics, listLeads, type LeadRow } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { LeadStatus } from "@launchos/db/schema";
 import { and, count, eq, isNull } from "drizzle-orm";
-import { UserPlus } from "lucide-react";
+import {
+  Clock,
+  Sparkles,
+  UserCheck,
+  UserPlus,
+} from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -10,6 +15,7 @@ import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { StatCard } from "@/components/stat-card";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -80,6 +86,7 @@ async function countsByStatus(organisationId: string): Promise<Record<LeadStatus
 
 export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   const session = await requireAdmin();
+  const metrics = await leadMetrics(getDb(), session.organisationId);
   const params = await searchParams;
   const statusParam = typeof params.status === "string" ? params.status : "all";
   const filter: Filter = FILTERS.includes(statusParam as Filter) ? (statusParam as Filter) : "all";
@@ -119,6 +126,38 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
           </Button>
         }
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="New leads"
+          value={metrics.newLeads}
+          hint={"Nobody has picked these up"}
+          category="overview"
+          icon={UserPlus}
+        />
+        <StatCard
+          label="Qualified"
+          value={metrics.qualified}
+          hint={"Worth a proposal"}
+          category="delivery"
+          icon={Sparkles}
+        />
+        <StatCard
+          label="Converted this month"
+          value={metrics.convertedThisMonth}
+          hint={"Became clients"}
+          category="money"
+          icon={UserCheck}
+        />
+        <StatCard
+          label="Waiting over 24h"
+          value={metrics.awaitingReply}
+          hint={"Still new, no reply sent"}
+          category="support"
+          icon={Clock}
+          attention
+        />
+      </div>
 
       {/* The counts are the page's one number: how many are waiting on a call
           back, and how the rest ended up. Links rather than pills so a tap

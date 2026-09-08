@@ -1,5 +1,10 @@
-import { listSites } from "@launchos/core";
-import { Globe } from "lucide-react";
+import { listSites, websiteMetrics } from "@launchos/core";
+import {
+  Globe,
+  Hammer,
+  Rocket,
+  Siren,
+} from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -7,6 +12,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { StatCard } from "@/components/stat-card";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 
@@ -55,6 +61,7 @@ const COLUMNS: readonly DataListColumn<SiteRow>[] = [
 
 export default async function WebsitesPage({ searchParams }: PageProps<"/websites">) {
   const session = await requireAdmin();
+  const metrics = await websiteMetrics(getDb(), session.organisationId);
   const params = await searchParams;
   const query = typeof params.q === "string" ? params.q : undefined;
   const rows = await listSites(getDb(), session.organisationId, { query });
@@ -62,6 +69,39 @@ export default async function WebsitesPage({ searchParams }: PageProps<"/website
   return (
     <>
       <PageHeader title="Websites" description="Every site we build, host or look after." category="delivery" />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Live"
+          value={metrics.live}
+          hint={"Serving traffic"}
+          category="overview"
+          icon={Globe}
+        />
+        <StatCard
+          label="In build"
+          value={metrics.building}
+          hint={"Not launched yet"}
+          category="delivery"
+          icon={Hammer}
+        />
+        <StatCard
+          label="Needs attention"
+          value={metrics.withOpenIncident}
+          hint={"Sites with an open incident"}
+          href="/incidents"
+          category="support"
+          icon={Siren}
+          attention
+        />
+        <StatCard
+          label="Launched this month"
+          value={metrics.launchedThisMonth}
+          hint={"Added since the 1st"}
+          category="money"
+          icon={Rocket}
+        />
+      </div>
 
       <form action="/websites">
         <FilterBar>

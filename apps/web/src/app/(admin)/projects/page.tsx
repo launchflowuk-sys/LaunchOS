@@ -1,8 +1,14 @@
-import { listClients, listProjects, projectProgress, type ProjectRow } from "@launchos/core";
+import { listClients, listProjects, projectMetrics, projectProgress, type ProjectRow } from "@launchos/core";
 import { schema } from "@launchos/db";
 import type { ProjectStatus } from "@launchos/db/schema";
 import { and, count, eq, inArray, isNull } from "drizzle-orm";
-import { HardHat } from "lucide-react";
+import {
+  AlarmClock,
+  CalendarClock,
+  CheckCircle2,
+  HardHat,
+  Workflow,
+} from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -10,6 +16,7 @@ import { Section } from "@/components/section";
 import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { StatCard } from "@/components/stat-card";
 import { getDb } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -118,6 +125,7 @@ async function progressFor(organisationId: string, projects: readonly ProjectRow
 
 export default async function ProjectsPage({ searchParams }: PageProps<"/projects">) {
   const session = await requireAdmin();
+  const metrics = await projectMetrics(getDb(), session.organisationId);
   const params = await searchParams;
   const statusParam = typeof params.status === "string" ? params.status : "all";
   const filter: Filter = FILTERS.includes(statusParam as Filter) ? (statusParam as Filter) : "all";
@@ -142,6 +150,38 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
         description="Every build we have on. A project gives a client one honest progress page and gives us one place to see the work."
         category="delivery"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="In delivery"
+          value={metrics.inFlight}
+          hint={"Planned, active or on hold"}
+          category="delivery"
+          icon={Workflow}
+        />
+        <StatCard
+          label="Due this month"
+          value={metrics.dueThisMonth}
+          hint={"Against their target date"}
+          category="overview"
+          icon={CalendarClock}
+        />
+        <StatCard
+          label="Overdue"
+          value={metrics.overdue}
+          hint={"Past target and not delivered"}
+          category="support"
+          icon={AlarmClock}
+          attention
+        />
+        <StatCard
+          label="Delivered this month"
+          value={metrics.deliveredThisMonth}
+          hint={"Signed off and handed over"}
+          category="money"
+          icon={CheckCircle2}
+        />
+      </div>
 
       {/* The counts are the page's one number: what is on, what is waiting and
           what has landed. Links rather than pills so a tap filters. */}

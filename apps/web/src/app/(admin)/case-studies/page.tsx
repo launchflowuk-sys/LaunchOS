@@ -1,6 +1,11 @@
-import { type CaseStudyRow, listCaseStudies } from "@launchos/core";
+import { caseStudyMetrics, listCaseStudies, type CaseStudyRow } from "@launchos/core";
 import type { CaseStudyKind, CaseStudyStatus } from "@launchos/db/schema";
-import { Star, Trophy } from "lucide-react";
+import {
+  BookOpen,
+  FileText,
+  Star,
+  Trophy,
+} from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -9,6 +14,7 @@ import { Section } from "@/components/section";
 import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/native-select";
+import { StatCard } from "@/components/stat-card";
 import { getDb } from "@/lib/db";
 import { requireAdminWith } from "@/lib/permissions";
 import { setCaseStudyStatusAction, setFeaturedAction } from "./actions";
@@ -85,6 +91,7 @@ const COLUMNS: readonly DataListColumn<Row>[] = [
 
 export default async function CaseStudiesPage({ searchParams }: PageProps<"/case-studies">) {
   const session = await requireAdminWith("content");
+  const metrics = await caseStudyMetrics(getDb(), session.organisationId);
   const params = await searchParams;
   const kindParam = typeof params.kind === "string" ? params.kind : "all";
   const statusParam = typeof params.status === "string" ? params.status : "all";
@@ -110,6 +117,38 @@ export default async function CaseStudiesPage({ searchParams }: PageProps<"/case
         description="The public portfolio. What is published here is what launchflow.co.uk shows, in this order."
         category="delivery"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Published"
+          value={metrics.published}
+          hint={"Live on the site"}
+          category="overview"
+          icon={BookOpen}
+        />
+        <StatCard
+          label="Drafts"
+          value={metrics.drafts}
+          hint={"Written, not published"}
+          category="delivery"
+          icon={FileText}
+        />
+        <StatCard
+          label="Featured"
+          value={metrics.featured}
+          hint={"Shown first on /work"}
+          category="money"
+          icon={Star}
+        />
+        <StatCard
+          label="Delivered projects"
+          value={metrics.eligible}
+          hint={"Proof available to write up"}
+          href="/projects"
+          category="automation"
+          icon={Trophy}
+        />
+      </div>
 
       <p className="mb-4 text-sm text-muted-foreground">
         {published} of {all.length} published · {featured} marked for the home page

@@ -728,3 +728,11 @@ export { revenueByMonth } from "./billing/revenue-by-month.js";
 export type { RevenueMonth } from "./billing/revenue-by-month.js";
 export { clientPortfolioMetrics } from "./clients/portfolio-metrics.js";
 export type { PortfolioMetrics } from "./clients/portfolio-metrics.js";
+
+// --- Per-screen headline figures (UI redesign, Sep 2026) ---
+export {
+  projectMetrics, leadMetrics, websiteMetrics, domainMetrics, caseStudyMetrics, invoiceMetrics,
+} from "./metrics/screen-metrics.js";
+export type {
+  ProjectMetrics, LeadMetrics, WebsiteMetrics, DomainMetrics, CaseStudyMetrics, InvoiceMetrics,
+} from "./metrics/screen-metrics.js";
