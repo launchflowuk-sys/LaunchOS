@@ -70,11 +70,11 @@ function linesHtml(lines: readonly InvoiceLineItem[]): string {
 function totalsHtml(invoice: InvoiceRow, vatRegistered: boolean): string {
   const rate = vatRatePercentCharged(invoice.subtotalPence, invoice.vatPence);
   const vatRow = vatRegistered
-    ? `<tr><td>VAT at ${escapeHtml(String(rate))}%</td><td class="numeric"></td><td class="numeric">${escapeHtml(formatPence(invoice.vatPence))}</td></tr>`
+    ? `<tr class="subtotal"><td>VAT at ${escapeHtml(String(rate))}%</td><td class="numeric"></td><td class="numeric">${escapeHtml(formatPence(invoice.vatPence))}</td></tr>`
     : "";
-  return `<tr><td>Subtotal</td><td class="numeric"></td><td class="numeric">${escapeHtml(formatPence(invoice.subtotalPence))}</td></tr>
+  return `<tr class="subtotal"><td>Subtotal</td><td class="numeric"></td><td class="numeric">${escapeHtml(formatPence(invoice.subtotalPence))}</td></tr>
     ${vatRow}
-    <tr class="total"><td>Total due</td><td class="numeric"></td><td class="numeric">${escapeHtml(formatPence(invoice.totalPence))}</td></tr>`;
+    <tr class="total"><td colspan="3"><div class="band"><span>Total due</span><span class="figure">${escapeHtml(formatPence(invoice.totalPence))}</span></div></td></tr>`;
 }
 
 /** The HTML for an invoice, ready for `renderPdf`. */
@@ -100,7 +100,10 @@ export function invoiceDocumentHtml(input: InvoiceDocumentInput): string {
     ${address}
     ${clientVat}
     <h2>What this covers</h2>
-    <table><tbody>${linesHtml(invoice.lineItems)}${totalsHtml(invoice, vatRegistered)}</tbody></table>
+    <table>
+      <thead><tr><th>Description</th><th class="numeric">Qty × unit</th><th class="numeric">Amount</th></tr></thead>
+      <tbody>${linesHtml(invoice.lineItems)}${totalsHtml(invoice, vatRegistered)}</tbody>
+    </table>
     ${invoice.status === "paid" && invoice.paidAt
       ? `<p><strong>Paid in full on ${escapeHtml(ukLongDate(invoice.paidAt))}. Thank you.</strong></p>`
       : `<p>Payment is due by <strong>${escapeHtml(ukLongDate(invoice.dueAt))}</strong>. You can pay and see every invoice in your portal.</p>`}`;
