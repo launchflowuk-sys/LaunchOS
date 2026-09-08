@@ -49,7 +49,9 @@ export function Panel({
   return (
     <section
       className={cn(
-        "rounded-[20px] border bg-card p-5 shadow-[0_12px_32px_rgba(11,16,32,0.06)] sm:p-6",
+        // No shadow and no second ground: a hairline on a white page, which is
+        // the whole difference between a panel and a box floating on grey.
+        "rounded-[20px] border bg-card p-6 sm:p-7",
         className,
       )}
     >
@@ -61,8 +63,8 @@ export function Panel({
             </span>
           ) : null}
           <div className="min-w-0">
-            <h2 className="text-lg leading-tight font-semibold tracking-tight">{title}</h2>
-            {description ? <p className="mt-0.5 text-sm text-muted-foreground">{description}</p> : null}
+            <h2 className="text-xl leading-tight font-semibold tracking-tight">{title}</h2>
+            {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
           </div>
         </div>
         {action ? (

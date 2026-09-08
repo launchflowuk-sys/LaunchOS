@@ -24,10 +24,15 @@
   /* The fixed scale from DESIGN.md, ratio ~1.2. `text-sm` (14) is body,
      `text-base` (16) emphasised body, `text-lg` (18) a card title; the four
      below are the sizes Tailwind has no default for. */
-  --text-label: 0.6875rem; /* 11 — uppercase section labels */
-  --text-meta: 0.75rem; /* 12 — timestamps, hints */
-  --text-row: 0.8125rem; /* 13 — table body, form labels */
-  --text-title: 1.375rem; /* 22 — page title */
+  /* Sized for a person who is in this all day, not for density. Every step
+     went up when the old scale was called squinty, and `--text-sm` — Tailwind's
+     body size — went with them, which is what lifts the whole product rather
+     than the few places that name a size explicitly. */
+  --text-label: 0.75rem; /* 12 — uppercase section labels */
+  --text-meta: 0.8125rem; /* 13 — timestamps, hints */
+  --text-row: 0.9375rem; /* 15 — table body, form labels */
+  --text-sm: 0.9375rem; /* 15 — body. Tailwind's default 14 was the squint. */
+  --text-title: 2rem; /* 32 — page title */
   --text-figure: 1.75rem; /* 28 — dashboard numbers */
   --text-kpi: 2.75rem; /* 44 — the four headline figures, per the UI brief */
 
@@ -94,6 +99,11 @@
   --color-info-bg: var(--info-bg);
   --color-info-border: var(--info-border);
   --color-neutral-fg: var(--neutral-fg);
+  --color-neutral-solid: var(--neutral-solid);
+  --color-info-solid: var(--info-solid);
+  --color-warning-solid: var(--warning-solid);
+  --color-danger-solid: var(--danger-solid);
+  --color-success-pill: var(--success-pill);
   --color-neutral-bg: var(--neutral-bg);
   --color-neutral-border: var(--neutral-border);
 
@@ -127,7 +137,7 @@
 :root {
   color-scheme: light;
 
-  --background: oklch(0.985 0.004 250);
+  --background: oklch(1 0 0);
   --foreground: oklch(0.21 0.02 262);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.21 0.02 262);
@@ -151,9 +161,9 @@
      2.14:1 on white, which is why `--ring` stays `--primary`. */
   --brand-cyan: oklch(0.75 0.13 216);
 
-  --secondary: oklch(0.97 0.005 262);
+  --secondary: oklch(0.965 0.005 262);
   --secondary-foreground: oklch(0.21 0.02 262);
-  --muted: oklch(0.968 0.005 262);
+  --muted: oklch(0.962 0.005 262);
   --muted-foreground: oklch(0.49 0.02 262);
   --accent: oklch(0.96 0.008 262);
   --accent-foreground: oklch(0.21 0.02 262);
@@ -209,6 +219,15 @@
   /* The calm state. It is part of the same vocabulary so a "closed" pill and an
      "open" pill are built the same way. */
   --neutral-fg: oklch(0.44 0.02 262);
+  /* Solid pill grounds. The pale tints they replace were the washed-out
+     "AI pills" — a state has to be readable across a list at a glance. White
+     label on each, ratios calculated: neutral 7.77, info 5.83, warning 6.76,
+     danger 7.23, success 6.57. */
+  --neutral-solid: oklch(0.44 0.02 262);
+  --info-solid: oklch(0.5 0.15 245);
+  --warning-solid: oklch(0.48 0.12 62);
+  --danger-solid: oklch(0.48 0.19 25);
+  --success-pill: oklch(0.46 0.13 155);
   --neutral-bg: oklch(0.965 0.005 262);
   --neutral-border: oklch(0.89 0.01 255);
 

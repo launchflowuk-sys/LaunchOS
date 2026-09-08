@@ -2,24 +2,22 @@ import { cn } from "@/lib/utils";
 
 /**
  * The state vocabulary, one pill, used identically in the admin app and the
- * client portal. A leading dot carries the colour so the state survives a
- * greyscale print and a colour-blind reader still has the word.
+ * client portal. Solid rather than a pale tint: a state has to be readable at
+ * a glance across a list, and a washed-out pill is the thing that makes a
+ * screen feel provisional. The word is always present, so the state survives a
+ * greyscale print and a colour-blind reader is never relying on hue alone.
  */
 const TONES = {
-  neutral: "border-neutral-border bg-neutral-bg text-neutral-fg",
-  info: "border-info-border bg-info-bg text-info-fg",
-  warn: "border-warning-border bg-warning-bg text-warning-fg",
-  danger: "border-danger-border bg-danger-bg text-danger-fg",
-  success: "border-success-border bg-success-bg text-success-fg",
+  neutral: "bg-neutral-solid text-white",
+  info: "bg-info-solid text-white",
+  warn: "bg-warning-solid text-white",
+  danger: "bg-danger-solid text-white",
+  success: "bg-success-pill text-white",
 } as const;
 
-const DOTS = {
-  neutral: "bg-neutral-fg",
-  info: "bg-info-fg",
-  warn: "bg-warning-fg",
-  danger: "bg-danger-fg",
-  success: "bg-success-fg",
-} as const;
+/* The dot used to carry the colour because the pill itself was a pale tint.
+   The pill is solid now, so the dot would be a second mark saying the same
+   thing; the fill carries the state and the word carries it in greyscale. */
 
 export type StatusTone = keyof typeof TONES;
 
@@ -124,12 +122,11 @@ export function StatusBadge({
     <span
       data-status={value}
       className={cn(
-        "inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-meta font-medium whitespace-nowrap",
+        "inline-flex max-w-full items-center rounded-full px-2.5 py-1 text-[0.8125rem] font-semibold whitespace-nowrap",
         TONES[resolved],
         className,
       )}
     >
-      <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", DOTS[resolved])} />
       <span className="truncate">{label ?? humanise(value)}</span>
     </span>
   );

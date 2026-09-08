@@ -346,16 +346,20 @@ export default async function DashboardPage() {
           ) : (
             <ul className="divide-y">
               {pipeline.map((row) => (
-                <li key={row.projectId} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0">
-                  <div className="min-w-44 flex-1">
-                    <Link href={`/projects/${row.projectId}`} className="text-sm font-semibold hover:underline">
+                // One line that holds together: the name truncates, the bar
+                // takes what is left, and the date drops out below `lg` rather
+                // than wrapping the row into two and breaking the rhythm of the
+                // list.
+                <li key={row.projectId} className="flex items-center gap-4 py-4 first:pt-0 last:pb-0">
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/projects/${row.projectId}`} className="block truncate text-sm font-semibold hover:underline">
                       {row.name}
                     </Link>
-                    <p className="text-meta text-muted-foreground">{row.clientName}</p>
+                    <p className="truncate text-meta text-muted-foreground">{row.clientName}</p>
                   </div>
-                  {row.stage ? <StatusBadge value={row.stage} /> : null}
-                  <StageBar value={row.progress} className="w-full min-w-40 sm:w-52" />
-                  <span className="w-24 shrink-0 text-right text-meta whitespace-nowrap text-muted-foreground">
+                  {row.stage ? <StatusBadge value={row.stage} className="hidden shrink-0 sm:inline-flex" /> : null}
+                  <StageBar value={row.progress} className="w-28 shrink-0 lg:w-40" />
+                  <span className="hidden w-24 shrink-0 text-right text-meta whitespace-nowrap text-muted-foreground lg:block">
                     {row.targetDate ? formatDate(new Date(`${row.targetDate}T00:00:00Z`)) : "No date"}
                   </span>
                 </li>

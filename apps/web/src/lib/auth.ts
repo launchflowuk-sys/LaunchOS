@@ -35,6 +35,24 @@ function buildAuth() {
     emailAndPassword: { enabled: true, disableSignUp: true, minPasswordLength: MIN_PASSWORD_LENGTH },
     secret,
     baseURL: process.env.BETTER_AUTH_URL ?? process.env.APP_URL ?? "http://localhost:3000",
+    /**
+     * Origins allowed to sign in, beyond `baseURL`.
+     *
+     * Better Auth refuses a sign-in whose `Origin` is not the base URL, which
+     * is the correct default and is what stops a page on another domain
+     * posting credentials at us. It also means a dev tunnel — reviewing the
+     * app on a phone through `cloudflared` — is rejected with "invalid origin"
+     * until it is named here.
+     *
+     * Comma-separated, exact origins only. **No wildcards, deliberately**: a
+     * pattern here is a hole with a friendly name, and the list is meant to be
+     * short and temporary. Blank entries are dropped so a variable created and
+     * left empty in a deployment panel cannot widen anything.
+     */
+    trustedOrigins: (process.env.AUTH_TRUSTED_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0),
     // TOTP only, from an authenticator app, with single-use backup codes.
     // No email or SMS second factor: an emailed code protects nothing once
     // the mailbox is the thing that has been taken, and there is no SMS
