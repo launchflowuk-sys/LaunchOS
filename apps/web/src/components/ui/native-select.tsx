@@ -17,7 +17,11 @@ export function NativeSelect({ className, ...props }: React.ComponentProps<"sele
     <select
       data-slot="native-select"
       className={cn(
-        "h-8 w-full min-w-0 rounded-lg border border-input bg-card px-2 text-sm text-foreground transition-colors outline-none",
+        // The same 48px / 14px / transparent field as `Input`. It used to be a
+        // 32px box with an 8px corner sitting directly beside a 48px input in
+        // every filter row — two controls doing the same job at two different
+        // sizes, which reads as nobody having looked at the row.
+        "h-12 w-full min-w-0 rounded-[14px] border border-input bg-transparent px-3.5 text-base text-foreground transition-colors outline-none md:text-sm",
         "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,

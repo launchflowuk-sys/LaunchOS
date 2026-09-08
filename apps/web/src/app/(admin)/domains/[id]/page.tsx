@@ -58,7 +58,7 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
         {...(client ? { description: `${client.name} · ${domain.registrar ?? "registrar unknown"}` } : {})}
         category="delivery"
         actions={
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={domain.status} />
             {client ? (
               <Button asChild variant="secondary">

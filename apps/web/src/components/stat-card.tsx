@@ -76,6 +76,27 @@ const ATTENTION_GROUND: Record<AttentionTone, string> = {
  * whatever width the card has, and `vectorEffect` keeps the stroke from
  * stretching with it.
  */
+/**
+ * The figure's size, chosen by how long the figure is.
+ *
+ * A KPI card is 176px of usable width at four-up on a 1280px screen, and at
+ * 44px the digits run about 0.53em each — so anything past seven characters
+ * ran off the card and was silently clipped by its own `overflow-hidden`.
+ * "£1,544.40" wanted 207px of a 176px box and lost its last digits, which on a
+ * money figure is not a cosmetic bug: £1,544.40 read as £1,544.4.
+ *
+ * Stepping the size down by length keeps the whole number visible at every
+ * width. The thresholds are the 176px worst case divided by 0.53em per
+ * character; wider cards simply have room to spare.
+ */
+function figureSize(value: string | number): string {
+  const length = String(value).length;
+  if (length <= 7) return "text-kpi";
+  if (length <= 9) return "text-[2.25rem]";
+  if (length <= 12) return "text-[1.75rem]";
+  return "text-[1.5rem]";
+}
+
 function Spark({ points }: { points: readonly number[] }) {
   if (points.length < 3) return null;
   const min = Math.min(...points);
@@ -148,9 +169,15 @@ export function StatCard({
         ) : null}
       </div>
 
-      <div className="mt-4 flex items-end justify-between gap-3">
+      <div className="mt-4">
         <div className="min-w-0">
-          <p className={cn("text-kpi leading-none font-bold tracking-tight tabular-nums", isClear && "text-white/60")}>
+          <p
+            className={cn(
+              figureSize(value),
+              "leading-none font-bold tracking-tight tabular-nums",
+              isClear && "text-white/60",
+            )}
+          >
             {value}
           </p>
           {trend ? (
@@ -168,12 +195,18 @@ export function StatCard({
             </span>
           ) : null}
         </div>
-        {spark && spark.length >= 3 ? (
-          <div className="w-1/2 max-w-36 shrink-0 self-center">
-            <Spark points={spark} />
-          </div>
-        ) : null}
       </div>
+
+      {/* Its own full-width row, not a column beside the figure. Beside it,
+          the spark was fixed at 144px against a card whose inner width is
+          ~228px at four-up — the figure had nowhere to go and drew straight
+          through the sparkline. Full width it never competes, and the trend
+          is legible instead of being a 144px stub. */}
+      {spark && spark.length >= 3 ? (
+        <div className="mt-4 min-w-0">
+          <Spark points={spark} />
+        </div>
+      ) : null}
 
       {caption ? <p className="mt-auto pt-4 text-meta leading-snug text-white/70">{caption}</p> : null}
     </>

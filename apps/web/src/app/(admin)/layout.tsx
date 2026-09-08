@@ -77,20 +77,30 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
           whole column past the viewport: without it a flex child sizes to its
           content, and DataList's own `overflow-x-auto` never gets to scroll. */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b bg-card px-4 py-2.5 sm:gap-3 sm:px-6 print:hidden">
-          <AppNavSheet
-            email={session.email}
-            role={session.role}
-            pendingApprovals={pendingApprovals}
-            permissions={permissions}
-          />
-          <div className="min-w-0 flex-1">
-            <GlobalSearch />
+        {/* 72px on a desktop, and on a phone the search drops to a full-width
+            row of its own. Sharing one 375px line with the menu button, the
+            clock, the bell and the avatar left it about 110px wide — a search
+            box that narrow is decoration, and this one is the way into every
+            record in the product. */}
+        <header className="sticky top-0 z-30 border-b bg-card px-4 sm:px-6 print:hidden">
+          <div className="flex h-16 items-center gap-2 sm:h-[4.5rem] sm:gap-4">
+            <AppNavSheet
+              email={session.email}
+              role={session.role}
+              pendingApprovals={pendingApprovals}
+              permissions={permissions}
+            />
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <GlobalSearch />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0 sm:gap-2">
+              <ClockWidget running={running} />
+              <NotificationsBell session={session} />
+              <AccountMenu email={session.email} role={session.role} />
+            </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <ClockWidget running={running} />
-            <NotificationsBell session={session} />
-            <AccountMenu email={session.email} role={session.role} />
+          <div className="pb-3 sm:hidden">
+            <GlobalSearch />
           </div>
         </header>
 

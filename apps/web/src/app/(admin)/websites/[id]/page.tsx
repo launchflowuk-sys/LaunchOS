@@ -137,7 +137,7 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
         description={site.primaryUrl}
         category="delivery"
         actions={
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={site.status} />
             {client ? (
               <>
@@ -145,8 +145,10 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
                 <Button asChild variant="secondary">
                   <Link href={`/clients/${client.id}/access`}><KeyRound aria-hidden />Access details</Link>
                 </Button>
-                <Button asChild variant="secondary">
-                  <Link href={`/clients/${client.id}`}>{client.name}</Link>
+                <Button asChild variant="secondary" className="max-w-full">
+                  <Link href={`/clients/${client.id}`} className="min-w-0">
+                    <span className="truncate">{client.name}</span>
+                  </Link>
                 </Button>
               </>
             ) : null}

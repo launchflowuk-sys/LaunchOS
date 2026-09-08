@@ -48,7 +48,7 @@ export default async function ClientDetailPage({ params, searchParams }: PagePro
         description={`${client.supportEmail ?? "no support address"} · ${[client.city, client.postcode].filter(Boolean).join(" ") || "no address"}`}
         category="delivery"
         actions={
-          <div className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto sm:justify-end">
             <StatusBadge value={client.status} />
             <ArchiveClientButton clientId={client.id} disabled={client.status === "archived"} />
           </div>

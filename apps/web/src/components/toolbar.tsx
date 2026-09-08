@@ -49,7 +49,10 @@ export function ToolbarActions({ children, className }: { children: ReactNode; c
   return (
     <div
       className={cn(
-        "flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto max-sm:[&>*]:w-full",
+        // 48px children, because everything else in this row is a 48px field
+        // and the default button is 44px. Four pixels out is exactly the kind
+        // of near-miss that makes a row look assembled rather than designed.
+        "flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto [&>*]:h-12 max-sm:[&>*]:w-full",
         className,
       )}
     >
