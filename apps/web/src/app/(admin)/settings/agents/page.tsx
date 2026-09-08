@@ -1,6 +1,8 @@
+import { Bot, Power, ShieldCheck, Wrench } from "lucide-react";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { agentCatalog } from "@/lib/agent-catalog";
@@ -20,6 +22,12 @@ export default async function AgentSettingsPage() {
 
   const enabledByKey = new Map(rows.map((row) => [row.agentKey, row.enabled]));
 
+  // The catalogue is generated from the registry the worker runs, so these
+  // counts cannot drift from what actually exists.
+  const catalog = agentCatalog();
+  const enabledKeys = new Set(rows.filter((row) => row.enabled).map((row) => row.agentKey));
+  const tools = catalog.flatMap((agent) => agent.tools);
+
   return (
     <>
       <PageHeader
@@ -27,6 +35,26 @@ export default async function AgentSettingsPage() {
         description="Which autonomous agents run for this organisation. Every agent registered in this build is listed; a tool marked Needs approval never acts without a decision on /approvals."
         category="automation"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Agents" value={catalog.length} hint="Everything registered" category="automation" icon={Bot} />
+        <StatCard
+          label="Switched on"
+          value={catalog.filter((agent) => enabledKeys.has(agent.key)).length}
+          hint="Running for this organisation"
+          category="delivery"
+          icon={Power}
+        />
+        <StatCard label="Tools" value={tools.length} hint="Across every agent" category="overview" icon={Wrench} />
+        <StatCard
+          label="Always ask first"
+          value={tools.filter((tool) => tool.requiresApproval).length}
+          hint="Tools that park for a human"
+          href="/approvals"
+          category="support"
+          icon={ShieldCheck}
+        />
+      </div>
 
       <ul className="grid min-w-0 gap-4">
         {agentCatalog().map((agent) => {

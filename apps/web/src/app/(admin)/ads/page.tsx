@@ -1,12 +1,19 @@
 import {
   computeAccountSignals, CPC_RISE_THRESHOLD_PERCENT, listAdAccounts, listClients, ROAS_DROP_THRESHOLD_PERCENT,
 } from "@launchos/core";
-import { Megaphone } from "lucide-react";
+import {
+  Megaphone,
+  MousePointerClick,
+  Target,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { NativeSelect } from "@/components/ui/native-select";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { StatCard } from "@/components/stat-card";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -159,6 +166,16 @@ export default async function AdsPage() {
     })),
   );
 
+  // Summed from the rows above rather than queried again: a headline that
+  // disagrees with the table under it is worse than no headline.
+  const spendPence = rows.reduce((total, row) => total + row.signals.current.spendPence, 0);
+  const conversions = rows.reduce((total, row) => total + row.signals.current.conversions, 0);
+  const clicks = rows.reduce((total, row) => total + row.signals.current.clicks, 0);
+  // One currency across the strip. Mixed-currency accounts would make a single
+  // total meaningless, so the first account's currency is used and the table
+  // below still shows each account in its own.
+  const currency = rows[0]?.account.currency ?? "GBP";
+
   return (
     <>
       <PageHeader
@@ -166,6 +183,37 @@ export default async function AdsPage() {
         description="Google and Meta accounts, and how the last week compares with the one before."
         category="money"
       />
+
+      <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Spend, last 7 days"
+          value={formatMoney(spendPence, currency)}
+          hint={rows.length === 1 ? "Across 1 account" : `Across ${rows.length} accounts`}
+          category="money"
+          icon={Wallet}
+        />
+        <StatCard
+          label="Conversions"
+          value={conversions}
+          hint="Last 7 days"
+          category="delivery"
+          icon={Target}
+        />
+        <StatCard
+          label="Cost per conversion"
+          value={conversions === 0 ? "—" : formatMoney(Math.round(spendPence / conversions), currency)}
+          hint={conversions === 0 ? "No conversions to divide by" : "Spend over conversions"}
+          category="overview"
+          icon={TrendingUp}
+        />
+        <StatCard
+          label="Clicks"
+          value={clicks}
+          hint="Last 7 days"
+          category="support"
+          icon={MousePointerClick}
+        />
+      </div>
 
       <Section title="Add an ad account">
         {clients.length === 0 ? (
