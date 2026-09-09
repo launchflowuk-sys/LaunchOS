@@ -15,6 +15,7 @@ export function PageHeader({
   description,
   actions,
   category = "overview",
+  wide,
   className,
 }: {
   title: string;
@@ -22,10 +23,20 @@ export function PageHeader({
   actions?: ReactNode;
   /** The hue of the module this screen belongs to (DESIGN.md category table). */
   category?: Category;
+  /**
+   * Let this screen use the whole window instead of the reading column.
+   *
+   * For screens whose subject is a table. A list of clients boxed into 1152px
+   * wastes half a monitor and forces columns out that the screen exists to
+   * show; a page of prose at that width is unreadable. So it is per screen, and
+   * the layout reads this marker with `:has()` rather than taking a prop it has
+   * no way to receive.
+   */
+  wide?: boolean;
   className?: string;
 }) {
   return (
-    <div className={cn("mb-8", className)}>
+    <div className={cn("mb-8", className)} {...(wide ? { "data-workspace": "wide" } : {})}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
         <div className="min-w-0">
           {/* `items-start` with a fixed offset, not `items-center`: a title that

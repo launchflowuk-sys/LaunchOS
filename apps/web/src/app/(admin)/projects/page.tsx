@@ -146,6 +146,7 @@ export default async function ProjectsPage({ searchParams }: PageProps<"/project
   return (
     <>
       <PageHeader
+        wide
         title="Projects"
         description="Every build we have on. A project gives a client one honest progress page and gives us one place to see the work."
         category="delivery"

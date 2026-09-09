@@ -131,7 +131,13 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         </header>
 
         <main className="flex-1 px-4 py-5 lg:px-8 lg:py-8 print:px-0 print:py-0">
-          <div className="mx-auto w-full min-w-0 max-w-6xl print:max-w-none">
+          {/* Reading width by default, full width when the screen asks for it.
+              A table-heavy screen sets `wide` on its PageHeader, which paints
+              `data-workspace="wide"` here; `:has()` then drops the clamp. It is
+              done this way round because a page cannot pass a prop up to its
+              layout, and because the alternative — unclamping everything — makes
+              a paragraph of description 2,000px wide on Shoji's monitor. */}
+          <div className="mx-auto w-full min-w-0 max-w-6xl has-[[data-workspace=wide]]:max-w-none print:max-w-none">
             {/* Above every screen, not only the dashboard: a worker that has
                 stopped is the one fault that silently breaks everything else
                 — mail, cron, agents, publishing — and it must be seen from

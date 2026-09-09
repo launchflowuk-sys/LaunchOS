@@ -102,6 +102,7 @@ export default async function InvoicesPage({ searchParams }: PageProps<"/invoice
   return (
     <>
       <PageHeader
+        wide
         title="Invoices"
         description="Every invoice raised for a client, and where it has got to."
         category="money"

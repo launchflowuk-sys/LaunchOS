@@ -107,6 +107,7 @@ export default async function ContentPage({ searchParams }: PageProps<"/content"
   return (
     <>
       <PageHeader
+        wide
         title="Content"
         description="Every social post, blog post and Google Business Profile update, planned a month at a time and published once approved."
         category="delivery"

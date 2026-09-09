@@ -100,6 +100,7 @@ export default async function TimesheetsPage({ searchParams }: PageProps<"/team/
   return (
     <>
       <PageHeader
+        wide
         title="Timesheets"
         description={
           seesTeam

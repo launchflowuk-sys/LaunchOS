@@ -113,6 +113,7 @@ export default async function CaseStudiesPage({ searchParams }: PageProps<"/case
   return (
     <>
       <PageHeader
+        wide
         title="Case studies"
         description="The public portfolio. What is published here is what launchflow.co.uk shows, in this order."
         category="delivery"

@@ -142,6 +142,7 @@ export default async function PaymentsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Payments"
         description="Every payment recorded against a client, from Stripe or by hand."
         category="money"

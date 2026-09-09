@@ -110,6 +110,7 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
   return (
     <>
       <PageHeader
+        wide
         title="Agent runs"
         description={`Every run the kernel recorded, newest first. ${total.toLocaleString("en-GB")} ${filtered ? "matching" : "in total"}.`}
         category="automation"

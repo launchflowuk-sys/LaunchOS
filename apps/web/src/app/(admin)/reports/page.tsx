@@ -71,6 +71,7 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Reports"
         description="Monthly client reports. Publish one to make it visible in the client's portal."
         category="money"

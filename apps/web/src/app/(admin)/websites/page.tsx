@@ -119,6 +119,7 @@ export default async function WebsitesPage({
   return (
     <>
       <PageHeader
+        wide
         title="Websites"
         description="Every site we build, host or look after."
         category="delivery"

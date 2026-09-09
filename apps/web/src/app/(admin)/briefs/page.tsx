@@ -54,6 +54,7 @@ export default async function BriefsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Briefs"
         description="The Ops Brief agent reads the last day and the open state at 07:00 and writes what needs you. Re-running today replaces today's."
         category="automation"

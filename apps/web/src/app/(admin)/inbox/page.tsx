@@ -100,7 +100,7 @@ export default async function InboxPage({ searchParams }: PageProps<"/inbox">) {
 
   return (
     <>
-      <PageHeader title="Inbox" description="Every client conversation, newest first." category="support" />
+      <PageHeader wide title="Inbox" description="Every client conversation, newest first." category="support" />
 
       <DataList
         rows={rows}

@@ -319,6 +319,7 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
   return (
     <>
       <PageHeader
+        wide
         title="Approvals"
         description="Outward-facing actions parked for a human decision — agent tool calls, invoice sends and clients' plan change requests."
         category="automation"

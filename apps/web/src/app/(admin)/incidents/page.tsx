@@ -73,6 +73,7 @@ export default async function IncidentsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Incidents"
         description="Uptime and hosting incidents across every client site."
         category="support"

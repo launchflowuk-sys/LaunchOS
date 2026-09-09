@@ -129,6 +129,7 @@ export default async function ProposalsPage({ searchParams }: PageProps<"/propos
   return (
     <>
       <PageHeader
+        wide
         title="Proposals"
         description="Priced offers to leads and clients. A proposal is frozen once it goes out — to change one, write another."
         category="delivery"

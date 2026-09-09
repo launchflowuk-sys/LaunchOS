@@ -71,6 +71,7 @@ export default async function MeetingsPage({ searchParams }: PageProps<"/meeting
   return (
     <>
       <PageHeader
+        wide
         title="Meetings"
         description="Discovery calls booked through the booking page, on Zoom. Mark how each one went so the follow-up goes out."
         category="delivery"

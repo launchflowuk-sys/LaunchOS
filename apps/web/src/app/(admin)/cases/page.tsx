@@ -180,6 +180,7 @@ export default async function CasesPage({ searchParams }: PageProps<"/cases">) {
   return (
     <>
       <PageHeader
+        wide
         title="Open Cases"
         description="Support work raised by clients, monitors and agents."
         category="support"

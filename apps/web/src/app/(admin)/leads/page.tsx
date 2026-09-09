@@ -127,6 +127,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
   return (
     <>
       <PageHeader
+        wide
         title="Leads"
         description="New business coming in: the website form, self-serve sign-ups and anyone you add by hand. Convert the ones that say yes."
         category="delivery"

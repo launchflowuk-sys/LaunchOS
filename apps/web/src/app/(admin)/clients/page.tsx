@@ -83,6 +83,7 @@ export default async function ClientsPage({ searchParams }: PageProps<"/clients"
   return (
     <>
       <PageHeader
+        wide
         title="Clients"
         description="Every client, their support address, websites and domains."
         category="delivery"

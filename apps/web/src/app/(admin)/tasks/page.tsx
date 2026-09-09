@@ -125,6 +125,7 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
   return (
     <>
       <PageHeader
+        wide
         title="Tasks"
         description="Onboarding, recurring service work and support tasks across every client."
         category="delivery"

@@ -182,6 +182,7 @@ export default async function AdReportsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Ad reports"
         description="Drafted by the Ad Performance Sentinel. Approve one before it can be emailed to the client."
         category="money"

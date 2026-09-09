@@ -69,6 +69,7 @@ export default async function ApiTokensPage() {
   return (
     <>
       <PageHeader
+        wide
         title="API tokens"
         description="Keys for things outside LaunchOS that need to read it — Mr. Green first."
         category="automation"

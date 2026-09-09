@@ -179,6 +179,7 @@ export default async function AdsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Ads"
         description="Google and Meta accounts, and how the last week compares with the one before."
         category="money"

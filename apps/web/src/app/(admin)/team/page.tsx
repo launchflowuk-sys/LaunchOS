@@ -104,6 +104,7 @@ export default async function TeamPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Team"
         description="People who can sign in and be assigned work. Sign-up is disabled: accounts are created here."
         category="organisation"

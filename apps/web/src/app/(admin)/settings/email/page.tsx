@@ -65,6 +65,7 @@ export default async function EmailSettingsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Email"
         description="Inbound support routing and the outbound email adapter."
         category="automation"

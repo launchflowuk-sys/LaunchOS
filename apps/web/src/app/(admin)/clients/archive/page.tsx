@@ -55,6 +55,7 @@ export default async function ClientArchivePage() {
   return (
     <>
       <PageHeader
+        wide
         title="Archived clients"
         description="Archived clients keep everything — invoices, sites, history. Restore one to put it back on the active list."
         category="organisation"

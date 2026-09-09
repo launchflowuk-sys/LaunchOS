@@ -95,6 +95,7 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
   return (
     <>
       <PageHeader
+        wide
         title="Knowledge Base"
         description="What Support Triage reads before it drafts a reply, and what the team reads before it fixes the same thing twice."
         category="automation"

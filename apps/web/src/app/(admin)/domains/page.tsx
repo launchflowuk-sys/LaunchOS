@@ -76,6 +76,7 @@ export default async function DomainsPage({ searchParams }: PageProps<"/domains"
   return (
     <>
       <PageHeader
+        wide
         title="Domains"
         description="Every domain bought for or assigned to a client."
         category="delivery"

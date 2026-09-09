@@ -71,6 +71,7 @@ export default async function FunnelsPage() {
   return (
     <>
       <PageHeader
+        wide
         title="Funnels"
         description="Five or six questions on a phone, with the name and number asked in the middle — so a visitor who stops early has still told us who they are."
         category="delivery"
