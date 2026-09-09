@@ -4,6 +4,7 @@ import type { RegistrarAdapter } from "@launchos/integrations";
 import { and, asc, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { matchCostToDomain } from "./match-cost-to-domain.js";
 
 /**
  * What LaunchFlow pays, filed against who it is paid for.
@@ -19,12 +20,6 @@ import { recordAudit } from "../audit/record-audit.js";
  * the guess as a guess, and lets a human confirm it — and never overwrites a
  * confirmation on a later run.
  */
-
-/** `.LIVE Domain` → `live`. Null when the name is not a domain product at all. */
-export function tldFromProductName(name: string): string | null {
-  const match = /^\s*\.([a-z0-9-]+(?:\.[a-z0-9-]+)?)\s+domain\s*$/i.exec(name);
-  return match?.[1]?.toLowerCase() ?? null;
-}
 
 export interface SyncSupplierCostsResult {
   reported: number;
@@ -50,17 +45,17 @@ export async function syncSupplierCosts(
 ): Promise<SyncSupplierCostsResult> {
   const subscriptions = await registrar.listSubscriptions();
 
-  // Every domain we hold, by TLD, so a `.LIVE Domain` subscription can be
-  // offered to the one `.live` domain on the books.
+  // Every domain we hold, with the moment it was registered — which is what
+  // actually resolves a line on the bill. See `matchCostToDomain`.
   const domains = await db
-    .select({ id: schema.domains.id, name: schema.domains.name, clientId: schema.domains.clientId })
+    .select({
+      id: schema.domains.id,
+      name: schema.domains.name,
+      clientId: schema.domains.clientId,
+      registeredAt: schema.domains.registeredAt,
+    })
     .from(schema.domains)
     .where(eq(schema.domains.organisationId, organisationId));
-  const byTld = new Map<string, typeof domains>();
-  for (const domain of domains) {
-    const tld = domain.name.split(".").slice(1).join(".").toLowerCase();
-    byTld.set(tld, [...(byTld.get(tld) ?? []), domain]);
-  }
 
   let created = 0;
   let updated = 0;
@@ -76,12 +71,11 @@ export async function syncSupplierCosts(
         eq(schema.supplierCosts.externalId, sub.id),
       ));
 
-    // Only guessed when exactly one domain could be meant. Two `.co.uk`
-    // domains and a `.CO.UK Domain` subscription is not a match, it is a
-    // coin toss, and a wrong cost on a client's margin is worse than none.
-    const tld = tldFromProductName(sub.name);
-    const candidates = tld ? byTld.get(tld) ?? [] : [];
-    const guess = candidates.length === 1 ? candidates[0] : undefined;
+    // The TLD alone could only ever narrow fifty-three rows to a shortlist:
+    // seven `.co.uk` domains and seven `.CO.UK Domain` lines is a coin toss,
+    // and a wrong cost on a client's margin is worse than none. The purchase
+    // moment resolves it outright — see `matchCostToDomain`.
+    const guess = matchCostToDomain({ name: sub.name, startedAt: sub.startedAt }, domains);
 
     const money = {
       name: sub.name,
@@ -93,6 +87,7 @@ export async function syncSupplierCosts(
       billingPeriodUnit: sub.billingPeriodUnit,
       autoRenewed: sub.autoRenewed,
       nextBillingAt: sub.nextBillingAt,
+      startedAt: sub.startedAt,
       seenAt: now,
       updatedAt: now,
     };
@@ -103,7 +98,7 @@ export async function syncSupplierCosts(
         supplier: "hostinger",
         externalId: sub.id,
         ...money,
-        ...(guess ? { clientId: guess.clientId, domainId: guess.id, match: "suggested" as const } : {}),
+        ...(guess ? { clientId: guess.clientId, domainId: guess.domainId, match: "suggested" as const } : {}),
       });
       created += 1;
       if (guess) suggested += 1;
@@ -117,7 +112,7 @@ export async function syncSupplierCosts(
         ...money,
         ...(existing.match === "confirmed" || !guess
           ? {}
-          : { clientId: guess.clientId, domainId: guess.id, match: "suggested" as const }),
+          : { clientId: guess.clientId, domainId: guess.domainId, match: "suggested" as const }),
       })
       .where(eq(schema.supplierCosts.id, existing.id));
     updated += 1;
@@ -174,6 +169,15 @@ export interface CostRow {
   autoRenewed: boolean;
   clientId: string | null;
   clientName: string | null;
+  /**
+   * The domain this line pays for, once something has worked it out. The
+   * column existed from the start and was never read back, so the screen kept
+   * showing `.CO.UK Domain` when the row already knew it meant
+   * `graystowntaxis.co.uk`.
+   */
+  domainName: string | null;
+  /** When the supplier started it — what the resolution is derived from. */
+  startedAt: Date | null;
   match: "unassigned" | "suggested" | "confirmed";
 }
 
@@ -190,10 +194,13 @@ export async function listSupplierCosts(db: Db, organisationId: string): Promise
       autoRenewed: schema.supplierCosts.autoRenewed,
       clientId: schema.supplierCosts.clientId,
       clientName: schema.clients.name,
+      domainName: schema.domains.name,
+      startedAt: schema.supplierCosts.startedAt,
       match: schema.supplierCosts.match,
     })
     .from(schema.supplierCosts)
     .leftJoin(schema.clients, eq(schema.supplierCosts.clientId, schema.clients.id))
+    .leftJoin(schema.domains, eq(schema.supplierCosts.domainId, schema.domains.id))
     .where(eq(schema.supplierCosts.organisationId, organisationId))
     .orderBy(asc(schema.supplierCosts.nextBillingAt));
 }
@@ -244,10 +251,13 @@ export async function upcomingCosts(
       autoRenewed: schema.supplierCosts.autoRenewed,
       clientId: schema.supplierCosts.clientId,
       clientName: schema.clients.name,
+      domainName: schema.domains.name,
+      startedAt: schema.supplierCosts.startedAt,
       match: schema.supplierCosts.match,
     })
     .from(schema.supplierCosts)
     .leftJoin(schema.clients, eq(schema.supplierCosts.clientId, schema.clients.id))
+    .leftJoin(schema.domains, eq(schema.supplierCosts.domainId, schema.domains.id))
     .where(and(
       eq(schema.supplierCosts.organisationId, organisationId),
       isNotNull(schema.supplierCosts.nextBillingAt),

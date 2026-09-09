@@ -30,6 +30,7 @@ const SubscriptionEntry = z.object({
   billing_period_unit: z.string().nullish(),
   is_auto_renewed: z.boolean().nullish(),
   next_billing_at: z.string().nullish(),
+  created_at: z.string().nullish(),
 });
 const Subscriptions = z.union([z.array(SubscriptionEntry), z.object({ data: z.array(SubscriptionEntry) })]);
 
@@ -61,6 +62,7 @@ const Availability = z.union([
 const PortfolioEntry = z.object({
   domain: z.string().min(1),
   expires_at: z.string().nullish(),
+  created_at: z.string().nullish(),
   status: z.string().nullish(),
   is_auto_renew_enabled: z.boolean().nullish(),
   auto_renew: z.boolean().nullish(),
@@ -115,6 +117,7 @@ export class HostingerRegistrarAdapter implements RegistrarAdapter {
       // assuming a subscription will silently stop is the costlier mistake.
       autoRenewed: entry.is_auto_renewed ?? true,
       nextBillingAt: toDate(entry.next_billing_at),
+      startedAt: toDate(entry.created_at),
     }));
   }
 
@@ -160,6 +163,7 @@ export class HostingerRegistrarAdapter implements RegistrarAdapter {
       // without every caller remembering to.
       name: entry.domain.trim().toLowerCase().replace(/\.$/, ""),
       expiresAt: toDate(entry.expires_at),
+      registeredAt: toDate(entry.created_at),
       // Hostinger's portfolio carries no auto-renew field at all today — this
       // is checked against the live response, not assumed. Two spellings are
       // accepted in case one appears; `null` means "not stated", which the

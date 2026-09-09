@@ -192,8 +192,10 @@ export type { SubscriptionLineRow } from "./billing/subscription-lines.js";
 export { getClientMoney, ClientMoneyInput } from "./billing/client-money.js";
 export {
   syncSupplierCosts, assignSupplierCost, listSupplierCosts, clientCostByCurrency,
-  upcomingCosts, tldFromProductName, AssignSupplierCostInput,
+  upcomingCosts, AssignSupplierCostInput,
 } from "./billing/supplier-costs.js";
+export { matchCostToDomain, tldFromProduct, tldOfDomain } from "./billing/match-cost-to-domain.js";
+export type { CostMatch, MatchableCost, MatchableDomain } from "./billing/match-cost-to-domain.js";
 export type { SyncSupplierCostsResult, CostRow } from "./billing/supplier-costs.js";
 export { syncDomainExpiry } from "./domains/sync-expiry.js";
 export type { SyncDomainExpiryResult } from "./domains/sync-expiry.js";

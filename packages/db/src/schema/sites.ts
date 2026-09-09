@@ -33,6 +33,13 @@ export const domains = pgTable(
     nameservers: text("nameservers").array().$type<string[]>().default([]).notNull(),
     notes: text("notes"),
     expiresAt: timestamp("expires_at", { withTimezone: true }),
+    /**
+     * When the registrar first registered it. Not decoration: the supplier's
+     * bill names products, never domains, and a domain and its subscription are
+     * created seconds apart — so this is what tells a `.CO.UK Domain` line
+     * which of seven `.co.uk` domains it is paying for.
+     */
+    registeredAt: timestamp("registered_at", { withTimezone: true }),
     autoRenew: boolean("auto_renew").default(true).notNull(),
     status: domainStatusEnum("status").default("active").notNull(),
   },

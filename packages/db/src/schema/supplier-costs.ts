@@ -61,6 +61,13 @@ export const supplierCosts = pgTable(
     autoRenewed: boolean("auto_renewed").default(true).notNull(),
     /** When it next takes money. The whole point of the outgoings view. */
     nextBillingAt: timestamp("next_billing_at", { withTimezone: true }),
+    /**
+     * When the supplier started it, and the only field on the bill that says
+     * what the line is *for*. Renewal dates do not work for this — a two-year
+     * registration bills on a different cycle to when it expires — but the
+     * purchase moment does, to the second.
+     */
+    startedAt: timestamp("started_at", { withTimezone: true }),
     /** Set once somebody attributes the cost, or once the sync guesses. */
     clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
     /** The domain it pays for, when it is a domain and we could tell which. */

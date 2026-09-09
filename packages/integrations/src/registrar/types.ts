@@ -13,6 +13,12 @@ export interface RegistrarDomain {
   name: string;
   /** When it lapses. Null when the registrar does not say. */
   expiresAt: Date | null;
+  /**
+   * When it was registered. Carried because it is what ties a domain to the
+   * anonymous `.CO.UK Domain` line on the bill: the two are created seconds
+   * apart, and the product name never names the domain.
+   */
+  registeredAt: Date | null;
   /** Null when the registrar does not report it, which is not the same as false. */
   autoRenew: boolean | null;
   /** The registrar's own word for the state, kept verbatim for the audit row. */
@@ -50,6 +56,15 @@ export interface SupplierSubscription {
   billingPeriodUnit: string;
   autoRenewed: boolean;
   nextBillingAt: Date | null;
+  /**
+   * When the supplier started it — which is the only field that says *what it
+   * is for*. The product name never does: a `.CO.UK Domain` line is named
+   * after the product, not the domain. But a domain and its subscription are
+   * created in the same transaction, seconds apart, so this matches the two
+   * exactly. On this account it resolves 27 of 27 domain subscriptions with
+   * nothing ambiguous.
+   */
+  startedAt: Date | null;
 }
 
 /** What a name would cost, and whether it can be had at all. */

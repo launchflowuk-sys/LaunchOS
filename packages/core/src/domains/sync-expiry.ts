@@ -47,6 +47,7 @@ export async function syncDomainExpiry(
       id: schema.domains.id,
       name: schema.domains.name,
       expiresAt: schema.domains.expiresAt,
+      registeredAt: schema.domains.registeredAt,
       autoRenew: schema.domains.autoRenew,
       registrar: schema.domains.registrar,
     })
@@ -72,15 +73,20 @@ export async function syncDomainExpiry(
     const dateChanged = entry.expiresAt !== null
       && domain.expiresAt?.getTime() !== entry.expiresAt.getTime();
     const renewChanged = nextAutoRenew !== domain.autoRenew;
+    // Written once and then left alone. A registration date does not change,
+    // and it is what lets an anonymous `.CO.UK Domain` line on the supplier's
+    // bill find which of seven `.co.uk` domains it pays for.
+    const registeredChanged = entry.registeredAt !== null && domain.registeredAt === null;
     // Only fills the registrar in; never overwrites a name somebody typed.
     const registrarName = domain.registrar ?? registrar.name;
     const registrarChanged = registrarName !== domain.registrar;
 
-    if (!dateChanged && !renewChanged && !registrarChanged) continue;
+    if (!dateChanged && !renewChanged && !registrarChanged && !registeredChanged) continue;
 
     await db.update(schema.domains)
       .set({
         ...(dateChanged ? { expiresAt: entry.expiresAt } : {}),
+        ...(registeredChanged ? { registeredAt: entry.registeredAt } : {}),
         ...(renewChanged ? { autoRenew: nextAutoRenew } : {}),
         ...(registrarChanged ? { registrar: registrarName } : {}),
         updatedAt: now,
