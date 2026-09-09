@@ -105,7 +105,9 @@ is the point.
 
 - Admin rail header: the wordmark on its white chip, "Admin portal" beneath it. The current nav item carries a 2px cyan marker on its left edge as well as the active pill — the pill alone is 1.38:1 against the rail, which is a surface, not a signal.
 - Admin: rail 256px (`lg+`), collapses to a sheet under `lg` opened by a menu icon in a sticky top bar. Workspace `max-w-6xl`, padding `px-4 py-5` on mobile, `px-8 py-8` on desktop. Every flex/grid child that can hold a table gets `min-w-0`.
-- Portal: sticky top bar with the wordmark, a rule, the client name, and a horizontally scrolling tab row (never wrapping to three lines), `max-w-5xl`, `px-4` mobile.
+- Portal: a **white** 256px rail (`lg+`, a sheet below it) with the wordmark over "Client portal", nav grouped as Overview / Your websites / Your projects / Billing / Help & insights, and a `--primary-soft` "Need a hand?" card pinned at the bottom. A sticky bar carries the client's own name and initials chip on the left and the account menu on the right; `max-w-6xl` workspace.
+
+  The rail is white, not the admin's navy: a client is a guest, the surface should read as their workspace rather than the inside of somebody else's tooling, and the one saturated thing on screen is the item they are standing on. This replaced a scrolling tab row — eleven tabs on one line was a row you scrolled to find anything, and it is the reason the earlier note here said a client portal should not have a sidebar.
 - Page header: title, one-line description, actions on the right; under `sm` the actions row wraps below and primary action becomes full width.
 - Toolbar (filters/search): a wrapping row of controls with labels above; under `sm` each control is full width.
 - Sections are separated by space and headings, not nested cards. A card marks a surface (table, form, thread), not a paragraph.

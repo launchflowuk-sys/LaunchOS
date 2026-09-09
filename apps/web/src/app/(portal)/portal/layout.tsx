@@ -1,83 +1,85 @@
 import { BrandMark } from "@/components/brand-mark";
-import { PortalTabs, type PortalTab } from "@/components/portal/portal-tabs";
-import { SignOutButton } from "@/components/portal/sign-out-button";
+import { PortalAccountMenu } from "@/components/portal/portal-account-menu";
+import { PortalHelpCard, PortalNavList } from "@/components/portal/portal-rail";
+import { PortalRailSheet } from "@/components/portal/portal-rail-sheet";
 import { requireClient } from "@/lib/portal-session";
-
-const NAV: readonly PortalTab[] = [
-  { label: "Overview", href: "/portal" },
-  { label: "Websites", href: "/portal/sites" },
-  { label: "Domains", href: "/portal/domains" },
-  { label: "Progress", href: "/portal/tasks" },
-  { label: "Support", href: "/portal/support" },
-  // What we quoted and what they signed. Before Invoices because that is the
-  // order it happens in: a proposal is agreed, then it is billed.
-  { label: "Proposals", href: "/portal/proposals" },
-  { label: "Invoices", href: "/portal/invoices" },
-  { label: "Plan", href: "/portal/plan" },
-  { label: "Content", href: "/portal/content" },
-  { label: "Reports", href: "/portal/reports" },
-  // The filing cabinet: every PDF we have sent them, in one list. Last but one
-  // because it is where somebody goes looking for a file rather than for news
-  // — and after Reports, since a monthly report is one of the things filed.
-  { label: "Documents", href: "/portal/documents" },
-  { label: "Account", href: "/portal/account" },
-];
 
 // The whole portal shell reads the session, so nothing here is prerenderable.
 export const dynamic = "force-dynamic";
 
+/** "Thurrock Express Taxis" → "TE". */
+function businessInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
+  return (parts[0] ?? "?").slice(0, 2).toUpperCase();
+}
+
 /**
- * The portal shell: the same white/light surface as the admin app but a single
- * top bar instead of the navy rail. A client sees a handful of screens, so a
- * sidebar would be mostly empty space.
+ * The portal shell: a white rail beside the work, and a bar that says whose
+ * portal this is.
  *
- * It lives at `(portal)/portal/layout.tsx` rather than `(portal)/layout.tsx`
- * because Next types a layout by its own route: at the group root it would be
- * `LayoutProps<"/">` — the same key the admin shell already owns — while here
- * it is `LayoutProps<"/portal">`. The group holds nothing but `portal/**`, so
- * the two positions wrap exactly the same pages.
+ * The rail is white rather than the admin's navy on purpose. A client is a
+ * guest: the surface should read as their workspace, not as the inside of
+ * somebody else's tooling, and the one saturated thing on screen is the item
+ * they are standing on.
+ *
+ * Print rules exist for one screen in particular. `/portal/invoices/[id]` is a
+ * document a client saves as a PDF and forwards to a bookkeeper: the rail, the
+ * bar and the footer must not travel with it.
  */
 export default async function PortalLayout({ children }: LayoutProps<"/portal">) {
   const session = await requireClient();
 
   return (
-    // Print rules exist for one screen in particular: `/portal/invoices/[id]`
-    // is a document a client saves as a PDF and forwards to a bookkeeper. The
-    // shell's own chrome — the client name bar, the nine-item nav, the signed
-    // -in email address and the footer — must not travel with it, and the page
-    // ground must not print as a grey field in browsers with background
-    // graphics turned on. Every other portal screen prints the better for it.
-    <div className="flex min-h-screen flex-1 flex-col bg-background print:bg-white">
-      <header className="sticky top-0 z-30 border-b bg-card print:hidden">
-        <div className="mx-auto flex w-full max-w-5xl items-center gap-3 px-4 py-3 sm:px-6">
-          {/* The wordmark is the one piece of LaunchFlow branding above the
-              fold; the name that matters on this surface is the client's, so
-              the logo shrinks to 96px and takes the second line's job with it.
-              The bar is `bg-card` (white), which is the only ground this asset
-              can sit on directly — see `BrandMark`. */}
-          <BrandMark width={96} className="shrink-0" />
-          <div className="min-w-0 border-l pl-3">
-            <p className="truncate text-base font-semibold tracking-tight">{session.clientName}</p>
-            <p className="text-meta text-muted-foreground">Your LaunchFlow portal</p>
+    <div className="flex min-h-screen flex-1 bg-background print:block print:bg-white">
+      {/* `contents` keeps the rail a direct flex child of the row while giving
+          `print:hidden` something to switch off. */}
+      <div className="contents print:hidden">
+        <aside className="hidden w-64 shrink-0 flex-col border-r bg-card lg:flex">
+          <div className="px-5 py-5">
+            <BrandMark width={140} />
+            <p className="label-caps mt-1.5 text-muted-foreground">Client portal</p>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-3">
-            <p className="hidden max-w-64 truncate text-meta text-muted-foreground sm:block">{session.email}</p>
-            <SignOutButton size="sm" />
+          <PortalNavList />
+          <PortalHelpCard />
+        </aside>
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 border-b bg-card px-4 sm:px-6 print:hidden">
+          <div className="flex h-16 items-center gap-3 sm:h-20 sm:gap-4">
+            <PortalRailSheet />
+
+            {/* Whose portal this is. The client's name is the one that matters
+                on this surface, so it takes the position the product name would
+                normally hold. */}
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-foreground text-row font-semibold text-background">
+                {businessInitials(session.clientName)}
+              </span>
+              <span className="min-w-0">
+                <span className="label-caps block text-muted-foreground">Your business</span>
+                <span className="block truncate text-base font-semibold tracking-tight">{session.clientName}</span>
+              </span>
+            </div>
+
+            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+              <PortalAccountMenu name={session.name} email={session.email} />
+            </div>
           </div>
-        </div>
-        <PortalTabs tabs={NAV} />
-      </header>
+        </header>
 
-      {/* 16px is the portal's body size: this is read on a phone, rarely, by
-          somebody who does not use it every day. Components that set their own
-          scale — tables, pills, meta lines — still do. */}
-      <main className="mx-auto w-full min-w-0 max-w-5xl flex-1 px-4 py-6 text-base sm:px-6 lg:py-10 print:max-w-none print:px-0 print:py-0">
-        {children}
-      </main>
+        {/* 16px is the portal's body size: this is read on a phone, rarely, by
+            somebody who does not use it every day. Components that set their
+            own scale — tables, pills, meta lines — still do. */}
+        <main className="mx-auto w-full min-w-0 max-w-6xl flex-1 px-4 py-6 text-base sm:px-8 lg:py-8 print:max-w-none print:px-0 print:py-0">
+          {children}
+        </main>
 
-      <footer className="border-t bg-card px-4 py-5 text-center text-meta text-muted-foreground print:hidden">
-        Powered by LaunchFlow
-      </footer>
+        <footer className="border-t bg-card px-4 py-5 text-center text-meta text-muted-foreground print:hidden">
+          Powered by LaunchFlow
+        </footer>
+      </div>
     </div>
   );
 }
