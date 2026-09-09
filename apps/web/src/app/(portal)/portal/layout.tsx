@@ -2,6 +2,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { PortalAccountMenu } from "@/components/portal/portal-account-menu";
 import { PortalHelpCard, PortalNavList } from "@/components/portal/portal-rail";
 import { PortalRailSheet } from "@/components/portal/portal-rail-sheet";
+import { PortalSearch } from "@/components/portal/portal-search";
 import { requireClient } from "@/lib/portal-session";
 
 // The whole portal shell reads the session, so nothing here is prerenderable.
@@ -63,7 +64,14 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
               </span>
             </div>
 
-            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+            {/* The search takes the middle of the bar from `md` up. Below that
+                the business name and the account button already fill the row,
+                and a third control would push one of them off the edge. */}
+            <div className="mx-auto hidden w-full max-w-md min-w-0 md:block">
+              <PortalSearch />
+            </div>
+
+            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3 md:ml-0">
               <PortalAccountMenu name={session.name} email={session.email} />
             </div>
           </div>
