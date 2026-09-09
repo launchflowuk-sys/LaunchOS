@@ -137,6 +137,11 @@ export default async function PortalHomePage() {
         </div>
       </div>
 
+      {/* All three navy, deliberately, and not the admin's category hues.
+          The admin uses colour to say *which module* a figure belongs to,
+          which only helps somebody who knows the modules. A client has one
+          account: three colours here would imply a distinction that is not
+          there, and docs/CLIENT PORTAL.png shows them uniform. */}
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard
           label="Websites live"
@@ -157,7 +162,7 @@ export default async function PortalHomePage() {
           value={openRequests.length}
           hint={openRequests.length === 0 ? "Nothing waiting on us" : "We are on it"}
           href="/portal/support"
-          category="support"
+          category="overview"
           icon={LifeBuoy}
         />
         <StatCard
@@ -165,7 +170,7 @@ export default async function PortalHomePage() {
           value={openTasks.length}
           hint={openTasks.length === 0 ? "Nothing scheduled right now" : "Jobs in progress for you"}
           href="/portal/tasks"
-          category="delivery"
+          category="overview"
           icon={ListChecks}
         />
       </div>
