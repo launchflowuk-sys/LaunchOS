@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import { Package } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Disclosure } from "@/components/disclosure";
 import { Section } from "@/components/section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,17 +72,23 @@ export default async function PackagesPage() {
         ) : (
           <div className="space-y-4">
             {packages.map((pkg) => (
-              <ActionForm
+              <Disclosure
                 key={pkg.id}
+                summary={
+                  <span className="text-base font-semibold">
+                    {pkg.name}{" "}
+                    <span className="font-mono text-meta font-normal text-muted-foreground">/{pkg.slug}</span>
+                  </span>
+                }
+                meta={pkg.active ? undefined : "Inactive"}
+              >
+              <ActionForm
                 action={updatePackageAction}
                 ariaLabel={`Package ${pkg.name}`}
                 success="Package saved"
-                className={CARD}
+                className="space-y-4"
               >
                 <input type="hidden" name="packageId" value={pkg.id} />
-                <p className="text-base font-semibold">
-                  {pkg.name} <span className="font-mono text-meta font-normal text-muted-foreground">/{pkg.slug}</span>
-                </p>
                 <PackageFields
                   idPrefix={`package-${pkg.id}`}
                   defaults={{
@@ -121,6 +128,7 @@ export default async function PackagesPage() {
                   </Button>
                 </div>
               </ActionForm>
+              </Disclosure>
             ))}
           </div>
         )}
