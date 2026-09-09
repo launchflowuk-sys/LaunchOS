@@ -28,11 +28,21 @@ cannot read.
 | Entry | Contents |
 |---|---|
 | `@launchflow/ui/styles` | Tokens, base layer, component layer |
-| `@launchflow/ui` | `cn`, `Category`, `CATEGORY_TEXT`, `CATEGORY_DOT` |
+| `@launchflow/ui` | Everything below, re-exported, plus `cn` and the category hues |
+| `@launchflow/ui/ui/<name>` | 24 primitives — button, input, dialog, select, sheet, table, … |
+| `@launchflow/ui/components/<name>` | StatCard, DataList, Panel, PageHeader, StatusBadge, EmptyState, Toolbar, KeyValue, InlineAlert |
+| `@launchflow/ui/components/app-nav` | The navy rail and its mobile sheet |
+| `@launchflow/ui/components/portal/<name>` | PortalTabs, PortalForm, PortalStatus, PortalSelect, PortalProgress, MessageThread, PrintButton |
+| `@launchflow/ui/lib/format` | formatDateTime, formatMoney, formatDate, formatDuration |
+| `@launchflow/ui/styles/marketing`, `/styles/motion` | The public-site CSS |
 
-Primitives, composites and the admin shell are still being extracted from
-LaunchOS. See `docs/superpowers/specs/2026-09-08-launchflow-ui-design-system-design.md`
-for the phase order.
+**This is a Next.js design system.** `next` is a peer dependency: StatCard and
+Panel use `next/link`, and the composites are server components. Do not wrap
+them in a context provider — that pushes them across the client boundary and
+ships JavaScript for a static card.
+
+The rail is bound inside a **client** component: `NavItem.icon` holds a Lucide
+component, and a component reference cannot cross the RSC boundary.
 
 ## Development
 

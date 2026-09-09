@@ -31,7 +31,7 @@ packages/core       Domain services (clients, sites, tickets, inbox, incidents, 
 packages/agents     Agent kernel + the three agents + tool adapters
 packages/channels   Comms adapters: in-app, email (SMTP), whatsapp (stub)
 packages/integrations  External provider clients (Coolify, Cloudflare DNS, Google Ads, Meta Ads) — mock-first
-packages/ui         @launchflow/ui — the design system, published to public npm. Holds DESIGN.md, the tokens, `cn` and the category hues; primitives, composites and the admin shell are being extracted here in phases. apps/web consumes it as workspace:* and old import paths survive as re-export shims
+packages/ui         @launchflow/ui — the design system, published to public npm. DESIGN.md, the tokens, 24 primitives, the composites, the navy rail, the portal components, the format helpers and the marketing CSS. apps/web consumes it as workspace:* and every old import path survives as a one-line re-export shim
 packages/config     Shared tsconfig / eslint / prettier
 docs/               Architecture, data model, agent framework, deployment, specs, plans
 infra/              Dockerfiles, compose for Coolify
