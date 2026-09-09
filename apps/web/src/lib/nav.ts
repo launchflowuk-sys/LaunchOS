@@ -1,5 +1,6 @@
 import type { MemberPermissions, PermissionKey } from "@launchos/core";
 import {
+  Activity,
   BookOpen,
   Bot,
   CalendarClock,
@@ -69,7 +70,10 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: "Overview",
     category: "overview",
-    items: [{ label: "Dashboard", href: "/", icon: LayoutDashboard }],
+    items: [
+      { label: "Dashboard", href: "/", icon: LayoutDashboard },
+      { label: "Activity", href: "/activity", icon: Activity },
+    ],
   },
   {
     label: "Delivery",

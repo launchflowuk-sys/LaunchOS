@@ -1,0 +1,1 @@
+ALTER TABLE "client_users" ADD COLUMN "portal_seen_at" timestamp with time zone;

@@ -1,5 +1,6 @@
 import { BrandMark } from "@/components/brand-mark";
 import { PortalAccountMenu } from "@/components/portal/portal-account-menu";
+import { PortalBell } from "@/components/portal/portal-bell";
 import { PortalHelpCard, PortalNavList } from "@/components/portal/portal-rail";
 import { PortalRailSheet } from "@/components/portal/portal-rail-sheet";
 import { PortalSearch } from "@/components/portal/portal-search";
@@ -72,6 +73,7 @@ export default async function PortalLayout({ children }: LayoutProps<"/portal">)
             </div>
 
             <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3 md:ml-0">
+              <PortalBell session={session} />
               <PortalAccountMenu name={session.name} email={session.email} />
             </div>
           </div>

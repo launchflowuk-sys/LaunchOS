@@ -168,6 +168,8 @@ export type { RecentOpsActivity, OpsTimelineItem } from "./team/ops-activity.js"
 export { search, SearchInput } from "./search/search.js";
 export type { SearchResults } from "./search/search.js";
 export { searchPortal, PortalSearchInput, PORTAL_SEARCH_EMPTY } from "./search/search-portal.js";
+export { listPortalUpdates, markPortalSeen, portalSeenAt } from "./activity/list-portal-updates.js";
+export type { PortalUpdate, PortalUpdates } from "./activity/list-portal-updates.js";
 export type { PortalSearchResults } from "./search/search-portal.js";
 export { createPackage, CreatePackageInput, PackageIncludesInput } from "./packages/create-package.js";
 export { updatePackage, UpdatePackageInput } from "./packages/update-package.js";

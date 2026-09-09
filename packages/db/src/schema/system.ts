@@ -55,4 +55,10 @@ export const clientUsers = pgTable("client_users", {
   userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
   role: clientUserRoleEnum("role").default("client_member").notNull(),
   status: clientUserStatusEnum("status").default("active").notNull(),
+  /**
+   * When this person last opened the portal's bell. The badge counts what has
+   * happened since; null means they have never opened it, and everything shown
+   * is treated as already seen rather than as a wall of unread.
+   */
+  portalSeenAt: timestamp("portal_seen_at", { withTimezone: true }),
 }, (t) => [uniqueIndex("client_users_client_user").on(t.clientId, t.userId)]);
