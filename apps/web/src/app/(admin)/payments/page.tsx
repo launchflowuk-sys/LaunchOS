@@ -5,11 +5,13 @@ import { CreditCard } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
+import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { RecordPaymentDialog } from "./record-payment-dialog";
+import { UpcomingPaymentsSection } from "./upcoming-section";
 import { PAYMENT_PROVIDERS } from "./schemas";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,7 @@ type PaymentRow = {
   clientName: string;
   invoiceId: string | null;
   invoiceNumber: string | null;
+  packageName: string | null;
 };
 
 const COLUMNS: readonly DataListColumn<PaymentRow>[] = [
@@ -67,6 +70,14 @@ const COLUMNS: readonly DataListColumn<PaymentRow>[] = [
     className: "font-medium text-foreground",
     cell: (row) => formatPence(row.amountPence, row.currency),
   },
+  {
+    key: "package",
+    header: "Package",
+    hideOnMobile: true,
+    // A payment with no package behind it is not an error: a bank transfer
+    // recorded by hand, or a one-off invoice, legitimately has none.
+    cell: (row) => row.packageName ?? "—",
+  },
   { key: "provider", header: "Provider", cell: (row) => row.provider },
   { key: "reference", header: "Reference", hideOnMobile: true, cell: (row) => row.providerRef ?? "—" },
   { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
@@ -91,10 +102,17 @@ export default async function PaymentsPage() {
         clientName: schema.clients.name,
         invoiceId: schema.payments.invoiceId,
         invoiceNumber: schema.invoices.number,
+        packageName: schema.packages.name,
       })
       .from(schema.payments)
       .innerJoin(schema.clients, eq(schema.payments.clientId, schema.clients.id))
       .leftJoin(schema.invoices, eq(schema.payments.invoiceId, schema.invoices.id))
+      // What the money was for. A payment knows its invoice, an invoice knows
+      // the subscription that raised it, and a subscription knows its package.
+      // All three joins are left joins: a bank transfer recorded by hand has
+      // no invoice, and an invoice raised ad hoc has no subscription.
+      .leftJoin(schema.subscriptions, eq(schema.invoices.subscriptionId, schema.subscriptions.id))
+      .leftJoin(schema.packages, eq(schema.subscriptions.packageId, schema.packages.id))
       .where(eq(schema.payments.organisationId, session.organisationId))
       // Postgres sorts NULLs first under DESC; a payment with no paidAt is not
       // settled money and belongs below the dated rows, so the default is
@@ -140,6 +158,12 @@ export default async function PaymentsPage() {
         }
       />
 
+      {/* What is coming before what has arrived: the question you ask on this
+          screen at the start of a month is which charges are due, and the
+          answer to "what landed" is underneath it and does not move. */}
+      <UpcomingPaymentsSection />
+
+      <Section title="Received" description="Every payment recorded against a client, from Stripe or by hand.">
       <DataList<PaymentRow>
         rows={payments}
         columns={COLUMNS}
@@ -151,6 +175,7 @@ export default async function PaymentsPage() {
           </EmptyState>
         }
       />
+      </Section>
     </>
   );
 }

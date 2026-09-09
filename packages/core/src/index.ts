@@ -198,6 +198,10 @@ export {
   CreateSubscriptionServiceInput, CancelSubscriptionInput,
 } from "./billing/subscriptions.js";
 export {
+  listUpcomingPayments, totalUpcomingByCurrency, ListUpcomingPaymentsInput,
+  type UpcomingPayment,
+} from "./billing/upcoming-payments.js";
+export {
   packageUsagePressure, PackageUsagePressureInput, PACKAGE_ALLOWANCE_NEAR_RATIO,
 } from "./billing/package-usage.js";
 export type { ClientPackagePressure, PackageAllowanceUsage, PackageStanding } from "./billing/package-usage.js";
