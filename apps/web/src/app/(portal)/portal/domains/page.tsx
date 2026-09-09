@@ -4,6 +4,7 @@ import { Link2 } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { DomainStatusBadge } from "@/components/portal/portal-status";
+import { DomainExpiry } from "@/components/domain-expiry";
 import { getDb } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
@@ -22,7 +23,7 @@ type DomainRow = {
 const COLUMNS: readonly DataListColumn<DomainRow>[] = [
   { key: "name", header: "Domain", primary: true, cell: (row) => <span className="break-all">{row.name}</span> },
   { key: "registrar", header: "Registered with", hideOnMobile: true, cell: (row) => row.registrar ?? "—" },
-  { key: "expires", header: "Renews", cell: (row) => formatDate(row.expiresAt) },
+  { key: "expires", header: "Renews", cell: (row) => <DomainExpiry expiresAt={row.expiresAt} /> },
   {
     key: "autoRenew",
     header: "Auto-renew",

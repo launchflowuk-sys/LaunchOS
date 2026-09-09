@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { z } from "zod";
 
@@ -15,7 +15,7 @@ import { z } from "zod";
  * whole disclosure boundary on somebody remembering to update a list every
  * time a feature lands.
  *
- * So this reads the four things the portal already shows, each through the
+ * So this reads the five things the portal already shows, each through the
  * same filter its own screen uses. The bell can then only ever surface
  * something the client could have reached by clicking, which is the rule, and
  * it stays true without maintenance.
@@ -56,7 +56,7 @@ export async function listPortalUpdates(
   const owned = (table: { organisationId: PgColumn; clientId: PgColumn }) =>
     and(eq(table.organisationId, organisationId), eq(table.clientId, clientId));
 
-  const [requests, invoices, documents, tasks] = await Promise.all([
+  const [requests, invoices, documents, tasks, domains] = await Promise.all([
     db
       .select({
         id: schema.tickets.id,
@@ -107,6 +107,20 @@ export async function listPortalUpdates(
       .where(and(owned(schema.tasks), eq(schema.tasks.clientVisible, true)))
       .orderBy(desc(schema.tasks.updatedAt))
       .limit(v.limit),
+    // Their own domains, and only those with a date on them. A renewal is the
+    // one thing on this list that takes their website down if nobody acts, so
+    // it belongs in front of them and not only in Shoji's bell.
+    db
+      .select({
+        id: schema.domains.id,
+        name: schema.domains.name,
+        expiresAt: schema.domains.expiresAt,
+        autoRenew: schema.domains.autoRenew,
+      })
+      .from(schema.domains)
+      .where(and(owned(schema.domains), isNotNull(schema.domains.expiresAt)))
+      .orderBy(desc(schema.domains.expiresAt))
+      .limit(v.limit),
   ]);
 
   const rows: PortalUpdate[] = [
@@ -136,6 +150,26 @@ export async function listPortalUpdates(
       link: "/portal/documents",
       at: row.createdAt,
     })),
+    // Surfaced only once it is close: a renewal eleven months out is not news,
+    // and a bell that lists it every day is a bell nobody reads.
+    ...domains
+      .filter((row): row is typeof row & { expiresAt: Date } => row.expiresAt !== null)
+      .map((row) => ({ row, days: Math.ceil((row.expiresAt.getTime() - Date.now()) / 86_400_000) }))
+      .filter(({ days }) => days <= 60)
+      .map(({ row, days }) => ({
+        id: `domain:${row.id}`,
+        kind: days < 0 ? "domain.expired" : "domain.expiring",
+        title: days < 0 ? `${row.name} has expired` : `${row.name} renews in ${Math.max(days, 0)} days`,
+        body: row.autoRenew ? "Set to renew automatically" : "Needs renewing",
+        link: "/portal/domains",
+        // Not the expiry date itself: that is in the *future*, and every row
+        // here is sorted newest-first and marked unseen by comparing against
+        // when the client last looked. A future timestamp would pin a renewal
+        // to the top of the bell for ever and never stop reading as new. The
+        // moment it entered the warning window is the real event, and it is
+        // safely in the past; an expired domain uses the day it lapsed.
+        at: days < 0 ? row.expiresAt : new Date(row.expiresAt.getTime() - 60 * 86_400_000),
+      })),
     ...tasks.map((row) => ({
       id: `task:${row.id}`,
       kind: row.status === "done" ? "task.completed" : "task.updated",

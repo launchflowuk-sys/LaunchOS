@@ -8,6 +8,7 @@ import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { DomainExpiry } from "@/components/domain-expiry";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
@@ -285,7 +286,7 @@ const DOMAIN_COLUMNS: readonly DataListColumn<Domain>[] = [
   { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
   { key: "dns", header: "DNS", cell: (row) => row.dnsProvider },
   { key: "site", header: "Website", cell: (row) => row.siteName ?? "—" },
-  { key: "expires", header: "Expires", cell: (row) => formatDateTime(row.expiresAt), className: "whitespace-nowrap" },
+  { key: "expires", header: "Renews", cell: (row) => <DomainExpiry expiresAt={row.expiresAt} />, className: "whitespace-nowrap" },
 ];
 
 async function SitesTab({ clientId }: { clientId: string }) {

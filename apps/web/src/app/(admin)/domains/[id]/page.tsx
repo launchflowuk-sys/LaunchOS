@@ -8,10 +8,12 @@ import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import { DomainExpiry } from "@/components/domain-expiry";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { DomainOwnership } from "./domain-ownership";
+import { RenewalForm } from "./renewal-form";
 import { AttachSiteForm } from "./attach-site-form";
 import { AddDnsRecordForm } from "./dns-form";
 import { DeleteDnsRecordButton } from "./delete-dns-record-button";
@@ -80,12 +82,26 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
             items={[
               { label: "DNS provider", value: domain.dnsProvider },
               { label: "Registrar", value: domain.registrar ?? "—" },
-              { label: "Expires", value: formatDateTime(domain.expiresAt) },
+              { label: "Renews", value: <DomainExpiry expiresAt={domain.expiresAt} /> },
               {
                 label: "Nameservers",
                 value: domain.nameservers.length > 0 ? domain.nameservers.join(", ") : "—",
               },
             ]}
+          />
+        </div>
+      </Section>
+
+      <Section
+        title="Renewal"
+        description="When it expires, and who renews it. Reminders start sixty days out."
+      >
+        <div className="rounded-[20px] border bg-card p-5">
+          <RenewalForm
+            domainId={domain.id}
+            expiresAt={domain.expiresAt}
+            autoRenew={domain.autoRenew}
+            registrar={domain.registrar}
           />
         </div>
       </Section>

@@ -169,6 +169,11 @@ export { search, SearchInput } from "./search/search.js";
 export type { SearchResults } from "./search/search.js";
 export { searchPortal, PortalSearchInput, PORTAL_SEARCH_EMPTY } from "./search/search-portal.js";
 export { listPortalUpdates, markPortalSeen, portalSeenAt } from "./activity/list-portal-updates.js";
+export {
+  sweepDomainExpiry, listDomainsByExpiry, daysUntil, dueThreshold, statusFor,
+  alreadyNotified, EXPIRY_THRESHOLD_DAYS, EXPIRY_NOTIFIED_KEY,
+} from "./domains/expiry.js";
+export type { ExpiringDomain, ExpirySweepResult } from "./domains/expiry.js";
 export { listPortalCatalogue, getOffering, priceOf } from "./portal-purchases/catalogue.js";
 export type { Offering, PortalCatalogue } from "./portal-purchases/catalogue.js";
 export {

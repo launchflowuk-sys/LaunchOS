@@ -128,6 +128,7 @@ export const QUEUE = {
   adsSentinel: "ads.sentinel",
   siteScreenshots: "sites.screenshots",
   invoicesOverdue: "invoices.check-overdue",
+  domainsExpiry: "domains.check-expiry",
   reportsMonthly: "reports.monthly",
   approvalsResumeSweep: "approvals.resume-sweep",
   agentRunsStuckSweep: "agent-runs.stuck-sweep",
@@ -176,6 +177,7 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "sites.screenshots": "standard",
   "ads.sentinel": "standard",
   "invoices.check-overdue": "standard",
+  "domains.check-expiry": "standard",
   "reports.monthly": "standard",
   // Cron queues: payload `{}`, no key, one job per tick is the point. The
   // `agent.resume` jobs the resume sweep *sends* are keyed `resume:<approvalId>`

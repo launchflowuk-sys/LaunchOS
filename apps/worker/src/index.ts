@@ -25,6 +25,7 @@ import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-
 import { runAdsCampaignIngest, runAdsIngest } from "./jobs/ads-ingest.js";
 import { runSiteScreenshots } from "./jobs/site-screenshots.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
+import { runDomainExpirySweep } from "./jobs/domains-expiry.js";
 import { runOverdueSweep as runInvoiceOverdueSweep } from "./jobs/invoices-overdue.js";
 import { STRIPE_RECONCILE_CRON, runStripeReconcile } from "./jobs/stripe-reconcile.js";
 import { INVOICE_DOCUMENTS_CRON, runInvoiceDocuments } from "./jobs/invoice-documents.js";
@@ -180,6 +181,16 @@ async function main() {
     });
   });
 
+  // A lapsed domain takes the site and the client's email with it, and no
+  // monitor sees it coming — the site is fine until the registrar pulls the
+  // record.
+  await boss.work(QUEUE.domainsExpiry, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "domain expiry sweep", async (organisationId) => {
+      console.info(await runDomainExpirySweep(db, organisationId, { now }), "domain expiry sweep");
+    });
+  });
+
   await boss.work(QUEUE.invoicesOverdue, async () => {
     const now = new Date();
     await sweepOrganisations(db, "overdue invoice sweep", async (organisationId) => {
@@ -308,6 +319,7 @@ async function main() {
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.siteScreenshots, "40 3 * * 0", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.domainsExpiry, "15 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics
   // and after invoices.check-overdue (07:30), so the drafted report reports a

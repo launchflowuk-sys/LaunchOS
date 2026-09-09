@@ -43,3 +43,20 @@ export const DeleteDomainSchema = z.object({
   confirmName: z.string().trim().min(1, "Type the domain name to confirm"),
 });
 export type DeleteDomainValues = z.input<typeof DeleteDomainSchema>;
+
+/**
+ * An emptied date input posts "", which means "no renewal date on record" and
+ * therefore "stop reminding me" — not "leave whatever was there". So it
+ * becomes null rather than undefined.
+ */
+export const SaveRenewalSchema = z.object({
+  domainId: z.string().uuid(),
+  expiresAt: z
+    .string()
+    .trim()
+    .transform((v) => (v.length > 0 ? v : null))
+    .refine((v) => v === null || !Number.isNaN(Date.parse(v)), "That is not a date")
+    .transform((v) => (v === null ? null : new Date(`${v}T00:00:00.000Z`))),
+  registrar: z.string().trim().max(100).transform((v) => (v.length > 0 ? v : null)),
+  autoRenew: z.boolean(),
+});

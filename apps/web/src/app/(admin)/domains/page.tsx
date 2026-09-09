@@ -14,6 +14,7 @@ import { FilterBar, ToolbarActions, ToolbarField } from "@/components/toolbar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/stat-card";
+import { DomainExpiry } from "@/components/domain-expiry";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -61,7 +62,7 @@ const COLUMNS: readonly DataListColumn<DomainRow>[] = [
   },
   { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
   { key: "dns", header: "DNS", hideOnMobile: true, cell: (row) => row.dnsProvider },
-  { key: "expires", header: "Expires", className: "whitespace-nowrap", cell: (row) => formatDateTime(row.expiresAt) },
+  { key: "expires", header: "Renews", className: "whitespace-nowrap", cell: (row) => <DomainExpiry expiresAt={row.expiresAt} /> },
 ];
 
 export default async function DomainsPage({ searchParams }: PageProps<"/domains">) {

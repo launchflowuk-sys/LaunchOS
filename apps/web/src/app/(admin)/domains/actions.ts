@@ -15,6 +15,7 @@ import {
   MoveDomainSchema,
   NewDnsRecordSchema,
   type NewDnsRecordValues,
+  SaveRenewalSchema,
 } from "./schemas";
 
 function errorMessage(error: unknown): string {
@@ -140,4 +141,40 @@ export async function deleteDomainAction(formData: FormData): Promise<ActionResu
   // successful delete into a 404. `redirect` throws, so it must sit outside
   // the try above or the catch would report the navigation as a failure.
   redirect("/domains");
+}
+
+/**
+ * Saves the renewal date, the registrar and whether it renews itself.
+ *
+ * Changing the date deliberately does *not* clear the record of which warnings
+ * have already gone out: that state is keyed by the expiry date it was written
+ * against, so a new date makes every threshold live again on its own. See
+ * `alreadyNotified` in core.
+ */
+export async function saveRenewalAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = SaveRenewalSchema.safeParse({
+    domainId: formData.get("domainId"),
+    expiresAt: formData.get("expiresAt") ?? "",
+    registrar: formData.get("registrar") ?? "",
+    autoRenew: formData.get("autoRenew") === "on",
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid request" };
+  const v = parsed.data;
+
+  try {
+    await updateDomain(getDb(), session.organisationId, {
+      domainId: v.domainId,
+      expiresAt: v.expiresAt,
+      registrar: v.registrar,
+      autoRenew: v.autoRenew,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+  revalidatePath(`/domains/${v.domainId}`);
+  revalidatePath("/domains");
+  return { status: "ok" };
 }
