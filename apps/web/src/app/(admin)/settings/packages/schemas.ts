@@ -36,6 +36,12 @@ export const UpdatePackageSchema = z.object({
   ...BaseFields,
   packageId: z.string().uuid(),
   active: z.boolean(),
+  kind: z.enum(["retainer", "one_off", "addon"]),
+  // Self-serve is the switch that puts a package in front of clients. It is a
+  // plain checkbox rather than something derived, because "can a client buy
+  // this on their own" must be a decision somebody made on purpose.
+  selfServe: z.boolean(),
+  trialDays: z.coerce.number().int().min(0).max(365),
   // The Stripe Price the self-serve sign-up sells this package under. Blank
   // clears it and puts the package back on the "we'll invoice you" flow.
   stripePriceId: z

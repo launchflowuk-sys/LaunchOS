@@ -8,6 +8,8 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { notifyOwner } from "../notifications/notify.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { PORTAL_PURCHASE_MARKER } from "../portal-purchases/start-purchase.js";
+import { completePortalPurchase, PurchaseNotLive } from "../portal-purchases/complete-purchase.js";
 import { PROPOSAL_CHECKOUT_MARKER, completeProposalCheckout } from "../proposals/checkout.js";
 import { ProposalRefused } from "../proposals/shared.js";
 import { completeSignup, SIGNUP_MARKER, SignupRefused } from "../signup/signup.js";
@@ -133,7 +135,7 @@ export function checkoutOrganisationFromEvent(event: PaymentsWebhookEvent): stri
   if (event.type !== "checkout.session.completed") return null;
   const object = (event.data as { object?: { metadata?: unknown } }).object;
   const meta = z.object({
-    launchos: z.enum([SIGNUP_MARKER, PROPOSAL_CHECKOUT_MARKER]),
+    launchos: z.enum([SIGNUP_MARKER, PROPOSAL_CHECKOUT_MARKER, PORTAL_PURCHASE_MARKER]),
     organisationId: z.string().uuid(),
   }).safeParse(object?.metadata);
   return meta.success ? meta.data.organisationId : null;
@@ -166,13 +168,28 @@ export async function syncFromPaymentsEvent(
     const parsed = StripeCheckoutObject.safeParse(object);
     if (!parsed.success) return { handled: false, action: "unparseable" };
     const marker = parsed.data.metadata?.["launchos"];
-    if (marker !== SIGNUP_MARKER && marker !== PROPOSAL_CHECKOUT_MARKER) return { handled: false, action: "ignored" };
+    if (marker !== SIGNUP_MARKER && marker !== PROPOSAL_CHECKOUT_MARKER && marker !== PORTAL_PURCHASE_MARKER) {
+      return { handled: false, action: "ignored" };
+    }
     const session = toCheckoutSession(parsed.data as unknown as Parameters<typeof toCheckoutSession>[0]);
 
     // A payment from an accepted proposal. Same treatment as a signup and for
     // the same reason: the client paid, so the customer, the subscription and
     // the proposal all have to say so. Idempotent by session id, because
     // Stripe redelivers.
+    // A client buying a service from their own portal. The third door, filed
+    // the same way as the other two — and the one whose completion also starts
+    // the project, because nobody is going to press "begin" for them.
+    if (marker === PORTAL_PURCHASE_MARKER) {
+      try {
+        const result = await completePortalPurchase(db, organisationId, session);
+        return { handled: true, action: result.alreadyRecorded ? "purchase.duplicate" : "purchase.paid" };
+      } catch (error) {
+        if (error instanceof PurchaseNotLive) return { handled: false, action: "purchase.not_live" };
+        throw error;
+      }
+    }
+
     if (marker === PROPOSAL_CHECKOUT_MARKER) {
       try {
         const result = await completeProposalCheckout(db, organisationId, { session });

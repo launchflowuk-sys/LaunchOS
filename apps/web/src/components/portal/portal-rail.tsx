@@ -2,7 +2,7 @@
 
 import {
   BarChart3, FileText, FolderClosed, Globe, Headphones, Home, Link2, ListChecks,
-  MessageCircle, Receipt, ScrollText, Wallet, type LucideIcon,
+  MessageCircle, Receipt, ScrollText, Sparkles, Wallet, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -47,6 +47,7 @@ export const PORTAL_NAV: readonly Group[] = [
       { label: "Proposals", href: "/portal/proposals", icon: ScrollText },
       { label: "Invoices", href: "/portal/invoices", icon: Receipt },
       { label: "Plan", href: "/portal/plan", icon: Wallet },
+      { label: "Add a service", href: "/portal/services", icon: Sparkles },
     ],
   },
   {

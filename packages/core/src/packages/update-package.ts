@@ -13,6 +13,11 @@ export const UpdatePackageInput = z.object({
   setupPricePence: z.number().int().min(0).optional(),
   includes: PackageIncludesInput.optional(),
   active: z.boolean().optional(),
+  kind: z.enum(["retainer", "one_off", "addon"]).optional(),
+  /** Whether a client may buy this from their own portal without asking. */
+  selfServe: z.boolean().optional(),
+  /** Free-trial days for a self-serve purchase. Zero means pay now. */
+  trialDays: z.number().int().min(0).max(365).optional(),
   /**
    * The Stripe Price the self-serve signup sells this package under. Null
    * clears it, which puts the package back on the invoice flow; a blank
@@ -38,6 +43,9 @@ export async function updatePackage(db: Db, organisationId: string, input: Updat
     ...(v.setupPricePence === undefined ? {} : { setupPricePence: v.setupPricePence }),
     ...(v.includes === undefined ? {} : { includes: v.includes }),
     ...(v.active === undefined ? {} : { active: v.active }),
+    ...(v.kind === undefined ? {} : { kind: v.kind }),
+    ...(v.selfServe === undefined ? {} : { selfServe: v.selfServe }),
+    ...(v.trialDays === undefined ? {} : { trialDays: v.trialDays }),
     ...(v.stripePriceId === undefined ? {} : { stripePriceId: v.stripePriceId ?? null }),
     updatedAt: new Date(),
   }).where(where).returning();

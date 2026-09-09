@@ -65,6 +65,12 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // their own — they hang off the proposal — so they need no spec here and
   // follow it across without being touched.
   { key: "proposals", table: schema.proposals },
+  // What the client bought from their own portal. Moves whole and never
+  // collides: a purchase is one client's record of one order, and its Stripe
+  // session id is unique across the table rather than per client. It has to
+  // travel, or a merged client's order history — and the project it paid for —
+  // stays behind on the archived row.
+  { key: "portal_purchases", table: schema.portalPurchases },
   // A build moves whole, spine and promises with it. None of the three
   // collide: a project is never unique per client, a phase is unique per
   // project and the project id does not change, and a milestone is unique per

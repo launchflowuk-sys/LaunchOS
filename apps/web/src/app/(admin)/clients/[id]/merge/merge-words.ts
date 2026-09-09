@@ -28,6 +28,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   content_assets: ["image", "images"],
   documents: ["document", "documents"],
   proposals: ["proposal", "proposals"],
+  portal_purchases: ["portal order", "portal orders"],
   projects: ["project", "projects"],
   project_phases: ["project phase", "project phases"],
   project_milestones: ["milestone", "milestones"],

@@ -6,6 +6,7 @@ import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { attachPaymentAccount } from "../billing/payment-accounts.js";
+import { recordSubscription } from "../billing/record-subscription.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { PROPOSAL_TARGET_TYPE, ProposalRefused, type ProposalRow } from "./shared.js";
 
@@ -183,49 +184,3 @@ export async function completeProposalCheckout(
  * quoted; `importStripeSubscription` corrects it from Stripe's own figures the
  * moment the first `customer.subscription.*` event arrives.
  */
-async function recordSubscription(
-  db: Db,
-  organisationId: string,
-  input: { clientId: string; packageId: string | null; stripeSubscriptionId: string | null; sessionId: string; now: Date },
-): Promise<string | null> {
-  if (!input.stripeSubscriptionId) return null;
-
-  const [pkg] = input.packageId
-    ? await db.select({ monthlyPricePence: schema.packages.monthlyPricePence, currency: schema.packages.currency })
-      .from(schema.packages)
-      .where(and(eq(schema.packages.id, input.packageId), eq(schema.packages.organisationId, organisationId)))
-    : [undefined];
-
-  const [row] = await db.insert(schema.subscriptions).values({
-    organisationId,
-    clientId: input.clientId,
-    packageId: input.packageId,
-    stripeSubscriptionId: input.stripeSubscriptionId,
-    status: "active",
-    currentPeriodStart: input.now,
-    currentPeriodEnd: addMonths(input.now, 1),
-    amountPence: pkg?.monthlyPricePence ?? 0,
-    currency: pkg?.currency ?? "GBP",
-    metadata: { checkoutSessionId: input.sessionId },
-  })
-    // The unique `(organisation_id, stripe_subscription_id)` index is the
-    // second belt: a replayed event with a new session id still cannot file
-    // the same Stripe subscription twice.
-    .onConflictDoNothing({ target: [schema.subscriptions.organisationId, schema.subscriptions.stripeSubscriptionId] })
-    .returning();
-
-  if (row) {
-    await recordAudit(db, organisationId, {
-      actorKind: "system", action: "subscription.created",
-      targetType: "subscription", targetId: row.id, after: row,
-    });
-    return row.id;
-  }
-
-  const [existing] = await db.select({ id: schema.subscriptions.id }).from(schema.subscriptions)
-    .where(and(
-      eq(schema.subscriptions.organisationId, organisationId),
-      eq(schema.subscriptions.stripeSubscriptionId, input.stripeSubscriptionId),
-    ));
-  return existing?.id ?? null;
-}

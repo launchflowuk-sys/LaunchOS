@@ -21,6 +21,14 @@ export const PACKAGE_INCLUDES_DEFAULT: PackageIncludes = {
   socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0,
 };
 
+/**
+ * What sort of thing this is, and therefore how Checkout opens for it.
+ * A `retainer` is a subscription; a `one_off` is a single payment with no
+ * monthly (a website build); an `addon` is a smaller extra alongside either.
+ */
+export const packageKindEnum = pgEnum("package_kind", ["retainer", "one_off", "addon"]);
+export type PackageKind = (typeof packageKindEnum.enumValues)[number];
+
 export const packages = pgTable("packages", {
   ...tenantColumns(),
   name: text("name").notNull(),
@@ -31,6 +39,18 @@ export const packages = pgTable("packages", {
   currency: text("currency").default("GBP").notNull(),
   includes: jsonb("includes").$type<PackageIncludes>().default(PACKAGE_INCLUDES_DEFAULT).notNull(),
   active: boolean("active").default(true).notNull(),
+  kind: packageKindEnum("kind").default("retainer").notNull(),
+  /**
+   * Whether a client may buy this from their own portal without asking.
+   *
+   * **Default false, deliberately.** Every package that already exists stays
+   * unbuyable until somebody switches it on, and the portal additionally
+   * refuses anything without a Stripe price — so a half-configured offering
+   * cannot be sold by accident.
+   */
+  selfServe: boolean("self_serve").default(false).notNull(),
+  /** Free-trial length for a self-serve purchase. Zero means pay now. */
+  trialDays: integer("trial_days").default(0).notNull(),
   /**
    * The Stripe Price (`price_…`) a self-serve signup subscribes to. Null means
    * the package cannot be bought through Checkout and `createSignupSession`

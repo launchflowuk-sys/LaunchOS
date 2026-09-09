@@ -113,6 +113,58 @@ export default async function PackagesPage() {
                     Lets people buy this package on /signup by card. Leave blank and sign-up invoices them instead.
                   </p>
                 </div>
+                {/* Selling this from the client portal. Deliberately three
+                    separate decisions rather than one switch: what sort of
+                    thing it is decides whether Checkout opens a subscription
+                    or a single payment, and a trial is a commitment to do the
+                    work before any money arrives. */}
+                <div className="grid gap-4 border-t pt-4 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`package-${pkg.id}-kind`}>Sold as</Label>
+                    <select
+                      id={`package-${pkg.id}-kind`}
+                      name="kind"
+                      defaultValue={pkg.kind}
+                      className="h-12 w-full rounded-[14px] border bg-transparent px-3 text-sm"
+                    >
+                      <option value="retainer">Monthly retainer</option>
+                      <option value="one_off">One-off job</option>
+                      <option value="addon">Add-on</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor={`package-${pkg.id}-trialDays`}>Free trial (days)</Label>
+                    <Input
+                      id={`package-${pkg.id}-trialDays`}
+                      type="number"
+                      name="trialDays"
+                      min={0}
+                      max={365}
+                      defaultValue={pkg.trialDays}
+                      className="tabular-nums"
+                    />
+                    <p className="text-meta text-muted-foreground">
+                      Zero means pay now. Onboarding starts either way.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-start gap-2.5 rounded-[14px] border p-3.5 text-sm">
+                  <input
+                    type="checkbox"
+                    name="selfServe"
+                    defaultChecked={pkg.selfServe}
+                    className="mt-0.5 size-4 rounded-[4px] border-input accent-primary"
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-medium">Clients can buy this themselves</span>
+                    <span className="block text-meta text-muted-foreground">
+                      Shows it under Add a service in the portal. Needs a Stripe price id above — without one it
+                      stays hidden rather than failing at checkout.
+                    </span>
+                  </span>
+                </label>
+
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
                   <label className="flex items-center gap-2 text-sm">
                     <input
