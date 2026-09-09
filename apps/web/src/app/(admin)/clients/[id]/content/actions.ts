@@ -367,12 +367,12 @@ export async function draftBriefAction(formData: FormData): Promise<ActionResult
   await sendJob(
     "agent.run",
     {
-      agentKey: "brief_writer",
+      agentKey: "brief-writer",
       organisationId: gate.session.organisationId,
       trigger: "manual",
       payload: { clientId: clientId.data },
     },
-    { singletonKey: `brief_writer:${clientId.data}:${Date.now()}` },
+    { singletonKey: `brief-writer:${clientId.data}:${Date.now()}` },
   );
   revalidatePath(`/clients/${clientId.data}/content`);
   return { status: "ok" };

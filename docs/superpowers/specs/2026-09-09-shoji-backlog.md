@@ -1,0 +1,123 @@
+# Shoji's backlog — 9 Sep 2026
+
+Fourteen items given in one go, with screenshots. Recorded verbatim in intent
+so none of it is lost between sessions. Nothing here is started unless the
+status says so.
+
+---
+
+## The theme running through most of it
+
+**Tables are boxed into a narrow centre column and look like developer output.**
+He said it about Clients, Leads, Agent Runs, Costs and Email — but the
+instruction is *software-wide*: "do the same for All Tables". Treat the
+centred `max-w-6xl` workspace as the thing to change for table-heavy screens,
+not each page in turn.
+
+The second theme is **KPIs**. Several screens have no summary at all, so there
+is no way to glance at them. Where a screen lists things, it should first say
+what the list amounts to.
+
+The third is **"AI slop"** — his words for amber-everywhere warning blocks and
+1980s log tables. Colour must mean something, and grouping beats repetition.
+
+---
+
+## 1. Activity page
+
+Needs a **client selector**, then that client's notifications shown as a
+**summary plus grouped cards** — modern, clean, categorised by colour. Not the
+current flat list.
+
+## 2. Full-width tables, software-wide
+
+Clients table carries the least information of any screen and is boxed into
+the middle. It needs a **full-bleed view**, and so does **every other table**
+in the product — Leads and the rest included. More columns are coming.
+
+## 3. Funnels page
+
+Alignment is broken: helper text sits under a field and pushes the row out of
+line. Fix the layout.
+
+## 4. Costs
+
+- Table is far too long and uncategorised.
+- Should **resolve real names** — the domain, the website, the email
+  subscription each line pays for — so assignment is possible. 53 rows of
+  "Starter Business Email" cannot be assigned by hand.
+- Needs **grouping** and better arrangement.
+- Needs **more KPI detail** on the things that matter.
+
+## 5. The yellow warnings
+
+They look amateur. Group them, drop the slop colouring, and **say which
+subscription** each one is about — a warning that names nothing is not usable.
+
+## 6. Billing that is not Stripe
+
+**AMO Rendering shows £99.00 active. It is wrong.** He invoices £200 a month:
+£45 × 2 websites (£90) plus £110 ad management, paid as **one lump sum by bank
+transfer**, not Stripe.
+
+Needed: a way to **set up and manage complex billing** — several lines making
+one charge — and payment methods beyond Stripe: **bank transfer, cash,
+standing order, and direct debit later**. Give him options.
+
+## 7. Deleting approvals, and deletion guards generally
+
+Rejected approvals sit there with no way to remove them. Needs **delete one**
+and **delete all**. More importantly: think about **every deletion in the
+product** — what it is connected to, and what KPI it feeds — and put guards in
+so nobody removes something that breaks the business.
+
+## 8. Agent Runs
+
+Full-width like the rest, and stop looking like a 1980s registrar entry. The
+view holds a lot of information and the presentation does not do it justice.
+
+## 9. Email tab
+
+The plainest, worst-looking table in the product. **No KPIs at all**, so no
+overview is possible. Needs proper work.
+
+## 10. Client archive and delete
+
+**Missing entirely**: archive a client, and delete a client along with all
+their data.
+
+## 11. API token
+
+A full-rights token for Claude is in the repo's `.env`. Read it from there,
+never from chat.
+
+## 12. API tokens page
+
+Display the page and its information better — especially the bottom section
+saying where a token is used. "Developer backyard" is the note.
+
+## 13. Knowledge base
+
+Build a knowledge base for the whole platform: **Admin, Staff and Client**.
+
+## 14. Screenshots
+
+All attached to the original message. The Clients, Funnels, Costs, Payments,
+Approvals, Agent Runs and Email screens are the ones pictured.
+
+---
+
+## Also true, from the same screenshots — not asked for, worth knowing
+
+- **Approvals**: four AMO Rendering posts were rejected for "Missing Image" on
+  6 Sep. The content pipeline produced posts with no image and nobody has been
+  back to them.
+- **Agent runs**: 4 failed in 7 days, one with
+  `tools.1.custom: For 'integer' type, properties maximum, minimum are not
+  supported` — a tool schema Anthropic's API rejects. That is a real bug in a
+  tool definition, not a transient failure.
+- **Costs**: 53 subscriptions, **19 trials** that will start charging, $368.16
+  of them. Assignment is unusable at that volume without item 4.
+- **Clients**: "11 active, 9 still onboarding", **Collected to date £0.00** —
+  worth checking whether that figure is right or whether payments are not
+  being recorded.

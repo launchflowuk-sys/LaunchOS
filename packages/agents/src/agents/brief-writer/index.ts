@@ -4,7 +4,7 @@ import { contentGetBrief } from "../../tools/content-get-brief.js";
 import { contentSaveBrief } from "../../tools/content-save-brief.js";
 import { knowledgeSearch } from "../../tools/knowledge-search.js";
 
-export const BRIEF_WRITER_KEY = "brief_writer";
+export const BRIEF_WRITER_KEY = "brief-writer";
 
 /**
  * The agent that unblocks every other one.
