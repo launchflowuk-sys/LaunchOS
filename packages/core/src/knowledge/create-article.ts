@@ -10,6 +10,10 @@ export const CreateKnowledgeArticleInput = z.object({
   bodyMd: z.string().min(1),
   tags: z.array(z.string().min(1)).default([]),
   published: z.boolean().default(false),
+  /** Sidebar hrefs this guide is pinned to — see `helpForRoute`. */
+  routes: z.array(z.string().min(1)).default([]),
+  /** Who it is written for. Staff first; that is who the feature is for. */
+  audiences: z.array(z.enum(["admin", "staff", "client"])).default([]),
   // The admin who wrote it, forwarded to the audit row. Optional so non-request
   // callers (seed, agent tools) still work; the web action always passes it.
   actorId: z.string().optional(),

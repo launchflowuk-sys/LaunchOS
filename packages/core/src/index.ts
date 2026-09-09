@@ -238,6 +238,8 @@ export { deleteKnowledgeArticle, DeleteKnowledgeArticleInput } from "./knowledge
 export { listKnowledgeArticles } from "./knowledge/list-articles.js";
 export type { ListKnowledgeArticlesInput } from "./knowledge/list-articles.js";
 export { searchKnowledge, KNOWLEDGE_SEARCH_LIMIT } from "./knowledge/search-knowledge.js";
+export { helpForRoute, routeCoverage } from "./knowledge/help-for-route.js";
+export type { HelpArticle, RouteCoverage } from "./knowledge/help-for-route.js";
 export type { KnowledgeHit } from "./knowledge/search-knowledge.js";
 export { createClientUser, CreateClientUserInput } from "./client-users/create-client-user.js";
 export { listClientUsers } from "./client-users/list-client-users.js";

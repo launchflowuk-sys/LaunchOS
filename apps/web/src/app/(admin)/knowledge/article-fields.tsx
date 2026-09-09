@@ -1,3 +1,4 @@
+import { NAV_GROUPS } from "@/lib/nav";
 import { InlineAlert } from "@/components/inline-alert";
 import { MarkdownEditor } from "@/components/markdown-editor";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -9,9 +10,20 @@ export type ArticleDefaults = {
   tags: readonly string[];
   bodyMd: string;
   published: boolean;
+  /** Screens this guide is pinned to, as sidebar hrefs. */
+  routes: readonly string[];
+  audiences: readonly string[];
 };
 
-export const EMPTY_ARTICLE: ArticleDefaults = { title: "", tags: [], bodyMd: "", published: false };
+export const EMPTY_ARTICLE: ArticleDefaults = {
+  title: "", tags: [], bodyMd: "", published: false, routes: [], audiences: ["staff"],
+};
+
+const AUDIENCES = [
+  { key: "staff", label: "Staff", hint: "The people doing the work. Write these first." },
+  { key: "admin", label: "You", hint: "Owner-only detail." },
+  { key: "client", label: "Clients", hint: "Shown in the client portal." },
+] as const;
 
 /**
  * The fields shared by "New article" and the edit form. A server component: the
@@ -43,6 +55,53 @@ export function ArticleFields({ defaults }: { defaults: ArticleDefaults }) {
           </p>
         </div>
       </div>
+
+      {/* Who it is for, and where it shows up. Both matter more than the body:
+          a guide nobody is shown is a guide nobody reads, and the whole point
+          of pinning to a screen is that help arrives where somebody is stuck
+          rather than where somebody thought to look. */}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Who it is for</legend>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          {AUDIENCES.map((audience) => (
+            <label key={audience.key} className="flex items-start gap-2">
+              <Checkbox
+                name="audiences"
+                value={audience.key}
+                defaultChecked={defaults.audiences.includes(audience.key)}
+                className="mt-0.5"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">{audience.label}</span>
+                <span className="block text-meta text-muted-foreground">{audience.hint}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">Which screens it helps with</legend>
+        <p className="text-meta text-muted-foreground">
+          The help button on those screens will show this guide. Pin it to every screen where somebody might
+          need it — a guide can be on more than one.
+        </p>
+        <div className="max-h-72 overflow-y-auto rounded-[14px] border p-4">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.label} className="mb-4 last:mb-0">
+              <p className="label-caps mb-1.5 text-muted-foreground">{group.label}</p>
+              <div className="grid gap-1.5 sm:grid-cols-2">
+                {group.items.map((item) => (
+                  <label key={item.href} className="flex items-center gap-2">
+                    <Checkbox name="routes" value={item.href} defaultChecked={defaults.routes.includes(item.href)} />
+                    <span className="text-sm">{item.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </fieldset>
 
       <MarkdownEditor name="bodyMd" label="Article body" defaultValue={defaults.bodyMd} />
 

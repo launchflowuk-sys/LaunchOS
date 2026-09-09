@@ -76,6 +76,8 @@ export default async function ArticlePage({ params, searchParams }: PageProps<"/
             tags: article.tags,
             bodyMd: article.bodyMd,
             published: article.published,
+            routes: article.routes,
+            audiences: article.audiences,
           }}
         />
         <div className="mt-6 flex border-t pt-4 sm:justify-end">

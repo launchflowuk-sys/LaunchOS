@@ -18,12 +18,14 @@ const ArticleFields = z.object({
   title: z.string().trim().min(1).max(200),
   bodyMd: z.string().trim().min(1),
   tags: z.string().trim(),
+  routes: z.array(z.string().trim()).default([]),
+  audiences: z.array(z.enum(["admin", "staff", "client"])).default([]),
   // An unchecked checkbox is simply absent from the FormData, so `null` is the
   // "off" case rather than a validation failure.
   published: z.union([z.literal("on"), z.null()]).transform((v) => v === "on"),
 });
 
-type ArticleValues = { title: string; bodyMd: string; tags: string[]; published: boolean };
+type ArticleValues = { title: string; bodyMd: string; tags: string[]; published: boolean; routes: string[]; audiences: ("admin" | "staff" | "client")[] };
 
 const INVALID = "Give the article a title and a body.";
 
@@ -32,6 +34,10 @@ function parse(formData: FormData): { ok: true; value: ArticleValues } | { ok: f
     title: formData.get("title"),
     bodyMd: formData.get("bodyMd"),
     tags: formData.get("tags") ?? "",
+    // Checkbox groups: every checked box appears under the same name, and an
+    // article pinned to nothing is a page nobody will find by being stuck.
+    routes: formData.getAll("routes").map(String),
+    audiences: formData.getAll("audiences").map(String),
     published: formData.get("published"),
   });
   if (!parsed.success) return { ok: false, message: INVALID };

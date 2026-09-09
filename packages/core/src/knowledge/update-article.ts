@@ -11,6 +11,10 @@ export const UpdateKnowledgeArticleInput = z.object({
   bodyMd: z.string().min(1).optional(),
   tags: z.array(z.string().min(1)).optional(),
   published: z.boolean().optional(),
+  /** Sidebar hrefs this guide is pinned to — see `helpForRoute`. */
+  routes: z.array(z.string().min(1)).optional(),
+  /** Who it is written for. Staff first; that is who the feature is for. */
+  audiences: z.array(z.enum(["admin", "staff", "client"])).optional(),
   // Audit actor; never written to the article row itself.
   actorId: z.string().optional(),
 });

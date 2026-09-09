@@ -1,4 +1,5 @@
 import { checkDiskSpace, checkWorkerDown } from "@launchos/core";
+import { HelpButton } from "@/components/help-button";
 import { schema } from "@launchos/db";
 import { and, count, eq } from "drizzle-orm";
 import { AccountMenu } from "@/components/account-menu";
@@ -120,6 +121,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
               <GlobalSearch />
             </div>
             <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:ml-0 sm:gap-2">
+              <HelpButton />
               <ClockWidget running={running} />
               <NotificationsBell session={session} />
               <AccountMenu email={session.email} role={session.role} />

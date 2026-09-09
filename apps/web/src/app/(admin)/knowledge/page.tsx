@@ -100,9 +100,14 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
         description="What Support Triage reads before it drafts a reply, and what the team reads before it fixes the same thing twice."
         category="automation"
         actions={
-          <Button asChild>
-            <Link href="/knowledge/new">New article</Link>
-          </Button>
+          <>
+            <Button asChild variant="secondary">
+              <Link href="/knowledge/coverage">Help coverage</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/knowledge/new">New article</Link>
+            </Button>
+          </>
         }
       />
 
