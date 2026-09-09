@@ -64,16 +64,32 @@ export class HostingerRegistrarAdapter implements RegistrarAdapter {
     }
     const entries = Array.isArray(parsed.data) ? parsed.data : parsed.data.data;
 
-    return entries.map((entry) => ({
+    const domains = entries.map((entry) => ({
       // Lower-cased and de-dotted so it compares against `domains.name`
       // without every caller remembering to.
       name: entry.domain.trim().toLowerCase().replace(/\.$/, ""),
       expiresAt: toDate(entry.expires_at),
-      // Two spellings because Hostinger has used both; `null` when neither is
-      // present, which is not the same as "auto-renew is off".
+      // Hostinger's portfolio carries no auto-renew field at all today — this
+      // is checked against the live response, not assumed. Two spellings are
+      // accepted in case one appears; `null` means "not stated", which the
+      // sync treats as "leave whatever is on the record alone" rather than as
+      // "auto-renew is off".
       autoRenew: entry.is_auto_renew_enabled ?? entry.auto_renew ?? null,
       status: entry.status ?? null,
     }));
+
+    // A name can appear twice. A domain that came free with hosting is listed
+    // as its own entry with `expires_at: null` *beside* the real registration —
+    // `shayanchaudary.com` on this account is both — so a plain last-wins map
+    // would hand back the dateless one about half the time and the domain would
+    // silently never get a renewal date. The entry that actually knows when it
+    // expires is the one worth keeping.
+    const best = new Map<string, RegistrarDomain>();
+    for (const domain of domains) {
+      const held = best.get(domain.name);
+      if (!held || (held.expiresAt === null && domain.expiresAt !== null)) best.set(domain.name, domain);
+    }
+    return [...best.values()];
   }
 }
 
