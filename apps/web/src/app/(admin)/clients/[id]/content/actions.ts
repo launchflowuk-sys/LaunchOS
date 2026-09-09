@@ -11,6 +11,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
+import { sendJob } from "@/lib/queue";
 
 /**
  * Local to this module rather than shared — every admin module in this app
@@ -331,4 +332,48 @@ export async function findGbpLocationsAction(): Promise<GbpLocationsResult> {
     console.error("GBP location lookup failed", error);
     return { status: "error", message: "Google did not answer. Try again in a moment." };
   }
+}
+
+/**
+ * Asks the Brief Writer to draft this client's brief from their own website.
+ *
+ * Queued rather than run inline: it is a real, billed Claude run that reads a
+ * website, and a server action that waited for it would hold a request open
+ * for half a minute and time out behind a slow site.
+ *
+ * The singleton key carries a timestamp so pressing it again after correcting
+ * the website address is a second run, not a duplicate swallowed by the queue.
+ */
+export async function draftBriefAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("content");
+  if (!gate.ok) return { status: "error", message: gate.message };
+
+  const clientId = z.string().uuid().safeParse(formData.get("clientId"));
+  if (!clientId.success) return { status: "error", message: "That client could not be identified" };
+
+  const [client] = await getDb()
+    .select({ websiteUrl: schema.clients.websiteUrl })
+    .from(schema.clients)
+    .where(and(
+      eq(schema.clients.id, clientId.data),
+      eq(schema.clients.organisationId, gate.session.organisationId),
+    ));
+  if (!client) return { status: "error", message: "That client could not be found" };
+  // Said here rather than discovered three turns into a billed run.
+  if (!client.websiteUrl) {
+    return { status: "error", message: "Add the client's website address first — the brief is written from it." };
+  }
+
+  await sendJob(
+    "agent.run",
+    {
+      agentKey: "brief_writer",
+      organisationId: gate.session.organisationId,
+      trigger: "manual",
+      payload: { clientId: clientId.data },
+    },
+    { singletonKey: `brief_writer:${clientId.data}:${Date.now()}` },
+  );
+  revalidatePath(`/clients/${clientId.data}/content`);
+  return { status: "ok" };
 }

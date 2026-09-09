@@ -3,7 +3,7 @@ import {
   listContentItems, listSites, monthName, periodKeyFor,
 } from "@launchos/core";
 import { hasGbpCredentials, hasMetaSocialCredentials } from "@launchos/integrations";
-import { Newspaper } from "lucide-react";
+import { Newspaper, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -19,7 +19,10 @@ import { ChannelLabel, ContentStatusBadge, KIND_LABEL } from "../../../content/p
 import { ClientTabs } from "../tabs";
 import { AssetLibrary } from "./asset-library";
 import { BrandForm } from "./brand-form";
+import { ActionForm } from "@/components/action-form";
+import { InlineAlert } from "@/components/inline-alert";
 import { BriefForm } from "./brief-form";
+import { draftBriefAction } from "./actions";
 import { ChannelsForm } from "./channels-form";
 
 export const dynamic = "force-dynamic";
@@ -120,7 +123,27 @@ export default async function ClientContentPage({ params }: PageProps<"/clients/
       <Section
         title="Brief"
         description="What the content writer knows about this client. It reads this and the knowledge base before every draft, and never invents an offer that is not here."
+        actions={
+          <ActionForm
+            action={draftBriefAction}
+            success="Drafting — it will appear here in a minute or two"
+            ariaLabel="Draft the brief from the website"
+          >
+            <input type="hidden" name="clientId" value={client.id} />
+            <Button type="submit" variant="secondary" size="sm">
+              <Sparkles aria-hidden strokeWidth={1.9} className="size-4" />
+              {brief ? "Redraft from website" : "Draft from website"}
+            </Button>
+          </ActionForm>
+        }
       >
+        {/* Said before the button rather than after a billed run: without an
+            address there is nothing to read and nothing to write from. */}
+        {!client.websiteUrl ? (
+          <InlineAlert tone="info" title="No website on record" className="mb-4">
+            Add the client&rsquo;s website address on their Details tab and this can be drafted for you.
+          </InlineAlert>
+        ) : null}
         <BriefForm clientId={client.id} brief={brief} />
       </Section>
 

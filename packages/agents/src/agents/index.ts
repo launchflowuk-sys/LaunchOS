@@ -5,6 +5,7 @@ export { cmsProviderFor, scopedCmsProvider } from "./integrations.js";
 export type { AgentIntegrations, CmsProviderFactory, CmsProviderScope } from "./integrations.js";
 import type { AgentDefinition } from "../kernel/types.js";
 import { adPerformanceSentinel } from "./ad-performance-sentinel/index.js";
+import { briefWriter } from "./brief-writer/index.js";
 import { caseStudyWriter } from "./case-study-writer/index.js";
 import { contentWriter } from "./content-writer/index.js";
 import { hostingGuardDog } from "./hosting-guard-dog/index.js";
@@ -46,6 +47,7 @@ export function agentRegistry(deps: AgentRegistryDeps): Record<string, AgentDefi
     proposalDrafter(),
     projectReporter(),
     caseStudyWriter(),
+    briefWriter(),
   ];
   return Object.fromEntries(defs.map((d) => [d.key, d]));
 }
