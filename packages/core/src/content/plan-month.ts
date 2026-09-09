@@ -23,6 +23,13 @@ export type PlanContentMonthInput = z.input<typeof PlanContentMonthInput>;
 export interface PlanContentMonthResult {
   created: number;
   skipped: number;
+  /**
+   * Channels the package pays for and the client has not connected. Nothing was
+   * planned for them — and that is worth saying out loud rather than quietly
+   * planning less, because a client paying for eight posts and receiving none
+   * is a billing problem, not a scheduling one.
+   */
+  unplanned: UnplannedChannel[];
   /** Every slot the month now has, created or pre-existing, in publish order. */
   items: ContentItemRow[];
 }
@@ -35,26 +42,65 @@ interface Slot {
   scheduledFor: Date;
 }
 
+/** What the package pays for on a channel nothing is connected to. */
+export interface UnplannedChannel {
+  channel: ContentChannel;
+  /** How many posts the package includes and this client will not be getting. */
+  wanted: number;
+}
+
 /**
- * The month's slots from the package quotas. Social posts alternate Facebook
- * and Instagram in publish order; each channel numbers its own slots from 1
- * so the idempotency key is `(channel, slot)`, while `sequence` keeps the
- * position the recurring task was numbered by.
+ * The month's slots from the package quotas, for the channels this client
+ * actually has connected.
+ *
+ * **Connection is what decides.** A post written for a platform nobody has
+ * linked has nowhere to go: it costs a model call to write, an image to render
+ * and an approval to reject, and the client never sees it. One channel is
+ * connected across fourteen clients, so this was most of the work the content
+ * engine was doing.
+ *
+ * Social alternates Facebook and Instagram when both are connected, and becomes
+ * whichever one is connected when only one is — a client with a Facebook Page
+ * and no Instagram gets all eight of their posts on Facebook, rather than four
+ * posts and four dead ends.
+ *
+ * Slots are still numbered per channel from 1, so the idempotency key
+ * `(channel, slot)` is unchanged: connecting Instagram next month adds slots
+ * beside the Facebook ones rather than renumbering anything already planned.
  */
-export function slotsFor(periodKey: string, includes: PackageIncludes): Slot[] {
-  const social = spreadSlotTimes(periodKey, includes.socialPostsPerMonth).map((scheduledFor, i): Slot => ({
-    channel: i % 2 === 0 ? "facebook" : "instagram",
-    slot: Math.floor(i / 2) + 1,
-    sequence: i + 1,
-    scheduledFor,
-  }));
-  const blog = spreadSlotTimes(periodKey, includes.blogPostsPerMonth).map((scheduledFor, i): Slot => ({
-    channel: "blog", slot: i + 1, sequence: i + 1, scheduledFor,
-  }));
-  const gbp = spreadSlotTimes(periodKey, includes.gbpUpdatesPerMonth).map((scheduledFor, i): Slot => ({
-    channel: "gbp", slot: i + 1, sequence: i + 1, scheduledFor,
-  }));
-  return [...social, ...blog, ...gbp];
+export function slotsFor(
+  periodKey: string,
+  includes: PackageIncludes,
+  connected: ReadonlySet<ContentChannel>,
+): { slots: Slot[]; unplanned: UnplannedChannel[] } {
+  const unplanned: UnplannedChannel[] = [];
+
+  const socialChannels = (["facebook", "instagram"] as const).filter((channel) => connected.has(channel));
+  const social = socialChannels.length === 0
+    ? []
+    : spreadSlotTimes(periodKey, includes.socialPostsPerMonth).map((scheduledFor, i): Slot => {
+        const channel = socialChannels[i % socialChannels.length]!;
+        return { channel, slot: Math.floor(i / socialChannels.length) + 1, sequence: i + 1, scheduledFor };
+      });
+  if (socialChannels.length === 0 && includes.socialPostsPerMonth > 0) {
+    // Reported as Facebook because that is what the package sells; the point of
+    // the row is the number, not which of the two is missing.
+    unplanned.push({ channel: "facebook", wanted: includes.socialPostsPerMonth });
+  }
+
+  const simple = (channel: ContentChannel, wanted: number): Slot[] => {
+    if (wanted > 0 && !connected.has(channel)) {
+      unplanned.push({ channel, wanted });
+      return [];
+    }
+    return spreadSlotTimes(periodKey, wanted).map((scheduledFor, i): Slot => ({
+      channel, slot: i + 1, sequence: i + 1, scheduledFor,
+    }));
+  };
+
+  const blog = simple("blog", includes.blogPostsPerMonth);
+  const gbp = simple("gbp", includes.gbpUpdatesPerMonth);
+  return { slots: [...social, ...blog, ...gbp], unplanned };
 }
 
 /**
@@ -114,7 +160,18 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
   ));
   if (!pkg) throw new ContentRefused("no_package", "The client's package could not be found.");
 
-  const slots = slotsFor(v.periodKey, pkg.includes);
+  const channels = await db
+    .select({ channel: schema.contentChannels.channel })
+    .from(schema.contentChannels)
+    .where(and(
+      eq(schema.contentChannels.organisationId, organisationId),
+      eq(schema.contentChannels.clientId, v.clientId),
+      eq(schema.contentChannels.enabled, true),
+      isNull(schema.contentChannels.deletedAt),
+    ));
+  const connected = new Set(channels.map((row) => row.channel));
+
+  const { slots, unplanned } = slotsFor(v.periodKey, pkg.includes, connected);
   const tasks = await recurringTasksFor(db, organisationId, v.clientId, v.periodKey);
 
   let created = 0;
@@ -161,7 +218,7 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
   }
 
   items.sort((a, b) => (a.scheduledFor?.getTime() ?? 0) - (b.scheduledFor?.getTime() ?? 0));
-  return { created, skipped, items };
+  return { created, skipped, unplanned, items };
 }
 
 async function findSlot(

@@ -25,7 +25,21 @@ export async function contentJobFixture(db: Db, opts: { includes?: PackageInclud
 }
 
 /** Another client in the same organisation, with its own package and (by default) subscription. */
-export async function addClient(db: Db, orgId: string, opts: { includes?: PackageIncludes; subscribed?: boolean; name: string }) {
+export async function addClient(
+  db: Db,
+  orgId: string,
+  opts: {
+    includes?: PackageIncludes;
+    subscribed?: boolean;
+    name: string;
+    /**
+     * Connected channels. Everything by default: the planner only makes slots
+     * for channels a client has actually connected, so a fixture with none
+     * plans an empty month and every assertion below would be about nothing.
+     */
+    channels?: readonly ContentChannel[];
+  },
+) {
   const [pkg] = await db.insert(schema.packages).values({
     organisationId: orgId, name: `Pkg ${opts.name}`, slug: `pkg-${randomUUID()}`, monthlyPricePence: 9900, includes: opts.includes ?? INCLUDES,
   }).returning();
@@ -39,6 +53,13 @@ export async function addClient(db: Db, orgId: string, opts: { includes?: Packag
       amountPence: 9900, currency: "GBP",
     });
   }
+  const channels = opts.channels ?? (["facebook", "instagram", "blog", "gbp"] as const);
+  for (const channel of channels) {
+    await setContentChannel(db, orgId, {
+      clientId: client!.id, channel, externalId: `${channel}-${randomUUID()}`, actorKind: "system",
+    });
+  }
+
   return { clientId: client!.id, packageId: pkg!.id };
 }
 

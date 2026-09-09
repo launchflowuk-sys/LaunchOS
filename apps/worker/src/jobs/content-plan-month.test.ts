@@ -62,7 +62,7 @@ describe("runPlanMonth", () => {
       const result = await runPlanMonth({ db, boss, logger: silentLogger() }, f.orgId, NOW);
 
       // 2 social + 1 blog + 1 gbp per client.
-      expect(result).toEqual({ periodKey: PERIOD, clients: 2, created: 8, drafts: 2, skipped: 0, failed: 0 });
+      expect(result).toEqual({ periodKey: PERIOD, clients: 2, created: 8, drafts: 2, skipped: 0, unconnected: 0, failed: 0 });
       expect(await slotsOf(db, f.orgId, f.clientId)).toHaveLength(4);
       expect(await slotsOf(db, f.orgId, second.clientId)).toHaveLength(4);
 
@@ -111,7 +111,7 @@ describe("runPlanMonth", () => {
 
       const result = await runPlanMonth({ db, boss, logger: silentLogger() }, f.orgId, NOW);
 
-      expect(result).toEqual({ periodKey: PERIOD, clients: 1, created: 0, drafts: 0, skipped: 1, failed: 0 });
+      expect(result).toEqual({ periodKey: PERIOD, clients: 1, created: 0, drafts: 0, skipped: 1, unconnected: 0, failed: 0 });
       expect(sent).toEqual([]);
       expect(await slotsOf(db, f.orgId, f.clientId)).toHaveLength(0);
     });

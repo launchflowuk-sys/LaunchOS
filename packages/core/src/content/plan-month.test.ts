@@ -4,20 +4,58 @@ import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { createTask } from "../tasks/create-task.js";
 import { cancelContentItem } from "./items.js";
+import type { ContentChannel } from "@launchos/db/schema";
 import { planContentMonth, slotsFor } from "./plan-month.js";
 import { auditRows, contentFixture, INCLUDES } from "./test-fixtures.js";
 
 const londonClock = (d: Date) =>
   d.toLocaleString("en-GB", { timeZone: "Europe/London", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
+const ALL = new Set<ContentChannel>(["facebook", "instagram", "blog", "gbp"]);
+
 describe("slotsFor", () => {
   it("alternates facebook and instagram, numbering each channel from 1", () => {
-    const slots = slotsFor("2026-09", INCLUDES);
+    const { slots } = slotsFor("2026-09", INCLUDES, ALL);
     expect(slots.map((s) => `${s.channel}:${s.slot}`)).toEqual([
       "facebook:1", "instagram:1", "facebook:2", "instagram:2", "blog:1", "gbp:1", "gbp:2",
     ]);
     expect(slots.slice(0, 4).map((s) => s.sequence)).toEqual([1, 2, 3, 4]);
-    expect(slotsFor("2026-09", { ...INCLUDES, socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 })).toEqual([]);
+    const none = slotsFor("2026-09", { ...INCLUDES, socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 }, ALL);
+    expect(none.slots).toEqual([]);
+    expect(none.unplanned).toEqual([]);
+  });
+
+  /**
+   * The reason this became channel-aware. One channel is connected across
+   * fourteen clients, so most of what the content engine wrote had nowhere to
+   * go: a model call, a rendered image and an approval to reject, for a post
+   * the client never sees.
+   */
+  it("puts every social post on the one platform that is connected", () => {
+    const { slots, unplanned } = slotsFor("2026-09", INCLUDES, new Set<ContentChannel>(["facebook", "blog", "gbp"]));
+    expect(slots.filter((s) => s.channel === "facebook").map((s) => s.slot)).toEqual([1, 2, 3, 4]);
+    expect(slots.some((s) => s.channel === "instagram")).toBe(false);
+    expect(unplanned).toEqual([]);
+  });
+
+  it("plans nothing for a channel with no connection, and says what was skipped", () => {
+    const { slots, unplanned } = slotsFor("2026-09", INCLUDES, new Set<ContentChannel>(["blog"]));
+    expect(slots.every((s) => s.channel === "blog")).toBe(true);
+    expect(unplanned).toEqual([
+      { channel: "facebook", wanted: INCLUDES.socialPostsPerMonth },
+      { channel: "gbp", wanted: INCLUDES.gbpUpdatesPerMonth },
+    ]);
+  });
+
+  it("plans nothing at all when nothing is connected, rather than writing into the void", () => {
+    const { slots, unplanned } = slotsFor("2026-09", INCLUDES, new Set<ContentChannel>());
+    expect(slots).toEqual([]);
+    expect(unplanned.map((row) => row.channel)).toEqual(["facebook", "blog", "gbp"]);
+  });
+
+  it("says nothing is unplanned when the package does not include it either", () => {
+    const { unplanned } = slotsFor("2026-09", { ...INCLUDES, gbpUpdatesPerMonth: 0 }, new Set<ContentChannel>(["facebook", "instagram", "blog"]));
+    expect(unplanned).toEqual([]);
   });
 });
 
@@ -103,7 +141,7 @@ describe("planContentMonth", () => {
 
       const empty = await contentFixture(db, { includes: { ...INCLUDES, socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 } });
       const result = await planContentMonth(db, empty.orgId, { clientId: empty.clientId, periodKey: "2026-09" });
-      expect(result).toEqual({ created: 0, skipped: 0, items: [] });
+      expect(result).toEqual({ created: 0, skipped: 0, unplanned: [], items: [] });
     });
   });
 

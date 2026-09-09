@@ -34,7 +34,7 @@ describe("content_get_brief", () => {
       expect(out.client.websiteUrl).toBe("https://grayscabline.co.uk");
       expect(out.brief).toMatchObject({ tone: "Friendly, plain, local", offers: "10% off first airport booking", doNotSay: "cheapest" });
       expect(out.sites.map((s) => s.primaryUrl)).toEqual(["https://grayscabline.co.uk"]);
-      expect(out.channels.map((c) => c.channel).sort()).toEqual(["blog", "facebook"]);
+      expect(out.channels.map((c) => c.channel).sort()).toEqual(["blog", "facebook", "gbp", "instagram"]);
     });
   });
 

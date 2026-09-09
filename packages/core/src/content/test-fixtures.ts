@@ -1,3 +1,4 @@
+import type { ContentChannel } from "@launchos/db/schema";
 import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
@@ -12,7 +13,21 @@ export const INCLUDES: PackageIncludes = {
  * The smallest world a content test needs: an organisation with an owner, a
  * client on a package with quotas, an active subscription and one portal user.
  */
-export async function contentFixture(db: Db, opts: { includes?: PackageIncludes; withSubscription?: boolean; name?: string } = {}) {
+export async function contentFixture(
+  db: Db,
+  opts: {
+    includes?: PackageIncludes;
+    withSubscription?: boolean;
+    name?: string;
+    /**
+     * Which channels this client has connected. Everything, by default: the
+     * planner only makes slots for connected channels, so a fixture with none
+     * would plan nothing and every content test would be asserting on an empty
+     * month. Pass a shorter list to test what a client with one Page gets.
+     */
+    channels?: readonly ContentChannel[];
+  } = {},
+) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `content-${randomUUID()}` }).returning();
   const ownerId = randomUUID();
   await db.insert(schema.user).values({ id: ownerId, name: "Owner", email: `owner-${ownerId}@example.test`, emailVerified: true });
@@ -36,6 +51,16 @@ export async function contentFixture(db: Db, opts: { includes?: PackageIncludes;
         currentPeriodStart: new Date("2026-09-01T00:00:00Z"), currentPeriodEnd: new Date("2026-09-30T23:59:59Z"),
         amountPence: 14900, currency: "GBP",
       }).returning();
+
+  const channels = opts.channels ?? (["facebook", "instagram", "blog", "gbp"] as const);
+  if (channels.length > 0) {
+    await db.insert(schema.contentChannels).values(
+      channels.map((channel) => ({
+        organisationId: org!.id, clientId: client!.id, channel,
+        externalId: `${channel}-${randomUUID()}`, enabled: true,
+      })),
+    );
+  }
 
   return { orgId: org!.id, ownerId, clientId: client!.id, packageId: pkg!.id, portalUserId, subscription };
 }

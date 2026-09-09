@@ -49,6 +49,11 @@ export async function writerFixture(db: Db, opts: { includes?: PackageIncludes; 
   }
   await setContentChannel(db, orgId, { clientId, channel: "facebook", externalId: "1234567890", displayName: "Grays CabLine", actorKind: "system" });
   await setContentChannel(db, orgId, { clientId, channel: "blog", externalId: site!.id, displayName: "grayscabline.co.uk", actorKind: "system" });
+  // Instagram and GBP too, so the writer's tests exercise a full month. The
+  // planner only lays out slots for connected channels now — what a client with
+  // a partial set gets is `plan-month`'s own test, not this one's business.
+  await setContentChannel(db, orgId, { clientId, channel: "instagram", externalId: "ig-1234567890", displayName: "graystaxis", actorKind: "system" });
+  await setContentChannel(db, orgId, { clientId, channel: "gbp", externalId: "gbp-1234567890", displayName: "Grays CabLine", actorKind: "system" });
   await createKnowledgeArticle(db, orgId, {
     title: "Airport transfers", bodyMd: "Fixed fares to Stansted, Heathrow and Gatwick, booked in advance.", tags: ["taxi"], published: true,
   });

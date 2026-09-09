@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { and, eq } from "drizzle-orm";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { createProject, periodKeyFor, renderDeliveryReport, setEnqueue, signOffDelivery } from "@launchos/core";
+import { createProject, periodKeyFor, renderDeliveryReport, setContentChannel, setEnqueue, signOffDelivery } from "@launchos/core";
 import type { PackageIncludes } from "@launchos/db/schema";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -65,6 +65,14 @@ async function fixture(db: Db, options: { withSubscription?: boolean } = {}) {
       amountPence: 14900, currency: "GBP",
     });
   }
+
+  // The care plan only lays out slots for channels the client has connected.
+  // A just-delivered client usually has none yet — which is a real case, and
+  // the one the owner gets told about — so the fixture connects a Page to test
+  // the path where there is somewhere to publish.
+  await setContentChannel(db, organisationId, {
+    clientId: client!.id, channel: "facebook", externalId: `fb-${randomUUID()}`, actorKind: "system",
+  });
 
   const created = await createProject(db, organisationId, {
     clientId: client!.id, name: "Website for KD Landscapes", status: "active",

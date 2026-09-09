@@ -1,4 +1,4 @@
-import { ContentRefused, periodKeyFor, planContentMonth } from "@launchos/core";
+import { CHANNEL_LABEL, ContentRefused, notifyOwner, periodKeyFor, planContentMonth } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { PackageIncludes } from "@launchos/db/schema";
@@ -29,6 +29,8 @@ export interface PlanMonthResult {
   created: number;
   /** Clients with an unfilled slot this month, so a `content.draft` was sent. */
   drafts: number;
+  /** Channel quotas that could not be planned because nothing is connected. */
+  unconnected: number;
   /** Clients the planner refused (no subscription, no package) — expected, not failures. */
   skipped: number;
   failed: number;
@@ -48,9 +50,9 @@ function hasContentQuota(includes: PackageIncludes): boolean {
  * this month. Read from the subscription, not `clients.package_id`, for the
  * same reason `planContentMonth` does: what they are paying for is what they get.
  */
-export async function clientsOwedContent(db: Db, organisationId: string): Promise<{ clientId: string }[]> {
+export async function clientsOwedContent(db: Db, organisationId: string): Promise<{ clientId: string; clientName: string }[]> {
   const rows = await db
-    .select({ clientId: schema.subscriptions.clientId, includes: schema.packages.includes })
+    .select({ clientId: schema.subscriptions.clientId, clientName: schema.clients.name, includes: schema.packages.includes })
     .from(schema.subscriptions)
     .innerJoin(schema.packages, eq(schema.subscriptions.packageId, schema.packages.id))
     .innerJoin(schema.clients, eq(schema.subscriptions.clientId, schema.clients.id))
@@ -65,7 +67,7 @@ export async function clientsOwedContent(db: Db, organisationId: string): Promis
   return rows
     .filter((row) => hasContentQuota(row.includes))
     .filter((row) => (seen.has(row.clientId) ? false : (seen.add(row.clientId), true)))
-    .map((row) => ({ clientId: row.clientId }));
+    .map((row) => ({ clientId: row.clientId, clientName: row.clientName }));
 }
 
 /**
@@ -87,13 +89,20 @@ export async function runPlanMonth(deps: PlanMonthDeps, organisationId: string, 
   let created = 0;
   let drafts = 0;
   let skipped = 0;
+  // Clients paying for posts on a platform they have not connected. Collected
+  // across the sweep and reported once: fourteen separate bells on the 1st is
+  // the sort of thing that gets the bell ignored.
+  const unconnected: { clientId: string; clientName: string; channel: string; wanted: number }[] = [];
   const label = `content plan-month (${organisationId})`;
-  const summary = await sweep(clients, { label, id: (c) => c.clientId, logger }, async ({ clientId }) => {
+  const summary = await sweep(clients, { label, id: (c) => c.clientId, logger }, async ({ clientId, clientName }) => {
     let items;
     try {
       const planned = await planContentMonth(deps.db, organisationId, { clientId, periodKey, actorKind: "system" });
       created += planned.created;
       items = planned.items;
+      for (const row of planned.unplanned) {
+        unconnected.push({ clientId, clientName, channel: CHANNEL_LABEL[row.channel], wanted: row.wanted });
+      }
     } catch (error) {
       // No live subscription or no package between the read above and the
       // plan: the client is not owed content after all.
@@ -107,7 +116,26 @@ export async function runPlanMonth(deps: PlanMonthDeps, organisationId: string, 
     drafts += 1;
   });
 
-  const result: PlanMonthResult = { periodKey, clients: clients.length, created, drafts, skipped, failed: summary.failed };
+  // Said out loud rather than quietly planned around. A client paying for eight
+  // posts a month and receiving none is a billing problem, and the only moment
+  // anybody would notice it is now.
+  if (unconnected.length > 0) {
+    const clientCount = new Set(unconnected.map((row) => row.clientId)).size;
+    await notifyOwner(deps.db, organisationId, {
+      kind: "content_item.no_channel",
+      title: `${clientCount} client${clientCount === 1 ? "" : "s"} are paying for posts with nowhere to publish`,
+      body: unconnected
+        .map((row) => `${row.clientName}: ${row.wanted} ${row.channel} post${row.wanted === 1 ? "" : "s"} not planned`)
+        .join(". "),
+      link: "/content",
+    });
+  }
+
+  const result: PlanMonthResult = {
+    periodKey, clients: clients.length, created, drafts, skipped,
+    unconnected: unconnected.length,
+    failed: summary.failed,
+  };
   logger.info({ organisationId, ...result }, "content plan-month");
   throwOnSweepFailure(label, summary);
   return result;

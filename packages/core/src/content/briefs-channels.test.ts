@@ -7,7 +7,8 @@ import { auditRows, contentFixture } from "./test-fixtures.js";
 describe("content briefs", () => {
   it("creates then replaces the brief, one row per client, audited both times", async () => {
     await withTestDb(async (db) => {
-      const { orgId, clientId, ownerId } = await contentFixture(db);
+      // Connects its own channels, so it starts from a client with none.
+      const { orgId, clientId, ownerId } = await contentFixture(db, { channels: [] });
 
       const created = await upsertContentBrief(db, orgId, {
         clientId, tone: "Friendly, local", audience: "Grays residents", services: "Airport runs", actorId: ownerId,
@@ -44,7 +45,8 @@ describe("content briefs", () => {
 describe("content channels", () => {
   it("connects a channel, replaces it on a second call and lists enabled ones", async () => {
     await withTestDb(async (db) => {
-      const { orgId, clientId } = await contentFixture(db);
+      // Connects its own, so it starts from a client with none.
+      const { orgId, clientId } = await contentFixture(db, { channels: [] });
 
       const page = await setContentChannel(db, orgId, { clientId, channel: "facebook", externalId: "123", displayName: "Grays CabLine" });
       await setContentChannel(db, orgId, { clientId, channel: "instagram", externalId: "ig-1", enabled: false });
