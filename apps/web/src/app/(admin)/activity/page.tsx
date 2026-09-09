@@ -1,10 +1,15 @@
 import { listActivity, listClients } from "@launchos/core";
-import { Activity } from "lucide-react";
+import { Activity, AlertTriangle, CalendarDays, Layers } from "lucide-react";
 import Link from "next/link";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { getDb } from "@/lib/db";
 import { isInAppPath } from "@/lib/in-app-path";
-import { iconOf, sourceLabel, timeAgo, TONE_STRIPE, TONE_TILE, toneOf } from "@/lib/notification-kind";
+import { categoryOf, iconOf, sourceLabel, timeAgo, TONE_STRIPE, TONE_TILE, toneOf } from "@/lib/notification-kind";
+import { CATEGORY_DOT, type Category } from "@/lib/categories";
+import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Section } from "@/components/section";
+import { StatCard } from "@/components/stat-card";
 import { requireAdmin } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +31,23 @@ export const metadata = { title: "Activity" };
  */
 
 const LIMIT = 200;
+
+/**
+ * The order the groups appear in, and the words above them.
+ *
+ * Fixed rather than sorted by volume: a screen whose sections move around
+ * between visits cannot be learned, and the thing somebody opens Activity to
+ * find — did something break, did money move — should not slide down the page
+ * on a quiet week.
+ */
+const GROUPS: readonly { category: Category; title: string; blurb: string }[] = [
+  { category: "support", title: "Support", blurb: "Tickets, incidents and messages" },
+  { category: "money", title: "Money", blurb: "Invoices, payments, subscriptions and proposals" },
+  { category: "delivery", title: "Delivery", blurb: "Projects, tasks, sites, domains and content" },
+  { category: "automation", title: "Automation", blurb: "Agents, approvals, the queue and the worker" },
+  { category: "overview", title: "Leads and reporting", blurb: "Enquiries, meetings, ads and reports" },
+  { category: "organisation", title: "People", blurb: "Team members and portal users" },
+];
 
 /** `2026-09-09` → "Today" / "Yesterday" / "Tuesday 9 September". */
 function dayLabel(value: Date, now: Date): string {
@@ -50,16 +72,27 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
   const now = new Date();
   const named = clients.find((client) => client.id === clientId);
 
-  // Grouped by day rather than printed as one long list: a timeline answers
-  // "what happened, and when" and the date is half of that. Insertion order is
-  // preserved because the rows already arrive newest first.
-  const byDay = new Map<string, typeof rows>();
+  // Grouped by the part of the business it belongs to, not by day. A flat
+  // timeline answers "what happened" and nothing else; the question actually
+  // being asked of this screen is "is anything wrong, and where", and that is a
+  // question about kind. The day is still on every row as "3h ago".
+  const byCategory = new Map<Category, typeof rows>();
   for (const row of rows) {
-    const key = dayLabel(row.createdAt, now);
-    const bucket = byDay.get(key);
+    const key = categoryOf(row.kind);
+    const bucket = byCategory.get(key);
     if (bucket) bucket.push(row);
-    else byDay.set(key, [row]);
+    else byCategory.set(key, [row]);
   }
+  const groups = GROUPS.map((group) => ({ ...group, rows: byCategory.get(group.category) ?? [] }))
+    .filter((group) => group.rows.length > 0);
+
+  // Critical and attention together: the summary's job is to say whether
+  // anything on this page needs a person, not to grade how badly.
+  const needsAttention = rows.filter((row) => {
+    const tone = toneOf(row.kind);
+    return tone === "critical" || tone === "attention";
+  }).length;
+  const today = rows.filter((row) => dayLabel(row.createdAt, now) === "Today").length;
 
   return (
     <>
@@ -72,33 +105,56 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
         }
       />
 
-      {/* Filtering by client is the only question this screen gets asked, and
-          links rather than a form so a filtered view is shareable. */}
+      {/* A select, not a row of pills. Twenty-eight clients made a wall of
+          them that pushed the timeline below the fold, and picking one meant
+          reading all of them. Still a GET to a URL, so a filtered view stays
+          shareable. */}
       {clients.length > 1 ? (
-        <div className="mb-6 flex min-w-0 flex-wrap gap-2">
-          <Link
-            href="/activity"
-            className={cn(
-              "rounded-full border px-3.5 py-1.5 text-meta font-medium transition-colors",
-              clientId ? "hover:bg-muted" : "border-primary bg-primary text-primary-foreground",
-            )}
-          >
-            Everyone
-          </Link>
-          {clients.map((client) => (
-            <Link
-              key={client.id}
-              href={`/activity?client=${client.id}`}
-              className={cn(
-                "rounded-full border px-3.5 py-1.5 text-meta font-medium transition-colors",
-                clientId === client.id
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "hover:bg-muted",
-              )}
-            >
-              {client.name}
-            </Link>
-          ))}
+        <form action="/activity" className="mb-6 flex flex-wrap items-end gap-2">
+          <div className="min-w-0 space-y-1.5">
+            <label htmlFor="activity-client" className="label-caps block text-muted-foreground">
+              Client
+            </label>
+            <NativeSelect id="activity-client" name="client" defaultValue={clientId ?? ""} className="min-w-64">
+              <option value="">Everyone</option>
+              {clients.map((client) => (
+                <option key={client.id} value={client.id}>{client.name}</option>
+              ))}
+            </NativeSelect>
+          </div>
+          <Button type="submit" variant="secondary">Show</Button>
+          {clientId ? (
+            <Button asChild variant="ghost">
+              <Link href="/activity">Clear</Link>
+            </Button>
+          ) : null}
+        </form>
+      ) : null}
+
+      {rows.length > 0 ? (
+        <div className="mb-8 grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Events"
+            value={rows.length}
+            hint={rows.length === LIMIT ? `The most recent ${LIMIT}` : "Everything on record"}
+            category="overview"
+            icon={Layers}
+          />
+          <StatCard
+            label="Needs attention"
+            value={needsAttention}
+            hint={needsAttention === 0 ? "Nothing is asking for you" : "Failures and warnings in this view"}
+            category="support"
+            icon={AlertTriangle}
+            attention={needsAttention > 0}
+          />
+          <StatCard
+            label="Today"
+            value={today}
+            hint={today === 0 ? "Nothing yet today" : "Since midnight"}
+            category="overview"
+            icon={CalendarDays}
+          />
         </div>
       ) : null}
 
@@ -110,11 +166,16 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
         </EmptyState>
       ) : (
         <div className="space-y-8">
-          {[...byDay.entries()].map(([day, entries]) => (
-            <section key={day} className="min-w-0">
-              <h2 className="label-caps pb-2 text-muted-foreground">{day}</h2>
+          {groups.map((group) => (
+            <section key={group.category} className="min-w-0 rounded-[20px] border bg-card p-5">
+              <div className="mb-3 flex items-baseline gap-2">
+                <span aria-hidden className={cn("size-2 shrink-0 translate-y-[-1px] rounded-full", CATEGORY_DOT[group.category])} />
+                <h2 className="text-base font-semibold tracking-tight">{group.title}</h2>
+                <span className="text-meta text-muted-foreground">{group.rows.length}</span>
+                <span className="ml-auto hidden text-meta text-muted-foreground sm:block">{group.blurb}</span>
+              </div>
               <ul className="min-w-0 space-y-0.5">
-                {entries.map((row) => {
+                {group.rows.map((row) => {
                   const tone = toneOf(row.kind);
                   const Icon = iconOf(row.kind);
                   return (
