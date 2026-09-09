@@ -187,7 +187,14 @@ async function main() {
   await boss.work(QUEUE.domainsExpiry, async () => {
     const now = new Date();
     await sweepOrganisations(db, "domain expiry sweep", async (organisationId) => {
-      console.info(await runDomainExpirySweep(db, organisationId, { now }), "domain expiry sweep");
+      console.info(
+        await runDomainExpirySweep(db, organisationId, {
+          now,
+          registrar: integrations.registrar,
+          email: emailAdapter,
+        }),
+        "domain expiry sweep",
+      );
     });
   });
 

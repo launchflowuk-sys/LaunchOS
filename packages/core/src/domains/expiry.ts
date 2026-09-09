@@ -4,7 +4,9 @@ import { and, asc, eq, isNotNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import type { EmailAdapter } from "@launchos/channels";
 import { notifyOwner } from "../notifications/notify.js";
+import { clientShouldHear, sendDomainExpiryEmail } from "./expiry-email.js";
 
 /**
  * Watching domains toward their renewal date.
@@ -119,6 +121,13 @@ export interface ExpirySweepResult {
   checked: number;
   notified: { domainId: string; name: string; threshold: number }[];
   statusChanged: number;
+  /** Clients told directly. Only ever a subset — see `clientShouldHear`. */
+  clientsEmailed: string[];
+}
+
+export interface ExpirySweepDeps {
+  /** Absent in tests and wherever no real adapter is configured; the owner is still told. */
+  email?: EmailAdapter | undefined;
 }
 
 /**
@@ -134,9 +143,11 @@ export async function sweepDomainExpiry(
   db: Db,
   organisationId: string,
   now: Date = new Date(),
+  deps: ExpirySweepDeps = {},
 ): Promise<ExpirySweepResult> {
   const domains = await listDomainsByExpiry(db, organisationId, now);
   const notified: ExpirySweepResult["notified"] = [];
+  const clientsEmailed: string[] = [];
   let statusChanged = 0;
 
   for (const domain of domains) {
@@ -201,7 +212,22 @@ export async function sweepDomainExpiry(
     });
 
     notified.push({ domainId: domain.id, name: domain.name, threshold });
+
+    // The client hears only when they are the one who has to act — see
+    // `clientShouldHear`. A failure here is logged in the result and does not
+    // stop the sweep: the owner has already been told, and that is the
+    // notification that guarantees somebody knows.
+    if (clientShouldHear(domain.days, domain.autoRenew)) {
+      const mail = await sendDomainExpiryEmail(db, organisationId, {
+        clientId: domain.clientId,
+        domainName: domain.name,
+        expiresAt: domain.expiresAt,
+        days: domain.days,
+        registrar: domain.registrar,
+      }, deps);
+      if (mail.sent) clientsEmailed.push(domain.name);
+    }
   }
 
-  return { checked: domains.length, notified, statusChanged };
+  return { checked: domains.length, notified, statusChanged, clientsEmailed };
 }

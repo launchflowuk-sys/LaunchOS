@@ -23,6 +23,9 @@ export * from "./meetings/index.js";
 export * from "./imagegen/index.js";
 export * from "./search-console/index.js";
 export * from "./screenshots/index.js";
+export * from "./registrar/index.js";
+import { createRegistrarAdapterFromEnv } from "./registrar/hostinger.js";
+import type { RegistrarAdapter } from "./registrar/types.js";
 export * from "./adapter-guard.js";
 
 export interface Integrations {
@@ -43,6 +46,13 @@ export interface Integrations {
   searchConsole: SearchConsoleAdapter;
   /** Thumbnails of a client's live site, for the websites list. Mock draws a placeholder in process. */
   screenshots: ScreenshotAdapter;
+  /**
+   * The registrar, read-only, for renewal dates. **Null when no token is
+   * configured** rather than a mock, because a mock here would report an empty
+   * portfolio — indistinguishable from "the account genuinely has no domains",
+   * and the sync would then look like it ran and found nothing.
+   */
+  registrar: RegistrarAdapter | null;
 }
 
 /**
@@ -91,5 +101,6 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     imagegen: createImageGenAdapterFromEnv(env),
     searchConsole: createSearchConsoleFromEnv(env),
     screenshots: createScreenshotAdapterFromEnv(env),
+    registrar: createRegistrarAdapterFromEnv(env),
   };
 }
