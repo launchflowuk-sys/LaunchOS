@@ -1,4 +1,4 @@
-import { sweepDomainExpiry, syncDomainExpiry } from "@launchos/core";
+import { sweepDomainExpiry, syncDomainExpiry, syncSupplierCosts } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import type { EmailAdapter } from "@launchos/channels";
 import type { RegistrarAdapter } from "@launchos/integrations";
@@ -21,10 +21,16 @@ export async function runDomainExpirySweep(
   // would spend a whole day warning on yesterday's dates — and on the day a
   // domain is renewed, would warn about one that is no longer expiring.
   let synced: { matched: number; updated: number; unknown: number } | null = null;
+  let costs: { created: number; updated: number; suggested: number } | null = null;
   if (options.registrar) {
     try {
       const result = await syncDomainExpiry(db, organisationId, options.registrar, options.now);
       synced = { matched: result.matched, updated: result.updated.length, unknown: result.unknown.length };
+      // The cost side of the same account, on the same trip. Kept inside this
+      // try because a registrar that cannot answer one call will not answer
+      // the other, and neither failure is worth losing the warnings over.
+      const money = await syncSupplierCosts(db, organisationId, options.registrar, options.now);
+      costs = { created: money.created, updated: money.updated, suggested: money.suggested };
     } catch (error) {
       // The registrar being unreachable must not cost us the warnings: the
       // dates already on record are still worth sweeping, and a stale date is
@@ -36,6 +42,7 @@ export async function runDomainExpirySweep(
   const result = await sweepDomainExpiry(db, organisationId, options.now, { email: options.email });
   return {
     synced,
+    costs,
     checked: result.checked,
     warned: result.notified.length,
     statusChanged: result.statusChanged,

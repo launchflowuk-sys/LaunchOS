@@ -132,6 +132,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Ads", href: "/ads", icon: Megaphone, permission: "billing" },
       { label: "Ad reports", href: "/ads/reports", icon: ChartColumn, permission: "billing" },
       { label: "Reports", href: "/reports", icon: ChartLine, permission: "billing" },
+      { label: "Costs", href: "/settings/costs", icon: Wallet, permission: "billing" },
     ],
   },
   {

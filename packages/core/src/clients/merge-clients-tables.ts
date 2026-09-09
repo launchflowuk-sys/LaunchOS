@@ -71,6 +71,12 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // travel, or a merged client's order history — and the project it paid for —
   // stays behind on the archived row.
   { key: "portal_purchases", table: schema.portalPurchases },
+  // What we pay a supplier on this client's behalf. Moves whole and never
+  // collides: a cost row is unique by the supplier's own subscription id per
+  // organisation, not per client. It has to travel, or the kept client's
+  // margin quietly reads as pure profit while the real cost sits on a row
+  // nobody looks at again.
+  { key: "supplier_costs", table: schema.supplierCosts },
   // A build moves whole, spine and promises with it. None of the three
   // collide: a project is never unique per client, a phase is unique per
   // project and the project id does not change, and a milestone is unique per

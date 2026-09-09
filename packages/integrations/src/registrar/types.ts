@@ -23,4 +23,42 @@ export interface RegistrarAdapter {
   readonly name: "hostinger" | "mock";
   /** Every domain on the account. Throws on auth or transport failure; never returns a partial list silently. */
   listDomains(): Promise<RegistrarDomain[]>;
+  /** Every subscription LaunchFlow pays for — the cost side of the ledger. */
+  listSubscriptions(): Promise<SupplierSubscription[]>;
+  /** Whether a name can be bought, and for how much. */
+  checkAvailability(name: string): Promise<DomainAvailability>;
+}
+
+/**
+ * One subscription on the supplier's account — what LaunchFlow itself pays.
+ *
+ * Amounts stay in the supplier's own currency and minor unit. Converting on
+ * the way in would store a figure that cannot be re-read when the rate moves
+ * and cannot be checked against their invoice.
+ */
+export interface SupplierSubscription {
+  /** Their id, stable across syncs. */
+  id: string;
+  /** Their product name — ".LIVE Domain", "Starter Business Email". Never a domain name. */
+  name: string;
+  status: string;
+  /** Minor units, e.g. USD cents. */
+  renewalPrice: number;
+  totalPrice: number;
+  currencyCode: string;
+  billingPeriod: number;
+  billingPeriodUnit: string;
+  autoRenewed: boolean;
+  nextBillingAt: Date | null;
+}
+
+/** What a name would cost, and whether it can be had at all. */
+export interface DomainAvailability {
+  name: string;
+  available: boolean;
+  /** Minor units in `currencyCode`, or null when the supplier did not price it. */
+  price: number | null;
+  currencyCode: string | null;
+  /** True when the supplier says it is a premium name, which is priced separately. */
+  premium: boolean;
 }

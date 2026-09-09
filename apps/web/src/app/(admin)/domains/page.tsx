@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatCard } from "@/components/stat-card";
 import { DomainExpiry } from "@/components/domain-expiry";
+import { AvailabilityCheck } from "./availability-check";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
@@ -128,6 +129,10 @@ export default async function DomainsPage({ searchParams }: PageProps<"/domains"
           </ToolbarActions>
         </FilterBar>
       </form>
+
+      <div className="mb-6">
+        <AvailabilityCheck />
+      </div>
 
       <DataList
         rows={rows}

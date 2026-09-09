@@ -1,7 +1,7 @@
-import { getClient, getClientMoney } from "@launchos/core";
+import { clientCostByCurrency, getClient, getClientMoney } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq, inArray } from "drizzle-orm";
-import { Banknote, CreditCard, ExternalLink, Receipt } from "lucide-react";
+import { Banknote, CreditCard, ExternalLink, Receipt, Wallet } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -89,7 +89,10 @@ export default async function ClientPaymentsPage({ params }: PageProps<"/clients
   const client = await getClient(db, session.organisationId, id);
   if (!client) notFound();
 
-  const summary = await getClientMoney(db, session.organisationId, { clientId: id });
+  const [summary, costs] = await Promise.all([
+    getClientMoney(db, session.organisationId, { clientId: id }),
+    clientCostByCurrency(db, session.organisationId, id),
+  ]);
 
   // Only invoices that can still take a payment, so the dialog cannot be
   // pointed at one that is already settled.
@@ -158,6 +161,23 @@ export default async function ClientPaymentsPage({ params }: PageProps<"/clients
           icon={CreditCard}
         />
       </div>
+
+      {/* The other half of the ledger. Kept as its own row rather than netted
+          into the figures above, because the costs are in the supplier's
+          currency and a margin printed across two currencies would be a
+          number that looks precise and is not. */}
+      {Object.keys(costs).length > 0 ? (
+        <div className="mt-4 grid gap-4 sm:grid-cols-3">
+          <StatCard
+            label="Costs us, per renewal"
+            value={money(costs)}
+            hint="What we pay suppliers for this client"
+            href="/settings/costs"
+            category="money"
+            icon={Wallet}
+          />
+        </div>
+      ) : null}
 
       {summary.subscriptions.length > 0 ? (
         <Section title="Subscriptions" description="What recurs, and when it next takes payment." className="mt-8">

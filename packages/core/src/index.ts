@@ -185,6 +185,11 @@ export { completePortalPurchase, PurchaseNotLive, PURCHASE_PAID_NOTIFICATION_KIN
 export type { CompletePortalPurchaseResult } from "./portal-purchases/complete-purchase.js";
 export { recordSubscription } from "./billing/record-subscription.js";
 export { getClientMoney, ClientMoneyInput } from "./billing/client-money.js";
+export {
+  syncSupplierCosts, assignSupplierCost, listSupplierCosts, clientCostByCurrency,
+  upcomingCosts, tldFromProductName, AssignSupplierCostInput,
+} from "./billing/supplier-costs.js";
+export type { SyncSupplierCostsResult, CostRow } from "./billing/supplier-costs.js";
 export { syncDomainExpiry } from "./domains/sync-expiry.js";
 export type { SyncDomainExpiryResult } from "./domains/sync-expiry.js";
 export { sendDomainExpiryEmail, clientShouldHear, CLIENT_EXPIRY_THRESHOLDS } from "./domains/expiry-email.js";

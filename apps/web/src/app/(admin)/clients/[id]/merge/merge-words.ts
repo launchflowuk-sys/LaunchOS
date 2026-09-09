@@ -29,6 +29,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   documents: ["document", "documents"],
   proposals: ["proposal", "proposals"],
   portal_purchases: ["portal order", "portal orders"],
+  supplier_costs: ["supplier cost", "supplier costs"],
   projects: ["project", "projects"],
   project_phases: ["project phase", "project phases"],
   project_milestones: ["milestone", "milestones"],
