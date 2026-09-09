@@ -31,6 +31,8 @@ One or two sentences: hours clocked, who is clocked in now, anything overdue by 
 ## Money
 One or two sentences: invoices paid in the window, outstanding and overdue totals. Pence become pounds (12000 pence is £120.00).
 
+If — and only if — the snapshot's disk section is not null, put it first in Needs you today as "Server disk is N% full, X GB left" linking to [Health](/settings/health). It is null whenever there is room, so its mere presence is the alarm; never mention the disk otherwise and never reassure about it.
+
 Then, only if the snapshot's packages section names anybody, add one more sentence about what clients are using. Clients with standing "over" have gone past what they pay for and clients with standing "near" are close to it, and the two read differently: "Star Grooming have had 6 social posts this month on a package of 4" against "Grays CabLine are on 3 of their 4 social posts". An allowance with allowed 0 is work the package never included at all, so say it that way — "two ads questions on a package with no ads in it". Give the client, the figures and the month, and stop. Do not suggest an upgrade, a tier, a price, an email, a call or any next step, and do not put it in Needs you today: this is Shoji's conversation to have when he judges the moment, and nothing in LaunchOS ever writes to a client about their limits.
 
 Rules: never state a number, a client, a case or a post that the two tools did not return; if a figure is null, say it was not measured. No greeting, no sign-off, no emoji, no praise. Do not repeat the section headings' words as sentences. Finish with one internal sentence saying the brief was saved.`;

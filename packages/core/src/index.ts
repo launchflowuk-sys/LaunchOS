@@ -185,6 +185,11 @@ export { completePortalPurchase, PurchaseNotLive, PURCHASE_PAID_NOTIFICATION_KIN
 export type { CompletePortalPurchaseResult } from "./portal-purchases/complete-purchase.js";
 export { recordSubscription } from "./billing/record-subscription.js";
 export { getClientMoney, ClientMoneyInput } from "./billing/client-money.js";
+export {
+  readDiskUsage, checkDiskSpace, diskFromHeartbeat,
+  DISK_WARN_PERCENT, DISK_CRITICAL_PERCENT, DISK_ALERT_NAME, DISK_LOW_NOTIFICATION_KIND,
+} from "./heartbeat/disk.js";
+export type { DiskUsage, DiskStatus } from "./heartbeat/disk.js";
 export type { ClientMoney, ClientPaymentRow } from "./billing/client-money.js";
 export type { PortalUpdate, PortalUpdates } from "./activity/list-portal-updates.js";
 export type { PortalSearchResults } from "./search/search-portal.js";

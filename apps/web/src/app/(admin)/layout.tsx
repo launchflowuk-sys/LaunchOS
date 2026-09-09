@@ -1,4 +1,4 @@
-import { checkWorkerDown } from "@launchos/core";
+import { checkDiskSpace, checkWorkerDown } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, count, eq } from "drizzle-orm";
 import { AccountMenu } from "@/components/account-menu";
@@ -33,6 +33,31 @@ async function workerBanner(organisationId: string): Promise<string | null> {
   }
 }
 
+/**
+ * The disk the whole deployment sits on, read off the same heartbeat.
+ *
+ * Here rather than in a job of its own because this is the code path that
+ * definitely runs: a cron that stops running is silent in exactly the way that
+ * let `/` reach 100% on 9 Sep 2026 and take every site on the box down with
+ * it, Coolify included. `checkDiskSpace` notifies once per worsening crossing,
+ * so loading the dashboard forty times in a morning is still one notification.
+ *
+ * Read-only from the shell's point of view: a failure is logged and the banner
+ * stays quiet, exactly like the worker check above.
+ */
+async function diskBanner(organisationId: string): Promise<string | null> {
+  try {
+    const disk = await checkDiskSpace(getDb(), organisationId);
+    if (!disk.warn || disk.usedPercent === null) return null;
+    return `Server disk is ${disk.usedPercent}% full`
+      + (disk.freeBytes === null ? "" : ` — ${(disk.freeBytes / 1024 ** 3).toFixed(1)} GB left`)
+      + ". At 100% every site on this server stops, Coolify included. Reclaim space before it gets there.";
+  } catch (error) {
+    console.error("[layout] disk usage could not be read", { organisationId, error });
+    return null;
+  }
+}
+
 export default async function AdminLayout({ children }: LayoutProps<"/">) {
   // The shell itself must stay reachable when an organisation requires a
   // second factor this member has not set up yet: the screen that fixes it —
@@ -46,7 +71,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
   // Alongside it: what this member may see (which decides the rail), whether
   // they are clocked in (the top bar's clock), and whether the worker is
   // still checking in (the banner), one indexed query each.
-  const [[pending], permissions, running, workerDown] = await Promise.all([
+  const [[pending], permissions, running, workerDown, diskLow] = await Promise.all([
     getDb()
       .select({ value: count() })
       .from(schema.approvals)
@@ -54,6 +79,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
     sessionPermissions(),
     runningEntryFor(session),
     workerBanner(session.organisationId),
+    diskBanner(session.organisationId),
   ]);
   const pendingApprovals = pending?.value ?? 0;
 
@@ -110,6 +136,15 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
                 stopped is the one fault that silently breaks everything else
                 — mail, cron, agents, publishing — and it must be seen from
                 wherever the owner happens to be. */}
+            {/* Under the worker banner, because a dead worker stops things now
+                and a filling disk stops them soon. Both can be true at once,
+                and on the morning this was written both were. */}
+            {diskLow ? (
+              <InlineAlert tone="warning" title="Server disk is filling up" className="mb-6 print:hidden">
+                {diskLow}
+              </InlineAlert>
+            ) : null}
+
             {workerDown ? (
               <InlineAlert tone="danger" title="Background worker is not running" className="mb-6 print:hidden">
                 {workerDown} Check the worker service in Coolify.

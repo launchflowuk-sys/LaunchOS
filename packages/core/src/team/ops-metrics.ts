@@ -6,6 +6,8 @@ import { type ClientPackagePressure, packageUsagePressure } from "../billing/pac
 import { leadsAwaitingReply } from "../leads/leads.js";
 import { CLIENT_REVIEW_STALE_DAYS, staleClientReviews } from "../projects/client-review.js";
 import { FINISHED_STATUSES } from "../tasks/update-task-status.js";
+import { diskFromHeartbeat, DISK_WARN_PERCENT } from "../heartbeat/disk.js";
+import { heartbeatAge, WORKER_HEARTBEAT_NAME } from "../heartbeat/heartbeat.js";
 import { entryMinutes } from "./week.js";
 
 /** A Date inside a raw `sql` template: the driver will not bind a Date object, so it goes as ISO text and is cast back. */
@@ -62,6 +64,14 @@ export interface OpsMetricsSnapshot {
     /** Still `new` — nobody has written back — after 24 hours. The brief's "waiting for a reply" line. */
     awaitingReplyOver24h: number;
   };
+  /**
+   * The server's own disk, off the worker's last heartbeat. Null when the
+   * worker has not reported one — an old build, or a platform without
+   * `statfs` — and **absent from the brief entirely below the warning line**,
+   * because a healthy number every morning is how somebody stops reading the
+   * line that matters.
+   */
+  disk: { usedPercent: number; freeGb: number } | null;
   projects: {
     /**
      * Client reviews nobody has answered or commented on after
@@ -238,6 +248,7 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
     window: { from, to: v.now, hours: v.hours },
     cases, tasks, incidents, approvals, invoices, content, agents, team,
     leads: { awaitingReplyOver24h: waiting.length },
+    disk: await diskPressure(db),
     projects: {
       clientReviewsUnanswered: stale.length,
       oldestClientReviewDays: stale.length === 0 ? null : Math.max(...stale.map((review) => review.daysWaiting)),
@@ -248,4 +259,19 @@ export async function opsMetricsSnapshot(db: Db, organisationId: string, input: 
       clients: pressure,
     },
   };
+}
+
+/**
+ * The disk figure, but only when it is worth saying.
+ *
+ * Below the warning line this returns null and the brief never mentions it.
+ * That is the point: `/` reached 100% on 9 Sep 2026 and took every site on the
+ * box down with it, and a brief that had been reporting "disk 41%" every
+ * morning for a month would not have been read on the morning it said 91%.
+ */
+async function diskPressure(db: Db): Promise<OpsMetricsSnapshot["disk"]> {
+  const beat = await heartbeatAge(db, { name: WORKER_HEARTBEAT_NAME });
+  const disk = beat ? diskFromHeartbeat(beat.details) : null;
+  if (!disk || disk.usedPercent < DISK_WARN_PERCENT) return null;
+  return { usedPercent: disk.usedPercent, freeGb: Math.round((disk.freeBytes / 1024 ** 3) * 10) / 10 };
 }
