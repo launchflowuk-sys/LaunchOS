@@ -17,13 +17,18 @@
     "./styles": "./src/styles/globals.css",
     "./ui/*": "./src/components/ui/*.tsx",
     "./components/*": "./src/components/*.tsx",
-    "./package.json": "./package.json"
+    "./components/portal/*": "./src/components/portal/*.tsx",
+    "./lib/*": "./src/lib/*.ts",
+    "./package.json": "./package.json",
+    "./styles/marketing": "./src/styles/marketing.css",
+    "./styles/motion": "./src/styles/motion.css"
   },
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "class-variance-authority": "^0.7.1",
@@ -38,7 +43,8 @@
     "typescript": "^5",
     "@launchos/config": "workspace:*",
     "@types/react": "^19",
-    "react": "19.2.8"
+    "react": "19.2.8",
+    "vitest": "^3"
   },
   "keywords": [
     "design-system",

@@ -9,6 +9,7 @@
  * `@launchflow/ui/components/<name>`. Both are also re-exported here.
  */
 export { cn } from "./lib/utils.js";
+export * from "./lib/format.js";
 export { type Category, CATEGORY_TEXT, CATEGORY_DOT } from "./lib/categories.js";
 
 export * from "./components/stat-card.js";
@@ -20,3 +21,4 @@ export * from "./components/toolbar.js";
 export * from "./components/key-value.js";
 export * from "./components/status-badge.js";
 export * from "./components/app-nav.js";
+export * from "./components/inline-alert.js";
