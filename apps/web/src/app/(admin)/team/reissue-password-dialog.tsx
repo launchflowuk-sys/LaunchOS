@@ -52,9 +52,20 @@ function ReissuePasswordBody({ memberId, name, onClose }: { memberId: string; na
           <p className="text-sm text-muted-foreground">
             {state.displayName} can now sign in with <span className="font-medium text-foreground">{state.email}</span> and
             this password. Their previous password no longer works and anyone signed in as them has been signed out. It is
-            shown once and cannot be retrieved again — send it to them now and ask them to change it.
+            {state.emailed
+              ? "It has been emailed to them."
+              : "shown once and cannot be retrieved again — send it to them now and ask them to change it."}
           </p>
+
+          {/* Shown whether or not the mail went: a failed send must not be the
+              thing that loses the only copy. */}
           <OneTimePassword value={state.oneTimePassword} />
+
+          {state.emailError ? (
+            <InlineAlert tone="warning" title="The email did not go">
+              {state.emailError} Copy the password above and send it yourself.
+            </InlineAlert>
+          ) : null}
           <div className="flex justify-end">
             <Button type="button" onClick={onClose}>
               Done
@@ -68,6 +79,21 @@ function ReissuePasswordBody({ memberId, name, onClose }: { memberId: string; na
             This replaces {name}&apos;s password with a new one-time password, immediately invalidates the old one and signs
             out every session it opened. Use it when the password they were given never reached them.
           </p>
+
+          <label className="flex items-start gap-2.5 rounded-[14px] border p-3.5 text-sm">
+            <input
+              type="checkbox"
+              name="sendEmail"
+              defaultChecked
+              className="mt-0.5 size-4 rounded-[4px] border-input accent-primary"
+            />
+            <span className="min-w-0">
+              <span className="block font-medium">Email them the new password</span>
+              <span className="block text-meta text-muted-foreground">
+                You will still see it here either way.
+              </span>
+            </span>
+          </label>
 
           {state.status === "error" ? <InlineAlert tone="danger">{state.message}</InlineAlert> : null}
 

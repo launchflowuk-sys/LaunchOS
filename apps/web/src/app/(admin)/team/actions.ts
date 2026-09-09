@@ -3,8 +3,10 @@
 import { createEmailAdapter } from "@launchos/channels";
 import {
   createMember, deactivateMember, PERMISSION_KEYS, reissueOneTimePassword, resetTwoFactor,
-  setMemberPermissions, TwoFactorResetRefused,
+  sendMemberInvite, setMemberPermissions, TwoFactorResetRefused,
 } from "@launchos/core";
+import { schema } from "@launchos/db";
+import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
@@ -18,7 +20,7 @@ export type ActionResult = { status: "ok" } | { status: "error"; message: string
 export type AddMemberState =
   | { status: "idle" }
   | { status: "error"; message: string }
-  | { status: "created"; email: string; displayName: string; oneTimePassword: string };
+  | { status: "created"; email: string; displayName: string; oneTimePassword: string; emailed: boolean; emailError?: string };
 
 const AddMemberInput = z.object({
   displayName: z.string().trim().min(1, "Name is required").max(200),
@@ -52,12 +54,19 @@ export async function addMemberAction(_prev: AddMemberState, formData: FormData)
       ...parsed.data,
       invitedBy: session.userId,
     });
+    // After the account exists, and best-effort: see `emailTheInvite`.
+    const invite = formData.get("sendEmail") === "on"
+      ? await emailTheInvite(session, { ...parsed.data, oneTimePassword })
+      : { sent: false, reason: null };
+
     revalidatePath("/team");
     return {
       status: "created",
       email: parsed.data.email,
       displayName: parsed.data.displayName,
       oneTimePassword,
+      emailed: invite.sent,
+      ...(invite.reason ? { emailError: invite.reason } : {}),
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not add the member" };
@@ -67,7 +76,7 @@ export async function addMemberAction(_prev: AddMemberState, formData: FormData)
 export type ReissuePasswordState =
   | { status: "idle" }
   | { status: "error"; message: string }
-  | { status: "issued"; email: string; displayName: string; oneTimePassword: string };
+  | { status: "issued"; email: string; displayName: string; oneTimePassword: string; emailed: boolean; emailError?: string };
 
 const ReissueInput = z.object({ memberId: z.string().uuid() });
 
@@ -95,12 +104,22 @@ export async function reissuePasswordAction(
       memberId: parsed.data.memberId,
       actor: session.userId,
     });
+    const invite = formData.get("sendEmail") === "on"
+      ? await emailTheInvite(session, {
+        email: member.email,
+        displayName: member.displayName ?? member.email,
+        oneTimePassword,
+      })
+      : { sent: false, reason: null };
+
     revalidatePath("/team");
     return {
       status: "issued",
       email: member.email,
       displayName: member.displayName ?? member.email,
       oneTimePassword,
+      emailed: invite.sent,
+      ...(invite.reason ? { emailError: invite.reason } : {}),
     };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not re-issue the password" };
@@ -218,4 +237,39 @@ export async function setMemberPermissionsAction(formData: FormData): Promise<Ac
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not save the permissions" };
   }
+}
+
+/**
+ * Emails the sign-in details, and never lets a failure cost the password.
+ *
+ * `sendMemberInvite` does not throw, so a dead SMTP host produces
+ * `{ sent: false, reason }` and the caller still returns the one-time password
+ * for the screen to show — which is exactly what happened before this option
+ * existed. The tick box is a convenience, never the only copy.
+ */
+async function emailTheInvite(
+  session: { organisationId: string; email: string },
+  member: { email: string; displayName: string; oneTimePassword: string },
+): Promise<{ sent: boolean; reason: string | null }> {
+  return sendMemberInvite(
+    getDb(),
+    session.organisationId,
+    {
+      email: member.email,
+      displayName: member.displayName,
+      oneTimePassword: member.oneTimePassword,
+      invitedByEmail: session.email,
+      twoFactorRequired: await staffTwoFactorRequired(session.organisationId),
+    },
+    { email: createEmailAdapter(process.env) },
+  );
+}
+
+/** Whether the mail should warn them they will be asked to enrol on first sign-in. */
+async function staffTwoFactorRequired(organisationId: string): Promise<boolean> {
+  const [row] = await getDb()
+    .select({ enforced: schema.organisations.requireStaffTwoFactor })
+    .from(schema.organisations)
+    .where(eq(schema.organisations.id, organisationId));
+  return row?.enforced ?? false;
 }

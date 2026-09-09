@@ -185,6 +185,8 @@ export { completePortalPurchase, PurchaseNotLive, PURCHASE_PAID_NOTIFICATION_KIN
 export type { CompletePortalPurchaseResult } from "./portal-purchases/complete-purchase.js";
 export { recordSubscription } from "./billing/record-subscription.js";
 export { getClientMoney, ClientMoneyInput } from "./billing/client-money.js";
+export { sendMemberInvite, SendMemberInviteInput } from "./team/send-invite.js";
+export type { SendMemberInviteResult } from "./team/send-invite.js";
 export {
   readDiskUsage, checkDiskSpace, diskFromHeartbeat,
   DISK_WARN_PERCENT, DISK_CRITICAL_PERCENT, DISK_ALERT_NAME, DISK_LOW_NOTIFICATION_KIND,

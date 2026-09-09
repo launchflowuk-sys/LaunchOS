@@ -39,9 +39,21 @@ function AddMemberBody({ onClose }: { onClose: () => void }) {
         <div className="space-y-4">
           <p className="text-sm text-muted-foreground">
             {state.displayName} can sign in with <span className="font-medium text-foreground">{state.email}</span> and this
-            one-time password. It is shown once and cannot be retrieved again — send it to them now and ask them to change it.
+            one-time password.{" "}
+            {state.emailed
+              ? "It has been emailed to them."
+              : "It is shown once and cannot be retrieved again — send it to them now and ask them to change it."}
           </p>
+
+          {/* Shown whether or not the mail went. A failed send must never be
+              the thing that loses the only copy of the password. */}
           <OneTimePassword value={state.oneTimePassword} />
+
+          {state.emailError ? (
+            <InlineAlert tone="warning" title="The email did not go">
+              {state.emailError} Copy the password above and send it yourself.
+            </InlineAlert>
+          ) : null}
           <div className="flex justify-end">
             <Button type="button" onClick={onClose}>
               Done
@@ -69,6 +81,24 @@ function AddMemberBody({ onClose }: { onClose: () => void }) {
               <option value="owner">Owner</option>
             </NativeSelect>
           </div>
+
+          {/* Default on: the alternative is the password going into WhatsApp,
+              where it sits in two phones' chat history and somebody's cloud
+              backup for ever. */}
+          <label className="flex items-start gap-2.5 rounded-[14px] border p-3.5 text-sm">
+            <input
+              type="checkbox"
+              name="sendEmail"
+              defaultChecked
+              className="mt-0.5 size-4 rounded-[4px] border-input accent-primary"
+            />
+            <span className="min-w-0">
+              <span className="block font-medium">Email them their sign-in details</span>
+              <span className="block text-meta text-muted-foreground">
+                Sends the address and the one-time password. You will still see the password here either way.
+              </span>
+            </span>
+          </label>
 
           {state.status === "error" ? <InlineAlert tone="danger">{state.message}</InlineAlert> : null}
 
