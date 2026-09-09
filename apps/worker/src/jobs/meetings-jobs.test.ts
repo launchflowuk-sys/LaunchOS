@@ -6,7 +6,6 @@ import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { MockMeetingsAdapter } from "@launchos/integrations";
 import { QUALIFIED_LEAD_SOURCES, dispatchEvent, type BossSender } from "./dispatch-event.js";
-import { ensureLeadQualifierEnabled } from "./lead-enablement.js";
 import { MEETING_CRON, registerMeetingJobs, runMeetingFollowUps, runMeetingReminders } from "./meetings-jobs.js";
 
 const env = { APP_URL: "https://os.launchflow.test" } as NodeJS.ProcessEnv;
@@ -52,22 +51,6 @@ describe("lead.created dispatch", () => {
     });
   });
 
-  it("enables the qualifier once per organisation and never overrides a decision", async () => {
-    await withTestDb(async (db) => {
-      const a = await org(db);
-      const b = await org(db);
-      await db.insert(schema.agentEnablement).values({ organisationId: b.organisationId, agentKey: "lead-qualifier", enabled: false });
-      const first = await ensureLeadQualifierEnabled(db, quiet);
-      expect(first.enabled).toBeGreaterThanOrEqual(1);
-      const [rowA] = await db.select().from(schema.agentEnablement)
-        .where(and(eq(schema.agentEnablement.organisationId, a.organisationId), eq(schema.agentEnablement.agentKey, "lead-qualifier")));
-      expect(rowA!.enabled).toBe(true);
-      const [rowB] = await db.select().from(schema.agentEnablement)
-        .where(and(eq(schema.agentEnablement.organisationId, b.organisationId), eq(schema.agentEnablement.agentKey, "lead-qualifier")));
-      expect(rowB!.enabled).toBe(false);
-      expect((await ensureLeadQualifierEnabled(db, quiet)).enabled).toBe(0);
-    });
-  });
 });
 
 describe("meeting jobs", () => {

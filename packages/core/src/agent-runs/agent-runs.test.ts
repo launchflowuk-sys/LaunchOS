@@ -100,7 +100,7 @@ describe("the agent run ledger", () => {
       await run(db, organisationId, { agentKey: "hosting-guard-dog", status: "failed", startedAt: minutes(60 * 24 * 30) });
 
       const health = await agentRunHealth(db, organisationId, minutes(60));
-      expect(health).toEqual({ running: 0, completed: 1, awaiting_approval: 1, failed: 1 });
+      expect(health).toEqual({ running: 0, completed: 1, awaiting_approval: 1, failed: 1, skipped: 0 });
 
       expect(await listAgentKeys(db, organisationId)).toEqual(["content-writer", "hosting-guard-dog", "ops-brief"]);
     });
@@ -114,7 +114,7 @@ describe("the agent run ledger", () => {
 
       expect(await listAgentRuns(db, theirs)).toEqual({ runs: [], total: 0 });
       expect(await listAgentKeys(db, theirs)).toEqual([]);
-      expect(await agentRunHealth(db, theirs, minutes(60))).toEqual({ running: 0, completed: 0, awaiting_approval: 0, failed: 0 });
+      expect(await agentRunHealth(db, theirs, minutes(60))).toEqual({ running: 0, completed: 0, awaiting_approval: 0, failed: 0, skipped: 0 });
     });
   });
 

@@ -9,7 +9,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { PaymentsAdapter } from "@launchos/integrations";
 import { QUEUE } from "../boss.js";
-import type { EnablementLogger } from "./content-enablement.js";
+import type { EnablementLogger } from "./agent-enablement.js";
 import { LONDON, type BossRegistrar } from "./content-jobs.js";
 import { handleProposalAccepted } from "./proposals-accepted.js";
 import { PROPOSAL_SEND_SWEEP_CRON, handleProposalSend, runProposalSendSweep, type ProposalSendJob } from "./proposals-send.js";
@@ -89,28 +89,6 @@ export async function runProposalNudges(deps: Pick<ProposalJobsDeps, "db" | "log
   return totals;
 }
 
-/**
- * Switches the Proposal Drafter on, once, for every organisation that has
- * never decided about it — the same insert-only default the Content Writer,
- * the Ops Brief and the Lead Qualifier get at boot. A row that exists, on or
- * off, is never touched: Settings → Agents stays the authority. The drafter
- * only ever runs when a person asks it to, and nothing it writes reaches a
- * client without the `proposal_send` card, so "on unless switched off" is the
- * right default.
- */
-export async function ensureProposalDrafterEnabled(db: Db, logger: EnablementLogger = console): Promise<{ enabled: number }> {
-  const organisations = await db.select({ id: schema.organisations.id }).from(schema.organisations);
-  if (organisations.length === 0) return { enabled: 0 };
-  const inserted = await db
-    .insert(schema.agentEnablement)
-    .values(organisations.map((org) => ({ organisationId: org.id, agentKey: PROPOSAL_DRAFTER_KEY, enabled: true })))
-    .onConflictDoNothing({ target: [schema.agentEnablement.organisationId, schema.agentEnablement.agentKey] })
-    .returning({ organisationId: schema.agentEnablement.organisationId });
-  if (inserted.length > 0) {
-    logger.info({ agent: PROPOSAL_DRAFTER_KEY, organisations: inserted.map((r) => r.organisationId) }, "proposal drafter enabled by default");
-  }
-  return { enabled: inserted.length };
-}
 
 /**
  * Installs the hand-off `acceptProposal` calls after it commits.

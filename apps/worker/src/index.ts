@@ -32,13 +32,12 @@ import { INVOICE_DOCUMENTS_CRON, runInvoiceDocuments } from "./jobs/invoice-docu
 import { runMonthlyReports } from "./jobs/reports-monthly.js";
 import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
-import { ensureContentWriterEnabled } from "./jobs/content-enablement.js";
 import { registerContentJobs } from "./jobs/content-jobs.js";
-import { ensureOpsBriefEnabled, registerOpsBriefJob } from "./jobs/ops-brief.js";
-import { ensureLeadQualifierEnabled } from "./jobs/lead-enablement.js";
+import { ensureAgentsEnabled } from "./jobs/agent-enablement.js";
+import { registerOpsBriefJob } from "./jobs/ops-brief.js";
 import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
-import { ensureProposalDrafterEnabled, registerProposalJobs } from "./jobs/proposals-jobs.js";
-import { ensureProjectAgentsEnabled, registerProjectJobs } from "./jobs/project-jobs.js";
+import { registerProposalJobs } from "./jobs/proposals-jobs.js";
+import { registerProjectJobs } from "./jobs/project-jobs.js";
 
 async function main() {
   // First thing, and before a single connection is opened: a worker with no
@@ -86,6 +85,13 @@ async function main() {
     email: emailAdapter,
     portalBaseUrl: env.APP_URL,
   });
+
+  // Every agent in the registry gets a row in every organisation, on unless a
+  // person has said otherwise. This replaced five hand-written `ensureXEnabled`
+  // functions, and the trap it closes is the one nobody wrote: an agent with no
+  // row is read as "off", so it does nothing for ever and says nothing about it.
+  // A run queued against one is now recorded as `skipped` rather than lost.
+  await ensureAgentsEnabled(db, Object.keys(registry));
 
   // One mapping for both entry points: events emitted inside the worker, and
   // events the web process sent through the domain.event queue. The routing
@@ -264,9 +270,7 @@ async function main() {
   // The content engine: plan the month, draft it, publish what is approved
   // when it is due, report on it. Its workers and crons register together in
   // ./jobs/content-jobs.ts so a test can assert the schedule; the writer is
-  // switched on by default for every organisation that has never decided
-  // about it (an existing row, on or off, is left alone).
-  await ensureContentWriterEnabled(db);
+  // switched on by default with every other agent, above.
   await registerContentJobs({
     db,
     boss,
@@ -278,9 +282,6 @@ async function main() {
 
   // The morning Ops Brief: one agent run per organisation at 07:00 London,
   // then the owner's bell and, with OWNER_NOTIFY_EMAIL set, the branded email.
-  // On by default like the writer; a person's decision in Settings → Agents
-  // is never overwritten.
-  await ensureOpsBriefEnabled(db);
   await registerOpsBriefJob({
     db,
     boss,
@@ -294,14 +295,12 @@ async function main() {
   // writer, gated by the `lead_reply` approval card. The meeting crons send
   // the guest's reminders and the host's 15-minute alert, then the morning
   // follow-ups.
-  await ensureLeadQualifierEnabled(db);
   await registerMeetingJobs({ db, boss, env: process.env });
 
   // Proposals: the send path (the only process with a browser to render one),
   // the follow-on a client's acceptance hands over, and the two daily sweeps.
   // `registerProposalJobs` also installs `setProposalFollowOn`, which is what
   // turns `acceptProposal`'s no-op hook into a real queue send.
-  await ensureProposalDrafterEnabled(db);
   await registerProposalJobs({ db, boss, payments: integrations.payments, env: process.env });
 
   // Projects: the Friday update fan-out, the same-day milestone note, and the
@@ -310,7 +309,6 @@ async function main() {
   // closes it — so there is one browser in this process, not two. Both agents
   // are on by default like the writer; neither can reach a client without a
   // card in Shoji's approvals queue.
-  await ensureProjectAgentsEnabled(db);
   await registerProjectJobs({ db, boss, env: process.env });
 
   await boss.schedule(QUEUE.monitorCheck, "* * * * *", {}, { tz: "Europe/London" });

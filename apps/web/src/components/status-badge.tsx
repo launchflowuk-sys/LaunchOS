@@ -45,6 +45,9 @@ const TONE_BY_VALUE: Record<string, StatusTone> = {
   completed: "success",
   awaiting_approval: "warn",
   failed: "danger",
+  // Not an error: nobody switched the agent on. Neutral, because an amber pill
+  // on a run that was never meant to happen is the warning-everywhere problem.
+  skipped: "neutral",
   // approvals
   pending: "warn",
   approved: "success",

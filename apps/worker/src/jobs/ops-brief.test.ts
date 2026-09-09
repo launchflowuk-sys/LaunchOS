@@ -15,7 +15,6 @@ import {
   OPS_BRIEF_NOTIFIED_AT,
   briefDateLabel,
   briefToParagraphs,
-  ensureOpsBriefEnabled,
   registerOpsBriefJob,
   runOpsBriefFor,
 } from "./ops-brief.js";
@@ -89,22 +88,6 @@ describe("briefToParagraphs / briefDateLabel", () => {
       "Site (https://a.test/x)",
     ]);
     expect(briefDateLabel("2026-09-09")).toBe("Wednesday 9 September 2026");
-  });
-});
-
-describe("ensureOpsBriefEnabled", () => {
-  it("switches the brief on for an organisation that has never decided and leaves a decision alone", async () => {
-    await withTestDb(async (db) => {
-      const [fresh] = await db.insert(schema.organisations).values({ name: "Fresh", slug: `fresh-${randomUUID()}` }).returning();
-      const off = await org(db, false);
-      const first = await ensureOpsBriefEnabled(db, quiet);
-      expect(first.enabled).toBeGreaterThanOrEqual(1);
-      const row = async (id: string) => (await db.select().from(schema.agentEnablement)
-        .where(and(eq(schema.agentEnablement.organisationId, id), eq(schema.agentEnablement.agentKey, OPS_BRIEF_KEY))))[0];
-      expect((await row(fresh!.id))?.enabled).toBe(true);
-      expect((await row(off.organisationId))?.enabled).toBe(false);
-      expect((await ensureOpsBriefEnabled(db, quiet)).enabled).toBe(0);
-    });
   });
 });
 
@@ -198,7 +181,11 @@ describe("runOpsBriefFor", () => {
       const off = await org(db, false);
       const skipped = await runOpsBriefFor(deps(db, savingLlm(), {}), off.organisationId, { now: NOW });
       expect(skipped).toEqual({ organisationId: off.organisationId, outcome: "skipped" });
-      expect(await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.organisationId, off.organisationId))).toHaveLength(0);
+      // The run is recorded rather than swallowed: a skip that leaves no trace
+      // is indistinguishable from a brief nobody asked for.
+      const offRuns = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.organisationId, off.organisationId));
+      expect(offRuns).toHaveLength(1);
+      expect(offRuns[0]!.status).toBe("skipped");
 
       const on = await org(db);
       warnings.length = 0;

@@ -49,27 +49,6 @@ export interface OpsBriefResult {
   emailedTo?: string;
 }
 
-/**
- * Switches the Ops Brief on, once, for every organisation that has never
- * decided about it — the same insert-only default the Content Writer gets at
- * boot. A row that exists, on or off, is never touched: Settings → Agents
- * stays the authority. The brief writes nothing a client sees, so "on unless
- * switched off" is the right default.
- */
-export async function ensureOpsBriefEnabled(db: Db, logger: Pick<OpsBriefLogger, "info"> = console): Promise<{ enabled: number }> {
-  const organisations = await db.select({ id: schema.organisations.id }).from(schema.organisations);
-  if (organisations.length === 0) return { enabled: 0 };
-  const inserted = await db
-    .insert(schema.agentEnablement)
-    .values(organisations.map((org) => ({ organisationId: org.id, agentKey: OPS_BRIEF_KEY, enabled: true })))
-    .onConflictDoNothing({ target: [schema.agentEnablement.organisationId, schema.agentEnablement.agentKey] })
-    .returning({ organisationId: schema.agentEnablement.organisationId });
-  if (inserted.length > 0) {
-    logger.info({ agent: OPS_BRIEF_KEY, organisations: inserted.map((r) => r.organisationId) }, "ops brief enabled by default");
-  }
-  return { enabled: inserted.length };
-}
-
 /** `Wednesday 9 September 2026`, from a `YYYY-MM-DD` brief date. */
 export function briefDateLabel(briefDate: string): string {
   return new Date(`${briefDate}T12:00:00Z`)

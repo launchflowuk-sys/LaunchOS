@@ -4,7 +4,15 @@ import { tenantColumns } from "./_shared.js";
 import { actorKindEnum } from "./support.js";
 
 export const agentTriggerEnum = pgEnum("agent_trigger", ["cron", "event", "manual", "resume"]);
-export const agentRunStatusEnum = pgEnum("agent_run_status", ["running", "completed", "awaiting_approval", "failed"]);
+// `skipped` is a run that never started, and it exists because the alternative
+// was silence. The worker refuses to run an agent the organisation has not
+// switched on — correct — but it used to `return` with a container log line, so
+// a run queued from the UI produced nothing at all: no row, no screen, no
+// reason. A brand new agent has no `agent_enablement` row on the day it ships,
+// which reads identically to "you turned it off", and an afternoon went into
+// finding that out. A skipped run is recorded like any other and says which of
+// the two it was.
+export const agentRunStatusEnum = pgEnum("agent_run_status", ["running", "completed", "awaiting_approval", "failed", "skipped"]);
 export const agentStepKindEnum = pgEnum("agent_step_kind", ["llm", "tool_call", "tool_result", "approval_requested", "note"]);
 // `subscription_change` is the one kind a *client* raises: a portal user asking
 // to cancel, downgrade or upgrade their plan. It has no run behind it and is

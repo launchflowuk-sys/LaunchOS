@@ -14,7 +14,7 @@ import { withTestDb } from "@launchos/db/test";
 import type { BossRegistrar } from "./content-jobs.js";
 import { dispatchEvent } from "./dispatch-event.js";
 import { handleMilestoneEmail } from "./project-milestone-email.js";
-import { PROJECT_CRON, ensureProjectAgentsEnabled, registerProjectJobs } from "./project-jobs.js";
+import { PROJECT_CRON, registerProjectJobs } from "./project-jobs.js";
 import { buildWeeklyUpdateJobs, dispatchWeeklyUpdates } from "./project-weekly-update.js";
 
 setEnqueue(async () => {});
@@ -75,25 +75,6 @@ describe("the project queues", () => {
       // Friday at four: late enough that the week is ticked, early enough that
       // Shoji approves the drafts before he stops.
       expect(PROJECT_CRON["projects.weekly-update"]).toBe("0 16 * * 5");
-    });
-  });
-
-  it("switches both agents on once, and never overrides a decision already made", async () => {
-    await withTestDb(async (db) => {
-      const f = await fixture(db);
-      // Somebody has already turned the writer off; that must stand.
-      await db.insert(schema.agentEnablement)
-        .values({ organisationId: f.organisationId, agentKey: CASE_STUDY_WRITER_KEY, enabled: false });
-
-      const first = await ensureProjectAgentsEnabled(db, quiet);
-      expect(first.enabled).toBeGreaterThan(0);
-      const second = await ensureProjectAgentsEnabled(db, quiet);
-      expect(second.enabled).toBe(0);
-
-      const rows = await db.select().from(schema.agentEnablement)
-        .where(eq(schema.agentEnablement.organisationId, f.organisationId));
-      expect(rows.find((row) => row.agentKey === PROJECT_REPORTER_KEY)?.enabled).toBe(true);
-      expect(rows.find((row) => row.agentKey === CASE_STUDY_WRITER_KEY)?.enabled).toBe(false);
     });
   });
 });

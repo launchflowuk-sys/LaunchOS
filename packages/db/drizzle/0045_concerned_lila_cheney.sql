@@ -1,0 +1,1 @@
+ALTER TYPE "public"."agent_run_status" ADD VALUE 'skipped';

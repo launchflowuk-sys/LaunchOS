@@ -20,12 +20,48 @@ export function resolvePolicy(envPolicy: AgentPolicy, config: unknown): AgentPol
 export interface AgentRunJob { agentKey: string; organisationId: string; trigger: "cron" | "event" | "manual"; payload: Record<string, unknown>; }
 export interface AgentRunDeps { db: Db; registry: Record<string, AgentDefinition>; llm: LlmClient; policy: AgentPolicy; logger: Console; }
 
+/**
+ * Why a run did not happen, in the words the person reading it needs.
+ *
+ * Two states arrive here and they are not the same problem. `disabled` is
+ * somebody's decision and needs no action. `unconfigured` means the agent has
+ * no row for this organisation at all — which is every agent on the day it is
+ * deployed, and is the one that wastes an afternoon, because a queued run
+ * simply produces nothing and the only trace is a line in a container log.
+ */
+const SKIP_REASON = {
+  disabled: "Skipped: this agent is switched off for this organisation. Turn it on in Settings → Agents.",
+  unconfigured: "Skipped: this agent has never been configured for this organisation, so it has no setting to be on. Switch it on in Settings → Agents.",
+} as const;
+
+/**
+ * A run that did not run, recorded like one that did.
+ *
+ * It carries the trigger and the payload, so the ledger answers the question
+ * actually being asked — "I pressed the button, where did it go" — rather than
+ * leaving the screen empty and the reason on a machine nobody has open.
+ */
+async function recordSkip(deps: AgentRunDeps, job: AgentRunJob, reason: keyof typeof SKIP_REASON) {
+  deps.logger.info(`agent ${job.agentKey} ${reason} for ${job.organisationId}; skipping`);
+  const now = new Date();
+  await deps.db.insert(schema.agentRuns).values({
+    organisationId: job.organisationId,
+    agentKey: job.agentKey,
+    trigger: job.trigger,
+    status: "skipped",
+    input: job.payload,
+    summary: SKIP_REASON[reason],
+    startedAt: now,
+    finishedAt: now,
+  });
+}
+
 export async function handleAgentRun(deps: AgentRunDeps, job: AgentRunJob) {
   const def = deps.registry[job.agentKey];
   if (!def) throw new Error(`unknown agent ${job.agentKey}`);
   const [enablement] = await deps.db.select().from(schema.agentEnablement)
     .where(and(eq(schema.agentEnablement.organisationId, job.organisationId), eq(schema.agentEnablement.agentKey, job.agentKey)));
-  if (!enablement?.enabled) { deps.logger.info(`agent ${job.agentKey} disabled for ${job.organisationId}; skipping`); return; }
+  if (!enablement?.enabled) return recordSkip(deps, job, enablement ? "disabled" : "unconfigured");
   const policy = resolvePolicy(deps.policy, enablement.config);
   return runAgent(def, { db: deps.db, organisationId: job.organisationId, trigger: job.trigger, payload: job.payload, llm: deps.llm, policy, logger: deps.logger });
 }

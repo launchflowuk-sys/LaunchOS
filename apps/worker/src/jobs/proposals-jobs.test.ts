@@ -21,7 +21,6 @@ import { MockPaymentsAdapter } from "@launchos/integrations";
 import type { BossRegistrar } from "./content-jobs.js";
 import {
   PROPOSAL_CRON,
-  ensureProposalDrafterEnabled,
   installProposalFollowOn,
   registerProposalJobs,
   runProposalExpiry,
@@ -117,19 +116,6 @@ describe("the proposal queues", () => {
       // The stamp is what stops the sweep re-queueing it.
       const stamped = (await getProposalDetail(db, f.organisationId, proposal.proposal.id))!;
       expect(stamped.proposal.metadata["followOnQueuedAt"]).toEqual(expect.any(String));
-    });
-  });
-
-  it("enables the drafter once per organisation and never overrides a decision", async () => {
-    await withTestDb(async (db) => {
-      const a = await fixture(db);
-      const b = await fixture(db);
-      await db.insert(schema.agentEnablement).values({ organisationId: b.organisationId, agentKey: "proposal-drafter", enabled: false });
-      expect((await ensureProposalDrafterEnabled(db, quiet)).enabled).toBeGreaterThanOrEqual(1);
-      expect((await ensureProposalDrafterEnabled(db, quiet)).enabled).toBe(0);
-      const rows = await db.select().from(schema.agentEnablement).where(eq(schema.agentEnablement.agentKey, "proposal-drafter"));
-      expect(rows.find((r) => r.organisationId === a.organisationId)?.enabled).toBe(true);
-      expect(rows.find((r) => r.organisationId === b.organisationId)?.enabled).toBe(false);
     });
   });
 });

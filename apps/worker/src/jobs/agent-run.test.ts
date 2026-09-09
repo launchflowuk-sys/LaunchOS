@@ -37,7 +37,7 @@ function scriptedLlm() {
 const quietLogger = { ...console, info: () => {} } as Console;
 
 describe("handleAgentRun", () => {
-  it("skips a disabled agent without starting a run", async () => {
+  it("records a disabled agent as a skipped run rather than doing nothing", async () => {
     await withTestDb(async (db) => {
       const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
       await db.insert(schema.agentEnablement).values({ organisationId: org!.id, agentKey: "test-agent", enabled: false });
@@ -49,7 +49,46 @@ describe("handleAgentRun", () => {
 
       expect(result).toBeUndefined();
       const runs = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.organisationId, org!.id));
-      expect(runs).toHaveLength(0);
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.status).toBe("skipped");
+      expect(runs[0]!.summary).toContain("switched off");
+      expect(runs[0]!.finishedAt).not.toBeNull();
+      const steps = await db.select().from(schema.agentSteps).where(eq(schema.agentSteps.organisationId, org!.id));
+      expect(steps).toHaveLength(0);
+    });
+  });
+
+  // The trap this fix exists for: a newly deployed agent has no enablement row
+  // at all, which the worker read as "off". Nothing distinguished the two, and
+  // nothing was written down either way.
+  it("tells an unconfigured agent apart from one that was switched off", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
+
+      await handleAgentRun(
+        { db, registry, llm: scriptedLlm(), policy: "safe", logger: quietLogger },
+        { ...job, organisationId: org!.id },
+      );
+
+      const runs = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.organisationId, org!.id));
+      expect(runs).toHaveLength(1);
+      expect(runs[0]!.status).toBe("skipped");
+      expect(runs[0]!.summary).toContain("never been configured");
+    });
+  });
+
+  it("keeps the trigger and payload on a skipped run, so the ledger says what was asked for", async () => {
+    await withTestDb(async (db) => {
+      const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `test-${crypto.randomUUID()}` }).returning();
+
+      await handleAgentRun(
+        { db, registry, llm: scriptedLlm(), policy: "safe", logger: quietLogger },
+        { ...job, organisationId: org!.id, trigger: "cron", payload: { siteId: "abc" } },
+      );
+
+      const [run] = await db.select().from(schema.agentRuns).where(eq(schema.agentRuns.organisationId, org!.id));
+      expect(run!.trigger).toBe("cron");
+      expect(run!.input).toEqual({ siteId: "abc" });
     });
   });
 

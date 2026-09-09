@@ -20,7 +20,7 @@ import { z } from "zod";
 
 export type AgentRunRow = typeof schema.agentRuns.$inferSelect;
 
-export const AGENT_RUN_STATUSES = ["running", "completed", "awaiting_approval", "failed"] as const;
+export const AGENT_RUN_STATUSES = ["running", "completed", "awaiting_approval", "failed", "skipped"] as const;
 export const AGENT_RUN_TRIGGERS = ["cron", "event", "manual", "resume"] as const;
 
 export const ListAgentRunsInput = z.object({
@@ -111,7 +111,7 @@ export async function agentRunHealth(db: Db, organisationId: string, since: Date
     .from(schema.agentRuns)
     .where(and(eq(schema.agentRuns.organisationId, organisationId), gte(schema.agentRuns.startedAt, since)))
     .groupBy(schema.agentRuns.status);
-  const health = { running: 0, completed: 0, awaiting_approval: 0, failed: 0 };
+  const health = { running: 0, completed: 0, awaiting_approval: 0, failed: 0, skipped: 0 };
   for (const row of rows) health[row.status] = row.total;
   return health;
 }

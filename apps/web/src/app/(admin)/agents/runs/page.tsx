@@ -87,7 +87,7 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
   const params = await searchParams;
 
   const agent = one(params.agent);
-  const status = oneOf(params.status, ["running", "completed", "awaiting_approval", "failed"] as const);
+  const status = oneOf(params.status, ["running", "completed", "awaiting_approval", "failed", "skipped"] as const);
   const trigger = oneOf(params.trigger, ["cron", "event", "manual", "resume"] as const);
   const page = pageParam(params.page);
   const now = new Date();
@@ -116,7 +116,7 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
       />
 
       <Section title={`Last ${HEALTH_WINDOW_DAYS} days`}>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <StatCard label="Completed" value={health.completed} category="automation" />
           <StatCard label="Running" value={health.running} category="automation" />
           <StatCard
@@ -133,6 +133,13 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
             href="/agents/runs?status=failed"
             category="automation"
             attention
+          />
+          <StatCard
+            label="Skipped"
+            value={health.skipped}
+            hint="Queued, but the agent is not switched on"
+            href="/agents/runs?status=skipped"
+            category="automation"
           />
         </div>
       </Section>
