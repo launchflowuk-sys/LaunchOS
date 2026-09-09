@@ -25,8 +25,25 @@ export const organisations = pgTable("organisations", {
   country: text("country"),
   vatNumber: text("vat_number"),
   companyNumber: text("company_number"),
-  /** Free text printed at the foot of every invoice: bank details, terms, a thank-you. */
+  /** Free text printed at the foot of every invoice: terms, a thank-you. */
   invoiceFooter: text("invoice_footer"),
+  /**
+   * Where a bank transfer should go.
+   *
+   * Structured rather than left to `invoice_footer`, which is where it lived as
+   * a paragraph and was not printed on the PDF at all. Most clients here pay by
+   * transfer — that is what the collection-method work established — so the
+   * account details are not a footnote on the invoice, they are the
+   * instruction, and an instruction typed into a sentence gets a digit wrong.
+   *
+   * Printed only when the name and at least one of the numbers are set: half a
+   * set of bank details on an invoice is worse than none.
+   */
+  bankAccountName: text("bank_account_name"),
+  bankSortCode: text("bank_sort_code"),
+  bankAccountNumber: text("bank_account_number"),
+  /** For anyone paying from outside the UK. Optional, and usually unset. */
+  bankIban: text("bank_iban"),
   // Whether owner and staff accounts must hold a second factor. Off by
   // default and only an owner may switch it on, from their own Account
   // screen — a live organisation whose owner has not enrolled yet must not

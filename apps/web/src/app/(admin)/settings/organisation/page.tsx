@@ -140,6 +140,27 @@ export default async function OrganisationSettingsPage() {
                 defaultValue={organisation.companyNumber}
                 className="sm:col-span-2"
               />
+              {/* The bank block. Structured rather than left to the footer,
+                  where it lived as a paragraph and was never printed on the PDF
+                  at all — most clients here pay by transfer, so these are the
+                  instruction, not a footnote. Printed only when the name and a
+                  full UK account (or an IBAN) are present: half a set of bank
+                  details is worse than none, because somebody will use them. */}
+              <Field
+                name="bankAccountName"
+                label="Bank account name"
+                defaultValue={organisation.bankAccountName}
+                className="sm:col-span-2"
+              />
+              <Field name="bankSortCode" label="Sort code" defaultValue={organisation.bankSortCode} />
+              <Field name="bankAccountNumber" label="Account number" defaultValue={organisation.bankAccountNumber} />
+              <Field
+                name="bankIban"
+                label="IBAN"
+                defaultValue={organisation.bankIban}
+                className="sm:col-span-2"
+              />
+
               <div className="sm:col-span-2">
                 <Label htmlFor="invoiceFooter">Invoice footer</Label>
                 <Textarea
@@ -150,7 +171,7 @@ export default async function OrganisationSettingsPage() {
                   className="mt-1.5"
                 />
                 <p className="mt-1.5 text-meta text-muted-foreground">
-                  Printed under the payment terms — bank details, or anything else every invoice should say.
+                  Printed at the foot of every invoice, under the bank details — terms, or a thank-you.
                 </p>
               </div>
             </div>

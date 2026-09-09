@@ -31,6 +31,10 @@ export const UpdateOrganisationSchema = z.object({
   vatNumber: optionalText(40),
   companyNumber: optionalText(40),
   invoiceFooter: optionalText(1000),
+  bankAccountName: optionalText(200),
+  bankSortCode: optionalText(20),
+  bankAccountNumber: optionalText(40),
+  bankIban: optionalText(40),
 });
 
 export const SUPPLIER_FIELDS = [
@@ -43,6 +47,10 @@ export const SUPPLIER_FIELDS = [
   "vatNumber",
   "companyNumber",
   "invoiceFooter",
+  "bankAccountName",
+  "bankSortCode",
+  "bankAccountNumber",
+  "bankIban",
 ] as const;
 
 export type SupplierFieldsRead =

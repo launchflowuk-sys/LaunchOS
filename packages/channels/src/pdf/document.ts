@@ -11,10 +11,14 @@
  *   absolute URL; a document may not. A PDF is kept for years and re-rendered
  *   for a countersigned copy, so a remote asset means the same document is a
  *   different file depending on whether the app was up — and Chromium stalls
- *   on the request while it finds out. The wordmark is therefore *set*, in
- *   type, from the same two colours as the logo. Same reason there is no web
- *   font: the container has DejaVu and Liberation, the desktop has Segoe UI or
- *   Helvetica, and a document must not depend on Google's CDN.
+ *   on the request while it finds out. The wordmark is therefore the real logo
+ *   *embedded* — see `brand-logo.ts`, whose bytes travel with the code — and
+ *   never a URL. It was type-set for the same reason before the bytes were
+ *   carried; a client asked why their invoice had no logo on it, which is a
+ *   fair question about a document that is supposed to be headed paper. Same
+ *   reason there is no web font: the container has DejaVu and Liberation, the
+ *   desktop has Segoe UI or Helvetica, and a document must not depend on
+ *   Google's CDN.
  * - **Real CSS.** No mail client is involved, so this is a stylesheet and a
  *   grid rather than nested tables, and `@page` sets the margins Chromium
  *   prints inside.
@@ -30,6 +34,7 @@
  * trusted-caller-only, exactly as in the email shell.
  */
 import { BRAND, escapeHtml } from "../email/template.js";
+import { BRAND_LOGO_DATA_URI, BRAND_LOGO_HEIGHT_PT, BRAND_LOGO_WIDTH_PT } from "./brand-logo.js";
 import type { PdfMargin } from "./types.js";
 
 /**
@@ -155,9 +160,33 @@ export function renderDocumentHtml(input: DocumentHtmlInput): string {
         justify-content: space-between;
         gap: 18pt;
       }
-      .wordmark { font-size: 19pt; font-weight: 700; letter-spacing: -0.02em; color: #FFFFFF; line-height: 1.1; }
-      .wordmark span { color: ${BRAND.cyan}; }
-      .wordmark small { display: block; margin-top: 4pt; font-size: 7.5pt; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.62); }
+      /* The logo's lettering is navy, so on the navy masthead it goes on a
+         white chip — the same move BrandTile makes on the admin rail, for the
+         same reason. A reversed export would be a second asset to keep in step
+         with the first. */
+      .brand-chip {
+        background: #FFFFFF;
+        border-radius: 6px;
+        padding: 6pt 9pt;
+        display: inline-block;
+        line-height: 0;
+      }
+      .brand-chip img { width: ${BRAND_LOGO_WIDTH_PT}pt; height: ${BRAND_LOGO_HEIGHT_PT}pt; display: block; }
+      .brand-line { margin-top: 6pt; font-size: 7.5pt; font-weight: 500; letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.62); }
+      /* The billed-to block. The address used to inherit the body paragraph's
+         9pt bottom margin per line, so a four-line address opened a gap the
+         size of a paragraph between the name and the town. It is one block of
+         text about one company and should read as one. */
+      .bill-to p { margin: 0 0 1pt; }
+      .bill-to { margin: 0 0 4pt; }
+
+      /* How to pay. A two-column list rather than a sentence, because these are
+         digits somebody is going to retype into their banking app. */
+      .pay-by { width: auto; margin: 0 0 10pt; font-size: 9.5pt; }
+      .pay-by td { border-bottom: none; padding: 2pt 0; }
+      .pay-by .pay-label { color: ${BRAND.muted}; padding-right: 16pt; white-space: nowrap; }
+      .footer-note { margin-top: 14pt; font-size: 9pt; }
+
       /* The swoosh cyan, the one decorative stroke — the same rule the email
          shell opens with, so the two are recognisably one family. */
       .rule { height: 3px; background: ${BRAND.cyan}; border-radius: 2px; margin: 3pt 0 16pt; }
@@ -219,7 +248,10 @@ export function renderDocumentHtml(input: DocumentHtmlInput): string {
   </head>
   <body>
     <div class="masthead">
-      <div class="wordmark">Launch<span>Flow</span><small>Powered by LaunchFlow</small></div>
+      <div>
+        <span class="brand-chip"><img src="${BRAND_LOGO_DATA_URI}" alt="LaunchFlow" /></span>
+        <div class="brand-line">Powered by LaunchFlow</div>
+      </div>
       ${input.meta && input.meta.length > 0 ? metaHtml(input.meta) : ""}
     </div>
     <div class="rule"></div>

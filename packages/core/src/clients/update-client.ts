@@ -26,6 +26,8 @@ export const UpdateClientInput = z.object({
   country: z.string().length(2).optional(),
   websiteUrl: z.string().url().nullish(),
   industry: z.string().max(100).nullish(),
+  /** Our own reference for them, printed on their invoices so a transfer can be matched. */
+  reference: z.string().max(40).nullish(),
   notes: z.string().max(4000).nullish(),
   status: z.enum(["active", "paused", "archived"]).optional(),
   ...ACTOR,

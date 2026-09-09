@@ -113,6 +113,7 @@ export const ClientDetailsSchema = z.object({
   phone: clearableText(40),
   websiteUrl: clearableUrl,
   industry: clearableText(100),
+  reference: clearableText(40),
   addressLine1: clearableText(200),
   addressLine2: clearableText(200),
   city: clearableText(100),

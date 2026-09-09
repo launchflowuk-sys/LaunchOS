@@ -40,6 +40,17 @@ export function ClientDetailsForm({ clientId, defaults }: { clientId: string; de
       <TextField name="phone" label="Phone" register={register} error={errors.phone} />
       <TextField name="websiteUrl" label="Website" placeholder="https://" register={register} error={errors.websiteUrl} />
       <TextField name="industry" label="Industry" register={register} error={errors.industry} />
+      {/* Printed on their invoices and quoted on a transfer, which is what
+          makes a payment landing in the account identifiable. Typed rather than
+          generated: the reference somebody invented for their own bookkeeping
+          is the one they will actually use. */}
+      <TextField
+        name="reference"
+        label="Client reference"
+        placeholder="AMO-001"
+        register={register}
+        error={errors.reference}
+      />
       <TextField name="addressLine1" label="Address line 1" register={register} error={errors.addressLine1} />
       <TextField name="addressLine2" label="Address line 2" register={register} error={errors.addressLine2} />
       <TextField name="city" label="City" register={register} error={errors.city} />

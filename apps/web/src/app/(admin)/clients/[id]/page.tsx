@@ -116,6 +116,7 @@ async function OverviewTab({ client }: { client: ClientRecord }) {
             phone: client.phone ?? "",
             websiteUrl: client.websiteUrl ?? "",
             industry: client.industry ?? "",
+            reference: client.reference ?? "",
             addressLine1: client.addressLine1 ?? "",
             addressLine2: client.addressLine2 ?? "",
             city: client.city ?? "",

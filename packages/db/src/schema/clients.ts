@@ -26,6 +26,15 @@ export const clients = pgTable(
     // by address alone, so two organisations must never share one.
     supportEmail: text("support_email"),
     packageId: uuid("package_id").references(() => packages.id, { onDelete: "set null" }),
+    /**
+     * Our own reference for this client, printed on their invoices.
+     *
+     * Optional and typed by a person: it exists so a client quoting "AMO-001"
+     * on a bank transfer can be matched to an account without reading the
+     * amount and guessing. Nothing generates it, because a reference somebody
+     * invented for their own bookkeeping is the one they will actually use.
+     */
+    reference: text("reference"),
     onboardedAt: timestamp("onboarded_at", { withTimezone: true }),
     handoverAt: timestamp("handover_at", { withTimezone: true }),
     status: clientStatusEnum("status").default("active").notNull(),

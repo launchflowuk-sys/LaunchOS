@@ -32,6 +32,10 @@ export const UpdateOrganisationInput = z.object({
   vatNumber: VatNumberField,
   companyNumber: z.string().trim().max(40).nullish(),
   invoiceFooter: z.string().trim().max(1000).nullish(),
+  bankAccountName: z.string().trim().max(200).nullish(),
+  bankSortCode: z.string().trim().max(20).nullish(),
+  bankAccountNumber: z.string().trim().max(40).nullish(),
+  bankIban: z.string().trim().max(40).nullish(),
   actorKind: z.enum(["user", "client", "agent", "system"]).default("system"),
   actorId: z.string().optional(),
 });

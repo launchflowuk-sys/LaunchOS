@@ -34,12 +34,27 @@ describe("document chrome", () => {
     expect(renderDocumentHtml({ title: "T", bodyHtml: table, paragraphs: ["words"] })).not.toContain(table);
   });
 
-  it("fetches nothing over the network — no img, no link, no @import", () => {
+  /**
+   * The invariant is that nothing is *fetched*, not that there are no images.
+   * The wordmark is an `<img>` whose bytes are inline — see `brand-logo.ts` —
+   * so it costs no request, cannot 404 onto a client's invoice, and renders the
+   * same in five years as it does today. What must never appear is a reference
+   * to somewhere else.
+   */
+  it("fetches nothing over the network: every image is inline, no link, no @import", () => {
     const html = renderDocumentHtml({ title: "T", paragraphs: ["body"] });
-    expect(html).not.toMatch(/<img/i);
     expect(html).not.toMatch(/<link/i);
     expect(html).not.toMatch(/@import/i);
     expect(html).not.toMatch(/https?:\/\//i);
+    for (const [, src] of html.matchAll(/<img[^>]*src="([^"]*)"/gi)) {
+      expect(src!.startsWith("data:")).toBe(true);
+    }
+  });
+
+  it("prints the real wordmark rather than setting it in type", () => {
+    const html = renderDocumentHtml({ title: "T" });
+    expect(html).toContain("data:image/png;base64,");
+    expect(html).toMatch(/<img[^>]*alt="LaunchFlow"/);
   });
 
   it("prints inside the same margins the renderer is told to use", () => {

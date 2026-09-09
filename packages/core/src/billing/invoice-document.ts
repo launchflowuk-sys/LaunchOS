@@ -43,6 +43,48 @@ export interface InvoiceDocumentInput {
   supplierVatNumber: string | null;
   /** The client's VAT number, printed when they gave us one. */
   clientVatNumber: string | null;
+  /** Our reference for this client, printed so a transfer can be matched to an account. */
+  clientReference?: string | null;
+  /** Where a transfer should go. Printed only when it is complete enough to act on. */
+  bank?: {
+    accountName: string | null;
+    sortCode: string | null;
+    accountNumber: string | null;
+    iban: string | null;
+  } | null;
+  /** The organisation's own footer: terms, a thank-you. Set on Settings → Organisation. */
+  invoiceFooter?: string | null;
+}
+
+/**
+ * How to pay, when the money does not collect itself.
+ *
+ * Printed only with an account name and either a UK account or an IBAN: half a
+ * set of bank details on an invoice is worse than none, because somebody will
+ * try to use them. The invoice number goes on it as the payment reference —
+ * that is what makes a transfer landing in the account identifiable, and
+ * matching payments by amount and hope is what "Collected to date £0.00" was
+ * made of.
+ */
+function payByHtml(input: InvoiceDocumentInput): string {
+  const bank = input.bank;
+  const name = bank?.accountName?.trim();
+  const ukAccount = bank?.sortCode?.trim() && bank?.accountNumber?.trim();
+  if (!name || (!ukAccount && !bank?.iban?.trim())) return "";
+
+  const rows = [
+    ["Account name", name],
+    ...(ukAccount ? [["Sort code", bank!.sortCode!.trim()], ["Account number", bank!.accountNumber!.trim()]] : []),
+    ...(bank?.iban?.trim() ? [["IBAN", bank.iban.trim()]] : []),
+    ["Payment reference", input.invoice.number],
+  ];
+
+  return `<h2>How to pay</h2>
+    <table class="pay-by">
+      <tbody>${rows
+        .map(([label, value]) => `<tr><td class="pay-label">${escapeHtml(label!)}</td><td><strong>${escapeHtml(value!)}</strong></td></tr>`)
+        .join("")}</tbody>
+    </table>`;
 }
 
 /** The document's title, at the top of page one and in the PDF's own metadata. */
@@ -81,10 +123,16 @@ function totalsHtml(invoice: InvoiceRow, vatRegistered: boolean): string {
 export function invoiceDocumentHtml(input: InvoiceDocumentInput): string {
   const { invoice } = input;
   const vatRegistered = isVatRegistered(input.supplierVatNumber);
+  // The masthead's right-hand column. It carried three lines and looked
+  // half-finished beside the logo; what belongs there is everything somebody
+  // needs to file the invoice without opening it twice — including our
+  // reference for them, which is what they will quote on a transfer.
   const meta = [
     { label: "Invoice", value: invoice.number },
+    ...(input.clientReference?.trim() ? [{ label: "Your reference", value: input.clientReference.trim() }] : []),
     { label: "Issued", value: ukLongDate(invoice.issuedAt) },
     { label: "Due", value: ukLongDate(invoice.dueAt) },
+    { label: "Amount", value: formatPence(invoice.totalPence) },
     ...(vatRegistered ? [{ label: "VAT number", value: input.supplierVatNumber! }] : []),
   ];
 
@@ -95,10 +143,16 @@ export function invoiceDocumentHtml(input: InvoiceDocumentInput): string {
     ? `<p class="muted">VAT number ${escapeHtml(input.clientVatNumber)}</p>`
     : "";
 
+  const footer = input.invoiceFooter?.trim()
+    ? `<p class="muted footer-note">${escapeHtml(input.invoiceFooter.trim()).replaceAll("\n", "<br />")}</p>`
+    : "";
+
   const bodyHtml = `<h2>Billed to</h2>
-    <p><strong>${escapeHtml(input.billTo)}</strong></p>
-    ${address}
-    ${clientVat}
+    <div class="bill-to">
+      <p><strong>${escapeHtml(input.billTo)}</strong></p>
+      ${address}
+      ${clientVat}
+    </div>
     <h2>What this covers</h2>
     <table>
       <thead><tr><th>Description</th><th class="numeric">Qty × unit</th><th class="numeric">Amount</th></tr></thead>
@@ -106,7 +160,9 @@ export function invoiceDocumentHtml(input: InvoiceDocumentInput): string {
     </table>
     ${invoice.status === "paid" && invoice.paidAt
       ? `<p><strong>Paid in full on ${escapeHtml(ukLongDate(invoice.paidAt))}. Thank you.</strong></p>`
-      : `<p>Payment is due by <strong>${escapeHtml(ukLongDate(invoice.dueAt))}</strong>. You can pay and see every invoice in your portal.</p>`}`;
+      : `<p>Payment is due by <strong>${escapeHtml(ukLongDate(invoice.dueAt))}</strong>. You can pay and see every invoice in your portal.</p>`}
+    ${payByHtml(input)}
+    ${footer}`;
 
   return renderDocumentHtml({
     title: invoiceDocumentTitle(invoice),
@@ -139,7 +195,7 @@ export interface InvoiceDocumentDeps {
 
 /** Everything the template needs, gathered org-scoped. */
 export async function invoiceDocumentInput(db: Db, organisationId: string, invoice: InvoiceRow): Promise<InvoiceDocumentInput> {
-  const [client] = await db.select({ name: schema.clients.name })
+  const [client] = await db.select({ name: schema.clients.name, reference: schema.clients.reference })
     .from(schema.clients)
     .where(and(eq(schema.clients.id, invoice.clientId), eq(schema.clients.organisationId, organisationId)));
   const [profile] = await db.select().from(schema.billingProfiles)
@@ -147,7 +203,15 @@ export async function invoiceDocumentInput(db: Db, organisationId: string, invoi
       eq(schema.billingProfiles.organisationId, organisationId),
       eq(schema.billingProfiles.clientId, invoice.clientId),
     ));
-  const [organisation] = await db.select({ vatNumber: schema.organisations.vatNumber })
+  const [organisation] = await db
+    .select({
+      vatNumber: schema.organisations.vatNumber,
+      invoiceFooter: schema.organisations.invoiceFooter,
+      bankAccountName: schema.organisations.bankAccountName,
+      bankSortCode: schema.organisations.bankSortCode,
+      bankAccountNumber: schema.organisations.bankAccountNumber,
+      bankIban: schema.organisations.bankIban,
+    })
     .from(schema.organisations)
     .where(eq(schema.organisations.id, organisationId));
 
@@ -160,6 +224,14 @@ export async function invoiceDocumentInput(db: Db, organisationId: string, invoi
     billToAddress: address,
     supplierVatNumber: organisation?.vatNumber ?? null,
     clientVatNumber: profile?.vatNumber ?? null,
+    clientReference: client?.reference ?? null,
+    invoiceFooter: organisation?.invoiceFooter ?? null,
+    bank: {
+      accountName: organisation?.bankAccountName ?? null,
+      sortCode: organisation?.bankSortCode ?? null,
+      accountNumber: organisation?.bankAccountNumber ?? null,
+      iban: organisation?.bankIban ?? null,
+    },
   };
 }
 
