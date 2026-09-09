@@ -26,3 +26,20 @@ export const DeleteDnsRecordSchema = z.object({
   domainId: z.string().uuid(),
 });
 export type DeleteDnsRecordValues = z.input<typeof DeleteDnsRecordSchema>;
+
+export const MoveDomainSchema = z.object({
+  domainId: z.string().uuid(),
+  clientId: z.string().uuid("Choose the client the domain belongs to"),
+});
+export type MoveDomainValues = z.input<typeof MoveDomainSchema>;
+
+/**
+ * Deleting a domain is the only way to free its name: the unique index is on
+ * (organisation, name) and archiving a client does not release it. Typing the
+ * name is the confirmation, because this cascades the DNS records with it.
+ */
+export const DeleteDomainSchema = z.object({
+  domainId: z.string().uuid(),
+  confirmName: z.string().trim().min(1, "Type the domain name to confirm"),
+});
+export type DeleteDomainValues = z.input<typeof DeleteDomainSchema>;

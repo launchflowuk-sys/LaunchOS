@@ -1,4 +1,4 @@
-import { getClient, getDomain, listDnsRecords, listSites } from "@launchos/core";
+import { getClient, getDomain, listClients, listDnsRecords, listSites } from "@launchos/core";
 import { TableProperties } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { DomainOwnership } from "./domain-ownership";
 import { AttachSiteForm } from "./attach-site-form";
 import { AddDnsRecordForm } from "./dns-form";
 import { DeleteDnsRecordButton } from "./delete-dns-record-button";
@@ -42,10 +43,13 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
   const domain = await getDomain(db, session.organisationId, id);
   if (!domain) notFound();
 
-  const [client, sites, records] = await Promise.all([
+  const [client, sites, records, clients] = await Promise.all([
     getClient(db, session.organisationId, domain.clientId),
     listSites(db, session.organisationId, { clientId: domain.clientId }),
     listDnsRecords(db, session.organisationId, domain.id),
+    // Archived clients included on purpose: the domain stuck on one is the
+    // reason this screen can move it at all.
+    listClients(db, session.organisationId, { limit: 200 }),
   ]);
 
   return (
@@ -89,6 +93,20 @@ export default async function DomainDetailPage({ params }: PageProps<"/domains/[
       <Section title="Website" description="Which of this client's websites the domain points at.">
         <div className="rounded-[20px] border bg-card p-5">
           <AttachSiteForm domainId={domain.id} siteId={domain.siteId} sites={sites} />
+        </div>
+      </Section>
+
+      <Section
+        title="Ownership"
+        description="Which client this domain belongs to, and how to release the name."
+      >
+        <div className="rounded-[20px] border bg-card p-5">
+          <DomainOwnership
+            domainId={domain.id}
+            domainName={domain.name}
+            clientId={domain.clientId}
+            clients={clients.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }))}
+          />
         </div>
       </Section>
 

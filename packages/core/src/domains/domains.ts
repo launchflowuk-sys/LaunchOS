@@ -67,6 +67,19 @@ export async function createDomain(db: Db, organisationId: string, input: Create
 
 export const UpdateDomainInput = z.object({
   domainId: z.string().uuid(),
+  /**
+   * Move the domain to a different client.
+   *
+   * A domain outlives the client row it was first filed under: one gets added
+   * by hand against the wrong client, or the client it belongs to is merged or
+   * archived. Without this the name is stuck — archiving does not release it
+   * and the unique index on (organisation, name) refuses a second row.
+   *
+   * Moving clears `siteId`: a site belongs to the old client, and a domain
+   * pointing at another client's website is a worse state than an unattached
+   * one.
+   */
+  clientId: z.string().uuid().optional(),
   siteId: z.string().uuid().nullish(),
   registrar: z.string().max(100).nullish(),
   dnsProvider: z.enum(["cloudflare", "hostinger", "registrar", "other"]).optional(),
@@ -87,11 +100,20 @@ export async function updateDomain(db: Db, organisationId: string, input: Update
     const inner = tx as unknown as Db;
     const [before] = await tx.select().from(schema.domains).where(where);
     if (!before) throw new Error(`domain ${domainId} not found in organisation`);
+    const movingTo = patch.clientId && patch.clientId !== before.clientId ? patch.clientId : null;
+    if (patch.clientId) await assertOwned(inner, organisationId, schema.clients, patch.clientId);
     if (patch.siteId) {
       await assertOwned(inner, organisationId, schema.sites, patch.siteId);
-      await assertSiteBelongsToClient(inner, organisationId, patch.siteId, before.clientId);
+      // Against the client it will belong to after this update, not the one it
+      // is leaving.
+      await assertSiteBelongsToClient(inner, organisationId, patch.siteId, movingTo ?? before.clientId);
     }
-    const [after] = await tx.update(schema.domains).set({ ...patch, updatedAt: new Date() }).where(where).returning();
+    const [after] = await tx
+      .update(schema.domains)
+      // A move drops the old client's site unless this same call names a new one.
+      .set({ ...patch, ...(movingTo && patch.siteId === undefined ? { siteId: null } : {}), updatedAt: new Date() })
+      .where(where)
+      .returning();
     await recordAudit(tx as unknown as Db, organisationId, {
       actorKind, actorId, action: "domain.updated", targetType: "domain", targetId: domainId, before, after,
     });

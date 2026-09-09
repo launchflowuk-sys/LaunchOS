@@ -1,6 +1,6 @@
 "use server";
 
-import { createDnsRecord, deleteDnsRecord, updateDomain } from "@launchos/core";
+import { createDnsRecord, deleteDnsRecord, deleteDomain, getDomain, updateDomain } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
@@ -10,6 +10,8 @@ import {
   type AttachSiteValues,
   DeleteDnsRecordSchema,
   type DeleteDnsRecordValues,
+  DeleteDomainSchema,
+  MoveDomainSchema,
   NewDnsRecordSchema,
   type NewDnsRecordValues,
 } from "./schemas";
@@ -75,4 +77,62 @@ export async function attachDomainToSiteAction(values: AttachSiteValues): Promis
   } catch (error) {
     return { status: "error", message: errorMessage(error) };
   }
+}
+
+/**
+ * Move a domain to another client.
+ *
+ * The case this exists for: a domain added by hand against the wrong client,
+ * whose client is then archived. Archiving does not release the name and the
+ * unique index refuses a second row, so without a move the name is stuck.
+ */
+export async function moveDomainAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = MoveDomainSchema.safeParse({
+    domainId: formData.get("domainId"),
+    clientId: formData.get("clientId"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid client" };
+  try {
+    await updateDomain(getDb(), session.organisationId, {
+      domainId: parsed.data.domainId,
+      clientId: parsed.data.clientId,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+  revalidatePath(`/domains/${parsed.data.domainId}`);
+  revalidatePath("/domains");
+  return { status: "ok" };
+}
+
+/** Delete a domain and its DNS records. The typed name is the confirmation. */
+export async function deleteDomainAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = DeleteDomainSchema.safeParse({
+    domainId: formData.get("domainId"),
+    confirmName: formData.get("confirmName"),
+  });
+  if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid request" };
+
+  const db = getDb();
+  const domain = await getDomain(db, session.organisationId, parsed.data.domainId);
+  if (!domain) return { status: "error", message: "Domain not found" };
+  // Compared case-insensitively and trimmed: a domain name is not case
+  // sensitive and neither is the person typing it at two in the morning.
+  if (parsed.data.confirmName.trim().toLowerCase() !== domain.name.toLowerCase()) {
+    return { status: "error", message: `Type ${domain.name} exactly to delete it` };
+  }
+
+  try {
+    await deleteDomain(db, session.organisationId, {
+      domainId: parsed.data.domainId, actorKind: "user", actorId: session.userId,
+    });
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+  revalidatePath("/domains");
+  return { status: "ok" };
 }
