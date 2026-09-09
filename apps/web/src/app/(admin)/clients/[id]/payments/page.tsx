@@ -1,4 +1,4 @@
-import { clientCostByCurrency, getClient, getClientMoney } from "@launchos/core";
+import { clientCostByCurrency, getClient, getClientMoney, listSubscriptionLines } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, eq, inArray } from "drizzle-orm";
 import { Banknote, CreditCard, ExternalLink, Receipt, Wallet } from "lucide-react";
@@ -14,6 +14,7 @@ import { getDb } from "@/lib/db";
 import { formatDate, formatPence } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
+import { BillingLinesForm } from "./billing-lines-form";
 import { RecordPaymentDialog } from "../../../payments/record-payment-dialog";
 import { PAYMENT_PROVIDERS } from "../../../payments/schemas";
 import { RaiseInvoiceButton } from "../billing/raise-invoice-button";
@@ -106,6 +107,14 @@ export default async function ClientPaymentsPage({ params }: PageProps<"/clients
     ));
 
   const live = summary.subscriptions.filter((row) => row.status === "active" || row.status === "trialing");
+
+  // One read per live subscription: there are rarely more than two, and a
+  // join would return the subscription row once per line.
+  const linesBySubscription = Object.fromEntries(
+    await Promise.all(
+      live.map(async (row) => [row.id, await listSubscriptionLines(db, session.organisationId, row.id)] as const),
+    ),
+  );
   const monthly = live.reduce<Record<string, number>>((acc, row) => {
     acc[row.currency] = (acc[row.currency] ?? 0) + row.amountPence;
     return acc;
@@ -180,7 +189,36 @@ export default async function ClientPaymentsPage({ params }: PageProps<"/clients
       ) : null}
 
       {summary.subscriptions.length > 0 ? (
-        <Section title="Subscriptions" description="What recurs, and when it next takes payment." className="mt-8">
+        <Section
+          title="What they are charged"
+          description="The parts that make up the monthly figure, and how the money arrives. The total is the sum of the lines."
+          className="mt-8"
+        >
+          <div className="space-y-4">
+            {live.map((row) => (
+              <div key={row.id} className="rounded-[20px] border bg-card p-5">
+                <p className="mb-4 flex flex-wrap items-baseline gap-x-2 text-sm">
+                  <span className="font-medium">{row.packageName ?? "Subscription"}</span>
+                  <span className="text-meta text-muted-foreground">
+                    {row.currentPeriodEnd ? `next charge ${formatDate(row.currentPeriodEnd)}` : "no next date"}
+                  </span>
+                </p>
+                <BillingLinesForm
+                  subscriptionId={row.id}
+                  clientId={client.id}
+                  currency={row.currency}
+                  initialLines={linesBySubscription[row.id] ?? []}
+                  collectionMethod={row.collectionMethod}
+                  billingNotes={row.billingNotes}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+      ) : null}
+
+      {summary.subscriptions.length > 0 ? (
+        <Section title="Subscriptions" description="Every subscription on this client, including ended ones." className="mt-8">
           <div className="rounded-[20px] border bg-card p-5">
             <ul className="min-w-0 divide-y">
               {summary.subscriptions.map((row) => (

@@ -4,6 +4,7 @@ import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 import { documents } from "./documents.js";
 import { packages } from "./packages.js";
+import { collectionMethodEnum } from "./subscription-lines.js";
 
 // The entire "financial details" surface. No card numbers, no bank details:
 // money movement is Stripe's job (Plan 5), and only its customer id lands here.
@@ -88,8 +89,22 @@ export const subscriptions = pgTable("subscriptions", {
   status: subscriptionStatusEnum("status").default("active").notNull(),
   currentPeriodStart: timestamp("current_period_start", { withTimezone: true }).notNull(),
   currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }).notNull(),
+  /**
+   * The whole monthly figure. Kept as one number so every existing reader —
+   * the Payments screen, the upcoming-payments view, the margin tiles — works
+   * unchanged; it becomes the **sum of `subscription_lines`** as soon as a
+   * subscription has any, and is maintained by `setSubscriptionLines`.
+   */
   amountPence: integer("amount_pence").notNull(),
   currency: text("currency").default("GBP").notNull(),
+  /**
+   * How the money actually arrives. Stripe was the only answer the product
+   * had, and most clients here pay an invoice by bank transfer — which is work
+   * somebody has to do each month, and therefore work worth seeing.
+   */
+  collectionMethod: collectionMethodEnum("collection_method").default("stripe").notNull(),
+  /** Free text for the arrangement: "pays one lump sum on the 1st", a reference to quote. */
+  billingNotes: text("billing_notes"),
 }, (t) => [uniqueIndex("subscriptions_org_stripe_id").on(t.organisationId, t.stripeSubscriptionId)]);
 
 export const invoices = pgTable("invoices", {

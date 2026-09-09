@@ -58,6 +58,9 @@ export interface ClientMoney {
     currency: string;
     packageName: string | null;
     currentPeriodEnd: Date | null;
+    /** How the money arrives — anything but `stripe` is work somebody does each month. */
+    collectionMethod: string;
+    billingNotes: string | null;
   }[];
 }
 
@@ -145,6 +148,8 @@ export async function getClientMoney(
         currency: schema.subscriptions.currency,
         packageName: schema.packages.name,
         currentPeriodEnd: schema.subscriptions.currentPeriodEnd,
+        collectionMethod: schema.subscriptions.collectionMethod,
+        billingNotes: schema.subscriptions.billingNotes,
       })
       .from(schema.subscriptions)
       .leftJoin(schema.packages, eq(schema.subscriptions.packageId, schema.packages.id))

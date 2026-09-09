@@ -184,6 +184,11 @@ export type { StartedPurchase } from "./portal-purchases/start-purchase.js";
 export { completePortalPurchase, PurchaseNotLive, PURCHASE_PAID_NOTIFICATION_KIND } from "./portal-purchases/complete-purchase.js";
 export type { CompletePortalPurchaseResult } from "./portal-purchases/complete-purchase.js";
 export { recordSubscription } from "./billing/record-subscription.js";
+export {
+  setSubscriptionLines, listSubscriptionLines, subscriptionsNeedingCollection, totalOf,
+  SetSubscriptionLinesInput, SubscriptionLineInput,
+} from "./billing/subscription-lines.js";
+export type { SubscriptionLineRow } from "./billing/subscription-lines.js";
 export { getClientMoney, ClientMoneyInput } from "./billing/client-money.js";
 export {
   syncSupplierCosts, assignSupplierCost, listSupplierCosts, clientCostByCurrency,
