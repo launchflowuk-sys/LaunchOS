@@ -29,7 +29,15 @@ Needs a **client selector**, then that client's notifications shown as a
 **summary plus grouped cards** — modern, clean, categorised by colour. Not the
 current flat list.
 
-## 2. Full-width tables, software-wide
+## 2. Full-width tables, software-wide — **DONE** (`ef7ba9f`)
+
+A screen whose subject is a table sets `wide` on its `PageHeader`, which paints
+`data-workspace="wide"`; the admin layout drops its `max-w-6xl` with `:has()`.
+Applied to 28 list screens. Prose, forms and single-record screens keep the
+reading column deliberately — unclamping everything makes a description two
+thousand pixels wide.
+
+### Original ask
 
 Clients table carries the least information of any screen and is boxed into
 the middle. It needs a **full-bleed view**, and so does **every other table**
@@ -40,7 +48,26 @@ in the product — Leads and the rest included. More columns are coming.
 Alignment is broken: helper text sits under a field and pushes the row out of
 line. Fix the layout.
 
-## 4. Costs
+## 4. Costs — **DONE** (`08841a6`)
+
+Names resolve now. Hostinger's API carries no domain on a subscription — checked
+against the live account — but it carries when the subscription started, and a
+domain and its subscription are created in the same checkout seconds apart. That
+resolves **27 of 27** domain subscriptions with nothing ambiguous, where the TLD
+alone resolved almost none. `matchCostToDomain` is pure and separate from the
+sync, and returns nothing whenever two candidates are equally close.
+
+Mailboxes and hosting, which the bill ties to no domain at all, are offered to a
+domain bought the same day and marked as a guess.
+
+The screen is rebuilt: full width, five figures, four grouped sections — trials
+with a deadline, lines with no client, what each client costs, then everything.
+
+**Still open:** 24 "Starter Business Email" lines cannot be resolved from the
+supplier's data at all, only guessed at by date. They need assigning by hand
+once, and then they stay assigned.
+
+### Original ask
 
 - Table is far too long and uncategorised.
 - Should **resolve real names** — the domain, the website, the email
@@ -49,12 +76,27 @@ line. Fix the layout.
 - Needs **grouping** and better arrangement.
 - Needs **more KPI detail** on the things that matter.
 
-## 5. The yellow warnings
+## 5. The yellow warnings — **DONE** for Costs (`08841a6`)
+
+The amber slab on Costs is gone. Trials are a normal table that names every
+subscription; the colour moved to the two KPI tiles that actually need a
+decision, using `StatCard`'s existing `attention` mechanism. Other screens still
+to sweep.
+
+### Original ask
 
 They look amateur. Group them, drop the slop colouring, and **say which
 subscription** each one is about — a warning that names nothing is not usable.
 
-## 6. Billing that is not Stripe
+## 6. Billing that is not Stripe — **BUILT, NOT APPLIED**
+
+`subscription_lines` and `subscriptions.collection_method` exist, and the method
+enum already covers `bank_transfer`, `standing_order`, `direct_debit`, `cash` and
+`other`. The form is on **Clients → [client] → Payments**. Nobody has used it:
+AMO Rendering still reads £99 and wants two lines (2 × £45, plus £110 ad
+management) collected by bank transfer. That is production data entry.
+
+### Original ask
 
 **AMO Rendering shows £99.00 active. It is wrong.** He invoices £200 a month:
 £45 × 2 websites (£90) plus £110 ad management, paid as **one lump sum by bank
