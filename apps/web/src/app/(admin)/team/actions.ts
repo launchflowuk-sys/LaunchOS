@@ -50,10 +50,22 @@ export async function addMemberAction(_prev: AddMemberState, formData: FormData)
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid details" };
 
   try {
-    const { oneTimePassword } = await createMember(getDb(), session.organisationId, {
+    const { member, oneTimePassword } = await createMember(getDb(), session.organisationId, {
       ...parsed.data,
       invitedBy: session.userId,
     });
+
+    // Chosen on the same screen that creates them, so nobody is created with
+    // the role defaults and narrowed in a second step somebody has to remember.
+    // Refused for an owner by the service — an owner always has everything —
+    // so it is only sent for staff.
+    if (parsed.data.role === "staff") {
+      await setMemberPermissions(getDb(), session.organisationId, {
+        memberId: member.id,
+        permissions: readPermissions(formData),
+        actorId: session.userId,
+      });
+    }
     // After the account exists, and best-effort: see `emailTheInvite`.
     const invite = formData.get("sendEmail") === "on"
       ? await emailTheInvite(session, { ...parsed.data, oneTimePassword })
@@ -223,7 +235,7 @@ export async function setMemberPermissionsAction(formData: FormData): Promise<Ac
   const parsed = PermissionsInput.safeParse({ memberId: formData.get("memberId") });
   if (!parsed.success) return { status: "error", message: "That member could not be identified" };
 
-  const permissions = Object.fromEntries(PERMISSION_KEYS.map((key) => [key, formData.get(key) === "on"]));
+  const permissions = readPermissions(formData);
   try {
     await setMemberPermissions(getDb(), session.organisationId, {
       memberId: parsed.data.memberId,
@@ -272,4 +284,17 @@ async function staffTwoFactorRequired(organisationId: string): Promise<boolean> 
     .from(schema.organisations)
     .where(eq(schema.organisations.id, organisationId));
   return row?.enforced ?? false;
+}
+
+/**
+ * The six permission values off a form.
+ *
+ * Reads `"on"` explicitly rather than treating a missing key as false, because
+ * the picker always sends every key. That is deliberate: leaning on "an
+ * unticked box submits nothing" is what let a save quietly reset a member to
+ * the role defaults, and a form control that fails to post is then
+ * indistinguishable from a box somebody meant to untick.
+ */
+function readPermissions(formData: FormData): Record<string, boolean> {
+  return Object.fromEntries(PERMISSION_KEYS.map((key) => [key, formData.get(key) === "on"]));
 }

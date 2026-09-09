@@ -1,4 +1,4 @@
-import { listMembers, PERMISSION_KEYS, PERMISSION_LABELS } from "@launchos/core";
+import { listMembers, defaultPermissions, PERMISSION_KEYS, PERMISSION_LABELS } from "@launchos/core";
 import { ShieldCheck, UsersRound } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -107,7 +107,7 @@ export default async function TeamPage() {
         title="Team"
         description="People who can sign in and be assigned work. Sign-up is disabled: accounts are created here."
         category="organisation"
-        actions={isOwner ? <AddMemberDialog /> : null}
+        actions={isOwner ? <AddMemberDialog permissionOptions={PERMISSION_OPTIONS} defaultStaffPermissions={defaultPermissions("staff")} /> : null}
       />
 
       <DataList<Member>

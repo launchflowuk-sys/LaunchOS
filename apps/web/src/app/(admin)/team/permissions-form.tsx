@@ -3,25 +3,25 @@
 import { Lock } from "lucide-react";
 import { ActionForm } from "@/components/action-form";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { setMemberPermissionsAction } from "./actions";
+import { PermissionPicker, type PermissionOption } from "./permission-picker";
 
 /**
  * The five keys and their labels, handed down from the server. Declared here
  * as a plain shape rather than imported from `@launchos/core`, which would
  * pull the Postgres driver into the browser bundle.
  */
-export type PermissionOption = { key: string; label: string };
+export type { PermissionOption };
 
 /**
- * One member's permissions: five boxes and a Save. An owner's row is locked
+ * One member's permissions: six boxes and a Save. An owner's row is locked
  * to all five — core refuses to narrow an owner — so the boxes are shown
  * ticked and disabled, and the form does not post at all.
  *
- * Radix's Checkbox submits `name=on` with the enclosing form when ticked and
- * nothing when not, and the action stores the whole set, so an unticked box
- * is a clear `false`.
+ * Every key posts an explicit `on` or `off` — see `PermissionPicker`. It used
+ * to lean on "an unticked box submits nothing", which is exactly how saving
+ * a narrowed set silently reset the row to the role defaults.
  */
 export function PermissionsForm({
   memberId,
@@ -42,25 +42,14 @@ export function PermissionsForm({
   const locked = role === "owner" || !editable;
 
   const boxes = (
-    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
-      {options.map((option) => {
-        const id = `perm-${memberId}-${option.key}`;
-        return (
-          <div key={option.key} className="flex items-start gap-2">
-            <Checkbox
-              id={id}
-              name={option.key}
-              defaultChecked={role === "owner" ? true : permissions[option.key] === true}
-              disabled={locked}
-              className="mt-0.5"
-            />
-            <Label htmlFor={id} className="leading-snug font-normal">
-              {option.label}
-            </Label>
-          </div>
-        );
-      })}
-    </div>
+    <PermissionPicker
+      idPrefix={`perm-${memberId}`}
+      options={options}
+      // An owner is every permission whatever is stored — core refuses to
+      // narrow one — so their row is shown full and switched off.
+      initial={role === "owner" ? Object.fromEntries(options.map((o) => [o.key, true])) : permissions}
+      disabled={locked}
+    />
   );
 
   const heading = (

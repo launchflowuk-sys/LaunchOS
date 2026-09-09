@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { InlineAlert } from "@/components/inline-alert";
 import { NativeSelect } from "@/components/ui/native-select";
 import { OneTimePasswordDialog, OneTimePassword } from "@/components/one-time-password-dialog";
@@ -9,13 +9,27 @@ import { DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { addMemberAction, type AddMemberState } from "./actions";
+import { PermissionPicker, type PermissionOption } from "./permission-picker";
 
 const INITIAL: AddMemberState = { status: "idle" };
 
-export function AddMemberDialog() {
+export function AddMemberDialog({
+  permissionOptions,
+  defaultStaffPermissions,
+}: {
+  permissionOptions: readonly PermissionOption[];
+  /** The role defaults, so the boxes open on what a staff member would get. */
+  defaultStaffPermissions: Record<string, boolean>;
+}) {
   return (
     <OneTimePasswordDialog triggerLabel="Add member">
-      {({ close }) => <AddMemberBody onClose={close} />}
+      {({ close }) => (
+        <AddMemberBody
+          onClose={close}
+          permissionOptions={permissionOptions}
+          defaultStaffPermissions={defaultStaffPermissions}
+        />
+      )}
     </OneTimePasswordDialog>
   );
 }
@@ -26,8 +40,17 @@ export function AddMemberDialog() {
  * a second "Add member" would otherwise reopen on the previous member's
  * one-time password with no form at all.
  */
-function AddMemberBody({ onClose }: { onClose: () => void }) {
+function AddMemberBody({
+  onClose,
+  permissionOptions,
+  defaultStaffPermissions,
+}: {
+  onClose: () => void;
+  permissionOptions: readonly PermissionOption[];
+  defaultStaffPermissions: Record<string, boolean>;
+}) {
   const [state, formAction, pending] = useActionState(addMemberAction, INITIAL);
+  const [role, setRole] = useState<"owner" | "staff">("staff");
 
   return (
     <>
@@ -76,10 +99,38 @@ function AddMemberBody({ onClose }: { onClose: () => void }) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="member-role">Role</Label>
-            <NativeSelect id="member-role" name="role" defaultValue="staff">
+            <NativeSelect
+              id="member-role"
+              name="role"
+              value={role}
+              onChange={(event) => setRole(event.target.value as "owner" | "staff")}
+            >
               <option value="staff">Staff</option>
               <option value="owner">Owner</option>
             </NativeSelect>
+          </div>
+
+          {/* Chosen here rather than after the fact. An owner has everything by
+              definition — core refuses to narrow one — so the boxes go full and
+              disabled the moment the role changes, instead of pretending the
+              choice is available and ignoring it. */}
+          <div className="space-y-2">
+            <Label>What they can reach</Label>
+            <PermissionPicker
+              idPrefix="new-member"
+              options={permissionOptions}
+              initial={
+                role === "owner"
+                  ? Object.fromEntries(permissionOptions.map((o) => [o.key, true]))
+                  : defaultStaffPermissions
+              }
+              disabled={role === "owner"}
+            />
+            <p className="text-meta text-muted-foreground">
+              {role === "owner"
+                ? "An owner always has every permission."
+                : "You can change these at any time from this screen."}
+            </p>
           </div>
 
           {/* Default on: the alternative is the password going into WhatsApp,
