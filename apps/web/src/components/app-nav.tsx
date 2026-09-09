@@ -1,7 +1,7 @@
 "use client";
 
 import type { MemberPermissions } from "@launchos/core";
-import { Menu } from "lucide-react";
+import { ChevronRight, Menu } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
@@ -60,15 +60,65 @@ function NavList({
   const current = activeHref(pathname);
   const groups = visibleNavGroups(permissions);
 
+  // Thirty-five entries in one column is longer than any phone and most
+  // laptops, so a group folds away. Only what a person opened is remembered
+  // here: the group holding the current page is open because it holds it, not
+  // because it was stored, so arriving anywhere — from search, a link in an
+  // email, a bookmark — always shows you where you are.
+  //
+  // The rail lives in the admin layout and does not remount between routes, so
+  // this state survives client navigation without touching localStorage.
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const toggle = (label: string, open: boolean) => setOverrides((prev) => ({ ...prev, [label]: open }));
+
   return (
-    <nav aria-label="Main" className="flex-1 space-y-5 overflow-y-auto px-3 py-4">
-      {groups.map((group) => (
+    <nav aria-label="Main" className="flex-1 space-y-3 overflow-y-auto px-3 py-4">
+      {groups.map((group) => {
+        const holdsCurrent = group.items.some((item) => item.href === current);
+        // A single-entry group is its entry; a toggle there hides one link
+        // behind one click and saves no height at all.
+        const collapsible = group.items.length > 1;
+        const isOpen = !collapsible || (overrides[group.label] ?? holdsCurrent);
+        // The count is what makes a closed group worth leaving closed: you can
+        // see it holds seven things without opening it.
+        const waiting = group.items.reduce(
+          (sum, item) => sum + (item.href === APPROVALS_HREF ? pendingApprovals : 0),
+          0,
+        );
+
+        return (
         <div key={group.label}>
-          <p className="label-caps flex items-center gap-2 px-3 pb-1.5 text-sidebar-muted">
-            <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[group.category])} />
-            {group.label}
-          </p>
-          <div className="space-y-0.5">
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => toggle(group.label, !isOpen)}
+              aria-expanded={isOpen}
+              className="label-caps flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sidebar-muted transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+            >
+              <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[group.category])} />
+              <span className="flex-1 text-left">{group.label}</span>
+              {/* A group you cannot see into still has to be able to shout. */}
+              {!isOpen && waiting > 0 ? (
+                <span
+                  className="shrink-0 rounded-full bg-warning-bg px-1.5 py-0.5 text-meta leading-none font-semibold tabular-nums text-warning-fg"
+                  aria-label={`${waiting} waiting for a decision`}
+                >
+                  {waiting}
+                </span>
+              ) : null}
+              <ChevronRight
+                aria-hidden
+                strokeWidth={1.75}
+                className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")}
+              />
+            </button>
+          ) : (
+            <p className="label-caps flex items-center gap-2 px-3 pb-1.5 text-sidebar-muted">
+              <span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", CATEGORY_DOT[group.category])} />
+              {group.label}
+            </p>
+          )}
+          <div className={cn("space-y-0.5", collapsible && !isOpen && "hidden")}>
             {/* Every entry is a link: the disabled "arrives in Plan N" label
                 went out with the last pending module (see `lib/nav.ts`). */}
             {group.items.map((item) => {
@@ -113,7 +163,8 @@ function NavList({
             })}
           </div>
         </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }
