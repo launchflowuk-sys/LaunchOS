@@ -13,7 +13,7 @@ export interface PortfolioMetrics {
   /** Everything currently billed on a recurring basis, in pence per month. */
   readonly recurringPence: number;
   readonly projectsInFlight: number;
-  /** Every invoice ever settled. The honest version of "lifetime value". */
+  /** Every pound that actually arrived. The honest version of "lifetime value". */
   readonly lifetimePence: number;
 }
 
@@ -29,9 +29,19 @@ export interface PortfolioMetrics {
  * `recurringPence` counts `past_due` alongside `active`, because a subscription
  * that has missed a payment is still a subscription and still what the client
  * is on. Cancelled and paused are excluded: those are not revenue this month.
+ *
+ * `lifetimePence` is money received, and it has to read two tables to say so.
+ * It used to sum invoices marked `paid`, which described a business that
+ * collects through Stripe and nothing else. Most clients here pay an invoice by
+ * bank transfer; the transfer gets recorded as a `payment` and the invoice is
+ * never touched again, so a real book of business read **£0.00** on screen
+ * while the Payments tab showed the money. Now: every succeeded payment, plus
+ * paid invoices that have no succeeded payment against them — which keeps the
+ * years of history that predate payment rows without counting the settled ones
+ * twice.
  */
 export async function clientPortfolioMetrics(db: Db, organisationId: string): Promise<PortfolioMetrics> {
-  const [active, onboarding, recurring, projects, lifetime] = await Promise.all([
+  const [active, onboarding, recurring, projects, received, settledWithoutPayment] = await Promise.all([
     db
       .select({ value: count() })
       .from(schema.clients)
@@ -60,9 +70,23 @@ export async function clientPortfolioMetrics(db: Db, organisationId: string): Pr
       .from(schema.projects)
       .where(and(eq(schema.projects.organisationId, organisationId), inArray(schema.projects.status, [...IN_FLIGHT]))),
     db
+      .select({ pence: sql<string>`coalesce(sum(${schema.payments.amountPence}), 0)` })
+      .from(schema.payments)
+      .where(and(eq(schema.payments.organisationId, organisationId), eq(schema.payments.status, "succeeded"))),
+    db
       .select({ pence: sql<string>`coalesce(sum(${schema.invoices.totalPence}), 0)` })
       .from(schema.invoices)
-      .where(and(eq(schema.invoices.organisationId, organisationId), eq(schema.invoices.status, "paid"))),
+      .where(
+        and(
+          eq(schema.invoices.organisationId, organisationId),
+          eq(schema.invoices.status, "paid"),
+          sql`not exists (
+            select 1 from ${schema.payments}
+            where ${schema.payments.invoiceId} = ${schema.invoices.id}
+              and ${schema.payments.status} = 'succeeded'
+          )`,
+        ),
+      ),
   ]);
 
   return {
@@ -72,6 +96,6 @@ export async function clientPortfolioMetrics(db: Db, organisationId: string): Pr
     // addition into concatenation further up.
     recurringPence: Number(recurring[0]?.pence ?? 0),
     projectsInFlight: projects[0]?.value ?? 0,
-    lifetimePence: Number(lifetime[0]?.pence ?? 0),
+    lifetimePence: Number(received[0]?.pence ?? 0) + Number(settledWithoutPayment[0]?.pence ?? 0),
   };
 }
