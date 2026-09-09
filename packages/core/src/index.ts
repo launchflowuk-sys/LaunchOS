@@ -194,7 +194,7 @@ export { listClientUsers } from "./client-users/list-client-users.js";
 export { setClientUserStatus, SetClientUserStatusInput } from "./client-users/set-client-user-status.js";
 export type { ClientUserRow } from "./client-users/list-client-users.js";
 export {
-  createSubscription, cancelSubscription, activeSubscriptionForClient,
+  createSubscription, cancelSubscription, activeSubscriptionForClient, listActiveSubscriptionsForClient,
   CreateSubscriptionServiceInput, CancelSubscriptionInput,
 } from "./billing/subscriptions.js";
 export {

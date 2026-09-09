@@ -128,6 +128,33 @@ export async function cancelSubscription(
   return after;
 }
 
+/**
+ * Every subscription a client is actually paying, oldest first.
+ *
+ * A client can hold more than one: two Stripe subscriptions taken out
+ * separately, or two client rows merged into one. `activeSubscriptionForClient`
+ * below answers with a single row, and a screen built on it shows the oldest
+ * and hides the rest — which is what the client billing page did, while the
+ * portfolio KPI summed them all. Two screens, two numbers, no explanation.
+ *
+ * Anything showing a client what they pay should read this one.
+ */
+export async function listActiveSubscriptionsForClient(db: Db, organisationId: string, clientId: string) {
+  return db.select().from(schema.subscriptions).where(and(
+    eq(schema.subscriptions.organisationId, organisationId),
+    eq(schema.subscriptions.clientId, clientId),
+    inArray(schema.subscriptions.status, [...ACTIVE_STATUSES]),
+    isNull(schema.subscriptions.deletedAt),
+  )).orderBy(schema.subscriptions.createdAt);
+}
+
+/**
+ * The oldest active subscription, or undefined.
+ *
+ * Kept for the callers that genuinely need one row — raising an invoice picks a
+ * subscription and cannot pick two. Do not use it to display what a client
+ * pays: see `listActiveSubscriptionsForClient`.
+ */
 export async function activeSubscriptionForClient(db: Db, organisationId: string, clientId: string) {
   const [row] = await db.select().from(schema.subscriptions).where(and(
     eq(schema.subscriptions.organisationId, organisationId),

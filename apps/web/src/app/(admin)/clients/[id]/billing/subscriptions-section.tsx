@@ -1,5 +1,5 @@
 import {
-  activeSubscriptionForClient,
+  listActiveSubscriptionsForClient,
   findPendingSubscriptionChange,
   getPackage,
   listPackages,
@@ -65,8 +65,8 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
   const session = await requireAdmin();
   const db = getDb();
 
-  const [subscription, packages, pendingChange, invoices] = await Promise.all([
-    activeSubscriptionForClient(db, session.organisationId, clientId),
+  const [subscriptions, packages, pendingChange, invoices] = await Promise.all([
+    listActiveSubscriptionsForClient(db, session.organisationId, clientId),
     listPackages(db, session.organisationId, { activeOnly: true }),
     findPendingSubscriptionChange(db, session.organisationId, clientId),
     db
@@ -87,7 +87,17 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
       .limit(20),
   ]);
 
-  const pkg = subscription?.packageId ? await getPackage(db, session.organisationId, subscription.packageId) : null;
+  // A client can hold more than one: two Stripe subscriptions taken out
+  // separately, or two client rows merged into one. The screen used to read a
+  // single row and hide the rest, while the portfolio KPI summed them all.
+  const subscription = subscriptions[0];
+  const packageNames = new Map(
+    (await Promise.all(
+      [...new Set(subscriptions.map((s) => s.packageId).filter((id): id is string => Boolean(id)))]
+        .map(async (id) => [id, (await getPackage(db, session.organisationId, id))?.name ?? null] as const),
+    )).filter((entry): entry is readonly [string, string] => entry[1] !== null),
+  );
+  const totalPence = subscriptions.reduce((sum, s) => sum + s.amountPence, 0);
   const pendingRequest = pendingChange ? SubscriptionChangePayload.safeParse(pendingChange.payload) : undefined;
 
   return (
@@ -96,22 +106,7 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
         title="Subscription"
         description="Billing runs through the payments provider. Card and bank numbers are never stored here."
         actions={
-          subscription ? (
-            <>
-              <RaiseInvoiceButton clientId={clientId} />
-              <ActionForm
-                action={cancelSubscriptionAction}
-                ariaLabel="Cancel this subscription"
-                success="Subscription cancelled"
-              >
-                <input type="hidden" name="clientId" value={clientId} />
-                <input type="hidden" name="subscriptionId" value={subscription.id} />
-                <Button type="submit" variant="destructive" className="max-sm:w-full">
-                  Cancel subscription
-                </Button>
-              </ActionForm>
-            </>
-          ) : null
+          subscription ? <RaiseInvoiceButton clientId={clientId} /> : null
         }
       >
         {pendingChange ? (
@@ -135,25 +130,66 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
         ) : null}
         <div className="rounded-[20px] border bg-card p-5">
           {subscription ? (
-            <KeyValue
-              columns={2}
-              items={[
-                { label: "Package", value: pkg?.name ?? "Monthly retainer" },
-                {
-                  label: "Monthly",
-                  value: (
-                    <span className="font-medium tabular-nums">
-                      {formatPence(subscription.amountPence, subscription.currency)}
-                    </span>
-                  ),
-                },
-                { label: "Status", value: <StatusBadge value={subscription.status} /> },
-                {
-                  label: "Current period",
-                  value: `${formatDate(subscription.currentPeriodStart)} to ${formatDate(subscription.currentPeriodEnd)}`,
-                },
-              ]}
-            />
+            <div className="space-y-5">
+              {subscriptions.map((sub, index) => (
+                <div key={sub.id} className={index > 0 ? "border-t pt-5" : undefined}>
+                  <KeyValue
+                    columns={2}
+                    items={[
+                      { label: "Package", value: (sub.packageId && packageNames.get(sub.packageId)) || "Monthly retainer" },
+                      {
+                        label: "Monthly",
+                        value: (
+                          <span className="font-medium tabular-nums">
+                            {formatPence(sub.amountPence, sub.currency)}
+                          </span>
+                        ),
+                      },
+                      { label: "Status", value: <StatusBadge value={sub.status} /> },
+                      {
+                        label: "Current period",
+                        value: `${formatDate(sub.currentPeriodStart)} to ${formatDate(sub.currentPeriodEnd)}`,
+                      },
+                    ]}
+                  />
+                  {/* Beside the subscription it ends, not in the header. With
+                      two of them a single header button cancels whichever the
+                      query happened to return first, which is not a decision
+                      anyone made. */}
+                  <div className="mt-3 flex justify-end">
+                    <ActionForm
+                      action={cancelSubscriptionAction}
+                      ariaLabel={`Cancel subscription ${sub.id}`}
+                      success="Subscription cancelled"
+                    >
+                      <input type="hidden" name="clientId" value={clientId} />
+                      <input type="hidden" name="subscriptionId" value={sub.id} />
+                      <Button
+                        type="submit"
+                        variant={subscriptions.length > 1 ? "destructive-quiet" : "destructive"}
+                        size="sm"
+                      >
+                        Cancel {subscriptions.length > 1 ? (sub.packageId && packageNames.get(sub.packageId)) || "this one" : "subscription"}
+                      </Button>
+                    </ActionForm>
+                  </div>
+                </div>
+              ))}
+              {/* The total only earns its place when there is more than one to
+                  add up; on a single subscription it would just repeat the
+                  line above it. */}
+              {subscriptions.length > 1 ? (
+                <div className="flex items-center justify-between border-t pt-4">
+                  <span className="text-row text-muted-foreground">
+                    {subscriptions.length} active subscriptions
+                  </span>
+                  <span className="text-figure font-semibold tabular-nums">
+                    {formatPence(totalPence, subscription.currency)}
+                    <span className="ml-1 text-meta font-normal text-muted-foreground">a month</span>
+                  </span>
+                </div>
+              ) : null}
+            </div>
           ) : packages.length === 0 ? (
             <EmptyState icon={Receipt}>
               No active packages. Create one under Settings → Packages before starting a subscription.
