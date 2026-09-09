@@ -1,8 +1,9 @@
 import { listApiTokens, PERMISSION_KEYS, PERMISSION_LABELS, type ApiTokenRow } from "@launchos/core";
-import { KeyRound } from "lucide-react";
+import { Activity, KeyRound, ShieldOff, Clock } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
+import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -55,6 +56,25 @@ const COLUMNS: readonly DataListColumn<ApiTokenRow>[] = [
 ];
 
 /**
+ * What a token can reach, and what each one needs to be scoped to.
+ *
+ * Written down here because the alternative is reading eight route files. It
+ * lives beside the token list on purpose: the question "what is this key for"
+ * and the question "what could someone do with it" are the same question, and
+ * they were on different screens.
+ */
+const ENDPOINTS: readonly { method: "GET" | "POST"; path: string; scope: string; what: string }[] = [
+  { method: "GET", path: "/api/v1/brief", scope: "Whatever it holds", what: "The last 24 hours, one section per area the token can read. Add ?hours= up to 336." },
+  { method: "GET", path: "/api/v1/clients", scope: "Support", what: "The client roster. ?status= and ?q= to narrow it." },
+  { method: "GET", path: "/api/v1/leads", scope: "Support", what: "Enquiries that came in." },
+  { method: "GET", path: "/api/v1/incidents", scope: "Support", what: "Sites that went down and what happened next." },
+  { method: "GET", path: "/api/v1/invoices", scope: "Billing", what: "Invoices and what has been settled." },
+  { method: "GET", path: "/api/v1/approvals", scope: "Approvals", what: "What the agents are waiting on a person to decide." },
+  { method: "GET", path: "/api/v1/capabilities", scope: "Settings", what: "Every agent and tool, generated from the registry the worker runs." },
+  { method: "POST", path: "/api/v1/actions/{agent}", scope: "Settings", what: "Starts an agent. Answers 202: accepted, not performed. The only thing this API can make happen." },
+];
+
+/**
  * Where the keys to the API live.
  *
  * The reason this screen exists rather than an environment variable: a token
@@ -65,6 +85,14 @@ export default async function ApiTokensPage() {
   const session = await requireAdmin();
   const tokens = await listApiTokens(getDb(), session.organisationId);
   const appUrl = process.env.APP_URL ?? "http://localhost:3000";
+  const active = tokens.filter((token) => token.active);
+  // A live key nothing has ever called is either not wired up yet or was a
+  // mistake. Either way it is worth a second look, which is why it gets a tile.
+  const neverUsed = active.filter((token) => token.lastUsedAt === null);
+  const lastUsed = tokens
+    .map((token) => token.lastUsedAt)
+    .filter((at): at is Date => at !== null)
+    .sort((a, b) => b.getTime() - a.getTime())[0];
 
   return (
     <>
@@ -74,6 +102,39 @@ export default async function ApiTokensPage() {
         description="Keys for things outside LaunchOS that need to read it — Mr. Green first."
         category="automation"
       />
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Active"
+          value={active.length}
+          hint={active.length === 0 ? "Nothing can reach the API" : "Keys that work right now"}
+          category="automation"
+          icon={KeyRound}
+        />
+        <StatCard
+          label="Never used"
+          value={neverUsed.length}
+          hint={neverUsed.length === 0 ? "Every key has been used" : "Issued and never called — revoke if it was a mistake"}
+          category="automation"
+          icon={Clock}
+          attention={neverUsed.length > 0}
+          attentionTone="warning"
+        />
+        <StatCard
+          label="Last call"
+          value={lastUsed ? formatDateTime(lastUsed) : "Never"}
+          hint="Most recent request by any token"
+          category="automation"
+          icon={Activity}
+        />
+        <StatCard
+          label="Revoked or expired"
+          value={tokens.length - active.length}
+          hint="Kept listed so you can see what you have dealt with"
+          category="overview"
+          icon={ShieldOff}
+        />
+      </div>
 
       <Section title="Issue a token">
         <div className="rounded-[20px] border bg-card p-5">
@@ -91,16 +152,42 @@ export default async function ApiTokensPage() {
         />
       </Section>
 
-      <Section title="Using it" description="Send the token as a bearer. Every endpoint is read-only.">
-        <div className="space-y-3 rounded-[20px] border bg-card p-5">
-          <p className="font-mono text-sm break-all">GET {appUrl}/api/v1/brief</p>
-          <p className="font-mono text-sm break-all text-muted-foreground">Authorization: Bearer los_…</p>
+      <Section
+        title="What a token can reach"
+        description="Send it as a bearer. Everything here is a read except the last one."
+      >
+        <DataList
+          rows={ENDPOINTS}
+          columns={[
+            {
+              key: "path",
+              header: "Endpoint",
+              primary: true,
+              cell: (row) => (
+                <span className="font-mono text-meta break-all">
+                  <span className={row.method === "POST" ? "text-warning-fg" : "text-muted-foreground"}>{row.method}</span>{" "}
+                  {row.path}
+                </span>
+              ),
+            },
+            { key: "what", header: "What it answers", cell: (row) => row.what, className: "text-left" },
+            { key: "scope", header: "Needs", cell: (row) => row.scope, status: true },
+          ]}
+          getRowKey={(row) => `${row.method} ${row.path}`}
+          caption="API endpoints and the permission each needs"
+        />
+        <div className="mt-4 space-y-2 rounded-[20px] border bg-card p-5">
+          <p className="font-mono text-sm break-all">curl {appUrl}/api/v1/brief \</p>
+          <p className="font-mono text-sm break-all text-muted-foreground">
+            {"  "}-H &quot;Authorization: Bearer los_…&quot;
+          </p>
           <p className="text-sm text-muted-foreground">
-            Add <code className="font-mono">?hours=</code> to change the window — 24 by default, 336 at most. The reply names
-            any section the token was not scoped to read, so nothing it could not see is mistaken for nothing happening.
+            A reply names any section the token was not scoped to read, so nothing it could not see is
+            mistaken for nothing happening.
           </p>
         </div>
       </Section>
+
     </>
   );
 }

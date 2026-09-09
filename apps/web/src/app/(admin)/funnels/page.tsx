@@ -103,7 +103,14 @@ export default async function FunnelsPage() {
           success="Funnel created"
           resetOnSuccess
           ariaLabel="New funnel"
-          className="grid gap-4 rounded-[20px] border bg-card p-5 sm:grid-cols-3 sm:items-end"
+          /* `items-start`, not `items-end`. Only one of these three fields
+             carries a line of help under its input, and aligning the row on its
+             bottom edge dragged the other two inputs down to meet the bottom of
+             that sentence — the fields stopped lining up with each other, which
+             is the misalignment on screen. Aligned from the top, the labels sit
+             on one line, the inputs sit on one line, and the help hangs below
+             where it belongs. */
+          className="grid gap-4 rounded-[20px] border bg-card p-5 sm:grid-cols-3 sm:items-start"
         >
           <div className="space-y-1.5">
             <Label htmlFor="funnel-name">Name</Label>
