@@ -102,7 +102,7 @@ export default async function KnowledgePage({ searchParams }: PageProps<"/knowle
         actions={
           <>
             <Button asChild variant="secondary">
-              <Link href="/knowledge/coverage">Help coverage</Link>
+              <Link href="/knowledge/gaps">Help coverage</Link>
             </Button>
             <Button asChild>
               <Link href="/knowledge/new">New article</Link>

@@ -19,6 +19,7 @@ import { Section } from "@/components/section";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { NativeSelect } from "@/components/ui/native-select";
 import { getDb } from "@/lib/db";
 import { formatDate, formatDateTime, formatPence } from "@/lib/format";
@@ -62,6 +63,8 @@ const INVOICE_COLUMNS: readonly DataListColumn<InvoiceRow>[] = [
  * pays monthly, and the invoices that retainer has produced.
  */
 export async function SubscriptionsSection({ clientId }: { clientId: string }) {
+  // `<input type="date">` wants `yyyy-mm-dd` and nothing else.
+  const today = new Date().toISOString().slice(0, 10);
   const session = await requireAdmin();
   const db = getDb();
 
@@ -214,6 +217,14 @@ export async function SubscriptionsSection({ clientId }: { clientId: string }) {
                     </option>
                   ))}
                 </NativeSelect>
+              </div>
+              {/* The date the retainer starts, which is the date every invoice
+                  for it is then worked out from. It was typed-only before, and
+                  a subscription started on the wrong day bills on the wrong day
+                  for as long as it runs. Defaults to today. */}
+              <div className="min-w-0 space-y-1.5 sm:w-48">
+                <Label htmlFor="subscription-start">Starts on</Label>
+                <Input id="subscription-start" type="date" name="periodStart" defaultValue={today} />
               </div>
               <Button type="submit" className="max-sm:w-full">
                 Start subscription

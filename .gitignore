@@ -3,7 +3,14 @@ node_modules/
 dist/
 .next/
 out/
-coverage/
+# Vitest coverage output, which lands at a package root. Anchored on purpose:
+# an unanchored `coverage/` matches *any* directory of that name at any depth,
+# and it silently swallowed an app route called `knowledge/coverage` — the file
+# was on disk, `git add -A` skipped it without a word, and the screen 404'd in
+# production while looking perfectly present locally.
+/coverage/
+apps/*/coverage/
+packages/*/coverage/
 *.tsbuildinfo
 .env
 .env.*

@@ -17,6 +17,20 @@ export type ActionResult = { status: "ok"; id?: string } | { status: "error"; me
 const StartSubscription = z.object({
   clientId: z.string().uuid(),
   packageId: z.string().uuid("Choose a package"),
+  /**
+   * The day the retainer starts, and therefore the day every invoice for it is
+   * worked out from. Empty means today — the form pre-fills it, but a direct
+   * POST need not. `yyyy-mm-dd` from `<input type="date">`, read as UTC midnight
+   * so a subscription started on the 5th does not become the 4th for anyone
+   * west of London.
+   */
+  periodStart: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .transform((value) => new Date(`${value}T00:00:00Z`))
+    .optional()
+    .catch(undefined),
 });
 
 const CancelSubscription = z.object({
@@ -36,6 +50,7 @@ export async function startSubscriptionAction(formData: FormData): Promise<Actio
   const parsed = StartSubscription.safeParse({
     clientId: formData.get("clientId"),
     packageId: formData.get("packageId"),
+    periodStart: formData.get("periodStart"),
   });
   if (!parsed.success) return { status: "error", message: parsed.error.issues[0]?.message ?? "Invalid subscription" };
 
@@ -43,7 +58,13 @@ export async function startSubscriptionAction(formData: FormData): Promise<Actio
     const { subscription } = await createSubscription(
       getDb(),
       session.organisationId,
-      { clientId: parsed.data.clientId, packageId: parsed.data.packageId, actorKind: "user", actorId: session.userId },
+      {
+        clientId: parsed.data.clientId,
+        packageId: parsed.data.packageId,
+        ...(parsed.data.periodStart ? { periodStart: parsed.data.periodStart } : {}),
+        actorKind: "user",
+        actorId: session.userId,
+      },
       getPayments(),
     );
     revalidatePath(`/clients/${parsed.data.clientId}`);
