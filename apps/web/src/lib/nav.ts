@@ -25,6 +25,7 @@ import {
   Package,
   Receipt,
   Archive,
+  Download,
   Settings,
   ShieldCheck,
   SquareCheckBig,
@@ -159,6 +160,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Billing", href: "/settings/billing", icon: Wallet, permission: "settings" },
       { label: "Packages", href: "/settings/packages", icon: Package, permission: "settings" },
       { label: "Task templates", href: "/settings/task-templates", icon: LayoutTemplate, permission: "settings" },
+      { label: "Export", href: "/settings/export", icon: Download, permission: "settings" },
     ],
   },
 ];

@@ -753,3 +753,8 @@ export {
 export type {
   ProjectMetrics, LeadMetrics, WebsiteMetrics, DomainMetrics, CaseStudyMetrics, InvoiceMetrics,
 } from "./metrics/screen-metrics.js";
+
+export {
+  exportModule, toCsv, csvCell, EXPORTABLE, ExportInput,
+  type Exportable, type ExportResult,
+} from "./exports/export-data.js";
