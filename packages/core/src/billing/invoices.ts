@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { InvoiceLineItem } from "@launchos/db/schema";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
@@ -55,11 +55,39 @@ export async function createInvoiceFromSubscription(db: Db, organisationId: stri
   const registeredRatePercent = await vatRateForOrganisation(db, organisationId);
   const vatRatePercent = registeredRatePercent > 0 ? v.vatRatePercent ?? registeredRatePercent : 0;
   const vatPence = Math.round((subtotalPence * vatRatePercent) / 100);
-  const lineItems: InvoiceLineItem[] = [{
-    description: `${pkg?.name ?? "Monthly retainer"} — ${issuedAt.toISOString().slice(0, 7)}`,
-    quantity: 1,
-    unitPence: subtotalPence,
-  }];
+  // What the client is actually paying for.
+  //
+  // This used to be one line reading "Monthly retainer — 2026-09" whatever the
+  // subscription was made of, because `subscriptions.amount_pence` is a single
+  // number and nothing looked further. A client receiving £200 with no
+  // breakdown cannot tell what they are buying, and that is the invoice's whole
+  // job. Where `subscription_lines` exist — two websites at £45, ad management
+  // at £110 — they become the invoice lines, in their own order.
+  const lines = await db
+    .select({
+      description: schema.subscriptionLines.description,
+      quantity: schema.subscriptionLines.quantity,
+      unitAmountPence: schema.subscriptionLines.unitAmountPence,
+    })
+    .from(schema.subscriptionLines)
+    .where(and(
+      eq(schema.subscriptionLines.organisationId, organisationId),
+      eq(schema.subscriptionLines.subscriptionId, subscription!.id),
+    ))
+    .orderBy(asc(schema.subscriptionLines.sort));
+
+  const period = issuedAt.toISOString().slice(0, 7);
+  const lineItems: InvoiceLineItem[] = lines.length > 0
+    ? lines.map((line) => ({
+        description: `${line.description} — ${period}`,
+        quantity: line.quantity,
+        unitPence: line.unitAmountPence,
+      }))
+    : [{
+        description: `${pkg?.name ?? "Monthly retainer"} — ${period}`,
+        quantity: 1,
+        unitPence: subtotalPence,
+      }];
 
   const invoice = await db.transaction(async (tx) => {
     const number = await nextInvoiceNumber(tx as unknown as Db, organisationId, issuedAt.getUTCFullYear());

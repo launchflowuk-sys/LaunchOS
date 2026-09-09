@@ -45,6 +45,43 @@ describe("nextInvoiceNumber", () => {
 });
 
 describe("createInvoiceFromSubscription", () => {
+  /**
+   * The complaint that prompted this: an invoice for £200 that said only
+   * "Monthly retainer". A client cannot tell what they are buying from that,
+   * which is the one thing an invoice exists to say.
+   */
+  it("bills each subscription line separately, so the client can see what they are paying for", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, subscription } = await subscribed(db);
+      await db.insert(schema.subscriptionLines).values([
+        { organisationId: orgId, subscriptionId: subscription.id, description: "Website care", quantity: 2, unitAmountPence: 4500, sort: 0 },
+        { organisationId: orgId, subscriptionId: subscription.id, description: "Ad management", quantity: 1, unitAmountPence: 11000, sort: 1 },
+      ]);
+
+      const invoice = await createInvoiceFromSubscription(db, orgId, {
+        subscriptionId: subscription.id, issuedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+
+      expect(invoice.lineItems).toEqual([
+        { description: "Website care — 2026-09", quantity: 2, unitPence: 4500 },
+        { description: "Ad management — 2026-09", quantity: 1, unitPence: 11000 },
+      ]);
+    });
+  });
+
+  it("keeps the single package line when a subscription has no lines of its own", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, subscription } = await subscribed(db);
+
+      const invoice = await createInvoiceFromSubscription(db, orgId, {
+        subscriptionId: subscription.id, issuedAt: new Date("2026-09-01T00:00:00Z"),
+      });
+
+      expect(invoice.lineItems).toEqual([{ description: "Growth — 2026-09", quantity: 1, unitPence: 29900 }]);
+    });
+  });
+
+
   it("bills the subscription period with VAT and the client's payment terms", async () => {
     await withTestDb(async (db) => {
       const { orgId, subscription } = await subscribed(db);
