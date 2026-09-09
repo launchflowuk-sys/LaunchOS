@@ -10,6 +10,8 @@ import {
   CONTENT_PUBLISH_ACTION,
   CONTENT_REPORT_SEND_ACTION,
   decideApproval,
+  deleteApproval,
+  deleteRejectedApprovals,
   INVOICE_SEND_ACTION,
   LEAD_REPLY_ACTION,
   MONTHLY_REPORT_SEND_ACTION,
@@ -280,4 +282,38 @@ export async function approveApproval(formData: FormData): Promise<ActionResult>
 
 export async function rejectApproval(formData: FormData): Promise<ActionResult> {
   return decide(formData, "rejected");
+}
+
+/**
+ * Clearing rejected cards off the queue.
+ *
+ * Only rejected ones can go: a pending card is still a decision somebody owes,
+ * and an approved one is the record of what an agent was allowed to do. Core
+ * enforces that — these two just carry the answer back to the screen.
+ */
+export async function deleteApprovalAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("approvals");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const approvalId = String(formData.get("approvalId") ?? "");
+  try {
+    await deleteApproval(getDb(), session.organisationId, { approvalId, actorId: session.userId });
+    revalidatePath("/approvals");
+    return { status: "ok" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
+  }
+}
+
+export async function clearRejectedApprovalsAction(): Promise<ActionResult> {
+  const gate = await requirePermission("approvals");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  try {
+    await deleteRejectedApprovals(getDb(), session.organisationId, session.userId);
+    revalidatePath("/approvals");
+    return { status: "ok" };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
+  }
 }

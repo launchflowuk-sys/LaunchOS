@@ -1,16 +1,18 @@
 import { SUBSCRIPTION_CHANGE_LABEL, SubscriptionChangePayload } from "@launchos/core";
 import { schema } from "@launchos/db";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, count, desc, eq, ne } from "drizzle-orm";
 import { ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { z } from "zod";
+import { ActionForm } from "@/components/action-form";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { PAGE_SIZE, Pager, pageParam } from "@/components/pager";
 import { Section } from "@/components/section";
+import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
 import { formatDateTime, formatJson, formatPence } from "@/lib/format";
@@ -18,6 +20,7 @@ import { requireAdmin } from "@/lib/session";
 import { approveApproval, rejectApproval } from "./actions";
 import { ContentPublishRequest } from "./content-publish-card";
 import { ContentReportSendRequest } from "./content-report-send-card";
+import { clearRejectedApprovalsAction, deleteApprovalAction } from "./actions";
 import { DecisionForm } from "./decision-form";
 import { LeadReplyRequest } from "./lead-reply-card";
 import { MonthlyReportSendRequest } from "./monthly-report-send-card";
@@ -267,6 +270,25 @@ const DECIDED_COLUMNS: readonly DataListColumn<ApprovalRow>[] = [
     hideOnMobile: true,
     cell: (row) => row.approval.decisionNote ?? "—",
   },
+  {
+    key: "delete",
+    header: "",
+    action: true,
+    // Only on the ones you said no to. An approved card is the record of what
+    // an agent was allowed to do; core refuses to delete it, and offering a
+    // button that always fails would be worse than offering none.
+    cell: (row) =>
+      row.approval.status === "rejected" ? (
+        <ActionForm
+          action={deleteApprovalAction}
+          success="Cleared"
+          ariaLabel={`Delete ${row.approval.title}`}
+        >
+          <input type="hidden" name="approvalId" value={row.approval.id} />
+          <Button type="submit" variant="destructive-quiet" size="sm">Delete</Button>
+        </ActionForm>
+      ) : null,
+  },
 ];
 
 export default async function ApprovalsPage({ searchParams }: PageProps<"/approvals">) {
@@ -316,6 +338,14 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
   const hasNext = decidedRows.length > PAGE_SIZE;
   const decided = hasNext ? decidedRows.slice(0, PAGE_SIZE) : decidedRows;
 
+  // Counted across every page, not just this one: "Clear 3 rejected" when
+  // there are forty of them would be a lie about what the button does.
+  const [rejectedTotal] = await db
+    .select({ value: count() })
+    .from(schema.approvals)
+    .where(and(eq(schema.approvals.organisationId, session.organisationId), eq(schema.approvals.status, "rejected")));
+  const rejectedCount = rejectedTotal?.value ?? 0;
+
   return (
     <>
       <PageHeader
@@ -346,7 +376,23 @@ export default async function ApprovalsPage({ searchParams }: PageProps<"/approv
       </Section>
 
       {decided.length > 0 || page > 1 ? (
-        <Section title="Already decided" description="Newest first, fifty to a page.">
+        <Section
+          title="Already decided"
+          description="Newest first, fifty to a page."
+          actions={
+            rejectedCount > 0 ? (
+              <ActionForm
+                action={clearRejectedApprovalsAction}
+                success="Rejected approvals cleared"
+                ariaLabel="Clear rejected approvals"
+              >
+                <Button type="submit" variant="secondary">
+                  Clear {rejectedCount} rejected
+                </Button>
+              </ActionForm>
+            ) : null
+          }
+        >
           <DataList
             rows={decided}
             columns={DECIDED_COLUMNS}

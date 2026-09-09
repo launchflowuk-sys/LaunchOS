@@ -23,7 +23,12 @@ The third is **"AI slop"** — his words for amber-everywhere warning blocks and
 
 ---
 
-## 1. Activity page
+## 1. Activity page — **DONE** (`03cb43e`)
+
+Select instead of 28 pills, three summary figures, and grouping by part of the
+business instead of by day, each group a card headed by its category colour.
+
+### Original ask
 
 Needs a **client selector**, then that client's notifications shown as a
 **summary plus grouped cards** — modern, clean, categorised by colour. Not the
@@ -43,7 +48,12 @@ Clients table carries the least information of any screen and is boxed into
 the middle. It needs a **full-bleed view**, and so does **every other table**
 in the product — Leads and the rest included. More columns are coming.
 
-## 3. Funnels page
+## 3. Funnels page — **DONE** (`60ff42e`)
+
+`items-end` on a row where one field carries help text made that sentence the
+row's bottom edge. Aligned from the top instead.
+
+### Original ask
 
 Alignment is broken: helper text sits under a field and pushes the row out of
 line. Fix the layout.
@@ -106,24 +116,55 @@ Needed: a way to **set up and manage complex billing** — several lines making
 one charge — and payment methods beyond Stripe: **bank transfer, cash,
 standing order, and direct debit later**. Give him options.
 
-## 7. Deleting approvals, and deletion guards generally
+## 7. Deleting approvals, and deletion guards generally — **DONE**
+
+Rejected approvals delete one at a time or all at once. Pending and approved
+are refused in core, not in the caller: a pending card is still a decision
+somebody owes, and an approved one is the record of what an agent was allowed
+to do.
+
+On deletion generally: the surface is smaller than it looked. Only four things
+in the product delete rows at all. `clients` already refuses when money is
+attached and lists what will be destroyed otherwise, which is the policy Shoji
+chose. Lead suppressions, task templates and push subscriptions have no
+dependents — task templates are `on delete set null`, so tasks already created
+survive. Nothing else needed a guard.
+
+### Original ask
 
 Rejected approvals sit there with no way to remove them. Needs **delete one**
 and **delete all**. More importantly: think about **every deletion in the
 product** — what it is connected to, and what KPI it feeds — and put guards in
 so nobody removes something that breaks the business.
 
-## 8. Agent Runs
+## 8. Agent Runs — **DONE** (`d205e84`)
+
+Opens with the agent's real name from the registry and what started it in
+words, then what happened, then when. Counts kept but demoted.
+
+### Original ask
 
 Full-width like the rest, and stop looking like a 1980s registrar entry. The
 view holds a lot of information and the presentation does not do it justice.
 
-## 9. Email tab
+## 9. Email tab — **DONE** (`d205e84`)
+
+Five figures where there were none. Three can demand something: failures all
+time, messages queued over fifteen minutes, and active clients with no support
+address.
+
+### Original ask
 
 The plainest, worst-looking table in the product. **No KPIs at all**, so no
 overview is possible. Needs proper work.
 
-## 10. Client archive and delete
+## 10. Client archive and delete — **ALREADY BUILT**
+
+Not missing. `archiveClient`, `deleteClient` with financial blockers and
+work warnings, `/clients/archive`, and a delete section on the client page all
+exist — they landed after this list was written.
+
+### Original ask
 
 **Missing entirely**: archive a client, and delete a client along with all
 their data.
@@ -133,7 +174,13 @@ their data.
 A full-rights token for Claude is in the repo's `.env`. Read it from there,
 never from chat.
 
-## 12. API tokens page
+## 12. API tokens page — **DONE** (`60ff42e`)
+
+The endpoints are a table now: every route, what it answers, the permission it
+needs. It also corrected the page, which claimed every endpoint is read-only
+when `POST /api/v1/actions/{agent}` starts an agent.
+
+### Original ask
 
 Display the page and its information better — especially the bottom section
 saying where a token is used. "Developer backyard" is the note.

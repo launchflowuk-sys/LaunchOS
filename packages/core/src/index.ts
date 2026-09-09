@@ -777,6 +777,7 @@ export { bearerFrom, generateApiToken, hashApiToken, looksLikeApiToken } from ".
 
 // --- Read models the v1 API serves (Plan 6, phase 2) ---
 export { listApprovals, ListApprovalsInput } from "./approvals/list-approvals.js";
+export { deleteApproval, deleteRejectedApprovals, DeleteApprovalInput, ApprovalNotDeletable } from "./approvals/delete-approval.js";
 export type { ApprovalListRow } from "./approvals/list-approvals.js";
 export { listIncidents, ListIncidentsInput } from "./incidents/list-incidents.js";
 export type { IncidentListRow } from "./incidents/list-incidents.js";
