@@ -342,7 +342,7 @@ Four record sets on the domain, all before anything will route:
 | Record | Value |
 |---|---|
 | `MX` | the inbound host your provider gives you, at the provider's stated priority |
-| `TXT` (SPF) | `v=spf1 include:<provider-spf-host> ~all` — one SPF record only; a second is a permanent failure |
+| `TXT` (SPF) | only if your provider still asks for one — Postmark stopped requiring it and handles SPF itself. One SPF record per domain, ever; a second is a permanent failure, which is the reason to keep this on a subdomain when the apex already has one |
 | `CNAME` or `TXT` (DKIM) | the selector record the provider issues, copied verbatim |
 | `TXT` `_dmarc` | `v=DMARC1; p=none; rua=mailto:you@launchflow.co.uk` to start — tighten to `quarantine` then `reject` only once the reports are clean |
 
@@ -350,7 +350,7 @@ Four record sets on the domain, all before anything will route:
 
 1. Create a server, then enable its inbound stream.
 2. Set the inbound webhook to `https://<app-domain>/api/webhooks/email/inbound?provider=postmark`.
-3. Add a custom header on that webhook named `x-launchos-inbound-secret` with the `INBOUND_EMAIL_SECRET` value. Without it every delivery is a 401.
+3. Authenticate the webhook. Postmark's inbound stream has **one field — the URL — and no custom-header option**, so the secret goes in as HTTP Basic credentials: `https://launchos:$INBOUND_EMAIL_SECRET@<app-domain>/api/webhooks/email/inbound?provider=postmark`. The route accepts the secret as either the Basic password or the Basic username, and still accepts the `x-launchos-inbound-secret` header for Cloudflare and generic forwarders, which *can* set one. Without one of the two every delivery is a 401 — and a 401 here is silent: the provider retries, gives up, and the client's email never becomes a ticket.
 4. Point the domain's MX at Postmark's inbound host.
 5. Verify the sending signature (the SPF and DKIM records above) in Postmark's sender signatures screen before switching `EMAIL_ADAPTER` to `smtp`.
 

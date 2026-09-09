@@ -1,30 +1,20 @@
-import { timingSafeEqual } from "node:crypto";
 import { schema } from "@launchos/db";
 import { normalizeInbound, storeInboundAttachments, type InboundProvider } from "@launchos/channels";
 import { emit } from "@launchos/core";
 import { asc, eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
+import { authorised, SECRET_HEADER } from "@/lib/inbound-auth";
 import { installWebEnqueue } from "@/lib/queue";
 
 export const dynamic = "force-dynamic";
 
 const PROVIDERS: readonly InboundProvider[] = ["postmark", "cloudflare", "generic"];
-const SECRET_HEADER = "x-launchos-inbound-secret";
 // Headroom over storeInboundAttachments' own 10MB-per-file cap: base64
 // inflates bytes by roughly a third, and a message can carry more than one
 // attachment. This is a defensive ceiling on the whole request body, not a
 // precise budget.
 const MAX_BODY_BYTES = 20 * 1024 * 1024;
-
-/** Constant-time compare that does not leak the expected length. */
-function secretMatches(provided: string | null, expected: string | undefined): boolean {
-  if (!provided || !expected) return false;
-  const a = Buffer.from(provided);
-  const b = Buffer.from(expected);
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(a, b);
-}
 
 function resolveProvider(url: URL): InboundProvider {
   const requested = url.searchParams.get("provider") ?? process.env.INBOUND_EMAIL_PROVIDER ?? "generic";
@@ -54,7 +44,7 @@ async function resolveOrganisationId(to: string[]): Promise<string | null> {
 }
 
 export async function POST(request: Request) {
-  if (!secretMatches(request.headers.get(SECRET_HEADER), process.env.INBOUND_EMAIL_SECRET)) {
+  if (!authorised(request)) {
     return NextResponse.json({ error: "unauthorised" }, { status: 401 });
   }
   // Every server entry point that emits a domain event installs the web's
