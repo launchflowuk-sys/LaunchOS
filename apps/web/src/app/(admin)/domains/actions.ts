@@ -2,6 +2,7 @@
 
 import { createDnsRecord, deleteDnsRecord, deleteDomain, getDomain, updateDomain } from "@launchos/core";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import {
@@ -134,5 +135,9 @@ export async function deleteDomainAction(formData: FormData): Promise<ActionResu
     return { status: "error", message: errorMessage(error) };
   }
   revalidatePath("/domains");
-  return { status: "ok" };
+  // Redirect rather than return: the page this was submitted from is
+  // `/domains/<id>`, and that row no longer exists — staying put turned a
+  // successful delete into a 404. `redirect` throws, so it must sit outside
+  // the try above or the catch would report the navigation as a failure.
+  redirect("/domains");
 }

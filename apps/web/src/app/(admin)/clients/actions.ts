@@ -5,6 +5,7 @@ import {
   upsertBillingProfile,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
@@ -257,14 +258,15 @@ export async function deleteClientAction(formData: FormData): Promise<ActionResu
       actorKind: "user",
       actorId: session.userId,
     });
-    revalidatePath("/clients");
-    revalidatePath("/clients/archive");
-    // The id of a row that no longer exists, so the caller can confirm which
-    // client this answer is about before it navigates away from the page.
-    return { status: "ok", id: parsed.data.clientId };
   } catch (error) {
     return failed(error);
   }
+  revalidatePath("/clients");
+  revalidatePath("/clients/archive");
+  // Same reason as the domain delete: this is submitted from `/clients/<id>`,
+  // which is gone the moment the delete succeeds. Outside the try, because
+  // `redirect` signals by throwing and the catch would call it a failure.
+  redirect("/clients");
 }
 
 /** The preview the delete dialog shows before anyone types anything. */
