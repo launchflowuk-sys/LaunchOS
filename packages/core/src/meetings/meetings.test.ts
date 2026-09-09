@@ -276,11 +276,17 @@ describe("reminders and follow-ups", () => {
 
       const [row] = await db.select().from(schema.meetings).where(eq(schema.meetings.id, meeting.id));
       for (const key of [REMINDED_24H_AT, REMINDED_1H_AT, HOST_ALERTED_AT]) expect(typeof row!.metadata[key]).toBe("string");
+      // Found by what each one is, not by where it landed in the result.
+      // `notices` selects with no ORDER BY, and Postgres promises nothing about
+      // row order without one — so indexing into it made this assertion fail
+      // roughly one run in four, on the reminders rather than on anything real.
       const sent = (await notices(db, organisationId)).filter((n) => n.notice === "reminder");
       expect(sent).toHaveLength(2);
-      expect(sent[0]!.subject).toMatch(/^Tomorrow: your call/);
-      expect(sent[0]!.body).toContain("tomorrow");
-      expect(sent[1]!.subject).toBe("In an hour: your call with LaunchFlow");
+      const dayBeforeNotice = sent.find((n) => n.subject?.startsWith("Tomorrow: your call"));
+      const hourBeforeNotice = sent.find((n) => n.subject === "In an hour: your call with LaunchFlow");
+      expect(dayBeforeNotice, "the 24h reminder").toBeDefined();
+      expect(hourBeforeNotice, "the 1h reminder").toBeDefined();
+      expect(dayBeforeNotice!.body).toContain("tomorrow");
       const [alert] = await db.select().from(schema.notifications).where(and(eq(schema.notifications.userId, ownerUserId), eq(schema.notifications.kind, "meeting.starting")));
       expect(alert!.title).toBe("Call in 15 minutes: Aisha");
       expect(alert!.body).toContain(meeting.hostUrl!);

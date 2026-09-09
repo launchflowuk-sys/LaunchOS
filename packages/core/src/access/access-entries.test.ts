@@ -124,10 +124,18 @@ describe("client access vault", () => {
         .where(and(eq(schema.auditLog.action, "client_access.updated"), eq(schema.auditLog.targetId, entry.id)))
         .orderBy(schema.auditLog.createdAt);
       expect(audits).toHaveLength(3);
-      expect(audits[0]!.before).toMatchObject({ username: "root", port: 22 });
-      expect(audits[0]!.after).toMatchObject({ username: "deploy", port: 2222 });
-      expect(audits[2]!.before).toMatchObject({ hasSecret: true });
-      expect(audits[2]!.after).toMatchObject({ hasSecret: false });
+      // Found by what each row records rather than by its position. All three
+      // writes can land inside one transaction, and Postgres `now()` is fixed
+      // for the life of one — so `order by created_at` alone leaves ties in
+      // whatever order the planner felt like, and indexing into it failed
+      // about one run in eight for no reason anybody could reproduce.
+      const renameAudit = audits.find((a) => (a.after as { username?: string }).username === "deploy");
+      const secretCleared = audits.find((a) => (a.after as { hasSecret?: boolean }).hasSecret === false);
+      expect(renameAudit, "the rename").toBeDefined();
+      expect(secretCleared, "the cleared secret").toBeDefined();
+      expect(renameAudit!.before).toMatchObject({ username: "root", port: 22 });
+      expect(renameAudit!.after).toMatchObject({ username: "deploy", port: 2222 });
+      expect(secretCleared!.before).toMatchObject({ hasSecret: true });
       expect(JSON.stringify(audits)).not.toContain(PASSWORD);
       expect(JSON.stringify(audits)).not.toContain("rotated");
     });
