@@ -16,6 +16,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { MeetingsStrip } from "../../meetings/meetings-strip";
 import { SubscriptionsSection } from "./billing/subscriptions-section";
+import { DeleteClientSection } from "./delete-client-section";
 import { ClientWorkStrip } from "./client-work-strip";
 import { ClientDetailsForm } from "./client-details-form";
 import {
@@ -244,6 +245,9 @@ async function ContactsTab({ clientId }: { clientId: string }) {
       </Section>
 
       <SubscriptionsSection clientId={clientId} />
+
+      {/* Last on the page, under everything it would destroy. */}
+      <DeleteClientSection clientId={clientId} />
     </>
   );
 }

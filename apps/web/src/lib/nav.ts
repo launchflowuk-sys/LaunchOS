@@ -24,6 +24,7 @@ import {
   Newspaper,
   Package,
   Receipt,
+  Archive,
   Settings,
   ShieldCheck,
   SquareCheckBig,
@@ -145,6 +146,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     label: "Organisation",
     category: "organisation",
     items: [
+      // Archived clients are not deleted clients: archiving keeps everything
+      // and only hides the client, so this is the way back rather than a bin.
+      { label: "Archived clients", href: "/clients/archive", icon: Archive, permission: "settings" },
       { label: "Team", href: "/team", icon: UsersRound, permission: "settings" },
       // Not "Team health": three specs look the rail up by `name: "Team"`, and
       // a role name matches as a substring.

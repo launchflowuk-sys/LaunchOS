@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  archiveClient, createClient, createContact, createDomain, createSite, deleteContact, getClient, mergeClients, MergeRefused, updateClient,
+  archiveClient, clientDeletionReport, createClient, createContact, createDomain, createSite, deleteClient, deleteContact, getClient, mergeClients, MergeRefused, restoreClient, updateClient,
   upsertBillingProfile,
 } from "@launchos/core";
 import { revalidatePath } from "next/cache";
@@ -204,5 +204,78 @@ export async function createDomainAction(values: NewDomainValues): Promise<Actio
     return { status: "ok", id: domain.id };
   } catch (error) {
     return failed(error);
+  }
+}
+
+const RestoreInput = z.object({ clientId: z.string().uuid() });
+export type RestoreClientValues = z.input<typeof RestoreInput>;
+
+/** Put an archived client back on the active list. */
+export async function restoreClientAction(values: RestoreClientValues): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = RestoreInput.safeParse(values);
+  if (!parsed.success) return { status: "error", message: "That client could not be identified" };
+
+  try {
+    const client = await restoreClient(getDb(), session.organisationId, {
+      clientId: parsed.data.clientId, actorKind: "user", actorId: session.userId,
+    });
+    revalidatePath("/clients");
+    revalidatePath("/clients/archive");
+    revalidatePath(`/clients/${parsed.data.clientId}`);
+    return { status: "ok", id: client.id };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
+const DeleteInput = z.object({ clientId: z.string().uuid(), confirmName: z.string().trim().min(1) });
+export type DeleteClientValues = z.input<typeof DeleteInput>;
+
+/**
+ * Delete a client for good.
+ *
+ * Gated on `settings` rather than plain admin: this reaches further than
+ * archiving or even merging — it cascades twenty-four tables. The blocker
+ * check lives in core, so a direct POST to this action is refused by the same
+ * rules the dialog shows.
+ */
+export async function deleteClientAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  const { session } = gate;
+  const parsed = DeleteInput.safeParse({
+    clientId: formData.get("clientId"),
+    confirmName: formData.get("confirmName"),
+  });
+  if (!parsed.success) return { status: "error", message: "Type the client name to confirm" };
+
+  try {
+    await deleteClient(getDb(), session.organisationId, {
+      clientId: parsed.data.clientId,
+      confirmName: parsed.data.confirmName,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidatePath("/clients");
+    revalidatePath("/clients/archive");
+    // The id of a row that no longer exists, so the caller can confirm which
+    // client this answer is about before it navigates away from the page.
+    return { status: "ok", id: parsed.data.clientId };
+  } catch (error) {
+    return failed(error);
+  }
+}
+
+/** The preview the delete dialog shows before anyone types anything. */
+export async function clientDeletionReportAction(values: RestoreClientValues) {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return null;
+  const parsed = RestoreInput.safeParse(values);
+  if (!parsed.success) return null;
+  try {
+    return await clientDeletionReport(getDb(), gate.session.organisationId, parsed.data.clientId);
+  } catch {
+    return null;
   }
 }

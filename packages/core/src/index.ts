@@ -27,6 +27,11 @@ export { truncate, MAX_ADDRESS_CHARS, MAX_ERROR_CHARS } from "./text.js";
 export { updateOrganisation, UpdateOrganisationInput } from "./organisations/update-organisation.js";
 export { createClient, CreateClientInput } from "./clients/create-client.js";
 export { updateClient, archiveClient, UpdateClientInput, ArchiveClientInput } from "./clients/update-client.js";
+export {
+  clientDeletionReport, deleteClient, listArchivedClients, restoreClient,
+  DeleteClientInput, RestoreClientInput,
+  type ClientDeletionReport, type DeletionBlocker, type DeletionWarning,
+} from "./clients/delete-client.js";
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
 export type { ClientListRow } from "./clients/list-clients.js";
 export { slugify, uniqueClientSlug } from "./clients/slug.js";
