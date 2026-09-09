@@ -53,6 +53,8 @@ export { createTicket, CreateTicketInput } from "./support/create-ticket.js";
 export { ensureEmailIdentity, supportAddress, EnsureEmailIdentityInput } from "./email/ensure-email-identity.js";
 export { ingestInboundEmail, HOLDING_CLIENT_SLUG } from "./support/ingest-inbound-email.js";
 export { slaDueAt, SLA_HOURS_BY_SEVERITY } from "./support/sla.js";
+export { emailHealth } from "./support/email-health.js";
+export type { EmailHealth } from "./support/email-health.js";
 export type { Severity } from "./support/sla.js";
 export { updateTicket, UpdateTicketInput, TicketTriageSchema } from "./support/update-ticket.js";
 export { setTicketClientVisibility, SetTicketClientVisibilityInput } from "./support/set-ticket-client-visibility.js";

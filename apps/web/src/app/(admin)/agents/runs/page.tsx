@@ -10,6 +10,7 @@ import { StatusBadge } from "@/components/status-badge";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { agentCatalog } from "@/lib/agent-catalog";
 import { RunFilterBar } from "./run-filters";
 
 export const dynamic = "force-dynamic";
@@ -36,43 +37,96 @@ function duration(ms: number | null): string {
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, "0")}s`;
 }
 
-const COLUMNS: readonly DataListColumn<AgentRunSummary>[] = [
-  {
-    key: "agent",
-    header: "Agent",
-    primary: true,
-    cell: (run) => (
-      <Link href={`/agents/runs/${run.id}`} className="hover:underline">
-        {run.agentKey}
-      </Link>
-    ),
-  },
-  { key: "trigger", header: "Trigger", cell: (run) => run.trigger },
-  { key: "started", header: "Started", cell: (run) => <span className="whitespace-nowrap">{formatDateTime(run.startedAt)}</span> },
-  { key: "took", header: "Took", numeric: true, cell: (run) => duration(run.durationMs) },
-  { key: "steps", header: "Steps", numeric: true, hideOnMobile: true, cell: (run) => run.steps },
-  {
-    key: "tokens",
-    header: "Tokens",
-    numeric: true,
-    hideOnMobile: true,
-    cell: (run) => (run.tokensIn + run.tokensOut > 0 ? (run.tokensIn + run.tokensOut).toLocaleString("en-GB") : "—"),
-  },
-  {
-    key: "outcome",
-    header: "Outcome",
-    className: "text-left",
-    cell: (run) =>
-      run.error ? (
-        <span className="text-danger-fg">{run.error.length > 140 ? `${run.error.slice(0, 140)}…` : run.error}</span>
-      ) : run.summary ? (
-        <span className="text-muted-foreground">{run.summary.length > 140 ? `${run.summary.slice(0, 140)}…` : run.summary}</span>
-      ) : (
-        "—"
+/**
+ * What started it, in words rather than the enum.
+ *
+ * `cron`, `event`, `manual`, `resume` are what the column holds and what the
+ * filter sends; they are not what somebody scanning a page of runs needs to
+ * read. The distinction that matters is whether a person asked for this.
+ */
+const TRIGGER_LABEL: Record<string, string> = {
+  cron: "Scheduled",
+  event: "Triggered",
+  manual: "By hand",
+  resume: "Resumed",
+};
+
+/** "4m ago", "3h ago", "2d ago" — the form the eye wants on a list of runs. */
+function ago(then: Date, now: Date): string {
+  const seconds = Math.round((now.getTime() - then.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+/** One line, never a wall. A stack trace in a table cell is what made this look like a log file. */
+function trim(text: string, limit = 120): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
+}
+
+/**
+ * The ledger reads as a sentence per run: which agent, what came of it, who
+ * asked and when.
+ *
+ * It used to lead with the raw `agent_key` and put the one column carrying
+ * meaning — what the run actually did — between two columns of numbers. The
+ * numbers are still here because they are how a runaway agent is spotted, but
+ * they are secondary and are styled as such.
+ */
+function columnsFor(agentNames: Map<string, string>, now: Date): readonly DataListColumn<AgentRunSummary>[] {
+  return [
+    {
+      key: "agent",
+      header: "Agent",
+      primary: true,
+      cell: (run) => (
+        <Link href={`/agents/runs/${run.id}`} className="block min-w-0 hover:underline">
+          <span className="font-medium">{agentNames.get(run.agentKey) ?? run.agentKey}</span>
+          <span className="mt-0.5 block text-meta text-muted-foreground">{TRIGGER_LABEL[run.trigger] ?? run.trigger}</span>
+        </Link>
       ),
-  },
-  { key: "status", header: "Status", status: true, cell: (run) => <StatusBadge value={run.status} /> },
-];
+    },
+    {
+      key: "outcome",
+      header: "What happened",
+      className: "text-left",
+      cell: (run) =>
+        run.error ? (
+          <span className="text-danger-fg">{trim(run.error)}</span>
+        ) : run.summary ? (
+          <span>{trim(run.summary)}</span>
+        ) : (
+          <span className="text-muted-foreground">No summary recorded</span>
+        ),
+    },
+    {
+      key: "started",
+      header: "Started",
+      cell: (run) => (
+        <span className="whitespace-nowrap" title={formatDateTime(run.startedAt)}>
+          {ago(run.startedAt, now)}
+        </span>
+      ),
+    },
+    { key: "took", header: "Took", numeric: true, cell: (run) => duration(run.durationMs) },
+    {
+      key: "work",
+      header: "Steps · tokens",
+      numeric: true,
+      hideOnMobile: true,
+      className: "text-meta text-muted-foreground",
+      cell: (run) => {
+        const tokens = run.tokensIn + run.tokensOut;
+        return `${run.steps} · ${tokens > 0 ? tokens.toLocaleString("en-GB") : "—"}`;
+      },
+    },
+    { key: "status", header: "Status", status: true, cell: (run) => <StatusBadge value={run.status} /> },
+  ];
+}
 
 /**
  * Every agent run, newest first.
@@ -106,6 +160,8 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
   ]);
 
   const filtered = agent !== undefined || status !== undefined || trigger !== undefined;
+  // Read off the definitions, so a renamed agent renames itself here too.
+  const agentNames = new Map(agentCatalog().map((entry) => [entry.key, entry.name]));
 
   return (
     <>
@@ -150,7 +206,7 @@ export default async function AgentRunsPage({ searchParams }: PageProps<"/agents
         <div className="mt-4">
           <DataList
             rows={runs}
-            columns={COLUMNS}
+            columns={columnsFor(agentNames, now)}
             getRowKey={(run) => run.id}
             caption="Agent runs"
             empty={

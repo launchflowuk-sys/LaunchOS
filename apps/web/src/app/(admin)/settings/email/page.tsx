@@ -1,12 +1,14 @@
+import { emailHealth } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
-import { AtSign } from "lucide-react";
+import { AtSign, Inbox, Send, TriangleAlert, Users, Clock } from "lucide-react";
 import type { ReactNode } from "react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { EmptyState, PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
+import { StatCard } from "@/components/stat-card";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
@@ -14,6 +16,9 @@ import { requireAdmin } from "@/lib/session";
 import { sendTestEmail } from "./actions";
 
 export const dynamic = "force-dynamic";
+
+/** Seven days: a week of traffic is enough to tell "quiet" from "broken". */
+const WINDOW_DAYS = 7;
 
 type Row = {
   clientName: string;
@@ -46,6 +51,10 @@ function envValue(value: string | undefined): ReactNode {
 export default async function EmailSettingsPage() {
   const session = await requireAdmin();
 
+  const now = new Date();
+  const since = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const health = await emailHealth(getDb(), session.organisationId, since, now);
+
   const rows = await getDb()
     .select({
       clientName: schema.clients.name,
@@ -70,6 +79,56 @@ export default async function EmailSettingsPage() {
         description="Inbound support routing and the outbound email adapter."
         category="automation"
       />
+
+      {/* The screen used to open with configuration, which nobody reads twice.
+          What it owes a person opening it is whether the mail is moving — and
+          in particular whether a reply to a client failed or is stuck, because
+          neither is visible anywhere else until the client chases. */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          label="Received"
+          value={health.received}
+          hint={`Inbound, last ${WINDOW_DAYS} days`}
+          category="support"
+          icon={Inbox}
+        />
+        <StatCard
+          label="Sent"
+          value={health.sent}
+          hint={`Outbound, last ${WINDOW_DAYS} days`}
+          category="support"
+          icon={Send}
+        />
+        <StatCard
+          label="Failed"
+          value={health.failed}
+          hint={health.failed === 0 ? "Nothing rejected" : "Never left. All time."}
+          category="support"
+          icon={TriangleAlert}
+          attention={health.failed > 0}
+        />
+        <StatCard
+          label="Stuck in the queue"
+          value={health.stuck}
+          hint={health.stuck === 0 ? "Queue is moving" : "Waiting over 15 minutes — check the worker"}
+          category="automation"
+          icon={Clock}
+          attention={health.stuck > 0}
+        />
+        <StatCard
+          label="Clients routed"
+          value={`${health.routed} of ${health.clients}`}
+          hint={
+            health.routed >= health.clients
+              ? "Every active client has an address"
+              : `${health.clients - health.routed} without a support address`
+          }
+          category="delivery"
+          icon={Users}
+          attention={health.routed < health.clients}
+          attentionTone="warning"
+        />
+      </div>
 
       <Section title="Configuration" description="Read from the environment at request time.">
         <div className="rounded-[20px] border bg-card p-5">
