@@ -1,7 +1,7 @@
 import { createDb } from "@launchos/db";
 import { ensureStarterGuides, setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
-import { MockSiteUploader, createHostingProvisionerFromEnv, createSiteGeneratorFromEnv } from "@launchos/integrations";
+import { createHostingProvisionerFromEnv, createSiteGeneratorFromEnv, createSiteUploaderFromEnv } from "@launchos/integrations";
 import { randomUUID } from "node:crypto";
 import { createEmailAdapter, createPushAdapterFromEnv, smsAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
@@ -230,7 +230,7 @@ async function main() {
           db,
           host: createHostingProvisionerFromEnv(process.env),
           generator: createSiteGeneratorFromEnv(process.env),
-          uploader: new MockSiteUploader(),
+          uploader: createSiteUploaderFromEnv(process.env),
           orderId: Number(process.env.HOSTINGER_ORDER_ID ?? 0),
           makeAdminPassword: () => randomUUID().replaceAll("-", ""),
         },

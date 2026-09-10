@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "packageManager": "pnpm@11.12.0",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "dev": "pnpm --filter @launchos/web dev",
     "dev:worker": "pnpm --filter @launchos/worker dev",
@@ -23,5 +25,11 @@
   "devDependencies": {
     "eslint": "^9",
     "typescript-eslint": "^8"
+  },
+  "pnpm": {
+    "ignoredBuiltDependencies": [
+      "cpu-features",
+      "ssh2"
+    ]
   }
 }

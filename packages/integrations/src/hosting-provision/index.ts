@@ -9,3 +9,4 @@ export { provisionWordPressWebsite, type ProvisionOptions } from "./provision.js
 export { createHostingProvisionerFromEnv } from "./factory.js";
 export type { SiteUploader, UploadFile } from "./upload.js";
 export { MockSiteUploader, filesFromGeneratedSite } from "./upload.js";
+export { createSiteUploaderFromEnv } from "./uploader-factory.js";

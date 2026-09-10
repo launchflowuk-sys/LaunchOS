@@ -2,5 +2,20 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
+  cpu-features: set this to true or false
   esbuild: true
+  ssh2: set this to true or false
   unrs-resolver: true
+
+# `ssh2` (used for SFTP uploads) ships an optional native accelerator,
+# `cpu-features`, and building it needs a C toolchain. It is genuinely optional:
+# ssh2 falls back to pure JavaScript and works. Declared rather than left as a
+# warning, because an unacknowledged ignored build makes `pnpm install` exit
+# non-zero and that silently breaks the test runner.
+# Nothing in this workspace needs a post-install build step. Stated explicitly
+# rather than left unanswered: pnpm exits non-zero on an undecided build script,
+# and that silently breaks `pnpm test` for the whole repo.
+onlyBuiltDependencies: []
+ignoredBuiltDependencies:
+  - cpu-features
+  - ssh2
