@@ -837,3 +837,8 @@ export {
 export type { BriefSessionRow, SafeSession, PatchResult } from "./brief-funnel/sessions.js";
 export { captureLeadFromDraft, isContactable, ContactFields } from "./brief-funnel/capture.js";
 export type { LeadCaptureResult } from "./brief-funnel/capture.js";
+export {
+  STAGES, BUDGET_BANDS, FIELDS_BY_KEY, stageFor, isFieldActive, activeAnswers,
+  excludedAnswerKeys, validateStep, satisfiedSteps, canSubmit,
+} from "./brief-funnel/questionnaire.js";
+export type { StageDef, FieldDef, FieldKind, FieldOption, StepValidation } from "./brief-funnel/questionnaire.js";
