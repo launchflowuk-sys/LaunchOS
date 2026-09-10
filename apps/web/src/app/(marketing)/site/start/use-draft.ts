@@ -58,6 +58,8 @@ export function useDraft() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Edits typed but not yet queued — merged into the next outgoing write. */
   const buffered = useRef<Record<string, unknown>>({});
+  /** One per journey, not one per press. See `submit`. */
+  const idempotencyKey = useRef<string | null>(null);
 
   /** Opens the existing draft, or starts one. Runs once. */
   useEffect(() => {
@@ -205,6 +207,36 @@ export function useDraft() {
   );
 
   /**
+   * Sends the brief.
+   *
+   * The idempotency key is generated once per journey and reused for every
+   * attempt, so a double tap, a retried timeout and a refresh mid-request all
+   * resolve to one submission and one reference. Generating it per press would
+   * defeat the whole mechanism.
+   */
+  const submit = useCallback(async (): Promise<
+    { ok: true; reference: string } | { ok: false; errors: Record<string, string> }
+  > => {
+    await flush();
+    if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
+    const response = await fetch("/api/brief-funnel/submit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ idempotencyKey: idempotencyKey.current, expectedRevision: revision.current }),
+    });
+    if (response.status === 422) {
+      const body = (await response.json()) as { errors: Record<string, string> };
+      return { ok: false, errors: body.errors };
+    }
+    if (!response.ok) {
+      const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | null;
+      return { ok: false, errors: { _: body?.error?.message ?? "That did not send. Try again in a moment." } };
+    }
+    const body = (await response.json()) as { reference: string };
+    return { ok: true, reference: body.reference };
+  }, [flush]);
+
+  /**
    * A last try on the way out. Best effort and nothing more — the durable
    * path is the debounced save, and this only narrows the window between the
    * last keystroke and it.
@@ -217,7 +249,7 @@ export function useDraft() {
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [flush]);
 
-  return { session, ready, saveState, saveError, setField, flush, completeStep, retry: flush };
+  return { session, ready, saveState, saveError, setField, flush, completeStep, submit, retry: flush };
 }
 
 /**

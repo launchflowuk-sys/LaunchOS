@@ -43,7 +43,7 @@ function isActive(field: FieldDef, answers: Record<string, unknown>): boolean {
 }
 
 export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
-  const { session, ready, saveState, saveError, setField, flush, completeStep, retry } = useDraft();
+  const { session, ready, saveState, saveError, setField, flush, completeStep, submit, retry } = useDraft();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -51,6 +51,8 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
   const top = useRef<HTMLDivElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
+  /** Set once the brief has gone. Replaces the whole form. */
+  const [reference, setReference] = useState<string | null>(null);
 
   useEffect(() => {
     if (session && !moved.current) {
@@ -83,6 +85,22 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
     setStep(next);
   };
 
+  const onSend = async () => {
+    setBusy(true);
+    try {
+      const result = await submit();
+      // Errors from any stage, so the review screen can send them back to the
+      // step that owns them rather than showing a dead end.
+      if (!result.ok) {
+        setErrors(result.errors);
+        return;
+      }
+      setReference(result.reference);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const onContinue = async () => {
     setBusy(true);
     try {
@@ -98,6 +116,15 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
       setBusy(false);
     }
   };
+
+  if (reference) {
+    return (
+      <div className="mx-auto w-full max-w-[1280px] px-5 sm:px-[26px] lg:px-[42px]">
+        <FunnelHeader state="idle" error={null} onRetry={() => undefined} />
+        <Received reference={reference} />
+      </div>
+    );
+  }
 
   if (!ready) {
     return (
@@ -190,7 +217,7 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
 
               <button
                 type="button"
-                onClick={() => void onContinue()}
+                onClick={() => void (isReview ? onSend() : onContinue())}
                 disabled={busy}
                 className={[
                   "inline-flex min-h-[51px] flex-1 items-center justify-center gap-2.5 rounded-[12px] bg-[#0965EE] px-6 text-[15.5px] font-semibold text-white sm:flex-none sm:min-w-[240px]",
@@ -221,6 +248,46 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
           <Link href="/contact" className="hover:text-[#111827]">Need a hand?</Link>
         </p>
       </footer>
+    </div>
+  );
+}
+
+/**
+ * What they see once it has gone.
+ *
+ * A real reference, and what actually happens next — no promised call time we
+ * have not committed to, no invented price, and nothing claiming a website is
+ * being built. The brief is written and a person reads it; that is the honest
+ * version and it is also the true one.
+ */
+function Received({ reference }: { reference: string }) {
+  return (
+    <div className="mx-auto max-w-[640px] py-16 text-center">
+      <span aria-hidden className="mx-auto mb-6 grid size-16 place-items-center rounded-full bg-[#E8F5ED] text-[#26905D]">
+        <Check className="size-8" strokeWidth={2.5} />
+      </span>
+      <h1 className="text-[34px] font-semibold leading-[1.1] tracking-[-1.2px] text-[#111827] sm:text-[42px]">
+        Your brief is in.
+      </h1>
+      <p className="mx-auto mt-4 max-w-[440px] text-[16px] leading-relaxed text-[#626D80]">
+        Everything you told us is saved. Quote this reference if you get in touch about it.
+      </p>
+      <p className="mx-auto mt-6 inline-block rounded-[14px] border border-[#DFE4EB] bg-white px-6 py-4 font-mono text-[20px] font-semibold tracking-[1px] text-[#111827]">
+        {reference}
+      </p>
+      <div className="mx-auto mt-10 max-w-[440px] rounded-[18px] border border-[#DFE4EB] bg-white p-6 text-left">
+        <h2 className="text-[15px] font-semibold text-[#111827]">What happens next</h2>
+        <ol className="mt-3 space-y-3 text-[14.5px] leading-relaxed text-[#626D80]">
+          <li>1. We read it properly and look at anything you already have online.</li>
+          <li>2. You get a written proposal back — what we would build, and what it costs.</li>
+          <li>3. If it looks right, we start. Nothing is charged before you have agreed it.</li>
+        </ol>
+      </div>
+      <p className="mt-8 text-[14px] text-[#626D80]">
+        <Link href="/" className="text-[#0965EE] hover:underline">
+          Back to LaunchFlow
+        </Link>
+      </p>
     </div>
   );
 }

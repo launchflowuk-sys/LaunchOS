@@ -842,3 +842,6 @@ export {
   excludedAnswerKeys, validateStep, satisfiedSteps, canSubmit,
 } from "./brief-funnel/questionnaire.js";
 export type { StageDef, FieldDef, FieldKind, FieldOption, StepValidation } from "./brief-funnel/questionnaire.js";
+export { submitBrief, SubmitInput } from "./brief-funnel/submit.js";
+export type { SubmitResult } from "./brief-funnel/submit.js";
+export { briefMarkdown } from "./brief-funnel/brief-markdown.js";
