@@ -119,13 +119,36 @@ fine — arguably better, since the review site is fully isolated — but it mea
 the temp domain is not nested under `launchflow.co.uk` on disk and DNS has to
 point at it separately.
 
-### WordPress cannot be installed through this API
+### WordPress: readable, not installable on this token
 
-`website_type` came back as `other`, and every plausible install route is a 404:
-`/websites/{domain}/wordpress`, `/websites/{domain}/install`,
-`/websites/{domain}/applications`, `/hosting/v1/wordpress`,
-`/hosting/v1/applications`. So are `ftp-accounts`, `files`, `ssh-keys` and
-`databases`. The public API creates and deletes docroots and nothing else.
+An earlier version of this section said no WordPress endpoint existed. Wrong —
+it was probed one path segment short. Shoji found the endpoint in Hostinger's
+own CLI docs and was right to push back.
+
+The real path is `/api/hosting/v1/wordpress/installations`, and it works:
+
+```
+GET  /api/hosting/v1/wordpress/installations?username=u509477357
+  200 — real installations, e.g. grayscabline.co.uk, with id, site_title, url,
+        directory, language, login, email, is_valid
+```
+
+**But installing is not available.** An empty POST — which creates nothing and
+only asks the question — answers:
+
+```
+405 The POST method is not supported for route
+    api/hosting/v1/wordpress/installations. Supported methods: GET, HEAD.
+```
+
+`hosting/v2` does not exist either. So `hostinger wordpress installations
+install` in the CLI reaches something this API token cannot: a different scope,
+a different product tier, or a surface not exposed on v1. **That is a question
+for Hostinger, not something to be worked out by probing**, and it is the one
+open item left in this chain.
+
+Everything else about the hosting API stands: create and delete docroots, both
+asynchronous.
 
 **This is the real constraint, and it is worth thinking about before working
 around it.** For the *review* stage the generated site is HTML and CSS — it does
@@ -142,7 +165,10 @@ So the honest shape is:
 1. Create the review site through the API — one call, then poll.
 2. Upload the generated HTML and CSS over SFTP to its docroot.
 3. Team checks, Shoji approves, client is told.
-4. Convert to WordPress on the real domain, by hand for now.
+4. WordPress: **ask Hostinger what enables POST on
+   `/wordpress/installations`.** If it can be enabled, step 4 automates and
+   `provisionWordPressWebsite` becomes buildable exactly as specified. Until
+   then it is a person in the panel, and the automated chain stops at step 3.
 
 Step 2 needs SFTP credentials for the hosting account, which the API does not
 expose — they come from the Hostinger panel and belong in the access vault.
