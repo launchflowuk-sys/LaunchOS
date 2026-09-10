@@ -36,7 +36,7 @@ export default async function WorkPage() {
       <CtaBlock
         title={<Lines first="Yours could" second="be next." />}
         body="Tell us the problem. We will tell you the smallest thing that fixes it and what it costs."
-        primary={{ label: "Tell us about your project", href: href("/contact") }}
+        primary={{ label: "Tell us about your project", href: href("/start") }}
       />
     </>
   );

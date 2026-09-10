@@ -166,7 +166,7 @@ export default async function WorkDetailPage({ params }: PageProps<"/site/work/[
       <CtaBlock
         title={<Lines first="Need something" second="like this?" />}
         body="Tell us about your business and we will tell you what we would build, and what it would cost."
-        primary={{ label: "Tell us about your project", href: href("/contact") }}
+        primary={{ label: "Tell us about your project", href: href("/start") }}
       />
     </>
   );

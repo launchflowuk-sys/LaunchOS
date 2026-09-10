@@ -55,7 +55,7 @@ export default async function ServicesPage() {
       <CtaBlock
         title={<Lines first="Not sure which" second="of these you need?" />}
         body="Most people are not. Tell us the problem and we will tell you the smallest thing that fixes it."
-        primary={{ label: "Tell us what you need", href: href("/contact") }}
+        primary={{ label: "Tell us what you need", href: href("/start") }}
       />
     </>
   );

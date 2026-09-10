@@ -71,7 +71,7 @@ export default async function ProductsPage() {
         <CtaBlock
           title={<Lines first="Want one of these" second="for your business?" />}
           body="Most of them are a subscription. Tell us which one and we will get you set up, or build you the thing that is missing."
-          primary={{ label: "Tell us what you need", href: href("/contact") }}
+          primary={{ label: "Tell us what you need", href: href("/start") }}
         />
       </div>
     </>

@@ -53,7 +53,7 @@ export default async function PricingPage() {
           <div className="card p-8 text-center" data-reveal>
             <p className="h-card">Plans are being updated.</p>
             <p className="body mt-2">
-              <Link href={href("/contact")} className="link-blue">
+              <Link href={href("/start")} className="link-blue">
                 Talk to us
               </Link>{" "}
               and we will set you up by hand.
@@ -103,7 +103,7 @@ export default async function PricingPage() {
             <p className="h-card">Need something custom?</p>
             <p className="body mt-1">A booking system, a dispatch platform, an app on the stores. Tell us the problem and we will quote it.</p>
           </div>
-          <Btn href={href("/contact")} tone="white" className="shrink-0">
+          <Btn href={href("/start")} tone="white" className="shrink-0">
             Let&rsquo;s talk
           </Btn>
         </div>
