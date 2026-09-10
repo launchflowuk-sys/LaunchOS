@@ -20,6 +20,7 @@ export * from "./team.js";
 export * from "./push.js";
 export * from "./system-health.js";
 export * from "./leads.js";
+export * from "./brief-funnel.js";
 export * from "./meetings.js";
 export * from "./documents.js";
 export * from "./proposals.js";

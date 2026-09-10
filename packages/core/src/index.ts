@@ -827,3 +827,13 @@ export { startSiteBuild, advanceSiteBuild, activeSiteBuilds, abandonedWithHostin
 export type { SiteBuildRow, AdvanceFields } from "./site-builds/site-builds.js";
 export { notifySiteBuildClient, NotifySiteBuildInput } from "./site-builds/notify-client.js";
 export type { SiteBuildRecipient, NotifySiteBuildResult } from "./site-builds/notify-client.js";
+
+export {
+  startBriefSession, briefSessionBySecret, patchBriefSession, completeBriefStep,
+  expireStaleSessions, toSafeSession, hashSecret, safeSource, RevisionConflict,
+  SESSION_TTL_DAYS, QUESTIONNAIRE_VERSION, TOTAL_STEPS,
+  StartSessionInput, PatchInput,
+} from "./brief-funnel/sessions.js";
+export type { BriefSessionRow, SafeSession, PatchResult } from "./brief-funnel/sessions.js";
+export { captureLeadFromDraft, isContactable, ContactFields } from "./brief-funnel/capture.js";
+export type { LeadCaptureResult } from "./brief-funnel/capture.js";
