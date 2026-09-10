@@ -11,10 +11,26 @@ import { requireAdminWith } from "@/lib/permissions";
  * this only ever sends to OWNER_NOTIFY_EMAIL — never to an address supplied in
  * the request.
  */
-export async function sendTestEmail() {
+/** Each admin module declares its own `ActionResult` with this shape. */
+export type ActionResult = { status: "ok"; message?: string } | { status: "error"; message: string };
+
+/**
+ * Sends one email to the owner and says what happened.
+ *
+ * It used to throw. A server action that throws takes the whole screen to the
+ * error boundary, so a wrong SMTP password read as "Something went wrong" with
+ * a reference number — and the actual answer, `535 Authentication
+ * unsuccessful`, was only ever visible in a container log. The failure a person
+ * is *testing for* is exactly the one they could not see.
+ *
+ * The provider's own words are returned rather than a tidy sentence: "the
+ * server rejected the login" sends somebody to the wrong place, and
+ * `535 5.7.3` names it.
+ */
+export async function sendTestEmail(): Promise<ActionResult> {
   const session = await requireAdminWith("settings");
   const to = process.env.OWNER_NOTIFY_EMAIL;
-  if (!to) throw new Error("OWNER_NOTIFY_EMAIL is not set");
+  if (!to) return { status: "error", message: "OWNER_NOTIFY_EMAIL is not set, so there is nowhere to send it." };
 
   const adapter = createEmailAdapter(process.env);
   const brand = brandEmailContext(process.env);
@@ -35,13 +51,19 @@ export async function sendTestEmail() {
     appUrl: brand.appUrl,
     supportEmail: brand.supportEmail,
   });
-  const result = await adapter.send({
-    to,
-    from: process.env.MAIL_FROM ?? to,
-    subject: "LaunchOS test email",
-    text,
-    html,
-  });
+  let result;
+  try {
+    result = await adapter.send({
+      to,
+      from: process.env.MAIL_FROM ?? to,
+      subject: "LaunchOS test email",
+      text,
+      html,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return { status: "error", message: `${adapter.name} refused it: ${detail}` };
+  }
 
   await recordAudit(getDb(), session.organisationId, {
     actorKind: "user",
@@ -52,4 +74,5 @@ export async function sendTestEmail() {
     after: { to, adapter: adapter.name, providerMessageId: result.providerMessageId },
   });
   revalidatePath("/settings/email");
+  return { status: "ok", message: `Sent to ${to} with the ${adapter.name} adapter.` };
 }

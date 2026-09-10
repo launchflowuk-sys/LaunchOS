@@ -1,4 +1,5 @@
 import { emailHealth } from "@launchos/core";
+import { ActionForm } from "@/components/action-form";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { AtSign, Inbox, Send, TriangleAlert, Users, Clock } from "lucide-react";
@@ -181,11 +182,15 @@ export default async function EmailSettingsPage() {
           {ownerNotifyEmail ? null : (
             <InlineAlert tone="warning">Set OWNER_NOTIFY_EMAIL to enable this.</InlineAlert>
           )}
-          <form action={sendTestEmail}>
+          {/* ActionForm, not a bare form: it disables the button while the
+              send is in flight and shows what came back. A plain submit gave no
+              sign it had been pressed, which on a slow SMTP handshake reads as
+              a dead button. */}
+          <ActionForm action={sendTestEmail} ariaLabel="Send a test email" success="Test email sent">
             <Button type="submit" disabled={!ownerNotifyEmail} className="max-sm:w-full">
               Send test email to owner
             </Button>
-          </form>
+          </ActionForm>
         </div>
       </Section>
     </>
