@@ -814,3 +814,5 @@ export { subscriptionsDueToInvoice } from "./billing/due-invoices.js";
 export type { DueInvoice } from "./billing/due-invoices.js";
 export { LeadQualification, TRADING_STRUCTURES, TRADING_STRUCTURE_LABEL, TRIAGE_ANSWERS, TRIAGE_LABEL, isEmptyQualification, qualificationCompleteness } from "./leads/qualification.js";
 export type { TradingStructure, TriageAnswer } from "./leads/qualification.js";
+export { reportTimingFor, isReportDue, REPORT_LEAD_DAYS } from "./reports/report-timing.js";
+export type { ReportTiming, ReportTimingInput } from "./reports/report-timing.js";

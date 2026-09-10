@@ -341,7 +341,11 @@ async function main() {
   // After ads.ingest (06:30) has landed the final day of the month's metrics
   // and after invoices.check-overdue (07:30), so the drafted report reports a
   // full month of ad spend and current invoice statuses.
-  await boss.schedule(QUEUE.reportsMonthly, "45 7 1 * *", {}, { tz: "Europe/London" });
+  // Daily, not monthly. The report is timed to each client's own payment date
+  // rather than the 1st — see `reportTimingFor` — so the sweep has to look every
+  // day and pick out whoever is due. It is idempotent per client per month: a
+  // published report is never rebuilt and a decided send is never asked again.
+  await boss.schedule(QUEUE.reportsMonthly, "45 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.supportSlaSweep, SLA_SWEEP_CRON, {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.billingStripeReconcile, STRIPE_RECONCILE_CRON, {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.billingInvoiceDocuments, INVOICE_DOCUMENTS_CRON, {}, { tz: "Europe/London" });

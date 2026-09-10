@@ -19,11 +19,25 @@ async function organisation(db: Db, slug: string) {
   return { orgId: org!.id, ownerId };
 }
 
-/** A client with an address, so the send gate has somebody to write to. */
-async function client(db: Db, organisationId: string, name: string) {
+/**
+ * A client with an address, so the send gate has somebody to write to, and a
+ * live retainer, because the report is now timed to a client's *payment* date
+ * — a client with no subscription has no such date and is deliberately left
+ * out. The period starts on 5 September, so at NOW (1 September) the August
+ * report is due: the month has ended and payment is four days away.
+ */
+async function client(db: Db, organisationId: string, name: string, opts: { subscribed?: boolean } = {}) {
   const [row] = await db.insert(schema.clients).values({
     organisationId, name, slug: `${name.toLowerCase()}-${randomUUID()}`, email: `${randomUUID()}@grays.test`,
   }).returning();
+  if (opts.subscribed !== false) {
+    await db.insert(schema.subscriptions).values({
+      organisationId, clientId: row!.id, status: "active",
+      currentPeriodStart: new Date("2026-09-05T00:00:00Z"),
+      currentPeriodEnd: new Date("2026-10-05T00:00:00Z"),
+      amountPence: 20000, currency: "GBP",
+    });
+  }
   return row!;
 }
 
@@ -119,10 +133,58 @@ describe("runMonthlyReports", () => {
     });
   });
 
+  /**
+   * The reason this became per-client. A client who pays on the 20th used to be
+   * sent August's report on the 1st, three weeks before the invoice it is meant
+   * to justify — and had forgotten it by the time the money moved.
+   */
+  it("waits for a client whose payment is later in the month", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await organisation(db, "mr-late");
+      const [late] = await db.insert(schema.clients)
+        .values({ organisationId: orgId, name: "Late", slug: `late-${randomUUID()}`, email: `${randomUUID()}@grays.test` })
+        .returning();
+      await db.insert(schema.subscriptions).values({
+        organisationId: orgId, clientId: late!.id, status: "active",
+        currentPeriodStart: new Date("2026-09-20T00:00:00Z"),
+        currentPeriodEnd: new Date("2026-10-20T00:00:00Z"),
+        amountPence: 20000, currency: "GBP",
+      });
+
+      // 1 September: nothing owed yet, their report is due on the 15th.
+      expect(await runMonthlyReports(db, orgId, { now: NOW, logger: quiet() })).toMatchObject({ clients: 0, reports: 0 });
+
+      const due = await runMonthlyReports(db, orgId, {
+        now: new Date("2026-09-15T06:45:00Z"),
+        logger: quiet(),
+      });
+      expect(due).toMatchObject({ clients: 1, reports: 1 });
+    });
+  });
+
+  it("leaves out a client with no live retainer, who has no payment date to aim at", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await organisation(db, "mr-none");
+      await client(db, orgId, "Unsubscribed", { subscribed: false });
+
+      expect(await runMonthlyReports(db, orgId, { now: NOW, logger: quiet() })).toMatchObject({ clients: 0, reports: 0 });
+    });
+  });
+
   it("logs a client with no address rather than failing the run", async () => {
     await withTestDb(async (db) => {
       const { orgId } = await organisation(db, "mr5");
-      await db.insert(schema.clients).values({ organisationId: orgId, name: "Silent", slug: `silent-${randomUUID()}` });
+      // A retainer, so the client is due a report at all, but no address for it
+      // to be sent to — which is the case under test.
+      const [silent] = await db.insert(schema.clients)
+        .values({ organisationId: orgId, name: "Silent", slug: `silent-${randomUUID()}` })
+        .returning();
+      await db.insert(schema.subscriptions).values({
+        organisationId: orgId, clientId: silent!.id, status: "active",
+        currentPeriodStart: new Date("2026-09-05T00:00:00Z"),
+        currentPeriodEnd: new Date("2026-10-05T00:00:00Z"),
+        amountPence: 20000, currency: "GBP",
+      });
       const logger = quiet();
 
       const result = await runMonthlyReports(db, orgId, { now: NOW, logger });

@@ -1,11 +1,12 @@
 import {
-  REPORT_TIME_ZONE, ReportRefused, buildMonthlyReport, londonMonthPeriod, monthlyReportSendDecided,
-  renderMonthlyReport, reportMonthName, requestMonthlyReportSend, zonedDateKey,
+  REPORT_TIME_ZONE, ReportRefused, buildMonthlyReport, isReportDue, londonMonthPeriod,
+  monthlyReportSendDecided, renderMonthlyReport, reportMonthName, reportTimingFor,
+  requestMonthlyReportSend, zonedDateKey,
   type MonthlyReportDeps,
 } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { sweep, throwOnSweepFailure, type SweepLogger } from "./sweep.js";
 
 /**
@@ -69,12 +70,39 @@ export interface MonthlyReportsOptions {
   logger?: MonthlyReportsLogger;
 }
 
-async function activeClients(db: Db, organisationId: string): Promise<{ id: string }[]> {
-  return db.select({ id: schema.clients.id }).from(schema.clients).where(and(
-    eq(schema.clients.organisationId, organisationId),
-    eq(schema.clients.status, "active"),
-    isNull(schema.clients.deletedAt),
-  ));
+/**
+ * The clients whose report is due today.
+ *
+ * Not everybody on the 1st. The report exists so that at the moment a client
+ * decides the money is worth it they have just read what they got — so it is
+ * timed to *their* payment date, five days ahead of it, waiting for the month
+ * being reported to have actually finished. See `reportTimingFor`.
+ *
+ * A client with no live subscription has no payment date and therefore no
+ * moment this is aimed at; they are left out rather than sent something on a
+ * date that means nothing to them.
+ */
+async function clientsDueAReport(db: Db, organisationId: string, now: Date): Promise<{ id: string }[]> {
+  const rows = await db
+    .select({ id: schema.clients.id, paymentDate: schema.subscriptions.currentPeriodStart })
+    .from(schema.clients)
+    .innerJoin(schema.subscriptions, eq(schema.subscriptions.clientId, schema.clients.id))
+    .where(and(
+      eq(schema.clients.organisationId, organisationId),
+      eq(schema.clients.status, "active"),
+      isNull(schema.clients.deletedAt),
+      eq(schema.subscriptions.organisationId, organisationId),
+      inArray(schema.subscriptions.status, ["trialing", "active", "past_due"]),
+      isNull(schema.subscriptions.deletedAt),
+    ));
+
+  const due = new Map<string, { id: string }>();
+  for (const row of rows) {
+    if (!isReportDue(reportTimingFor({ paymentDate: row.paymentDate }), now)) continue;
+    // A client on two subscriptions is one client and gets one report.
+    due.set(row.id, { id: row.id });
+  }
+  return [...due.values()];
 }
 
 /**
@@ -95,7 +123,7 @@ export async function runMonthlyReports(
 ): Promise<MonthlyReportsResult> {
   const logger = options.logger ?? console;
   const build = options.build ?? buildMonthlyReport;
-  const clients = await activeClients(db, organisationId);
+  const clients = await clientsDueAReport(db, organisationId, options.now);
   const deps: MonthlyReportDeps = { render: options.render };
 
   // Derived from the clock rather than from the first client's row, so an
