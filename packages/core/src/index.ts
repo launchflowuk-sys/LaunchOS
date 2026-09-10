@@ -845,3 +845,5 @@ export type { StageDef, FieldDef, FieldKind, FieldOption, StepValidation } from 
 export { submitBrief, SubmitInput } from "./brief-funnel/submit.js";
 export type { SubmitResult } from "./brief-funnel/submit.js";
 export { briefMarkdown } from "./brief-funnel/brief-markdown.js";
+export { writeBriefVersion, submissionsAwaitingBrief, withoutContactDetails } from "./brief-funnel/write-brief.js";
+export type { WriteBriefResult } from "./brief-funnel/write-brief.js";

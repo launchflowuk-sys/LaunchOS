@@ -107,3 +107,4 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
 
 export * from "./sitegen/index.js";
 export * from "./hosting-provision/index.js";
+export * from "./brief-writer/index.js";

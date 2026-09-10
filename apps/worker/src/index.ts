@@ -1,7 +1,7 @@
 import { createDb } from "@launchos/db";
 import { ensureStarterGuides, setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
-import { createHostingProvisionerFromEnv, createSiteGeneratorFromEnv, createSiteUploaderFromEnv } from "@launchos/integrations";
+import { createBriefWriterFromEnv, createHostingProvisionerFromEnv, createSiteGeneratorFromEnv, createSiteUploaderFromEnv } from "@launchos/integrations";
 import { randomUUID } from "node:crypto";
 import { createEmailAdapter, createPushAdapterFromEnv, smsAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
@@ -12,6 +12,7 @@ import { installProcessErrorAlerts, reportJobFailure } from "./error-alerts.js";
 import { startHealthServer } from "./health.js";
 import { startHeartbeat } from "./heartbeat.js";
 import { installPdfShutdown, pdfRendererName } from "./pdf.js";
+import { runBriefWrites } from "./jobs/briefs-write.js";
 import { WorkerTelemetry, instrumentBoss } from "./telemetry.js";
 import { handlePushSend, type PushSendJob } from "./jobs/push-send.js";
 import { SLA_SWEEP_CRON, runSlaSweep } from "./jobs/sla-sweep.js";
@@ -240,6 +241,18 @@ async function main() {
     });
   });
 
+  // Every five minutes: the AI pass over anything submitted since the last one.
+  // Deliberately not part of the submit request — a client pressing Send must
+  // never wait on a model, and must never fail because one is down.
+  await boss.work(QUEUE.briefsWrite, async () => {
+    await sweepOrganisations(db, "brief writes", async (organisationId) => {
+      await runBriefWrites(
+        { db, writer: createBriefWriterFromEnv(process.env) },
+        organisationId,
+      );
+    });
+  });
+
   await boss.work(QUEUE.billingRaiseDue, async () => {
     const now = new Date();
     await sweepOrganisations(db, "raise due invoices", async (organisationId) => {
@@ -371,6 +384,7 @@ async function main() {
   // 07:00, ahead of the overdue chase at 07:30.
   await boss.schedule(QUEUE.billingRaiseDue, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.siteBuildsRun, "*/2 * * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.briefsWrite, "*/5 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics
   // and after invoices.check-overdue (07:30), so the drafted report reports a

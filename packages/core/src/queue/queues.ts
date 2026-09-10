@@ -147,6 +147,8 @@ export const QUEUE = {
   billingRaiseDue: "billing.raise-due",
   /** Drives site builds one stage at a time; stops at review and waits for a person. */
   siteBuildsRun: "site-builds.run",
+  /** The AI pass over submitted website briefs. Never the thing that creates one. */
+  briefsWrite: "briefs.write",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
   deliverySend: "delivery.send",
@@ -229,6 +231,7 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "billing.invoice-documents": "standard",
   "billing.raise-due": "standard",
   "site-builds.run": "standard",
+  "briefs.write": "standard",
   // Meetings: reminders every ten minutes, follow-ups daily. Both crons with
   // payload `{}`; every send is stamped on the meeting, so a tick is idempotent.
   "meetings.remind": "standard",
