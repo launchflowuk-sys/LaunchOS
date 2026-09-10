@@ -64,7 +64,10 @@ export function Field({ field, value, error, onChange, onBlur }: FieldProps) {
   } as const;
 
   return (
-    <div className="space-y-2">
+    /* `grid` with explicit rows rather than `space-y`: the label and the input
+       are the same height in every field, so inputs across a row align even
+       when one of them carries a hint underneath. */
+    <div className="grid content-start gap-2">
       {/* A legend for grouped controls, a label for single ones — the two are
           not interchangeable to a screen reader. */}
       {["single", "multi", "chips", "upload"].includes(field.kind) ? null : (
@@ -73,12 +76,6 @@ export function Field({ field, value, error, onChange, onBlur }: FieldProps) {
           {field.required ? <span className="ml-1 text-[#B43A34]" aria-hidden>*</span> : null}
         </label>
       )}
-
-      {field.hint && field.kind !== "upload" ? (
-        <p id={`${id}-hint`} className="text-[13.5px] leading-snug text-[#626D80]">
-          {field.hint}
-        </p>
-      ) : null}
 
       {field.kind === "textarea" ? (
         <textarea
@@ -120,6 +117,16 @@ export function Field({ field, value, error, onChange, onBlur }: FieldProps) {
           own, so the field renders its own uploader rather than taking a
           value. */}
       {field.kind === "upload" ? <UploadField label={field.label} hint={field.hint} /> : null}
+
+      {/* Under the input, not above it. Above, a hint pushes its own field
+          down the page — so Email and Phone sitting side by side no longer
+          lined up, and the taller one looked broken. Under, every field in a
+          row starts at the same height whatever it has to say. */}
+      {field.hint && field.kind !== "upload" ? (
+        <p id={`${id}-hint`} className="text-[13.5px] leading-snug text-[#626D80]">
+          {field.hint}
+        </p>
+      ) : null}
 
       {error ? (
         <p id={`${id}-error`} className="text-[13.5px] font-medium text-[#B43A34]">
