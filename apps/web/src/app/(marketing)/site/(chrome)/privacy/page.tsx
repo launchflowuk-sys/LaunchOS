@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { CONTACT_EMAIL, LOCATION, marketingMetadata } from "@/lib/marketing/site";
-import { Container, Eyebrow } from "../_components/primitives";
+import { Container, Eyebrow } from "../../_components/primitives";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Privacy",

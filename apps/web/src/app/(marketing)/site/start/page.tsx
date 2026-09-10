@@ -1,6 +1,5 @@
 import { STAGES } from "@launchos/core";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { BriefFunnel } from "./funnel";
 
 export const metadata: Metadata = {
@@ -25,17 +24,10 @@ export const metadata: Metadata = {
  */
 export default function StartPage() {
   return (
-    /* A section, not a main: the marketing layout already renders one, and two
-       is a landmark a screen reader has to choose between. */
-    <section className="min-h-dvh bg-[#F5F6F8] px-5 py-10 sm:px-6 sm:py-14">
+    /* A main, not a section: this route sits outside the `(chrome)` group, so
+       nothing above it provides the landmark any more. */
+    <main className="min-h-dvh bg-[#F5F6F8]">
       <BriefFunnel stages={STAGES} />
-
-      <p className="mx-auto mt-8 max-w-[720px] text-center text-[13.5px] text-[#626D80]">
-        Everything saves as you go, so you can come back to it.{" "}
-        <Link href="/contact" className="underline underline-offset-4 hover:text-[#111827]">
-          Would rather just talk?
-        </Link>
-      </p>
-    </section>
+    </main>
   );
 }

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { marketingLinks } from "@/lib/marketing/links";
 import { findWork, STATUS_LABEL, workItems } from "@/lib/marketing/portfolio";
-import { CtaBlock } from "../../_components/cta-block";
-import { PoweredByBadge } from "../../_components/powered-by";
-import { Arrow, Btn, Container, Eyebrow, Lines, Pill } from "../../_components/primitives";
-import { Shot } from "../../_components/shot";
+import { CtaBlock } from "../../../_components/cta-block";
+import { PoweredByBadge } from "../../../_components/powered-by";
+import { Arrow, Btn, Container, Eyebrow, Lines, Pill } from "../../../_components/primitives";
+import { Shot } from "../../../_components/shot";
 
 /**
  * There is no `generateStaticParams`. The slugs live in the database now, and

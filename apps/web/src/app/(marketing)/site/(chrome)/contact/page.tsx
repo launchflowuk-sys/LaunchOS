@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
 import { CONTACT_EMAIL, CONTACT_PHONE, LOCATION, REPLY_PROMISE, marketingMetadata } from "@/lib/marketing/site";
-import { Container, Eyebrow, TextLink } from "../_components/primitives";
+import { Container, Eyebrow, TextLink } from "../../_components/primitives";
 import { ContactForm } from "./contact-form";
 
 export const metadata: Metadata = marketingMetadata({

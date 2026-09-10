@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { marketingLinks } from "@/lib/marketing/links";
 import { SITE_DESCRIPTION, marketingMetadata } from "@/lib/marketing/site";
-import { CtaBlock } from "./_components/cta-block";
-import { About } from "./_components/home/about";
-import { Hero } from "./_components/home/hero";
-import { Products } from "./_components/home/products";
-import { SelectedWork } from "./_components/home/selected-work";
-import { Services } from "./_components/home/services";
-import { Stats } from "./_components/home/stats";
-import { Lines } from "./_components/primitives";
+import { CtaBlock } from "../_components/cta-block";
+import { About } from "../_components/home/about";
+import { Hero } from "../_components/home/hero";
+import { Products } from "../_components/home/products";
+import { SelectedWork } from "../_components/home/selected-work";
+import { Services } from "../_components/home/services";
+import { Stats } from "../_components/home/stats";
+import { Lines } from "../_components/primitives";
 
 const TITLE = "LaunchFlow — Built to work. Designed to stand out.";
 

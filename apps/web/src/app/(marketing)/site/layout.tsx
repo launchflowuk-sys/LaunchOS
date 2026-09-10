@@ -5,8 +5,6 @@ import { marketingLinks } from "@/lib/marketing/links";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marketing/site";
 import { OrganisationSchema } from "./_components/structured-data";
 import { MenuDismiss } from "./_components/menu-dismiss";
-import { SiteFooter } from "./_components/site-footer";
-import { SiteHeader } from "./_components/site-header";
 import "./marketing.css";
 import "./motion.css";
 
@@ -53,9 +51,9 @@ export default async function MarketingLayout({ children }: LayoutProps<"/site">
           it has been asked not to index is noise at best. */}
       {onMarketingHost ? <OrganisationSchema base={canonicalBase} /> : null}
       <MenuDismiss />
-      <SiteHeader />
-      <main className="flex-1">{children}</main>
-      <SiteFooter />
+      {/* The nav and footer live in the `(chrome)` group, not here: `/start`
+          draws its own header and would otherwise carry two of them. */}
+      {children}
     </div>
   );
 }

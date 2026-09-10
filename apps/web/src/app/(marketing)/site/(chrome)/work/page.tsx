@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { workItems } from "@/lib/marketing/portfolio";
-import { CtaBlock } from "../_components/cta-block";
-import { Container, Lines, SectionHead } from "../_components/primitives";
-import { WorkCard } from "../_components/work-card";
+import { CtaBlock } from "../../_components/cta-block";
+import { Container, Lines, SectionHead } from "../../_components/primitives";
+import { WorkCard } from "../../_components/work-card";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Work",

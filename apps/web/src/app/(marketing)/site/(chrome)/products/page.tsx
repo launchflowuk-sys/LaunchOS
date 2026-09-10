@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { productItems, STATUS_LABEL } from "@/lib/marketing/portfolio";
-import { CtaBlock } from "../_components/cta-block";
-import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
-import { Shot } from "../_components/shot";
+import { CtaBlock } from "../../_components/cta-block";
+import { Btn, Container, Lines, Pill, SectionHead } from "../../_components/primitives";
+import { Shot } from "../../_components/shot";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Products",

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { marketingMetadata } from "@/lib/marketing/site";
 import { marketingLinks } from "@/lib/marketing/links";
 import { SERVICES } from "@/lib/marketing/services";
-import { CtaBlock } from "../_components/cta-block";
-import { Container, Lines, SectionHead } from "../_components/primitives";
+import { CtaBlock } from "../../_components/cta-block";
+import { Container, Lines, SectionHead } from "../../_components/primitives";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Services",

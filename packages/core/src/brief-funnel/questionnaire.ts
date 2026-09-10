@@ -55,13 +55,21 @@ export interface FieldDef {
    * active scope, so deselecting a goal does not lose the work.
    */
   showWhen?: { key: string; hasAny: readonly string[] };
+  /** Sits beside its neighbour on desktop — email and phone, town and postcode. */
+  half?: boolean;
 }
 
 export interface StageDef {
   step: number;
   key: string;
+  /** The short name under its segment in the stepper. Two or three words. */
+  navLabel: string;
+  /** The small grey line above the heading on the card. */
+  eyebrow: string;
   title: string;
   blurb: string;
+  /** The quiet line under the button telling them what is coming. */
+  nextHint?: string;
   fields: readonly FieldDef[];
 }
 
@@ -120,20 +128,26 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 1,
     key: "contact",
+    navLabel: "Your details",
+    eyebrow: "YOUR DETAILS",
+    nextHint: "Next: a little about your business",
     title: "First, let's meet",
     blurb: "So we can get back to you. Nothing else on this form is compulsory.",
     fields: [
       { key: "name", label: "Your name", kind: "text", required: true, autoComplete: "name", placeholder: "Sam Taylor", maxLength: 120 },
-      { key: "email", label: "Email", kind: "email", autoComplete: "email", placeholder: "sam@business.co.uk", maxLength: 254 },
-      { key: "phone", label: "Phone", kind: "tel", autoComplete: "tel", placeholder: "07700 900123", hint: "Either email or phone is enough to reach you.", maxLength: 40 },
+      { key: "email", label: "Email", kind: "email", half: true, autoComplete: "email", placeholder: "sam@business.co.uk", maxLength: 254 },
+      { key: "phone", label: "Phone", kind: "tel", half: true, autoComplete: "tel", placeholder: "07700 900123", hint: "Either email or phone is enough to reach you.", maxLength: 40 },
       { key: "addressLine1", label: "Address", kind: "text", autoComplete: "street-address", maxLength: 200 },
-      { key: "city", label: "Town or city", kind: "text", autoComplete: "address-level2", maxLength: 100 },
-      { key: "postcode", label: "Postcode", kind: "text", autoComplete: "postal-code", maxLength: 20 },
+      { key: "city", label: "Town or city", kind: "text", half: true, autoComplete: "address-level2", maxLength: 100 },
+      { key: "postcode", label: "Postcode", kind: "text", half: true, autoComplete: "postal-code", maxLength: 20 },
     ],
   },
   {
     step: 2,
     key: "business",
+    navLabel: "Your business",
+    eyebrow: "YOUR BUSINESS",
+    nextHint: "Next: what you want it to do",
     title: "Your business",
     blurb: "What you do, and who for.",
     fields: [
@@ -152,6 +166,9 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 3,
     key: "goals",
+    navLabel: "Your goals",
+    eyebrow: "YOUR GOALS",
+    nextHint: "Next: how it should look",
     title: "What you want out of it",
     blurb: "Pick everything that applies.",
     fields: [
@@ -162,6 +179,9 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 4,
     key: "design",
+    navLabel: "Design direction",
+    eyebrow: "DESIGN DIRECTION",
+    nextHint: "Next: pages and features",
     title: "How it should feel",
     blurb: "There is no wrong answer, and we can change it later.",
     fields: [
@@ -182,6 +202,9 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 5,
     key: "scope",
+    navLabel: "Pages & features",
+    eyebrow: "PAGES & FEATURES",
+    nextHint: "Next: words and pictures",
     title: "Pages and features",
     blurb: "A rough idea is fine — we'll tell you what's missing.",
     fields: [
@@ -206,6 +229,9 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 6,
     key: "content",
+    navLabel: "Your content",
+    eyebrow: "YOUR CONTENT",
+    nextHint: "Next: budget and timing",
     title: "Words and pictures",
     blurb: "Most people have less ready than they think. That's normal.",
     fields: [
@@ -225,6 +251,9 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 7,
     key: "timing",
+    navLabel: "Budget & timing",
+    eyebrow: "BUDGET & TIMING",
+    nextHint: "Next: check it over",
     title: "Budget and timing",
     blurb: "Ranges to plan against, not a quote. We'll price it properly once we know the shape.",
     fields: [
@@ -244,6 +273,8 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 8,
     key: "review",
+    navLabel: "Review your brief",
+    eyebrow: "REVIEW YOUR BRIEF",
     title: "Check it over",
     blurb: "Change anything you like. Blanks are fine — we'll ask.",
     fields: [],

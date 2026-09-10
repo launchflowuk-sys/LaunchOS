@@ -4,8 +4,8 @@ import { Check } from "lucide-react";
 import Link from "next/link";
 import { marketingLinks } from "@/lib/marketing/links";
 import { pricingPackages } from "@/lib/marketing/packages";
-import { CtaBlock } from "../_components/cta-block";
-import { Btn, Container, Lines, Pill, SectionHead } from "../_components/primitives";
+import { CtaBlock } from "../../_components/cta-block";
+import { Btn, Container, Lines, Pill, SectionHead } from "../../_components/primitives";
 
 export const metadata: Metadata = marketingMetadata({
   title: "Pricing",

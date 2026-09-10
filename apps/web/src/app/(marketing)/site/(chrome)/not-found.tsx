@@ -1,5 +1,5 @@
 import { marketingLinks } from "@/lib/marketing/links";
-import { Btn, Container, Eyebrow } from "./_components/primitives";
+import { Btn, Container, Eyebrow } from "../_components/primitives";
 
 export default async function MarketingNotFound() {
   const { href } = await marketingLinks();

@@ -33,6 +33,8 @@ export interface FieldDef {
   maxLength?: number;
   autoComplete?: string;
   showWhen?: { key: string; hasAny: readonly string[] };
+  /** Sits beside its neighbour on desktop. Laid out by the shell, not here. */
+  half?: boolean;
 }
 
 interface FieldProps {
