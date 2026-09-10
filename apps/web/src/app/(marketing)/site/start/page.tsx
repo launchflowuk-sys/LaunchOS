@@ -1,6 +1,7 @@
+import { STAGES } from "@launchos/core";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { StartWizard } from "./wizard";
+import { BriefFunnel } from "./funnel";
 
 export const metadata: Metadata = {
   // The layout appends " — LaunchFlow"; naming it here too printed it twice.
@@ -10,13 +11,13 @@ export const metadata: Metadata = {
 };
 
 /**
- * The wizard, on a ground that steps back out of its way.
+ * The eight-stage brief, on the calm white canvas the handoff specifies.
  *
- * A dimmed ground behind a white card, which is the effect of an overlay
- * without being one: a real route can be linked from an ad, shared, reloaded
- * and returned to, and does not depend on the page underneath having rendered
- * first. Somebody halfway through on a phone who takes a call comes back to a
- * URL rather than to a closed modal.
+ * A server component on purpose. It owns the one shared questionnaire
+ * definition and hands it to the client shell as a plain prop — a client
+ * component that value-imports `@launchos/core` pulls the database driver into
+ * the browser bundle, which typechecks perfectly and then fails to build with
+ * `Can't resolve 'net'`.
  *
  * It lives under `site/` because `src/proxy.ts` rewrites `/` to `/site` for
  * launchflow.co.uk — so this is `/start` on the public domain, which is the
@@ -26,15 +27,14 @@ export default function StartPage() {
   return (
     /* A section, not a main: the marketing layout already renders one, and two
        is a landmark a screen reader has to choose between. */
-    <section className="min-h-dvh bg-neutral-950 px-4 py-10 sm:px-6 sm:py-16">
-      <StartWizard page="/start" />
+    <section className="min-h-dvh bg-[#F5F6F8] px-5 py-10 sm:px-6 sm:py-14">
+      <BriefFunnel stages={STAGES} />
 
-      <p className="mx-auto mt-8 max-w-2xl text-center text-meta text-white/55">
-        Would rather just talk?{" "}
-        <Link href="/contact" className="underline underline-offset-4 hover:text-white">
-          Send a message instead
+      <p className="mx-auto mt-8 max-w-[720px] text-center text-[13.5px] text-[#626D80]">
+        Everything saves as you go, so you can come back to it.{" "}
+        <Link href="/contact" className="underline underline-offset-4 hover:text-[#111827]">
+          Would rather just talk?
         </Link>
-        .
       </p>
     </section>
   );
