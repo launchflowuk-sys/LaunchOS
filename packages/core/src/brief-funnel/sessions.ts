@@ -140,6 +140,11 @@ export async function briefSessionBySecret(
     );
   if (!row) return null;
   if (row.expiresAt <= now) return null;
+  // A brief that has been sent is finished, and the cookie outlives it. Handing
+  // it back meant one browser could only ever submit once: the next person on
+  // that computer resumed a stranger's answers and had no way to start again.
+  // Null here makes the caller open a fresh draft, which is what they want.
+  if (row.status !== "draft") return null;
   return row;
 }
 

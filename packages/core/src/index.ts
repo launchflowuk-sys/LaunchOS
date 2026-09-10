@@ -856,3 +856,5 @@ export {
 export type { BriefAssetRow, SniffedType } from "./brief-funnel/assets.js";
 export { issueResumeToken, draftForEmail, exchangeResumeToken, RESUME_TOKEN_TTL_HOURS } from "./brief-funnel/resume.js";
 export type { IssuedResumeToken, ExchangeResult } from "./brief-funnel/resume.js";
+export { sendBriefSubmittedEmails } from "./brief-funnel/submitted-emails.js";
+export type { SubmittedEmailResult } from "./brief-funnel/submitted-emails.js";

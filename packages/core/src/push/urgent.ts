@@ -33,6 +33,12 @@ export const URGENT_NOTIFICATION_KINDS = [
   // `lead.created` bell has already gone; this one means "ring them while
   // they are still on the page".
   "funnel.hot_lead",
+  // Somebody just finished the website questionnaire, or left a number
+  // part-way through it. Both are a person waiting to hear back, and both are
+  // worth interrupting for — a brief that sits unseen until the evening is a
+  // customer who has already rung somebody else.
+  "brief.submitted",
+  "lead.captured",
 ] as const;
 
 export type UrgentNotificationKind = (typeof URGENT_NOTIFICATION_KINDS)[number];

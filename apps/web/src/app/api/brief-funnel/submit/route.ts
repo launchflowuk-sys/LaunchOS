@@ -1,4 +1,5 @@
-import { submitBrief } from "@launchos/core";
+import { sendBriefSubmittedEmails, submitBrief } from "@launchos/core";
+import { createEmailAdapter } from "@launchos/channels";
 import { getDb } from "@/lib/db";
 import { clientAddress } from "@/lib/rate-limit";
 import { funnelLimiter, jsonError, jsonOk, readJsonBody, sameOrigin, sessionFromRequest } from "../shared";
@@ -37,6 +38,21 @@ export async function POST(request: Request): Promise<Response> {
     if (result.status === "incomplete") {
       return jsonError(422, "incomplete", "Some answers are still needed.", { errors: result.errors });
     }
+    // After the commit, and only on the first landing — a retry must not send
+    // a second copy of either email. Awaited so a failure is logged rather than
+    // lost in a request that has already returned, but wrapped so it can never
+    // turn a stored brief into an error for the customer.
+    if (!result.replayed) {
+      await sendBriefSubmittedEmails(
+        getDb(),
+        resolved.organisationId,
+        result.submissionId,
+        createEmailAdapter(process.env),
+      ).catch((error: unknown) => {
+        console.error({ submissionId: result.submissionId, error }, "brief submitted emails failed");
+      });
+    }
+
     return jsonOk({ reference: result.reference, submissionId: result.submissionId });
   } catch (error) {
     return jsonError(400, "submit_failed", error instanceof Error ? error.message : "That did not send.");

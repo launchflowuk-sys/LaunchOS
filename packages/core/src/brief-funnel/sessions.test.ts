@@ -84,6 +84,31 @@ describe("briefSessionBySecret", () => {
     });
   });
 
+  /**
+   * One browser could only ever submit once. The cookie outlives the brief, so
+   * the next person on the same computer resumed a stranger's answers and had
+   * no way to start their own.
+   */
+  it("refuses a draft that has already been sent, so a fresh one is started", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const { session, secret } = await startBriefSession(db, org.id);
+      await db.update(schema.briefSessions).set({ status: "submitted" }).where(eq(schema.briefSessions.id, session.id));
+
+      expect(await briefSessionBySecret(db, org.id, secret)).toBeNull();
+    });
+  });
+
+  it("refuses an expired draft the same way", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const { session, secret } = await startBriefSession(db, org.id);
+      await db.update(schema.briefSessions).set({ status: "expired" }).where(eq(schema.briefSessions.id, session.id));
+
+      expect(await briefSessionBySecret(db, org.id, secret)).toBeNull();
+    });
+  });
+
   it("does not reach across organisations", async () => {
     await withTestDb(async (db) => {
       const mine = await makeOrg(db);
