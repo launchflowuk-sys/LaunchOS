@@ -9,6 +9,7 @@ import { GlobalSearch } from "@/components/global-search";
 import { InlineAlert } from "@/components/inline-alert";
 import { NotificationsBell } from "@/components/notifications-bell";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { SavedOverlay } from "@/components/saved-overlay";
 import { Toaster } from "@/components/ui/sonner";
 import { getDb } from "@/lib/db";
 import { sessionPermissions } from "@/lib/permissions";
@@ -181,6 +182,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
         {/* Pinned light: the admin shell is a white/light surface, so sonner must
             not follow the OS colour scheme and render dark toasts on it. */}
         <Toaster position="top-right" richColors theme="light" />
+        <SavedOverlay />
       </div>
     </div>
   );

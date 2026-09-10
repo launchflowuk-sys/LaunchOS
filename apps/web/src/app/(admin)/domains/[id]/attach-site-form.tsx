@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -37,7 +38,7 @@ export function AttachSiteForm({
         startTransition(async () => {
           const result = await attachDomainToSiteAction({ domainId, siteId: value });
           if (result.status === "error") return void toast.error(result.message);
-          toast.success("Website updated");
+          showSaved("Website updated");
           router.refresh();
         });
       }}

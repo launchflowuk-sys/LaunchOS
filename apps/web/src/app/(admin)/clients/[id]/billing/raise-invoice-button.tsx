@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { createInvoiceForClient } from "@/app/(admin)/invoices/actions";
 
@@ -21,7 +22,7 @@ export function RaiseInvoiceButton({ clientId }: { clientId: string }) {
       action={async (formData) => {
         const result = await createInvoiceForClient(formData);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Invoice raised");
+        showSaved("Invoice raised");
         if (result.id) router.push(`/invoices/${result.id}`);
       }}
     >

@@ -3,6 +3,7 @@
 import { RefreshCw } from "lucide-react";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { refreshSiteScreenshotAction } from "./actions";
 
@@ -34,7 +35,7 @@ export function RefreshScreenshotButton({ siteId, name }: { siteId: string; name
         startTransition(async () => {
           const result = await refreshSiteScreenshotAction(siteId);
           if (result.status === "error") toast.error(result.message);
-          else toast.success(`New screenshot of ${name}.`);
+          else showSaved(`New screenshot of ${name}.`);
         })
       }
     >

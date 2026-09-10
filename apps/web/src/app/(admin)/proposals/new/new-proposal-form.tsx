@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +57,7 @@ export function NewProposalForm({ subjects, defaultValidUntil }: { subjects: rea
             setError(result.message);
             return void toast.error(result.message);
           }
-          toast.success("Proposal drafted — add the priced lines next");
+          showSaved("Proposal drafted — add the priced lines next");
           router.push(`/proposals/${result.id}`);
         });
       }}

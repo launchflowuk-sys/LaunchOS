@@ -3,6 +3,7 @@
 import { Sunrise } from "lucide-react";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { writeBriefAction } from "./actions";
 
@@ -22,7 +23,7 @@ export function WriteBriefButton() {
         startTransition(async () => {
           const result = await writeBriefAction();
           if (result.status === "error") return void toast.error(result.message);
-          toast.success("Queued. The Ops Brief agent is writing it now — you will be notified when it is ready.");
+          showSaved("Queued. The Ops Brief agent is writing it now — you will be notified when it is ready.");
         })
       }
     >

@@ -2,6 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,7 +62,7 @@ export function DecisionForm({
       action={async (formData) => {
         const result = await action(formData);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success(resumesAgent ? "Decision recorded — resuming the agent" : "Decision recorded");
+        showSaved(resumesAgent ? "Decision recorded — resuming the agent" : "Decision recorded");
       }}
     >
       <input type="hidden" name="approvalId" value={approvalId} />

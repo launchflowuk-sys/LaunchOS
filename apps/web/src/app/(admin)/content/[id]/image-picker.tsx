@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { AssetGrid, type AssetTile, assetLabel } from "@/components/asset-grid";
 import { Button } from "@/components/ui/button";
 import { pickContentImageAction } from "../actions";
@@ -35,7 +36,7 @@ export function ImagePicker({
       const result = await pickContentImageAction({ itemId, assetId: asset.id });
       setPicking(null);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(`Using "${assetLabel(asset)}"`);
+      showSaved(`Using "${assetLabel(asset)}"`);
       router.refresh();
     });
   }

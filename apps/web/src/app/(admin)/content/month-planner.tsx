@@ -2,6 +2,7 @@
 
 import { useFormStatus } from "react-dom";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -48,10 +49,10 @@ export function MonthPlanner({
         const result = await contentMonthAction(formData);
         if (result.status === "error") return void toast.error(result.message);
         if (formData.get("intent") === "draft") {
-          return void toast.success("Sent to the content writer — drafts land here as it finishes each slot");
+          return void showSaved("Sent to the content writer — drafts land here as it finishes each slot");
         }
         const [created = "0", skipped = "0"] = (result.id ?? "").split(":");
-        toast.success(
+        showSaved(
           Number(created) > 0
             ? `Planned ${created} ${created === "1" ? "slot" : "slots"} for the month${Number(skipped) > 0 ? ` (${skipped} already there)` : ""}`
             : "The month was already planned — nothing new to add",

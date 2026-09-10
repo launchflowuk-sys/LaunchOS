@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { useForm, type FieldErrors, type UseFormRegister } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { SelectField, TextAreaField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -113,7 +114,7 @@ function AddAccessForm({ clientId, kinds, sites, onDone }: { clientId: string; k
       onSubmit={handleSubmit(async (values) => {
         const result = await createAccessEntryAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Access added");
+        showSaved("Access added");
         onDone();
         router.refresh();
       })}
@@ -171,7 +172,7 @@ function EditAccessForm({ entry, kinds, sites, onDone }: { entry: EditableEntry;
       onSubmit={handleSubmit(async (values) => {
         const result = await updateAccessEntryAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Access updated");
+        showSaved("Access updated");
         onDone();
         router.refresh();
       })}

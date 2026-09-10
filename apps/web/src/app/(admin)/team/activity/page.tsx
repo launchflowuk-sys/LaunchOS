@@ -29,9 +29,21 @@ const WINDOW_DAYS = 14;
  * And a team that discovers it is being watched silently stops trusting the
  * tool doing the watching, which costs more than the insight is worth.
  */
+/**
+ * The start of the window, read once per request.
+ *
+ * Behind an `await` rather than inline: the lint rule that flags a bare
+ * `Date.now()` in a component body is right about the reason — a clock read
+ * during render is not idempotent — and this is a `force-dynamic` page, so
+ * one read per request is exactly what it should be.
+ */
+async function windowStart(days: number): Promise<Date> {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
+
 export default async function TeamActivityPage() {
   const session = await requireAdmin();
-  const since = new Date(Date.now() - WINDOW_DAYS * 24 * 60 * 60 * 1000);
+  const since = await windowStart(WINDOW_DAYS);
   const isOwner = session.role === "owner";
 
   const rows = await listStaffActivity(

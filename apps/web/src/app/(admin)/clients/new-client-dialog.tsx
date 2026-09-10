@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -35,7 +36,7 @@ export function NewClientDialog({ packages }: { packages: { value: string; label
       toast.error(result.message);
       return;
     }
-    toast.success(`${values.name} created`);
+    showSaved(`${values.name} created`);
     setOpen(false);
     reset();
     router.push(`/clients/${result.id}`);

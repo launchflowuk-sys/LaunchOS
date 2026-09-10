@@ -4,6 +4,7 @@ import { Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,7 +41,7 @@ export function ScreenshotUpload({ taskId, maxBytes, accept }: { taskId: string;
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Upload failed (${response.status}).`);
       }
-      toast.success("Screenshot added");
+      showSaved("Screenshot added");
       if (input.current) input.current.value = "";
       router.refresh();
     } catch (error) {

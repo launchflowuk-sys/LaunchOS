@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,7 +31,7 @@ export function LeadReplyDecision({ approvalId, draft, bookingUrl }: { approvalI
       const result = await action(formData);
       setVerdict(null);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(kind === "approve" ? "Reply sent" : "Draft rejected — nothing was sent");
+      showSaved(kind === "approve" ? "Reply sent" : "Draft rejected — nothing was sent");
     });
   }
 

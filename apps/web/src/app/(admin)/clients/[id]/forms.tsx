@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { SelectField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -30,7 +31,7 @@ export function AddContactForm({ clientId }: { clientId: string }) {
       onSubmit={handleSubmit(async (values) => {
         const result = await createContactAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Contact added");
+        showSaved("Contact added");
         reset({ clientId, name: "", isPrimary: false });
         router.refresh();
       })}
@@ -73,7 +74,7 @@ export function AddDomainForm({ clientId }: { clientId: string }) {
       onSubmit={handleSubmit(async (values) => {
         const result = await createDomainAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Domain added");
+        showSaved("Domain added");
         reset({ clientId, name: "", dnsProvider: "other" });
         router.refresh();
       })}
@@ -115,7 +116,7 @@ export function AddSiteForm({ clientId }: { clientId: string }) {
       onSubmit={handleSubmit(async (values) => {
         const result = await createSiteAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Website added");
+        showSaved("Website added");
         reset({ clientId, name: "", primaryUrl: "", platform: "wordpress" });
         router.refresh();
       })}
@@ -157,7 +158,7 @@ export function BillingForm({ clientId, defaults }: { clientId: string; defaults
       onSubmit={handleSubmit(async (values) => {
         const result = await saveBillingAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Billing details saved");
+        showSaved("Billing details saved");
         router.refresh();
       })}
     >
@@ -209,7 +210,7 @@ export function ArchiveClientButton({ clientId, disabled }: { clientId: string; 
         const result = await archiveClientAction({ clientId });
         setBusy(false);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Client archived");
+        showSaved("Client archived");
         router.refresh();
       }}
     >
@@ -235,7 +236,7 @@ export function RemoveContactButton({ clientId, contactId }: { clientId: string;
         const result = await deleteContactAction({ clientId, contactId });
         setBusy(false);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Contact removed");
+        showSaved("Contact removed");
         router.refresh();
       }}
     >

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -66,7 +67,7 @@ export function GenerateImage({
     startTransition(async () => {
       const result = await renderContentImageAction({ itemId, mode, force: hasImage });
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(result.message);
+      showSaved(result.message);
       setWaiting(true);
       timer.current = setTimeout(() => {
         setWaiting(false);

@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { TextAreaField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { updateClientDetailsAction } from "../actions";
@@ -29,7 +30,7 @@ export function ClientDetailsForm({ clientId, defaults }: { clientId: string; de
       onSubmit={handleSubmit(async (values) => {
         const result = await updateClientDetailsAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Client details saved");
+        showSaved("Client details saved");
         router.refresh();
       })}
     >

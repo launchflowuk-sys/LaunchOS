@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { FieldError } from "react-hook-form";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { SelectField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { createDnsRecordAction } from "../actions";
@@ -31,7 +32,7 @@ export function AddDnsRecordForm({ domainId }: { domainId: string }) {
       onSubmit={handleSubmit(async (values) => {
         const result = await createDnsRecordAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("DNS record saved");
+        showSaved("DNS record saved");
         reset(defaults);
         router.refresh();
       })}

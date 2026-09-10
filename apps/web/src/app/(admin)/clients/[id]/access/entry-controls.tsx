@@ -4,6 +4,7 @@ import { Check, Copy, Eye, EyeOff, Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { deleteAccessEntryAction, revealAccessSecretAction } from "./actions";
@@ -34,7 +35,7 @@ export function CopyButton({ value, label }: { value: string; label: string }) {
         try {
           await navigator.clipboard.writeText(value);
           setCopied(true);
-          toast.success(`${label} copied`);
+          showSaved(`${label} copied`);
         } catch {
           toast.error("Could not copy — the browser refused clipboard access.");
         }
@@ -146,7 +147,7 @@ export function EntryActions({ entry, kinds, sites }: { entry: EditableEntry; ki
                 const result = await deleteAccessEntryAction({ entryId: entry.id, clientId: entry.clientId });
                 setBusy(false);
                 if (result.status === "error") return void toast.error(result.message);
-                toast.success("Access deleted");
+                showSaved("Access deleted");
                 setDeleting(false);
                 router.refresh();
               }}

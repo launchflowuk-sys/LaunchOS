@@ -40,6 +40,8 @@ export function MergeForm({ keepId, keepName, mergeId, mergeName, movedSummary }
       onSubmit={handleSubmit(async (values) => {
         const result = await mergeClientsAction(values);
         if (result.status === "error") return void toast.error(result.message);
+        // Two parts — what merged, and what moved with it. The card carries one
+        // line; this one keeps the toast.
         toast.success(`Merged ${mergeName} into ${keepName}`, { description: movedSummary ? `${movedSummary} moved across.` : "Nothing needed moving." });
         router.push(`/clients/${result.id}`);
         router.refresh();

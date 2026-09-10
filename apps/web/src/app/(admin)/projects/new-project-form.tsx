@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { SelectField, TextAreaField, TextField } from "@/components/form-fields";
 import { Button } from "@/components/ui/button";
 import { createProjectAction } from "./actions";
@@ -33,7 +34,7 @@ export function NewProjectForm({ clients }: { clients: readonly { id: string; na
       onSubmit={handleSubmit(async (values) => {
         const result = await createProjectAction(values);
         if (result.status === "error") return void toast.error(result.message);
-        toast.success("Project started");
+        showSaved("Project started");
         reset(empty);
         if (result.id) router.push(`/projects/${result.id}`);
         else router.refresh();

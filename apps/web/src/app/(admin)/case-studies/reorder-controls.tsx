@@ -3,6 +3,7 @@
 import { ArrowDown, ArrowUp } from "lucide-react";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { reorderCaseStudiesAction } from "./actions";
 
@@ -29,7 +30,7 @@ export function ReorderControls({ ids, index }: { ids: readonly string[]; index:
     start(async () => {
       const result = await reorderCaseStudiesAction(next);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success("Order saved");
+      showSaved("Order saved");
     });
   };
 

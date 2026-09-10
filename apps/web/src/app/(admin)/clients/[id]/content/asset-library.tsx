@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { AssetGrid, type AssetTile, assetLabel } from "@/components/asset-grid";
 import { ImageUploadForm } from "@/components/image-upload-form";
 import { Button } from "@/components/ui/button";
@@ -45,7 +46,7 @@ export function AssetLibrary({
       const result = await deleteContentAssetAction({ clientId, assetId: asset.id });
       setBusy(null);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success("Photo deleted");
+      showSaved("Photo deleted");
       router.refresh();
     });
   }
@@ -56,7 +57,7 @@ export function AssetLibrary({
       const result = await setBrandLogoAction({ clientId, assetId: isLogo ? null : asset.id });
       setBusy(null);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(isLogo ? "Logo removed" : `"${assetLabel(asset)}" is now the logo`);
+      showSaved(isLogo ? "Logo removed" : `"${assetLabel(asset)}" is now the logo`);
       router.refresh();
     });
   }

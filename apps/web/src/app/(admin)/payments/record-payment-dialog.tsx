@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { NativeSelect } from "@/components/ui/native-select";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -47,7 +48,7 @@ export function RecordPaymentDialog({
           action={async (formData) => {
             const result = await recordManualPayment(formData);
             if (result.status === "error") return void toast.error(result.message);
-            toast.success("Payment recorded");
+            showSaved("Payment recorded");
             setClientId("");
             setOpen(false);
           }}

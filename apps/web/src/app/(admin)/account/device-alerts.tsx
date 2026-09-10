@@ -4,6 +4,7 @@ import { BellRing } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 import { PUSH_SUBSCRIBE_PATH, SERVICE_WORKER_PATH, subscriptionBody, urlBase64ToUint8Array } from "@/lib/push";
@@ -113,7 +114,7 @@ export function DeviceAlerts({ vapidPublicKey, devices }: { vapidPublicKey: stri
       });
       if (!response.ok) throw new Error(`The server refused the subscription (${response.status}).`);
       setEndpoint(subscription.endpoint);
-      toast.success("Alerts are on for this device");
+      showSaved("Alerts are on for this device");
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Alerts could not be switched on.");
@@ -139,7 +140,7 @@ export function DeviceAlerts({ vapidPublicKey, devices }: { vapidPublicKey: stri
       }
       await subscription?.unsubscribe();
       setEndpoint(null);
-      toast.success("Alerts are off for this device");
+      showSaved("Alerts are off for this device");
       router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Alerts could not be switched off.");

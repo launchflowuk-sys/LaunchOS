@@ -2,6 +2,7 @@
 
 import { type ReactNode, useRef } from "react";
 import { toast } from "sonner";
+import { showSaved } from "./saved-overlay";
 
 /**
  * The shape every admin server action returns: a failure is a message, never
@@ -45,7 +46,10 @@ export function ActionForm({
         // re-rendered by the server without a client-side refresh.
         const result = await action(formData);
         if (result.status === "error") return void toast.error(result.message);
-        if (success) toast.success(success);
+        // The card, not a corner toast. A failure keeps the toast: it carries
+        // the provider's own words and needs reading time, which a card that
+        // leaves on its own does not give.
+        if (success) showSaved(success);
         if (resetOnSuccess) form.current?.reset();
       }}
     >

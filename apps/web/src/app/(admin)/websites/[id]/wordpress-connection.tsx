@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { TextField } from "@/components/form-fields";
 import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
@@ -56,7 +57,7 @@ export function WordPressConnection({
     try {
       const result = await testWordPressConnectionAction({ siteId });
       if (result.status === "error") toast.error(result.message);
-      else toast.success(result.message ?? "Connected");
+      else showSaved(result.message ?? "Connected");
     } finally {
       setTesting(false);
     }
@@ -107,7 +108,7 @@ export function WordPressConnection({
         onSubmit={handleSubmit(async (values) => {
           const result = await saveWordPressConnectionAction(values);
           if (result.status === "error") return void toast.error(result.message);
-          toast.success(result.message ?? "WordPress connection saved");
+          showSaved(result.message ?? "WordPress connection saved");
           reset(defaults);
           router.refresh();
         })}

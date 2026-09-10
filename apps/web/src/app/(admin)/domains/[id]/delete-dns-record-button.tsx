@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { deleteDnsRecordAction } from "../actions";
 
@@ -26,7 +27,7 @@ export function DeleteDnsRecordButton({ recordId, domainId }: { recordId: string
         startTransition(async () => {
           const result = await deleteDnsRecordAction({ recordId, domainId });
           if (result.status === "error") return void toast.error(result.message);
-          toast.success("DNS record removed");
+          showSaved("DNS record removed");
           router.refresh();
         });
       }}

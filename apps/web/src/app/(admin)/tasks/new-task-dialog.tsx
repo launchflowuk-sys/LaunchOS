@@ -2,6 +2,7 @@
 
 import { useId, useState } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -64,7 +65,7 @@ export function NewTaskDialog({
           action={async (formData) => {
             const result = await createTaskAction(formData);
             if (result.status === "error") return void toast.error(result.message);
-            toast.success("Task created");
+            showSaved("Task created");
             setOpen(false);
           }}
           className="space-y-3"

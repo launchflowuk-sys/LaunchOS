@@ -3,6 +3,7 @@
 import { Check } from "lucide-react";
 import { useId } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { updateTaskStatusAction } from "../actions";
 
@@ -34,7 +35,7 @@ export function MarkDoneButton({
       action={async (formData) => {
         const result = await updateTaskStatusAction(formData);
         if (result.status === "error") toast.error(result.message);
-        else toast.success("Task done");
+        else showSaved("Task done");
       }}
       className="grid gap-1.5"
       aria-label="Mark done"

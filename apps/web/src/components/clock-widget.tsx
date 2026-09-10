@@ -4,6 +4,7 @@ import { Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { clockInAction, clockOutAction } from "@/app/(admin)/time/actions";
 import type { RunningEntry } from "@/app/(admin)/time/running";
 import { Button } from "@/components/ui/button";
@@ -25,7 +26,7 @@ export function ClockWidget({ running }: { running: RunningEntry | null }) {
     startTransition(async () => {
       const result = await action();
       if (result.status === "error") return void toast.error(result.message);
-      if (result.message) toast.success(result.message);
+      if (result.message) showSaved(result.message);
       router.refresh();
     });
   }

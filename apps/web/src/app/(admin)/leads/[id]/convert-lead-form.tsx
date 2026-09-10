@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,7 +37,7 @@ export function ConvertLeadForm({
     startTransition(async () => {
       const result = await convertLeadAction({ leadId, name, packageId });
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(`${name || defaultName} is now a client`);
+      showSaved(`${name || defaultName} is now a client`);
       router.push(`/clients/${result.id}`);
     });
   }

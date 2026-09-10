@@ -4,6 +4,7 @@ import type { ProposalLineKind } from "@launchos/db/schema";
 import { Plus, Trash2 } from "lucide-react";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+import { showSaved } from "@/components/saved-overlay";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -62,7 +63,7 @@ export function LineEditor({
       const result = await action(formData);
       setBusy(null);
       if (result.status === "error") return void toast.error(result.message);
-      toast.success(success);
+      showSaved(success);
       after?.();
     });
   }
