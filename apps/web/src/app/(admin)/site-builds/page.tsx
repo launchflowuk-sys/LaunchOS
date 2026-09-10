@@ -1,6 +1,6 @@
 import { schema } from "@launchos/db";
 import { desc, eq } from "drizzle-orm";
-import { ExternalLink, Hammer, ShieldCheck, TriangleAlert } from "lucide-react";
+import { ExternalLink, Hammer, Send, ShieldCheck, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
-import { approveSiteBuildAction, cancelSiteBuildAction } from "./actions";
+import { approveSiteBuildAction, cancelSiteBuildAction, notifySiteBuildClientAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,8 +27,12 @@ const IN_PROGRESS = ["queued", "generating", "provisioning", "uploading"];
  *
  * The middle one is the point of the screen. A build at `review` is finished,
  * working, and invisible to the client — and it stays that way until somebody
- * presses Approve here. Nothing on this page emails anybody: approving records
- * that the site may be shown, and that is all it does.
+ * presses Approve, and then Send.
+ *
+ * Two presses, not one. Approving says "I have looked at this and it is good";
+ * sending says "the client now has it". Only the second cannot be taken back,
+ * so only the second sits behind its own deliberate button — a build never
+ * drifts out to a client because a job ticked over.
  */
 export default async function SiteBuildsPage() {
   const session = await requireAdmin();
@@ -41,6 +45,8 @@ export default async function SiteBuildsPage() {
   const waiting = builds.filter((row) => row.stage === "review");
   const building = builds.filter((row) => IN_PROGRESS.includes(row.stage));
   const failed = builds.filter((row) => row.stage === "failed");
+  // Approved and still unsent. The client knows nothing until somebody presses Send.
+  const toSend = builds.filter((row) => row.stage === "approved");
 
   const columns: readonly DataListColumn<Row>[] = [
     {
@@ -89,19 +95,46 @@ export default async function SiteBuildsPage() {
       key: "decide",
       header: "",
       action: true,
-      cell: (row) =>
-        row.stage === "review" ? (
-          <div className="flex items-center gap-2">
-            <ActionForm action={approveSiteBuildAction} success="Approved" ariaLabel={`Approve ${row.domain}`}>
+      cell: (row) => {
+        if (row.stage === "review") {
+          return (
+            <div className="flex items-center gap-2">
+              <ActionForm action={approveSiteBuildAction} success="Approved" ariaLabel={`Approve ${row.domain}`}>
+                <input type="hidden" name="buildId" value={row.id} />
+                <Button type="submit" size="sm">Approve</Button>
+              </ActionForm>
+              <ActionForm action={cancelSiteBuildAction} success="Cancelled" ariaLabel={`Cancel ${row.domain}`}>
+                <input type="hidden" name="buildId" value={row.id} />
+                <Button type="submit" size="sm" variant="destructive-quiet">Cancel</Button>
+              </ActionForm>
+            </div>
+          );
+        }
+
+        // Approved, and the client still knows nothing. This press is the one
+        // that cannot be taken back.
+        if (row.stage === "approved") {
+          return (
+            <ActionForm action={notifySiteBuildClientAction} success="Sent" ariaLabel={`Send ${row.domain} to the client`}>
               <input type="hidden" name="buildId" value={row.id} />
-              <Button type="submit" size="sm">Approve</Button>
+              <Button type="submit" size="sm">Send to client</Button>
             </ActionForm>
-            <ActionForm action={cancelSiteBuildAction} success="Cancelled" ariaLabel={`Cancel ${row.domain}`}>
+          );
+        }
+
+        // Told, but the mail server refused. A person decides whether to go
+        // again — nothing retries this on its own.
+        if (row.stage === "notified" && row.error) {
+          return (
+            <ActionForm action={notifySiteBuildClientAction} success="Sent" ariaLabel={`Try sending ${row.domain} again`}>
               <input type="hidden" name="buildId" value={row.id} />
-              <Button type="submit" size="sm" variant="destructive-quiet">Cancel</Button>
+              <Button type="submit" size="sm" variant="secondary">Try again</Button>
             </ActionForm>
-          </div>
-        ) : null,
+          );
+        }
+
+        return null;
+      },
     },
   ];
 
@@ -110,11 +143,11 @@ export default async function SiteBuildsPage() {
       <PageHeader
         wide
         title="Site builds"
-        description="Websites built from an enquiry. Nothing reaches a client until you approve it."
+        description="Websites built from an enquiry. Approve it, look at it, then send it — the client hears nothing until you press Send."
         category="delivery"
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Waiting on you"
           value={waiting.length}
@@ -122,6 +155,15 @@ export default async function SiteBuildsPage() {
           category="delivery"
           icon={ShieldCheck}
           attention={waiting.length > 0}
+          attentionTone="warning"
+        />
+        <StatCard
+          label="Ready to send"
+          value={toSend.length}
+          hint={toSend.length === 0 ? "Nothing waiting to go out" : "Approved — the client has not been told yet"}
+          category="delivery"
+          icon={Send}
+          attention={toSend.length > 0}
           attentionTone="warning"
         />
         <StatCard

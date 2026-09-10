@@ -1,6 +1,7 @@
 "use server";
 
-import { advanceSiteBuild } from "@launchos/core";
+import { createEmailAdapter } from "@launchos/channels";
+import { advanceSiteBuild, notifySiteBuildClient } from "@launchos/core";
 import { revalidatePath } from "next/cache";
 import { getDb } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions";
@@ -59,5 +60,37 @@ export async function cancelSiteBuildAction(formData: FormData): Promise<ActionR
     return { status: "ok" };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Something went wrong" };
+  }
+}
+
+/**
+ * Tells the client. The only step in the chain that cannot be undone.
+ *
+ * A separate press from Approve on purpose: approving says "I have looked at
+ * this and it is good", and this says "the client now has it". Two acts, two
+ * timestamps, two people answerable — and no cron job that emails clients on
+ * its own, which is the thing rule 2 exists to prevent.
+ */
+export async function notifySiteBuildClientAction(formData: FormData): Promise<ActionResult> {
+  const gate = await requirePermission("settings");
+  if (!gate.ok) return { status: "error", message: gate.message };
+  try {
+    const note = String(formData.get("note") ?? "").trim();
+    await notifySiteBuildClient(
+      getDb(),
+      gate.session.organisationId,
+      {
+        buildId: String(formData.get("buildId") ?? ""),
+        actorId: gate.session.userId,
+        ...(note ? { note } : {}),
+      },
+      createEmailAdapter(process.env),
+    );
+    revalidatePath("/site-builds");
+    return { status: "ok" };
+  } catch (error) {
+    // The provider's own words, not ours. "535 Authentication unsuccessful"
+    // tells Shoji what to go and fix; "Something went wrong" does not.
+    return { status: "error", message: error instanceof Error ? error.message : "The client was not told" };
   }
 }
