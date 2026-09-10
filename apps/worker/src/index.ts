@@ -1,5 +1,5 @@
 import { createDb } from "@launchos/db";
-import { setEnqueue, type DomainEvent } from "@launchos/core";
+import { ensureStarterGuides, setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
 import { createEmailAdapter, createPushAdapterFromEnv, smsAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
@@ -93,6 +93,15 @@ async function main() {
   // row is read as "off", so it does nothing for ever and says nothing about it.
   // A run queued against one is now recorded as `skipped` rather than lost.
   await ensureAgentsEnabled(db, Object.keys(registry));
+
+  // A guide on every screen, once, for an organisation that has none. Arrives
+  // unpublished: these describe the software accurately and know nothing about
+  // how Shoji actually works, and a guide somebody follows is the wrong place
+  // to be nearly right. Never overwrites one that has been edited.
+  await sweepOrganisations(db, "starter guides", async (organisationId) => {
+    const { added } = await ensureStarterGuides(db, organisationId);
+    if (added > 0) console.info({ organisationId, added }, "starter guides installed");
+  });
 
   // One mapping for both entry points: events emitted inside the worker, and
   // events the web process sent through the domain.event queue. The routing

@@ -1,4 +1,6 @@
 import { routeCoverage, type RouteCoverage } from "@launchos/core";
+import { schema } from "@launchos/db";
+import { and, count, eq } from "drizzle-orm";
 import { BookOpen, CircleCheck, TriangleAlert, Users } from "lucide-react";
 import Link from "next/link";
 import { DataList, type DataListColumn } from "@/components/data-list";
@@ -34,6 +36,18 @@ type Row = RouteCoverage & { label: string; group: string };
 export default async function HelpCoveragePage() {
   const session = await requireAdmin();
   const coverage = await routeCoverage(getDb(), session.organisationId, HELP_ROUTES);
+
+  // Coverage counts published guides only, which is right — a draft helps
+  // nobody. But a shipped set of drafts would then be invisible: the screen
+  // would read "nothing written" while thirty-nine guides sat one press away.
+  const [drafts] = await getDb()
+    .select({ value: count() })
+    .from(schema.knowledgeArticles)
+    .where(and(
+      eq(schema.knowledgeArticles.organisationId, session.organisationId),
+      eq(schema.knowledgeArticles.published, false),
+    ));
+  const waiting = drafts?.value ?? 0;
 
   const groupOf = new Map<string, string>();
   for (const group of NAV_GROUPS) {
@@ -114,7 +128,7 @@ export default async function HelpCoveragePage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Screens"
           value={rows.length}
@@ -133,6 +147,15 @@ export default async function HelpCoveragePage() {
           category="organisation"
           icon={Users}
           attention={withStaffGuide < rows.length}
+          attentionTone="warning"
+        />
+        <StatCard
+          label="Drafts waiting"
+          value={waiting}
+          hint={waiting === 0 ? "Nothing waiting to be read" : "Written, unread, one press from live"}
+          category="automation"
+          icon={BookOpen}
+          attention={waiting > 0}
           attentionTone="warning"
         />
         <StatCard

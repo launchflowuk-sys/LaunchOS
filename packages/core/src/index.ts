@@ -820,3 +820,6 @@ export { recordStaffActivity, listStaffActivity, activityDay } from "./team/staf
 export type { ActivityRow, RecordStaffActivityInput } from "./team/staff-activity.js";
 export { briefFromLead, missingFromBrief, BriefTooThin } from "./sitegen/brief-from-lead.js";
 export type { LeadBriefResult } from "./sitegen/brief-from-lead.js";
+export { ensureStarterGuides } from "./knowledge/ensure-starter-guides.js";
+export { STARTER_GUIDES } from "./knowledge/starter-guides.js";
+export type { StarterGuide } from "./knowledge/starter-guides.js";
