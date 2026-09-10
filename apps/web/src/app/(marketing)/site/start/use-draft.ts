@@ -43,6 +43,17 @@ interface Pending {
 
 export function useDraft() {
   const [session, setSession] = useState<DraftSession | null>(null);
+  /**
+   * What the customer has typed, held separately from the session.
+   *
+   * These were once one object, and that was a bug worth remembering: with no
+   * session — a failed bootstrap, an outage, a rejected request — every
+   * `setField` was dropped and the form froze. Somebody on a phone could not
+   * type a character and had no idea why. Typing must always work; whether it
+   * has been saved yet is a different question, and the save indicator answers
+   * that one.
+   */
+  const [answers, setAnswers] = useState<Record<string, unknown>>({});
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -71,6 +82,9 @@ export function useDraft() {
         const body = (await existing.json()) as { session: DraftSession };
         revision.current = body.session.revision;
         setSession(body.session);
+        // Anything typed before the draft arrived wins: it is newer than what
+        // the server had, and it is what the customer can see on screen.
+        setAnswers((typed) => ({ ...body.session.answers, ...typed }));
         setReady(true);
         return;
       }
@@ -81,12 +95,17 @@ export function useDraft() {
         body: JSON.stringify({ source }),
       });
       if (cancelled || !started.ok) {
+        // The form still works. Answers are held locally and flushed as soon as
+        // a draft can be opened, rather than the page becoming a dead end.
+        setSaveError("We could not save that just now. Keep going — we will try again.");
+        setSaveState("error");
         setReady(true);
         return;
       }
       const body = (await started.json()) as { session: DraftSession };
       revision.current = body.session.revision;
       setSession(body.session);
+      setAnswers((typed) => ({ ...body.session.answers, ...typed }));
       setReady(true);
     })();
     return () => {
@@ -125,7 +144,8 @@ export function useDraft() {
           // keys, and everything else it changed is kept.
           const body = (await response.json()) as { currentRevision: number; answers: Record<string, unknown> };
           revision.current = body.currentRevision;
-          setSession((current) => (current ? { ...current, revision: body.currentRevision, answers: { ...body.answers, ...next.fields } } : current));
+          setSession((current) => (current ? { ...current, revision: body.currentRevision } : current));
+          setAnswers((current) => ({ ...body.answers, ...current }));
           queue.current.unshift({ ...next, mutationId: crypto.randomUUID() });
           continue;
         }
@@ -143,7 +163,7 @@ export function useDraft() {
         const body = (await response.json()) as { revision: number; leadCaptured: boolean };
         revision.current = body.revision;
         setSession((current) =>
-          current ? { ...current, revision: body.revision, answers: { ...current.answers, ...next.fields }, leadCaptured: body.leadCaptured } : current,
+          current ? { ...current, revision: body.revision, leadCaptured: body.leadCaptured } : current,
         );
         setSaveError(null);
         setSaveState("saved");
@@ -152,6 +172,21 @@ export function useDraft() {
       inFlight.current = false;
     }
   }, []);
+
+  /** Opens a draft when the first attempt failed, so typing is never stranded. */
+  const ensureSession = useCallback(async (): Promise<boolean> => {
+    if (session) return true;
+    const started = await fetch("/api/brief-funnel/session", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: sourceFromLocation() }),
+    }).catch(() => null);
+    if (!started?.ok) return false;
+    const body = (await started.json()) as { session: DraftSession };
+    revision.current = body.session.revision;
+    setSession(body.session);
+    return true;
+  }, [session]);
 
   /** Moves whatever has been typed onto the queue and starts a write. */
   const flush = useCallback(async () => {
@@ -162,8 +197,16 @@ export function useDraft() {
     const fields = buffered.current;
     buffered.current = {};
     if (Object.keys(fields).length > 0) queue.current.push({ fields, mutationId: crypto.randomUUID() });
+    if (queue.current.length === 0) return;
+    if (!(await ensureSession())) {
+      // Put it back and say so. Nothing is lost — the next blur or Continue
+      // tries again, and the answers are still on screen.
+      setSaveError("We could not save that just now. Keep going — we will try again.");
+      setSaveState("error");
+      return;
+    }
     await drain();
-  }, [drain]);
+  }, [drain, ensureSession]);
 
   /**
    * Records a change. Shown immediately, saved shortly after.
@@ -175,7 +218,7 @@ export function useDraft() {
   const setField = useCallback(
     (key: string, value: unknown) => {
       buffered.current = { ...buffered.current, [key]: value };
-      setSession((current) => (current ? { ...current, answers: { ...current.answers, [key]: value } } : current));
+      setAnswers((current) => ({ ...current, [key]: value }));
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => void flush(), DEBOUNCE_MS);
     },
@@ -249,7 +292,7 @@ export function useDraft() {
     return () => document.removeEventListener("visibilitychange", onHide);
   }, [flush]);
 
-  return { session, ready, saveState, saveError, setField, flush, completeStep, submit, retry: flush };
+  return { session, answers, ready, saveState, saveError, setField, flush, completeStep, submit, retry: flush };
 }
 
 /**

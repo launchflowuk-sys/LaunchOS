@@ -44,7 +44,7 @@ function isActive(field: FieldDef, answers: Record<string, unknown>): boolean {
 }
 
 export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
-  const { session, ready, saveState, saveError, setField, flush, completeStep, submit, retry } = useDraft();
+  const { session, answers, ready, saveState, saveError, setField, flush, completeStep, submit, retry } = useDraft();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [direction, setDirection] = useState<1 | -1>(1);
@@ -75,7 +75,6 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
   }, [step]);
 
   const stage = useMemo(() => stages.find((s) => s.step === step) ?? stages[0]!, [stages, step]);
-  const answers = session?.answers ?? {};
   const visible = stage.fields.filter((field) => isActive(field, answers));
   const isIntro = stage.step === 1;
   const isReview = stage.key === "review";

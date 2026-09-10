@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { publicOrganisationId } from "@/lib/public-organisation";
 import { RateLimiter } from "@/lib/rate-limit";
+import { appHost, marketingHost } from "@/lib/env";
 
 /**
  * The shared parts of the brief funnel's endpoints.
@@ -81,15 +82,36 @@ export async function sessionFromRequest(): Promise<ResolvedSession | null> {
  * carrying it. This is the second lock: `Origin` is set by the browser on every
  * cross-origin request and cannot be forged by page script, so a mismatch is a
  * request that has no business here regardless of what the cookie says.
+ *
+ * **Checked against our own configured hostnames, not against `request.url`.**
+ * Behind Coolify's proxy the request URL carries the internal host while the
+ * browser sends the public one, so comparing the two rejected every write in
+ * production and left the form frozen — the first live enquiry could not type a
+ * character. The configured hosts are also the safer comparison: a forwarded
+ * header is set by whatever is in front of us, and this way nothing upstream
+ * decides what counts as our own origin.
  */
 export function sameOrigin(request: Request): boolean {
   const origin = request.headers.get("origin");
   // Same-origin fetches from some browsers omit Origin entirely; a missing
   // header is not evidence of an attack, and Lax covers that case.
   if (!origin) return true;
+
+  let host: string;
   try {
-    return new URL(origin).host === new URL(request.url).host;
+    host = new URL(origin).host;
   } catch {
     return false;
   }
+
+  const ours = new Set(
+    [marketingHost(), appHost(), new URL(request.url).host]
+      .filter(Boolean)
+      // Ports differ between the proxy and the container; the hostname is what
+      // identifies us, and localhost:3000 in development still matches below.
+      .map((entry) => entry.toLowerCase()),
+  );
+  if (ours.has(host.toLowerCase())) return true;
+  // Development, where the port is part of how the site is reached.
+  return [...ours].some((entry) => entry.split(":")[0] === host.split(":")[0]);
 }
