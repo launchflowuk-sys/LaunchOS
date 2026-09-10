@@ -378,7 +378,12 @@ async function main() {
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
-  await boss.schedule(QUEUE.siteScreenshots, "40 3 * * 0", {}, { tz: "Europe/London" });
+  // Daily, not weekly. A site added on Monday waited until Sunday for its
+  // first picture, so the websites screen showed empty slots for most sites
+  // most of the time — which reads as broken rather than as pending. Only
+  // sites with no usable capture are due, so a daily run costs one provider
+  // call per new or previously-failed site, not one per site per day.
+  await boss.schedule(QUEUE.siteScreenshots, "40 3 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.domainsExpiry, "15 7 * * *", {}, { tz: "Europe/London" });
   // 07:00, ahead of the overdue chase at 07:30.
