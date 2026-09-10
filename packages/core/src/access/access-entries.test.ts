@@ -129,7 +129,16 @@ describe("client access vault", () => {
       // for the life of one — so `order by created_at` alone leaves ties in
       // whatever order the planner felt like, and indexing into it failed
       // about one run in eight for no reason anybody could reproduce.
-      const renameAudit = audits.find((a) => (a.after as { username?: string }).username === "deploy");
+      // Matched on the *transition*, not on the destination. All three writes
+      // leave `after.username === "deploy"` — the rename set it and the two
+      // secret changes kept it — so finding by the after value alone matches
+      // whichever row the planner returned first, and about one run in eight
+      // that was the rotate, whose `before` is already "deploy".
+      const renameAudit = audits.find(
+        (a) =>
+          (a.before as { username?: string }).username === "root"
+          && (a.after as { username?: string }).username === "deploy",
+      );
       const secretCleared = audits.find((a) => (a.after as { hasSecret?: boolean }).hasSecret === false);
       expect(renameAudit, "the rename").toBeDefined();
       expect(secretCleared, "the cleared secret").toBeDefined();

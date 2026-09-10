@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { user } from "./auth.js";
 import { tickets } from "./support.js";
@@ -25,6 +25,36 @@ export const timeEntries = pgTable("time_entries", {
   uniqueIndex("time_entries_one_running_per_user")
     .on(t.organisationId, t.userId)
     .where(sql`${t.endedAt} is null`),
+]);
+
+/**
+ * Which screens a member worked on, counted per day.
+ *
+ * The question this answers is "what has the team been doing", which the
+ * timesheet cannot: hours say somebody was here, not what they were here for.
+ *
+ * Counted per (member, screen, day) rather than logged per visit. A row per
+ * navigation would be tens of thousands a week to answer a question nobody
+ * asks at that resolution, and it would turn into a keystroke log — which is a
+ * different thing from a workload picture and not one anybody asked for.
+ *
+ * **Staff can see their own.** This is monitoring of employees, and covert
+ * monitoring is both a transparency problem under UK GDPR and the fastest way
+ * to make a team resent the tool. The screen showing it is open to the person
+ * it describes.
+ */
+export const staffActivity = pgTable("staff_activity", {
+  ...tenantColumns(),
+  userId: text("user_id").notNull().references(() => user.id, { onDelete: "cascade" }),
+  /** The nav route, not the raw URL — `/clients`, never `/clients/8f21…`. */
+  route: text("route").notNull(),
+  /** `YYYY-MM-DD` in London, so a day means the working day it felt like. */
+  day: text("day").notNull(),
+  views: integer("views").default(1).notNull(),
+  lastAt: timestamp("last_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => [
+  uniqueIndex("staff_activity_member_route_day").on(t.organisationId, t.userId, t.route, t.day),
+  index("staff_activity_org_day").on(t.organisationId, t.day),
 ]);
 
 /** One "needs you today" line in a brief, with somewhere to go for it. */

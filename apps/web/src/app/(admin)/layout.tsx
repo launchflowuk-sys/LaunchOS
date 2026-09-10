@@ -14,6 +14,8 @@ import { getDb } from "@/lib/db";
 import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
 import { workerDownMessage } from "@/lib/worker-status";
+import { ActivityRecorder } from "@/components/activity-recorder";
+import { ClockInPrompt } from "@/components/clock-in-prompt";
 import { runningEntryFor } from "./time/running";
 
 // The whole admin shell reads the session, so nothing here is prerenderable.
@@ -131,6 +133,15 @@ export default async function AdminLayout({ children }: LayoutProps<"/">) {
             <GlobalSearch />
           </div>
         </header>
+
+        {/* Staff meet this on arrival; the owner never does — Shoji is not on a
+            shift. Only when nothing is already running, so it never interrupts
+            somebody who clocked in an hour ago. */}
+        {session.role !== "owner" && !running ? <ClockInPrompt name={null} /> : null}
+
+        {/* Renders nothing. Counts which screen this member is on, so the
+            timesheet's hours have a "what for" beside them. */}
+        <ActivityRecorder />
 
         <main className="flex-1 px-4 py-5 lg:px-8 lg:py-8 print:px-0 print:py-0">
           {/* Reading width by default, full width when the screen asks for it.

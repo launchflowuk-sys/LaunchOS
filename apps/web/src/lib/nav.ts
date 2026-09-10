@@ -161,6 +161,9 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Health", href: "/team/health", icon: HeartPulse, permission: "settings" },
       // Everyone: a member without `settings` still sees their own week.
       { label: "Timesheets", href: "/team/timesheets", icon: Clock },
+      // No permission gate: a staff member sees only their own rows, which is
+      // what makes the measuring visible to the measured.
+      { label: "Activity", href: "/team/activity", icon: Activity },
       { label: "Settings", href: "/settings/organisation", icon: Settings, permission: "settings" },
       { label: "Billing", href: "/settings/billing", icon: Wallet, permission: "settings" },
       { label: "Packages", href: "/settings/packages", icon: Package, permission: "settings" },

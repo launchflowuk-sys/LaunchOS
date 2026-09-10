@@ -351,6 +351,13 @@
       "when": 1789000333492,
       "tag": "0049_magenta_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1789002991848,
+      "tag": "0050_damp_firelord",
+      "breakpoints": true
     }
   ]
 }

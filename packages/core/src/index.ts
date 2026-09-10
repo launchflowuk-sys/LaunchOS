@@ -816,3 +816,5 @@ export { LeadQualification, TRADING_STRUCTURES, TRADING_STRUCTURE_LABEL, TRIAGE_
 export type { TradingStructure, TriageAnswer } from "./leads/qualification.js";
 export { reportTimingFor, isReportDue, REPORT_LEAD_DAYS } from "./reports/report-timing.js";
 export type { ReportTiming, ReportTimingInput } from "./reports/report-timing.js";
+export { recordStaffActivity, listStaffActivity, activityDay } from "./team/staff-activity.js";
+export type { ActivityRow, RecordStaffActivityInput } from "./team/staff-activity.js";
