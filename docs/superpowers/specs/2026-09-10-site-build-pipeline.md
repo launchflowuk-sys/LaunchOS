@@ -92,6 +92,61 @@ What it needs, roughly in order:
 Step 1 is where the risk sits: creating and destroying real infrastructure from
 a job, on the box that also runs every client's live site.
 
+## The Hostinger contract, verified 10 Sep
+
+Probed against the live account with permission, using one throwaway subdomain
+that was created and then deleted. This is the whole hosting surface — there is
+no more of it.
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/hosting/v1/websites` | Lists every site. 25 today, one hosting order. |
+| `POST` | `/api/hosting/v1/websites` | `{"domain": "...", "order_id": 1007850501}`. Both required. |
+| `DELETE` | `/api/hosting/v1/websites/{domain}` | Removes it. |
+
+**Both writes answer `{"message":"Request accepted"}` and are asynchronous.**
+The site appeared in the list roughly ten seconds after the POST, and was gone
+about fifteen after the DELETE. So a job cannot treat a 200 as "done" — it has
+to poll the list until the domain appears or disappears, with a timeout, and a
+build that never appears must fail loudly rather than proceed to the next stage
+against a docroot that does not exist.
+
+**A subdomain of an owned domain is created as an `addon`, not a `subdomain`.**
+`pipeline-test.launchflow.co.uk` came back with `vhost_type: "addon"`,
+`parent_domain: null` and its own docroot at
+`/home/u509477357/domains/pipeline-test.launchflow.co.uk/public_html`. That is
+fine — arguably better, since the review site is fully isolated — but it means
+the temp domain is not nested under `launchflow.co.uk` on disk and DNS has to
+point at it separately.
+
+### WordPress cannot be installed through this API
+
+`website_type` came back as `other`, and every plausible install route is a 404:
+`/websites/{domain}/wordpress`, `/websites/{domain}/install`,
+`/websites/{domain}/applications`, `/hosting/v1/wordpress`,
+`/hosting/v1/applications`. So are `ftp-accounts`, `files`, `ssh-keys` and
+`databases`. The public API creates and deletes docroots and nothing else.
+
+**This is the real constraint, and it is worth thinking about before working
+around it.** For the *review* stage the generated site is HTML and CSS — it does
+not need WordPress to be looked at. Uploading it to the docroot over SFTP is
+enough for a client or the team to see it, and it is far less machinery than
+scripting a WordPress install.
+
+WordPress only becomes necessary when the client is to edit the site
+themselves. That is a step *after* approval, not before it, and it can stay a
+person's job until the rest of the chain is proven.
+
+So the honest shape is:
+
+1. Create the review site through the API — one call, then poll.
+2. Upload the generated HTML and CSS over SFTP to its docroot.
+3. Team checks, Shoji approves, client is told.
+4. Convert to WordPress on the real domain, by hand for now.
+
+Step 2 needs SFTP credentials for the hosting account, which the API does not
+expose — they come from the Hostinger panel and belong in the access vault.
+
 ## Where the gate goes, and why
 
 **Deploy to staging happens before approval. Nothing reaches the client's real
