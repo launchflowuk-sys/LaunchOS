@@ -847,3 +847,5 @@ export type { SubmitResult } from "./brief-funnel/submit.js";
 export { briefMarkdown } from "./brief-funnel/brief-markdown.js";
 export { writeBriefVersion, submissionsAwaitingBrief, withoutContactDetails } from "./brief-funnel/write-brief.js";
 export type { WriteBriefResult } from "./brief-funnel/write-brief.js";
+export { briefForLead, draftProgressForLead } from "./brief-funnel/read-brief.js";
+export type { LeadBrief, LeadDraftProgress } from "./brief-funnel/read-brief.js";

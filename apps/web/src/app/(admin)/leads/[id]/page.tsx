@@ -1,4 +1,4 @@
-import { attributionOf, attributionSummary, bookingLinkFor, getLead, listPackages } from "@launchos/core";
+import { attributionOf, attributionSummary, bookingLinkFor, briefForLead, draftProgressForLead, getLead, listPackages } from "@launchos/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
@@ -6,6 +6,7 @@ import { InlineAlert } from "@/components/inline-alert";
 import { KeyValue } from "@/components/key-value";
 import { PageHeader } from "@/components/page-header";
 import { Section } from "@/components/section";
+import { BriefPanel } from "./brief-panel";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/native-select";
@@ -50,9 +51,11 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
   const id = uuidOr404((await params).id);
   const db = getDb();
 
-  const [lead, packages] = await Promise.all([
+  const [lead, packages, brief, draft] = await Promise.all([
     getLead(db, session.organisationId, id),
     listPackages(db, session.organisationId, { activeOnly: true }),
+    briefForLead(db, session.organisationId, id),
+    draftProgressForLead(db, session.organisationId, id),
   ]);
   if (!lead) notFound();
 
@@ -101,6 +104,8 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
               )}
             </div>
           </Section>
+
+          <BriefPanel brief={brief} draft={draft} />
 
           <MeetingsStrip organisationId={session.organisationId} leadId={lead.id} bookHref={bookingLinkFor(lead)} />
 
