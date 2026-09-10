@@ -262,6 +262,7 @@ export {
   createInvoiceFromSubscription, markInvoiceSent, markInvoicePaid, voidInvoice,
   CreateInvoiceFromSubscriptionInput, MarkInvoicePaidInput,
   VAT_RATE_DEFAULT_PERCENT, PAYMENT_TERMS_DEFAULT_DAYS,
+
 } from "./billing/invoices.js";
 export { findOverdueInvoices, FindOverdueInvoicesInput } from "./billing/overdue.js";
 export type { OverdueOutcome } from "./billing/overdue.js";
@@ -806,3 +807,8 @@ export {
   exportModule, toCsv, csvCell, EXPORTABLE, ExportInput,
   type Exportable, type ExportResult,
 } from "./exports/export-data.js";
+
+export { invoiceDatesFor, directionFor, isDueToRaise, NOTICE_DEFAULT_DAYS } from "./billing/invoice-dates.js";
+export type { InvoiceDates, InvoiceDatesInput, BillingDirection } from "./billing/invoice-dates.js";
+export { subscriptionsDueToInvoice } from "./billing/due-invoices.js";
+export type { DueInvoice } from "./billing/due-invoices.js";

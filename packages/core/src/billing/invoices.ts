@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { invoiceDatesFor } from "./invoice-dates.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 import { nextInvoiceNumber } from "./invoice-number.js";
 import { vatRateForOrganisation } from "./vat-rate.js";
@@ -44,9 +45,23 @@ export async function createInvoiceFromSubscription(db: Db, organisationId: stri
     eq(schema.billingProfiles.clientId, subscription!.clientId),
   ));
 
-  const issuedAt = v.issuedAt ?? subscription!.currentPeriodStart;
-  const termsDays = v.termsDays ?? profile?.paymentTermsDays ?? PAYMENT_TERMS_DEFAULT_DAYS;
-  const dueAt = new Date(issuedAt.getTime() + termsDays * 86_400_000);
+  // Two dates, not one plus an offset. For anybody paying by transfer the money
+  // is due on the period start and the invoice is notice sent before it; Stripe
+  // is untouched. See `invoice-dates.ts` — that file is the rule, this one just
+  // writes the row.
+  //
+  // An explicit `issuedAt` still wins, because re-raising a historic invoice
+  // has to be able to say what it was dated.
+  const dates = invoiceDatesFor({
+    periodStart: subscription!.currentPeriodStart,
+    collectionMethod: subscription!.collectionMethod,
+    noticeDays: v.termsDays ?? profile?.paymentTermsDays ?? undefined,
+    now: v.issuedAt ?? new Date(),
+  });
+  const issuedAt = v.issuedAt ?? dates.issuedAt;
+  const dueAt = dates.direction === "advance"
+    ? dates.dueAt
+    : new Date(issuedAt.getTime() + (v.termsDays ?? profile?.paymentTermsDays ?? PAYMENT_TERMS_DEFAULT_DAYS) * 86_400_000);
   const subtotalPence = subscription!.amountPence;
   // The organisation's VAT registration, not the caller, decides whether this
   // invoice may carry VAT at all. A caller may pin a rate for a registered

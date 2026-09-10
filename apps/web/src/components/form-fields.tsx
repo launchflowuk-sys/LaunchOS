@@ -15,6 +15,12 @@ type FieldProps<T extends FieldValues> = {
   type?: string | undefined;
   placeholder?: string | undefined;
   required?: boolean | undefined;
+  /**
+   * A line under the field explaining what it decides. For fields whose label
+   * cannot carry the meaning on its own — a number of days is not self-evidently
+   * days *before* something rather than after.
+   */
+  hint?: string | undefined;
 };
 
 /**
@@ -24,12 +30,16 @@ type FieldProps<T extends FieldValues> = {
  * other form's input.
  */
 function Wrapper({
-  id, label, error, children,
-}: { id: string; label: string; error?: FieldError | undefined; children: ReactNode }) {
+  id, label, error, hint, children,
+}: { id: string; label: string; error?: FieldError | undefined; hint?: string | undefined; children: ReactNode }) {
   return (
     <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       {children}
+      {/* The hint stays visible when there is an error: the error says what is
+          wrong, the hint says what the field is for, and a person correcting a
+          value needs both. */}
+      {hint ? <p className="text-meta text-muted-foreground">{hint}</p> : null}
       {error ? (
         <p role="alert" className="text-meta text-danger-fg">
           {error.message}
@@ -39,10 +49,10 @@ function Wrapper({
   );
 }
 
-export function TextField<T extends FieldValues>({ name, label, register, error, type = "text", placeholder, required }: FieldProps<T>) {
+export function TextField<T extends FieldValues>({ name, label, register, error, type = "text", placeholder, required, hint }: FieldProps<T>) {
   const id = useId();
   return (
-    <Wrapper id={id} label={label} error={error}>
+    <Wrapper id={id} label={label} error={error} hint={hint}>
       <Input
         id={id}
         type={type}

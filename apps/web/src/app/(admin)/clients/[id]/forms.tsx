@@ -167,7 +167,18 @@ export function BillingForm({ clientId, defaults }: { clientId: string; defaults
       <TextField name="addressLine1" label="Billing address" register={register} error={errors.addressLine1} />
       <TextField name="city" label="Billing city" register={register} error={errors.city} />
       <TextField name="postcode" label="Billing postcode" register={register} error={errors.postcode} />
-      <TextField name="paymentTermsDays" label="Payment terms (days)" type="number" register={register} error={errors.paymentTermsDays} />
+      {/* For anybody not collected by Stripe this is *notice*, not terms: the
+          invoice is raised this many days before the money is due, rather than
+          the money being due this many days after the invoice. Relabelled
+          because the old wording described the opposite behaviour. */}
+      <TextField
+        name="paymentTermsDays"
+        label="Notice before payment (days)"
+        type="number"
+        hint="How far ahead their invoice is raised and sent. Stripe clients collect on their own schedule and ignore this."
+        register={register}
+        error={errors.paymentTermsDays}
+      />
       <TextField name="preferredMethod" label="Preferred method" register={register} error={errors.preferredMethod} />
       <div className="flex items-end">
         <Button type="submit" loading={isSubmitting} variant="secondary" className="max-sm:w-full">

@@ -143,6 +143,8 @@ export const QUEUE = {
   supportSlaSweep: "support.sla-sweep",
   billingStripeReconcile: "billing.stripe-reconcile",
   billingInvoiceDocuments: "billing.invoice-documents",
+  /** Raises the month's invoices for anybody not collected by Stripe, at their own notice date. */
+  billingRaiseDue: "billing.raise-due",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
   deliverySend: "delivery.send",
@@ -223,6 +225,7 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // race is handed the winner's document. Deliberately no `singletonSeconds`:
   // the sweep has to be able to run again in two minutes for the next invoice.
   "billing.invoice-documents": "standard",
+  "billing.raise-due": "standard",
   // Meetings: reminders every ten minutes, follow-ups daily. Both crons with
   // payload `{}`; every send is stamped on the meeting, so a tick is idempotent.
   "meetings.remind": "standard",

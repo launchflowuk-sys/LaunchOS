@@ -34,6 +34,7 @@ import { runResumeSweep, runStuckRunSweep } from "./jobs/resume-sweep.js";
 import { runOutboundSweep } from "./jobs/outbound-sweep.js";
 import { registerContentJobs } from "./jobs/content-jobs.js";
 import { ensureAgentsEnabled } from "./jobs/agent-enablement.js";
+import { runRaiseDueInvoices } from "./jobs/billing-raise-due.js";
 import { registerOpsBriefJob } from "./jobs/ops-brief.js";
 import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
 import { registerProposalJobs } from "./jobs/proposals-jobs.js";
@@ -204,6 +205,15 @@ async function main() {
     });
   });
 
+  // Before the overdue sweep, so an invoice raised this morning is never
+  // chased as late the same morning.
+  await boss.work(QUEUE.billingRaiseDue, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "raise due invoices", async (organisationId) => {
+      console.info(await runRaiseDueInvoices({ db }, organisationId, now), "billing raise-due");
+    });
+  });
+
   await boss.work(QUEUE.invoicesOverdue, async () => {
     const now = new Date();
     await sweepOrganisations(db, "overdue invoice sweep", async (organisationId) => {
@@ -325,6 +335,8 @@ async function main() {
   await boss.schedule(QUEUE.siteScreenshots, "40 3 * * 0", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.domainsExpiry, "15 7 * * *", {}, { tz: "Europe/London" });
+  // 07:00, ahead of the overdue chase at 07:30.
+  await boss.schedule(QUEUE.billingRaiseDue, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics
   // and after invoices.check-overdue (07:30), so the drafted report reports a
