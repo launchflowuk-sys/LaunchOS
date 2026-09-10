@@ -14,11 +14,16 @@ if (!url) throw new Error("DATABASE_URL or DATABASE_URL_TEST must be set for tes
  * one each time, always passing on its own, which is what made it look flaky
  * rather than like the resource problem it was.
  *
- * A test worker runs one test at a time, so two connections is one for the
- * transaction and one spare, and an idle one is given back after five seconds
- * instead of being held to the end of the run.
+ * A test worker runs one test at a time and `withTestDb` holds exactly one
+ * transaction, so **one** connection is the honest number. The spare second one
+ * doubled the whole run's footprint for nothing, and adding a single new test
+ * file was enough to bring the exhaustion back — as a stripe-sync assertion
+ * failing, which is the tell: a different test each time, always passing alone.
+ *
+ * An idle connection is given back after five seconds rather than held to the
+ * end of the run.
  */
-const root = createDb(url, { max: 2, idleTimeout: 5 });
+const root = createDb(url, { max: 1, idleTimeout: 5 });
 
 class Rollback extends Error {}
 

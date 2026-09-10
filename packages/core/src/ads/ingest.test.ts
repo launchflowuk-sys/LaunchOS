@@ -6,7 +6,20 @@ import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { MockAdsAdapter, type AdsAdapter, type AdDailyMetrics } from "@launchos/integrations";
 import { createAdAccount, listAdAccounts } from "./accounts.js";
-import { AdIngestError, ingestDailyMetrics } from "./ingest.js";
+import { AdIngestError, ingestDailyMetrics, isPermanentAuthFailure } from "./ingest.js";
+
+/** Every account fails the same way: the provider refusing our credentials. */
+class RejectedCredentialsAdapter implements AdsAdapter {
+  readonly name = "mock" as const;
+  private readonly good = new MockAdsAdapter();
+  constructor(private readonly message: string) {}
+  async listAccounts() {
+    return this.good.listAccounts();
+  }
+  async fetchDailyMetrics(): Promise<AdDailyMetrics> {
+    throw new Error(this.message);
+  }
+}
 
 /** Passes through to the deterministic mock for every account except one, which always throws. */
 class PartiallyFailingAdsAdapter implements AdsAdapter {
@@ -98,6 +111,80 @@ describe("ingestDailyMetrics", () => {
       expect(goodRows).toHaveLength(1);
       const badRows = await db.select().from(schema.adMetricSnapshots).where(eq(schema.adMetricSnapshots.adAccountId, bad.id));
       expect(badRows).toHaveLength(0);
+    });
+  });
+});
+
+describe("isPermanentAuthFailure", () => {
+  /**
+   * Google answers all of these with a 401 that looks like any other, so the
+   * difference is in the body.
+   */
+  it("recognises the OAuth failures a retry cannot fix", () => {
+    expect(isPermanentAuthFailure("google ads api 401: deleted_client: The OAuth client was deleted.")).toBe(true);
+    expect(isPermanentAuthFailure("invalid_grant: Token has been expired or revoked.")).toBe(true);
+    expect(isPermanentAuthFailure("unauthorized_client")).toBe(true);
+  });
+
+  it("leaves ordinary failures alone", () => {
+    expect(isPermanentAuthFailure("provider timeout")).toBe(false);
+    expect(isPermanentAuthFailure("429 RESOURCE_EXHAUSTED")).toBe(false);
+    expect(isPermanentAuthFailure("500 internal error")).toBe(false);
+  });
+});
+
+describe("ingestDailyMetrics — rejected credentials", () => {
+  /**
+   * The bug this fixes: a deleted OAuth client threw like any other failure,
+   * so pg-boss retried it every ten minutes for a day and buried everything
+   * else in the log.
+   */
+  it("does not throw when every account failed on credentials", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await orgWithClient(db);
+      await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "123-456-7890", name: "Grays" });
+      const adapter = new RejectedCredentialsAdapter("google ads api 401: deleted_client: The OAuth client was deleted.");
+
+      const result = await ingestDailyMetrics(db, orgId, { date: "2026-09-09" }, adapter);
+
+      expect(result.credentialsRejected).toBe(true);
+      expect(result.failed).toHaveLength(1);
+      expect(result.snapshots).toBe(0);
+    });
+  });
+
+  it("still throws for an ordinary failure, so the retry happens", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await orgWithClient(db);
+      await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "123-456-7890", name: "Grays" });
+      const adapter = new RejectedCredentialsAdapter("provider timeout");
+
+      await expect(ingestDailyMetrics(db, orgId, { date: "2026-09-09" }, adapter)).rejects.toBeInstanceOf(AdIngestError);
+    });
+  });
+
+  it("tells the owner, and only once a day", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await orgWithClient(db);
+      const [owner] = await db
+        .insert(schema.user)
+        .values({ id: randomUUID(), name: "Shoji", email: `owner-${randomUUID()}@example.test`, emailVerified: true })
+        .returning();
+      await db.insert(schema.organisationMembers).values({ organisationId: orgId, userId: owner!.id, role: "owner", status: "active" });
+      await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "123-456-7890", name: "Grays" });
+      const adapter = new RejectedCredentialsAdapter("deleted_client");
+
+      await ingestDailyMetrics(db, orgId, { date: "2026-09-09" }, adapter);
+      await ingestDailyMetrics(db, orgId, { date: "2026-09-09" }, adapter);
+      await ingestDailyMetrics(db, orgId, { date: "2026-09-09" }, adapter);
+
+      const bells = await db
+        .select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.kind, "ads.credentials_rejected"));
+      // A standing fault says so once. More than that and the bell becomes
+      // something to ignore.
+      expect(bells).toHaveLength(1);
     });
   });
 });

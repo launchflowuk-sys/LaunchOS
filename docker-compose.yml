@@ -3,6 +3,12 @@ services:
     image: postgres:17-alpine
     container_name: launchos-postgres
     restart: unless-stopped
+    # The default 100 is a serving figure, and this database serves a test run:
+    # a few hundred files across several vitest workers, each with its own
+    # client. Exhausting it does not fail loudly — it surfaces as one unrelated
+    # assertion failing per run, which reads as flakiness for days before
+    # anybody counts connections.
+    command: ["postgres", "-c", "max_connections=300"]
     environment:
       POSTGRES_USER: launchos
       POSTGRES_PASSWORD: launchos

@@ -1,7 +1,9 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { AdsAdapter } from "@launchos/integrations";
+import { and, eq, gte } from "drizzle-orm";
 import { z } from "zod";
+import { notifyOwner } from "../notifications/notify.js";
 import { listAdAccounts } from "./accounts.js";
 
 export const IngestDailyMetricsInput = z.object({
@@ -19,6 +21,37 @@ export interface IngestResult {
   accounts: number;
   snapshots: number;
   failed: IngestFailure[];
+  /**
+   * Every failure was the provider refusing our credentials outright.
+   *
+   * Separated from ordinary failure because the response has to be different:
+   * a rate limit or an outage is worth retrying in ten minutes, a deleted
+   * OAuth client is not. Retrying that is noise until somebody goes and makes
+   * new credentials.
+   */
+  credentialsRejected: boolean;
+}
+
+/**
+ * OAuth failures that will never come good on their own.
+ *
+ * Google answers all of these with a 401 that looks like any other, so the
+ * difference is in the body. `deleted_client` means the OAuth client is gone
+ * from the console; `invalid_grant` means the refresh token has been revoked
+ * or expired. Both need a person in Google Cloud Console, and neither is
+ * improved by asking again in ten minutes.
+ */
+const PERMANENT_AUTH_CODES = [
+  "deleted_client",
+  "invalid_client",
+  "invalid_grant",
+  "unauthorized_client",
+  "access_denied",
+] as const;
+
+export function isPermanentAuthFailure(message: string): boolean {
+  const lower = message.toLowerCase();
+  return PERMANENT_AUTH_CODES.some((code) => lower.includes(code));
 }
 
 /** Thrown when at least one account's fetch/write failed. Carries the full
@@ -102,7 +135,54 @@ export async function ingestDailyMetrics(
   }
   // Telemetry, not a business action: snapshots are exempt from audit_log
   // (CLAUDE.md rule 3). The ticket the Sentinel raises from them is audited.
-  const result: IngestResult = { date: v.date, accounts: accounts.length, snapshots, failed };
+  const credentialsRejected =
+    failed.length > 0 && failed.every((failure) => isPermanentAuthFailure(failure.error));
+  const result: IngestResult = { date: v.date, accounts: accounts.length, snapshots, failed, credentialsRejected };
+
+  if (credentialsRejected) {
+    // Deliberately not thrown. Throwing makes pg-boss retry, and this is the
+    // one failure a retry cannot help — it repeated every ten minutes for a
+    // day and buried everything else in the log. Told once, plainly, with what
+    // to actually do about it.
+    await notifyOncePerDay(db, organisationId, {
+      kind: "ads.credentials_rejected",
+      title: "Google Ads has stopped working",
+      body:
+        "Google is refusing our credentials, so ad figures have stopped updating. " +
+        "The OAuth client or its refresh token needs replacing in Google Cloud Console — " +
+        "nothing here can fix it. Existing figures are safe.",
+      link: "/ads",
+    });
+    return result;
+  }
+
   if (failed.length > 0) throw new AdIngestError(result);
   return result;
+}
+
+/**
+ * Rings the bell at most once a day for a condition that persists.
+ *
+ * A standing fault should say so once, not once per sweep. Anything more and
+ * the bell becomes something to ignore, which costs more than the fault does.
+ */
+async function notifyOncePerDay(
+  db: Db,
+  organisationId: string,
+  input: { kind: string; title: string; body: string; link: string },
+): Promise<void> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [recent] = await db
+    .select({ id: schema.notifications.id })
+    .from(schema.notifications)
+    .where(
+      and(
+        eq(schema.notifications.organisationId, organisationId),
+        eq(schema.notifications.kind, input.kind),
+        gte(schema.notifications.createdAt, since),
+      ),
+    )
+    .limit(1);
+  if (recent) return;
+  await notifyOwner(db, organisationId, input).catch(() => undefined);
 }
