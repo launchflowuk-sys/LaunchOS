@@ -16,8 +16,8 @@ lead (wizard)
   └─ qualification answers          ✅ built
       └─ brief                      ✅ built  briefFromLead
           └─ generated site         ✅ built  SiteGeneratorAdapter (mock-first)
-              └─ hosting provisioned    ❌ BLOCKED — see below
-                  └─ WordPress installed ❌ blocked by the same thing
+              └─ hosting provisioned    ⚠️ feasible on Hostinger (POST supported), not built
+                  └─ WordPress installed ⚠️ install path not yet confirmed
                       └─ deployed to a staging URL
                           └─ team checks
                               └─ Shoji approves      ← the gate
@@ -38,7 +38,36 @@ test) and an OpenAI implementation that goes live when **both**
 `OPENAI_API_KEY` and `OPENAI_MODEL` are set. There is no default model id on
 purpose: a guess either 404s or silently runs something cheaper than intended.
 
-## What blocks the rest
+## Correction, 10 Sep
+
+An earlier version of this document said provisioning was blocked. That was
+wrong, and wrong in an avoidable way: it checked Coolify, found the adapter
+read-only, and reported that as the whole picture. Shoji builds WordPress on
+**Hostinger Business hosting**, which was never looked at.
+
+It should have been. Probed against his own account:
+
+```
+GET     /api/hosting/v1/websites   200 — 25 sites, with vhost_type, website_type,
+                                        root_directory, username
+OPTIONS /api/hosting/v1/websites   allow: GET, HEAD, POST
+```
+
+**POST is supported.** Hostinger can create a website from the API, the per-site
+route accepts DELETE for teardown, and the account already holds
+`HOSTINGER_API_TOKEN` — the same token the registrar and cost sync use. Existing
+sites include subdomains (`support.launchflow.co.uk`, `engine.launchflow.co.uk`),
+which is exactly the shape a temp review domain needs.
+
+So the pipeline is buildable on Hostinger today. Coolify remains an option and
+neither is binding.
+
+**Not yet verified:** that WordPress *installation* is exposed as its own
+operation, and what the POST body requires. Both need reading against the live
+API before anything is written — and no write has been attempted, because
+creating a website on live hosting is not something to discover by trying.
+
+## What was blocking it on Coolify only
 
 **The Coolify adapter is read-only.** It has `getResources`, `restart` and
 `listApplications`. It cannot create an application, attach a domain, or install
@@ -79,8 +108,11 @@ approvals queue is where every outward action in this product waits, and
 
 ## Suggested order when this is picked up
 
-1. Extend the Coolify adapter with create/destroy, behind the existing mock, and
-   prove it against a throwaway application before anything real uses it.
+1. Read the Hostinger hosting API properly: what `POST /hosting/v1/websites`
+   requires, and whether WordPress installation is its own call or a field on
+   creation. Then a `HostingProvisioner` interface with a mock, as rule 4 wants,
+   and Hostinger behind it — Coolify can be a second implementation later
+   without changing anything above it.
 2. A `site_builds` table carrying the stage, the staging URL and the approval.
 3. The worker job driving the stages, one at a time, resumable — a build that
    dies halfway must not leave an orphaned WordPress instance on the box.
