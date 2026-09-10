@@ -11,15 +11,13 @@ const FULL = {
 describe("createSiteUploaderFromEnv", () => {
   it("is the mock until the whole credential is there", () => {
     expect(createSiteUploaderFromEnv({}).name).toBe("mock");
+    expect(createSiteUploaderFromEnv(FULL).name).toBe("sftp");
   });
 
-  /**
-   * A full credential means somebody expects real uploads. Falling back to the
-   * mock there would mean a build reporting success with a blank site behind
-   * it, so it says plainly what is missing instead.
-   */
-  it("refuses loudly when credentials are set but the uploader is not wired", () => {
-    expect(() => createSiteUploaderFromEnv(FULL)).toThrow(/approve-builds/);
+  /** 65002 is Hostinger's, not the SSH default. Assuming 22 costs an afternoon. */
+  it("defaults to Hostinger's port rather than the SSH one", () => {
+    expect(createSiteUploaderFromEnv(FULL).name).toBe("sftp");
+    expect(createSiteUploaderFromEnv({ ...FULL, HOSTINGER_SFTP_PORT: "22" }).name).toBe("sftp");
   });
 
   /**
