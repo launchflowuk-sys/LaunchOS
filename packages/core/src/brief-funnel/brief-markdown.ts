@@ -79,6 +79,18 @@ export function briefMarkdown(answers: Record<string, unknown>, options: BriefMa
     lines.push("");
   }
 
+  // What they sent. Names and sizes only — the files themselves stay in
+  // private storage and are reached from the lead, never from this document.
+  const attachments = Array.isArray(answers.attachments) ? answers.attachments : [];
+  if (attachments.length > 0) {
+    lines.push("## Files they sent", "");
+    for (const entry of attachments as { name?: unknown; bytes?: unknown }[]) {
+      const size = typeof entry.bytes === "number" ? ` (${Math.max(1, Math.round(entry.bytes / 1024))} KB)` : "";
+      lines.push(`- ${plain(String(entry.name ?? "attachment"))}${size}`);
+    }
+    lines.push("");
+  }
+
   // Named so nobody has to guess whether a blank means "no" or "not asked".
   const missing = STAGES.flatMap((stage) => stage.fields)
     .filter((field) => !field.showWhen && isEmpty(answers[field.key]))

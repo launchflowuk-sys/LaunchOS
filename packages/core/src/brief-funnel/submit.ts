@@ -6,6 +6,7 @@ import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { activeAnswers, canSubmit, excludedAnswerKeys } from "./questionnaire.js";
+import { assetsForSession } from "./assets.js";
 import { briefMarkdown } from "./brief-markdown.js";
 
 /**
@@ -97,6 +98,19 @@ export async function submitBrief(
     // Frozen, and scoped: a goal deselected on the way back takes its follow-up
     // answers out of the submitted requirements, though they stay in the draft.
     const frozen = activeAnswers(session.answers);
+
+    // Attachments are rows, not answers, so they are folded into the snapshot
+    // here. Only `ready` ones: a file still being checked must never reach the
+    // brief looking like something we have.
+    const attachments = await assetsForSession(inner, organisationId, sessionId);
+    if (attachments.length > 0) {
+      frozen.attachments = attachments.map((asset) => ({
+        id: asset.id,
+        name: asset.originalName,
+        bytes: asset.bytes,
+        mime: asset.detectedMime,
+      }));
+    }
     const excluded = excludedAnswerKeys(session.answers);
     const reference = newReference();
 

@@ -2,6 +2,7 @@
 
 import { Check } from "lucide-react";
 import { useId } from "react";
+import { UploadField } from "./upload-field";
 
 /**
  * One renderer per kind of question.
@@ -66,14 +67,14 @@ export function Field({ field, value, error, onChange, onBlur }: FieldProps) {
     <div className="space-y-2">
       {/* A legend for grouped controls, a label for single ones — the two are
           not interchangeable to a screen reader. */}
-      {field.kind === "single" || field.kind === "multi" || field.kind === "chips" ? null : (
+      {["single", "multi", "chips", "upload"].includes(field.kind) ? null : (
         <label htmlFor={id} className="block text-[15px] font-medium text-[#111827]">
           {field.label}
           {field.required ? <span className="ml-1 text-[#B43A34]" aria-hidden>*</span> : null}
         </label>
       )}
 
-      {field.hint ? (
+      {field.hint && field.kind !== "upload" ? (
         <p id={`${id}-hint`} className="text-[13.5px] leading-snug text-[#626D80]">
           {field.hint}
         </p>
@@ -114,6 +115,11 @@ export function Field({ field, value, error, onChange, onBlur }: FieldProps) {
       ) : null}
 
       {field.kind === "chips" ? <Chips field={field} value={value} error={error} onChange={onChange} /> : null}
+
+      {/* Attachments are not an answer on the draft — they are rows of their
+          own, so the field renders its own uploader rather than taking a
+          value. */}
+      {field.kind === "upload" ? <UploadField label={field.label} hint={field.hint} /> : null}
 
       {error ? (
         <p id={`${id}-error`} className="text-[13.5px] font-medium text-[#B43A34]">

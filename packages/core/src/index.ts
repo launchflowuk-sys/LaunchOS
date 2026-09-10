@@ -849,3 +849,8 @@ export { writeBriefVersion, submissionsAwaitingBrief, withoutContactDetails } fr
 export type { WriteBriefResult } from "./brief-funnel/write-brief.js";
 export { briefForLead, draftProgressForLead } from "./brief-funnel/read-brief.js";
 export type { LeadBrief, LeadDraftProgress } from "./brief-funnel/read-brief.js";
+export {
+  checkAsset, recordAsset, assetsForSession, deleteAsset, sniffType, displayName,
+  MAX_FILES_PER_DRAFT, MAX_BYTES_PER_FILE, MAX_BYTES_PER_DRAFT,
+} from "./brief-funnel/assets.js";
+export type { BriefAssetRow, SniffedType } from "./brief-funnel/assets.js";
