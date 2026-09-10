@@ -77,6 +77,12 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   // margin quietly reads as pure profit while the real cost sits on a row
   // nobody looks at again.
   { key: "supplier_costs", table: schema.supplierCosts },
+  // An attempt at building this client a website. Moves whole and cannot
+  // collide: a build is unique by its review *domain* per organisation, never
+  // by client. It has to travel, because a build left on the archived record
+  // is one nobody looks at again — and if it provisioned hosting, that is a
+  // live website on the account with nothing pointing at it.
+  { key: "site_builds", table: schema.siteBuilds },
   // A build moves whole, spine and promises with it. None of the three
   // collide: a project is never unique per client, a phase is unique per
   // project and the project id does not change, and a milestone is unique per

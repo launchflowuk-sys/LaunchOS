@@ -823,3 +823,5 @@ export type { LeadBriefResult } from "./sitegen/brief-from-lead.js";
 export { ensureStarterGuides } from "./knowledge/ensure-starter-guides.js";
 export { STARTER_GUIDES } from "./knowledge/starter-guides.js";
 export type { StarterGuide } from "./knowledge/starter-guides.js";
+export { startSiteBuild, advanceSiteBuild, activeSiteBuilds, abandonedWithHosting, StartSiteBuildInput, ACTIVE_STAGES } from "./site-builds/site-builds.js";
+export type { SiteBuildRow, AdvanceFields } from "./site-builds/site-builds.js";
