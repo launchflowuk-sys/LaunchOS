@@ -17,7 +17,7 @@ lead (wizard)
       └─ brief                      ✅ built  briefFromLead
           └─ generated site         ✅ built  SiteGeneratorAdapter (mock-first)
               └─ hosting provisioned    ⚠️ feasible on Hostinger (POST supported), not built
-                  └─ WordPress installed ⚠️ install path not yet confirmed
+                  └─ WordPress installed ✅ route confirmed, not yet built
                       └─ deployed to a staging URL
                           └─ team checks
                               └─ Shoji approves      ← the gate
@@ -119,33 +119,41 @@ fine — arguably better, since the review site is fully isolated — but it mea
 the temp domain is not nested under `launchflow.co.uk` on disk and DNS has to
 point at it separately.
 
-### WordPress: readable, not installable on this token
+### WordPress install — the route, confirmed from Hostinger's own client
 
-An earlier version of this section said no WordPress endpoint existed. Wrong —
-it was probed one path segment short. Shoji found the endpoint in Hostinger's
-own CLI docs and was right to push back.
+Two wrong turns before this landed, both mine. First the endpoint was probed one
+segment short and reported as non-existent. Then it was found, POSTed to, and a
+`405` was reported as a capability limit. Shoji corrected both: the 405 was a
+route mismatch, because `/hosting/v1/wordpress/installations` is the **list**
+route and is correctly read-only.
 
-The real path is `/api/hosting/v1/wordpress/installations`, and it works:
-
-```
-GET  /api/hosting/v1/wordpress/installations?username=u509477357
-  200 — real installations, e.g. grayscabline.co.uk, with id, site_title, url,
-        directory, language, login, email, is_valid
-```
-
-**But installing is not available.** An empty POST — which creates nothing and
-only asks the question — answers:
+The real operation, read out of `client/client.gen.go` in `hostinger/api-cli`:
 
 ```
-405 The POST method is not supported for route
-    api/hosting/v1/wordpress/installations. Supported methods: GET, HEAD.
+POST /api/hosting/v1/accounts/{username}/wordpress/installations
+operationId: HostingInstallWordPressV1
 ```
 
-`hosting/v2` does not exist either. So `hostinger wordpress installations
-install` in the CLI reaches something this API token cannot: a different scope,
-a different product tier, or a surface not exposed on v1. **That is a question
-for Hostinger, not something to be worked out by probing**, and it is the one
-open item left in this chain.
+Required body: `credentials`, `domain`, `site-title`.
+Optional: `auto-updates` (all|none|minor), `database`, `directory`, `language`,
+`overwrite`, `version`.
+
+From the command's own help text, which is the authority on its behaviour:
+
+- The website must exist first — `POST /api/hosting/v1/websites`, then poll
+  `GET /api/hosting/v1/websites` until it appears.
+- Check `GET /api/hosting/v1/wordpress/installations` filtered by username and
+  domain before installing.
+- **Asynchronous.** A success only means the job was queued. Installation takes
+  roughly 1–2 minutes. Poll the same GET; when the installation appears, it is
+  ready.
+- With `overwrite` false (the default), installing over an existing WordPress
+  makes the async job fail — which is the idempotency guarantee, for free.
+
+Related operations follow the same `/accounts/{username}/websites/{domain}/`
+shape: `wordpress/import`, `wordpress/plugins/deploy`, `wordpress/themes/deploy`.
+
+**Nothing is blocked. The whole chain is buildable now.**
 
 Everything else about the hosting API stands: create and delete docroots, both
 asynchronous.
@@ -165,10 +173,8 @@ So the honest shape is:
 1. Create the review site through the API — one call, then poll.
 2. Upload the generated HTML and CSS over SFTP to its docroot.
 3. Team checks, Shoji approves, client is told.
-4. WordPress: **ask Hostinger what enables POST on
-   `/wordpress/installations`.** If it can be enabled, step 4 automates and
-   `provisionWordPressWebsite` becomes buildable exactly as specified. Until
-   then it is a person in the panel, and the automated chain stops at step 3.
+4. Install WordPress with `POST /api/hosting/v1/accounts/{username}/wordpress/installations`,
+   then poll the installations list for 1–2 minutes until it appears.
 
 Step 2 needs SFTP credentials for the hosting account, which the API does not
 expose — they come from the Hostinger panel and belong in the access vault.
