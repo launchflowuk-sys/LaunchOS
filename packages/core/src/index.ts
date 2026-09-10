@@ -818,3 +818,5 @@ export { reportTimingFor, isReportDue, REPORT_LEAD_DAYS } from "./reports/report
 export type { ReportTiming, ReportTimingInput } from "./reports/report-timing.js";
 export { recordStaffActivity, listStaffActivity, activityDay } from "./team/staff-activity.js";
 export type { ActivityRow, RecordStaffActivityInput } from "./team/staff-activity.js";
+export { briefFromLead, missingFromBrief, BriefTooThin } from "./sitegen/brief-from-lead.js";
+export type { LeadBriefResult } from "./sitegen/brief-from-lead.js";

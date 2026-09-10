@@ -104,3 +104,5 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     registrar: createRegistrarAdapterFromEnv(env),
   };
 }
+
+export * from "./sitegen/index.js";
