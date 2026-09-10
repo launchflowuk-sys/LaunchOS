@@ -1,6 +1,8 @@
 import { createDb } from "@launchos/db";
 import { ensureStarterGuides, setEnqueue, type DomainEvent } from "@launchos/core";
 import { AnthropicLlmClient, agentRegistry, scopedCmsProvider } from "@launchos/agents";
+import { MockSiteUploader, createHostingProvisionerFromEnv, createSiteGeneratorFromEnv } from "@launchos/integrations";
+import { randomUUID } from "node:crypto";
 import { createEmailAdapter, createPushAdapterFromEnv, smsAdapterFromEnv } from "@launchos/channels";
 import { createIntegrations, describeAdapters } from "@launchos/integrations";
 import { loadEnv } from "./env.js";
@@ -35,6 +37,7 @@ import { runOutboundSweep } from "./jobs/outbound-sweep.js";
 import { registerContentJobs } from "./jobs/content-jobs.js";
 import { ensureAgentsEnabled } from "./jobs/agent-enablement.js";
 import { runRaiseDueInvoices } from "./jobs/billing-raise-due.js";
+import { runSiteBuilds } from "./jobs/site-build-run.js";
 import { registerOpsBriefJob } from "./jobs/ops-brief.js";
 import { registerMeetingJobs } from "./jobs/meetings-jobs.js";
 import { registerProposalJobs } from "./jobs/proposals-jobs.js";
@@ -216,6 +219,27 @@ async function main() {
 
   // Before the overdue sweep, so an invoice raised this morning is never
   // chased as late the same morning.
+  // Every two minutes: one stage per build per tick. Frequent because each
+  // stage is minutes long and a build that has to wait an hour between them
+  // takes a day to reach review.
+  await boss.work(QUEUE.siteBuildsRun, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "site builds", async (organisationId) => {
+      await runSiteBuilds(
+        {
+          db,
+          host: createHostingProvisionerFromEnv(process.env),
+          generator: createSiteGeneratorFromEnv(process.env),
+          uploader: new MockSiteUploader(),
+          orderId: Number(process.env.HOSTINGER_ORDER_ID ?? 0),
+          makeAdminPassword: () => randomUUID().replaceAll("-", ""),
+        },
+        organisationId,
+        now,
+      );
+    });
+  });
+
   await boss.work(QUEUE.billingRaiseDue, async () => {
     const now = new Date();
     await sweepOrganisations(db, "raise due invoices", async (organisationId) => {
@@ -346,6 +370,7 @@ async function main() {
   await boss.schedule(QUEUE.domainsExpiry, "15 7 * * *", {}, { tz: "Europe/London" });
   // 07:00, ahead of the overdue chase at 07:30.
   await boss.schedule(QUEUE.billingRaiseDue, "0 7 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.siteBuildsRun, "*/2 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.invoicesOverdue, "30 7 * * *", {}, { tz: "Europe/London" });
   // After ads.ingest (06:30) has landed the final day of the month's metrics
   // and after invoices.check-overdue (07:30), so the drafted report reports a

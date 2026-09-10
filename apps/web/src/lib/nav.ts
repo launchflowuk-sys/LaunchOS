@@ -11,6 +11,7 @@ import {
   FileSignature,
   Footprints,
   Globe,
+  Hammer,
   KeyRound,
   HardHat,
   HeartPulse,
@@ -105,6 +106,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       // it.
       { label: "Projects", href: "/projects", icon: HardHat },
       { label: "Websites", href: "/websites", icon: Globe },
+      { label: "Site builds", href: "/site-builds", icon: Hammer },
       { label: "Domains", href: "/domains", icon: Network },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
       { label: "Content", href: "/content", icon: Newspaper, permission: "content" },

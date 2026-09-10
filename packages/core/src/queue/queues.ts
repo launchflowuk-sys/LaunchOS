@@ -145,6 +145,8 @@ export const QUEUE = {
   billingInvoiceDocuments: "billing.invoice-documents",
   /** Raises the month's invoices for anybody not collected by Stripe, at their own notice date. */
   billingRaiseDue: "billing.raise-due",
+  /** Drives site builds one stage at a time; stops at review and waits for a person. */
+  siteBuildsRun: "site-builds.run",
   meetingsRemind: "meetings.remind",
   meetingsFollowUp: "meetings.follow-up",
   deliverySend: "delivery.send",
@@ -226,6 +228,7 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   // the sweep has to be able to run again in two minutes for the next invoice.
   "billing.invoice-documents": "standard",
   "billing.raise-due": "standard",
+  "site-builds.run": "standard",
   // Meetings: reminders every ten minutes, follow-ups daily. Both crons with
   // payload `{}`; every send is stamped on the meeting, so a tick is idempotent.
   "meetings.remind": "standard",
