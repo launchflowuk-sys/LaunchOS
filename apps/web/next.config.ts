@@ -9,6 +9,22 @@ const appDir = dirname(fileURLToPath(import.meta.url));
 // the app directory, so load the root file before the config is evaluated.
 loadEnv({ path: resolve(appDir, "../../.env"), quiet: true });
 
+/**
+ * SFTP, and the native bindings underneath it, belong to the worker alone.
+ *
+ * `@launchos/integrations` carries the SFTP uploader that puts a generated site
+ * on the host, and `ssh2` under it ships two optional native accelerators. Any
+ * bundler that follows the import tries to resolve `cpufeatures.node` and
+ * `sshcrypto.node`, which do not exist in an image with no C toolchain — three
+ * deploys failed on exactly that. Uploading happens in `apps/worker`; this app
+ * never runs a line of it.
+ *
+ * Externalised rather than declared in `serverExternalPackages` for the same
+ * reason playwright is: the import is issued from a workspace package rather
+ * than from node_modules, which that option does not reach.
+ */
+const SSH_ONLY = ["ssh2-sftp-client", "ssh2", "cpu-features"];
+
 const nextConfig: NextConfig = {
   // The workspace packages ship TypeScript source rather than a build artefact,
   // so Next has to compile them itself.
@@ -44,9 +60,9 @@ const nextConfig: NextConfig = {
    */
   webpack: (config, { isServer }) => {
     if (isServer) {
-      config.externals = [...(Array.isArray(config.externals) ? config.externals : [config.externals]).filter(Boolean), "playwright", "playwright-core"];
+      config.externals = [...(Array.isArray(config.externals) ? config.externals : [config.externals]).filter(Boolean), "playwright", "playwright-core", ...SSH_ONLY];
     } else {
-      config.resolve = { ...config.resolve, alias: { ...config.resolve?.alias, playwright: false, "playwright-core": false } };
+      config.resolve = { ...config.resolve, alias: { ...config.resolve?.alias, playwright: false, "playwright-core": false, ...Object.fromEntries(SSH_ONLY.map((name) => [name, false])) } };
     }
     return config;
   },

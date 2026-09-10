@@ -2,16 +2,22 @@ packages:
   - "apps/*"
   - "packages/*"
 allowBuilds:
-  cpu-features: true
+  # false, not true: see the note below. Answering "yes" here is what broke
+  # three deploys — the production image has no C toolchain to build them with.
+  cpu-features: false
   esbuild: true
-  ssh2: true
+  ssh2: false
   unrs-resolver: true
 
-# `ssh2` (used for SFTP uploads) ships an optional native accelerator,
-# `cpu-features`, and building it needs a C toolchain. It is genuinely optional:
-# ssh2 falls back to pure JavaScript and works. Declared rather than left as a
-# warning, because an unacknowledged ignored build makes `pnpm install` exit
-# non-zero and that silently breaks the test runner.
+# `ssh2` (used for SFTP uploads) ships optional native accelerators —
+# `cpu-features`, and its own `sshcrypto` binding — and building either needs a
+# C toolchain and Python. Both are genuinely optional: ssh2 falls back to pure
+# JavaScript and works. The production image is Alpine and has neither, so
+# allowing the build there fails the deploy outright.
+#
+# Declared rather than left as a warning, because an unacknowledged build script
+# makes `pnpm install` exit non-zero, and that silently breaks the test runner
+# for the whole repo.
 # Nothing in this workspace needs a post-install build step. Stated explicitly
 # rather than left unanswered: pnpm exits non-zero on an undecided build script,
 # and that silently breaks `pnpm test` for the whole repo.
