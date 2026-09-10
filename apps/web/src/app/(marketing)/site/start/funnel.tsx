@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Field, type FieldDef } from "./fields";
+import { SaveExit } from "./save-exit";
 import { useDraft } from "./use-draft";
 
 /**
@@ -137,7 +138,12 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
 
   return (
     <div ref={top} className="mx-auto w-full max-w-[1280px] px-5 sm:px-[26px] lg:px-[42px]">
-      <FunnelHeader state={saveState} error={saveError} onRetry={() => void retry()} />
+      <FunnelHeader
+        state={saveState}
+        error={saveError}
+        onRetry={() => void retry()}
+        email={typeof answers.email === "string" ? answers.email : ""}
+      />
 
       <div className="mt-7 flex items-end justify-between gap-4">
         <p className="text-[17px] font-semibold tracking-[-0.3px] text-[#111827]">Your website, made for you.</p>
@@ -293,7 +299,9 @@ function Received({ reference }: { reference: string }) {
 }
 
 /** Logo, save status, and a way out that does not lose anything. */
-function FunnelHeader({ state, error, onRetry }: { state: string; error: string | null; onRetry: () => void }) {
+function FunnelHeader({
+  state, error, onRetry, email = "",
+}: { state: string; error: string | null; onRetry: () => void; email?: string }) {
   return (
     <header className="flex h-[83px] items-center justify-between gap-4 border-b border-[#DFE4EB] sm:h-[108px]">
       <Link href="/" aria-label="LaunchFlow home">
@@ -308,9 +316,9 @@ function FunnelHeader({ state, error, onRetry }: { state: string; error: string 
       </Link>
       <div className="flex items-center gap-4">
         <SaveIndicator state={state} error={error} onRetry={onRetry} />
-        <Link href="/contact" className="text-[14.5px] font-semibold text-[#0965EE] hover:underline">
-          Save &amp; exit
-        </Link>
+        <div className="relative">
+          <SaveExit defaultEmail={email} />
+        </div>
       </div>
     </header>
   );

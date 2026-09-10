@@ -854,3 +854,5 @@ export {
   MAX_FILES_PER_DRAFT, MAX_BYTES_PER_FILE, MAX_BYTES_PER_DRAFT,
 } from "./brief-funnel/assets.js";
 export type { BriefAssetRow, SniffedType } from "./brief-funnel/assets.js";
+export { issueResumeToken, draftForEmail, exchangeResumeToken, RESUME_TOKEN_TTL_HOURS } from "./brief-funnel/resume.js";
+export type { IssuedResumeToken, ExchangeResult } from "./brief-funnel/resume.js";
