@@ -812,3 +812,5 @@ export { invoiceDatesFor, directionFor, isDueToRaise, NOTICE_DEFAULT_DAYS } from
 export type { InvoiceDates, InvoiceDatesInput, BillingDirection } from "./billing/invoice-dates.js";
 export { subscriptionsDueToInvoice } from "./billing/due-invoices.js";
 export type { DueInvoice } from "./billing/due-invoices.js";
+export { LeadQualification, TRADING_STRUCTURES, TRADING_STRUCTURE_LABEL, TRIAGE_ANSWERS, TRIAGE_LABEL, isEmptyQualification, qualificationCompleteness } from "./leads/qualification.js";
+export type { TradingStructure, TriageAnswer } from "./leads/qualification.js";

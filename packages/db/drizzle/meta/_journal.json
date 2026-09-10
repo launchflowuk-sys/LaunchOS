@@ -344,6 +344,13 @@
       "when": 1788995114748,
       "tag": "0048_dashing_hellion",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1789000333492,
+      "tag": "0049_magenta_namor",
+      "breakpoints": true
     }
   ]
 }

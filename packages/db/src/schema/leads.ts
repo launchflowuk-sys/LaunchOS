@@ -1,4 +1,4 @@
-import { index, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, jsonb, pgEnum, pgTable, text, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 
@@ -21,6 +21,15 @@ export const leads = pgTable("leads", {
   business: text("business"),
   message: text("message"),
   source: text("source").default("manual").notNull(),
+  /**
+   * What the person told us about their business before anybody rang them.
+   *
+   * Separate from `metadata`, which carries what the *source* knew — UTM tags,
+   * the page, a Checkout session id. This is what the *person* said, it is read
+   * by the Brief Writer and the site build, and the two should not be rummaged
+   * out of one bag. Shape and meaning live in `core/leads/qualification.ts`.
+   */
+  qualification: jsonb("qualification").$type<Record<string, unknown>>().default({}).notNull(),
   status: leadStatusEnum("status").default("new").notNull(),
   clientId: uuid("client_id").references(() => clients.id, { onDelete: "set null" }),
 }, (t) => [

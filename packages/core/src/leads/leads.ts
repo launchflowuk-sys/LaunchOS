@@ -4,6 +4,7 @@ import { and, count, desc, eq, gte, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { LeadQualification } from "./qualification.js";
 import { createClient } from "../clients/create-client.js";
 import { emit } from "../events/emit.js";
 import { notifyOwner } from "../notifications/notify.js";
@@ -34,6 +35,8 @@ export const CreateLeadInput = z.object({
   /** UTM tags and click ids the form carried. Stored under `metadata.attribution`. */
   attribution: LeadAttributionSchema.optional(),
   metadata: z.record(z.string(), z.unknown()).default({}),
+  /** What the wizard asked them about their business. See `qualification.ts`. */
+  qualification: LeadQualification.optional(),
   /** Off for the self-serve signup's own lead — the owner hears about that at completion. */
   notifyOwner: z.boolean().default(true),
   /**
@@ -76,6 +79,7 @@ export async function createLead(db: Db, organisationId: string, input: CreateLe
       business: v.business ?? null,
       message: v.message ?? null,
       source: v.source,
+      qualification: v.qualification ?? {},
       metadata,
     }).returning();
     await recordAudit(tx, organisationId, {

@@ -8,7 +8,9 @@ import { Arrow, Btn } from "./primitives";
 /**
  * 64px, white, sticky under a hairline. The wordmark left, five links in
  * the centre with an underline that slides in from the left, "Client login"
- * and the "Let's talk" pill on the right. Under `md` the links fold into a
+ * and the "Get started" pill on the right — which opens the wizard rather than
+ * a blank message box, because what the business needs from a first contact is
+ * the answers, not a sentence. Under `md` the links fold into a
  * native `<details>` so the menu works with no client JavaScript at all —
  * a marketing page must be usable the instant its HTML arrives.
  */
@@ -39,8 +41,8 @@ export async function SiteHeader() {
           <a href={portalSignIn} className="text-[0.9375rem] font-medium text-[var(--mute)] transition-colors hover:text-[var(--ink)]">
             Client login
           </a>
-          <Btn href={href("/contact")} tone="ink">
-            Let&rsquo;s talk
+          <Btn href={href("/start")} tone="ink">
+            Get started
           </Btn>
         </div>
 
@@ -61,8 +63,8 @@ export async function SiteHeader() {
                 </li>
               ))}
               <li className="mt-2 flex flex-col gap-2 border-t border-[var(--line)] pt-4 pb-2">
-                <Btn href={href("/contact")} tone="ink" className="btn-block">
-                  Let&rsquo;s talk
+                <Btn href={href("/start")} tone="ink" className="btn-block">
+                  Get started
                 </Btn>
                 <a href={portalSignIn} className="btn btn-white btn-block">
                   Client login
