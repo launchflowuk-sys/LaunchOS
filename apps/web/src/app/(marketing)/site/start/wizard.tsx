@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowLeft, ArrowRight, CircleCheck, Loader2 } from "lucide-react";
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import type { TradingStructure, TriageAnswer } from "@launchos/core";
 import { BrandMark } from "@/components/brand-mark";
 import { InlineAlert } from "@/components/inline-alert";
@@ -205,6 +205,34 @@ export function StartWizard({ page }: { page: string }) {
   const [state, formAction, pending] = useActionState(startAction, null);
   const [step, setStep] = useState(0);
   const [values, setValues] = useState<Values>({});
+  const card = useRef<HTMLFormElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  /** Which way the last move went, so the new step slides in from that side. */
+  const [direction, setDirection] = useState<1 | -1>(1);
+
+  const goToStep = (next: number) => {
+    setDirection(next > step ? 1 : -1);
+    setStep(next);
+  };
+
+  /**
+   * Put the top of the card back on screen, and the focus on the new heading.
+   *
+   * Every step stays mounted and hides, so the form is as tall as its longest
+   * step. Changing step without this leaves the browser exactly where it was —
+   * which, coming off a tall step, is the footer. `block: "start"` rather than
+   * `center` because the heading is what should be at the top of the screen,
+   * and the focus move is what tells a screen reader the step changed at all.
+   */
+  useEffect(() => {
+    // Not on first paint: nobody has pressed anything, and stealing focus on
+    // load would drag a visitor past the page they just arrived at.
+    if (step === 0 && direction === 1) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    card.current?.scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "start" });
+    heading.current?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const set = (name: string, value: string) => setValues((current) => ({ ...current, [name]: value }));
 
@@ -237,6 +265,7 @@ export function StartWizard({ page }: { page: string }) {
 
   return (
     <form
+      ref={card}
       action={formAction}
       aria-label="Start a project"
       className="mx-auto w-full max-w-2xl rounded-[24px] border bg-card p-6 shadow-xl sm:p-10"
@@ -270,8 +299,13 @@ export function StartWizard({ page }: { page: string }) {
         />
       </div>
 
-      <div className="mb-7">
-        <h2 className="text-2xl font-semibold tracking-tight text-balance">{current.title}</h2>
+      {/* Keyed on the step so the animation replays on every move, and
+          `tabIndex={-1}` so the heading can hold focus without becoming a tab
+          stop of its own. */}
+      <div key={current.key} className="mb-7" data-step-enter={direction === 1 ? "forward" : "back"}>
+        <h2 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-balance outline-none">
+          {current.title}
+        </h2>
         <p className="mt-1.5 text-sm text-muted-foreground">{current.blurb}</p>
       </div>
 
@@ -283,7 +317,7 @@ export function StartWizard({ page }: { page: string }) {
 
       {/* Every step stays mounted and hides. Unmounting would drop what a
           browser autofilled and lose an answer on the way back. */}
-      <div className="space-y-6">
+      <div key={`fields-${current.key}`} className="space-y-6" data-step-enter={direction === 1 ? "forward" : "back"}>
         <div hidden={current.key !== "you"} className="space-y-6">
           <Field name="name" label="Your name" required values={values} onChange={set} placeholder="Sam Taylor" />
           <Field name="email" label="Email" type="email" required values={values} onChange={set} placeholder="sam@business.co.uk" />
@@ -389,7 +423,7 @@ export function StartWizard({ page }: { page: string }) {
         <Button
           type="button"
           variant="ghost"
-          onClick={() => setStep((n) => Math.max(0, n - 1))}
+          onClick={() => goToStep(Math.max(0, step - 1))}
           disabled={step === 0 || pending}
           className={cn(step === 0 && "invisible")}
         >
@@ -405,7 +439,7 @@ export function StartWizard({ page }: { page: string }) {
           <Button
             type="button"
             size="lg"
-            onClick={() => setStep((n) => Math.min(STEPS.length - 1, n + 1))}
+            onClick={() => goToStep(Math.min(STEPS.length - 1, step + 1))}
             disabled={!canAdvance || pending}
           >
             Next <ArrowRight className="size-4" />
