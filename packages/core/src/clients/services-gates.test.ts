@@ -9,6 +9,8 @@ import { fanOutPublishedPost } from "../content/fan-out.js";
 import { createContentItem } from "../content/items.js";
 import { planContentMonth } from "../content/plan-month.js";
 import { claimDueContent } from "../content/publishing.js";
+import { renderContentImage } from "../content/render-image.js";
+import type { ImageGenAdapter } from "@launchos/integrations";
 import { contentFixture } from "../content/test-fixtures.js";
 import { createTaskTemplate } from "../packages/create-task-template.js";
 import { generateRecurringTasks } from "../tasks/generate-recurring-tasks.js";
@@ -99,6 +101,23 @@ describe("recurring service tasks", () => {
       expect(result).toEqual({ created: 1, skipped: 0 });
       const keys = (await db.select().from(schema.tasks).where(eq(schema.tasks.clientId, clientId))).map((task) => task.recurrenceKey);
       expect(keys).toEqual(["content:2026-10:1"]);
+    });
+  });
+});
+
+describe("drawing a post's image", () => {
+  it("refuses a post whose service is switched off, before the paid generator is reached", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await contentFixture(db);
+      const item = await createContentItem(db, orgId, { clientId, channel: "facebook", body: "Held post", scheduledFor: new Date("2026-09-10T09:00:00Z") });
+      await setClientService(db, orgId, { clientId, service: "social", active: false, actorKind: "system" });
+      const imagegen = new Proxy({}, {
+        get: () => { throw new Error("the generator must not be reached"); },
+      }) as ImageGenAdapter;
+
+      const result = await renderContentImage(db, orgId, { itemId: item.id, mode: "ai" }, { imagegen });
+
+      expect(result).toMatchObject({ rendered: false, reason: "service_inactive" });
     });
   });
 });

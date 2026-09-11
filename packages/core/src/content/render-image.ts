@@ -8,6 +8,7 @@ import { z } from "zod";
 import { contentAssetFilePath, createContentAsset, getContentAsset, publicAssetUrl } from "../assets/content-assets.js";
 import { recordAudit } from "../audit/record-audit.js";
 import { clientBrandFrom, type ResolvedClientBrand } from "../clients/brand.js";
+import { activeServicesForClient, SERVICE_FOR_CHANNEL } from "../clients/services.js";
 import { IMAGE_METADATA_KEY, estimatePence, imagegenSpentThisMonth, monthlyCapPence } from "./image-budget.js";
 import { headlineFrom, kickerFrom } from "./image-headline.js";
 // Type-only, deliberately. The module itself is loaded where it is used, a
@@ -248,6 +249,17 @@ export async function renderContentImage(
   const v = RenderContentImageInput.parse(input);
   try {
     const { item, brand, area, wantsAi } = await loadForRender(db, organisationId, v.itemId);
+
+    // A post for a switched-off service is held, and a held post gets no
+    // picture drawn: the generator is the one path in here that costs money,
+    // and the regenerate button would otherwise reach it for a client a person
+    // has deliberately switched off.
+    if (!(await activeServicesForClient(db, organisationId, item.clientId)).has(SERVICE_FOR_CHANNEL[item.channel])) {
+      throw new ContentRefused(
+        "service_inactive",
+        "This client's service for this post is switched off. Switch it on under the client's Services tab first.",
+      );
+    }
 
     if (!channelTakesImage(item.channel)) {
       throw new ContentRefused("no_image_channel", `A ${item.channel} post does not carry an image.`);

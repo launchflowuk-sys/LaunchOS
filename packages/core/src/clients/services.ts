@@ -202,6 +202,11 @@ export async function setClientService(
 
   return db.transaction(async (txRaw) => {
     const tx = txRaw as unknown as Db;
+    // `FOR UPDATE` locks nothing when the switch has never been touched, so two
+    // people flipping a brand-new switch at once would both read "off" and one
+    // decision could vanish. The advisory lock serialises every toggle of this
+    // one switch, row or no row, and is released when the transaction ends.
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`client_service:${organisationId}:${v.clientId}:${v.service}`}))`);
     const scope = and(
       eq(schema.clientServices.organisationId, organisationId),
       eq(schema.clientServices.clientId, v.clientId),
