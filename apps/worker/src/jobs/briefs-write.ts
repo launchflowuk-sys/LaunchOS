@@ -47,8 +47,9 @@ export async function runBriefWrites(
     else if (result.status === "skipped") skipped += 1;
     else {
       failed += 1;
-      // Recorded rather than thrown: one bad submission must not stop the rest,
-      // and `writeBriefVersion` has already rung the owner's bell.
+      // Recorded rather than thrown: one bad submission must not stop the rest.
+      // `writeBriefVersion` counts the attempt and rings the owner's bell once,
+      // when it gives up, so a repeating failure is neither silent nor a flood.
       logger.error({ organisationId, reference: submission.reference, reason: result.reason }, "brief write failed");
     }
   }

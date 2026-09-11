@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { BriefWriterAdapter } from "@launchos/integrations";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { notifyOwner } from "../notifications/notify.js";
 
 /**
@@ -29,10 +29,19 @@ export function withoutContactDetails(answers: Record<string, unknown>): Record<
   return out;
 }
 
+/**
+ * How many paid attempts a brief gets before the sweep stops offering it.
+ *
+ * The sweep runs every five minutes. Without a limit, a failure that repeats —
+ * a schema mismatch, a model that refuses the prompt — is a paid call every
+ * five minutes for ever, and it was: 109 in one day for one brief.
+ */
+export const MAX_BRIEF_WRITE_ATTEMPTS = 3;
+
 export type WriteBriefResult =
   | { status: "written"; version: number }
   | { status: "skipped"; reason: "already_written" }
-  | { status: "failed"; reason: string };
+  | { status: "failed"; reason: string; attempts?: number; gaveUp?: boolean };
 
 /**
  * Writes the next version of a brief, or reports why it could not.
@@ -88,16 +97,38 @@ export async function writeBriefVersion(
     return { status: "written", version: nextVersion };
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
-    // Told, not buried. Version one is still there and still true, so this is
-    // a "worth another go" rather than an emergency — but nobody finds out
-    // that briefs stopped improving unless somebody says so.
-    await notifyOwner(db, organisationId, {
-      kind: "brief.write_failed",
-      title: `The brief writer could not finish ${submission.reference}`,
-      body: `${reason}. The submitted answers and the plain brief are safe — this can be run again.`,
-      link: "/leads",
-    }).catch(() => undefined);
-    return { status: "failed", reason };
+    const attempts = (Number(submission.metadata?.briefWriteAttempts) || 0) + 1;
+    const gaveUp = attempts >= MAX_BRIEF_WRITE_ATTEMPTS;
+    const now = new Date();
+
+    // Bookkeeping on the submission, merged into its metadata in one statement
+    // rather than read-modify-write. Telemetry about the writer, not a change to
+    // the brief, so it is exempt from audit_log the way uptime checks are.
+    const stamp = {
+      briefWriteAttempts: attempts,
+      briefWriteLastError: reason.slice(0, 500),
+      briefWriteLastAttemptAt: now.toISOString(),
+      ...(gaveUp ? { briefWriteGaveUpAt: now.toISOString() } : {}),
+    };
+    await db.update(schema.briefSubmissions)
+      .set({
+        metadata: sql`coalesce(${schema.briefSubmissions.metadata}, '{}'::jsonb) || ${JSON.stringify(stamp)}::jsonb`,
+        updatedAt: now,
+      })
+      .where(and(eq(schema.briefSubmissions.id, submissionId), eq(schema.briefSubmissions.organisationId, organisationId)));
+
+    // Told once, when it stops trying. Version one is still there and still
+    // true, so a failure is a "worth a look", not an emergency — and a bell on
+    // every sweep is a bell people learn to ignore.
+    if (gaveUp) {
+      await notifyOwner(db, organisationId, {
+        kind: "brief.write_failed",
+        title: `The brief writer could not finish ${submission.reference}`,
+        body: `Gave up after ${attempts} attempts: ${reason}. The submitted answers and the plain brief are safe.`,
+        link: "/leads",
+      }).catch(() => undefined);
+    }
+    return { status: "failed", reason, attempts, gaveUp };
   }
 }
 
@@ -114,15 +145,18 @@ export async function submissionsAwaitingBrief(
   limit = 10,
 ): Promise<{ id: string; reference: string }[]> {
   const submissions = await db
-    .select({ id: schema.briefSubmissions.id, reference: schema.briefSubmissions.reference })
+    .select({ id: schema.briefSubmissions.id, reference: schema.briefSubmissions.reference, metadata: schema.briefSubmissions.metadata })
     .from(schema.briefSubmissions)
     .where(eq(schema.briefSubmissions.organisationId, organisationId))
     .orderBy(desc(schema.briefSubmissions.submittedAt))
     .limit(200);
 
   const waiting: { id: string; reference: string }[] = [];
-  for (const submission of submissions) {
+  for (const { metadata, ...submission } of submissions) {
     if (waiting.length >= limit) break;
+    // Given up on: the owner has been told once, and another paid attempt at
+    // the same failure is not going to be different.
+    if (metadata?.briefWriteGaveUpAt) continue;
     const versions = await db
       .select({ generatorVersion: schema.briefVersions.generatorVersion })
       .from(schema.briefVersions)

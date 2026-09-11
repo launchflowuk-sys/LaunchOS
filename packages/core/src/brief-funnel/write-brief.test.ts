@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { captureLeadFromDraft } from "./capture.js";
 import { patchBriefSession, startBriefSession } from "./sessions.js";
 import { submitBrief } from "./submit.js";
-import { submissionsAwaitingBrief, withoutContactDetails, writeBriefVersion } from "./write-brief.js";
+import { MAX_BRIEF_WRITE_ATTEMPTS, submissionsAwaitingBrief, withoutContactDetails, writeBriefVersion } from "./write-brief.js";
 
 /** An organisation with an owner, so the bell has somewhere to ring. */
 async function makeOrg(db: Db) {
@@ -148,18 +148,43 @@ describe("writeBriefVersion", () => {
     });
   });
 
-  it("rings the owner's bell rather than failing silently", async () => {
+  /**
+   * Told once, when it gives up — not on every attempt. It used to ring on
+   * every five-minute sweep, which was 109 bells in one day for one brief, and
+   * every one of those attempts was a paid model call.
+   */
+  it("rings the owner's bell once, when it gives up, and not on the attempts before", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const submissionId = await submitted(db, org.id);
+      const bells = async () => (await db.select().from(schema.notifications)
+        .where(eq(schema.notifications.organisationId, org.id)))
+        .filter((row) => row.kind === "brief.write_failed");
+
+      const first = await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
+      expect(first).toMatchObject({ status: "failed", attempts: 1, gaveUp: false });
+      expect(await bells()).toHaveLength(0);
+
+      await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
+      const last = await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
+
+      expect(last).toMatchObject({ status: "failed", attempts: MAX_BRIEF_WRITE_ATTEMPTS, gaveUp: true });
+      const rung = await bells();
+      expect(rung).toHaveLength(1);
+      expect(rung[0]!.body).toContain("429");
+    });
+  });
+
+  it("records each attempt on the submission, so the reason survives the log", async () => {
     await withTestDb(async (db) => {
       const org = await makeOrg(db);
       const submissionId = await submitted(db, org.id);
 
       await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
 
-      const notifications = await db
-        .select()
-        .from(schema.notifications)
-        .where(eq(schema.notifications.organisationId, org.id));
-      expect(notifications.some((row) => row.kind === "brief.write_failed")).toBe(true);
+      const [submission] = await db.select().from(schema.briefSubmissions).where(eq(schema.briefSubmissions.id, submissionId));
+      expect(submission!.metadata).toMatchObject({ briefWriteAttempts: 1, briefWriteLastError: "429 rate limit exceeded" });
+      expect(submission!.metadata).not.toHaveProperty("briefWriteGaveUpAt");
     });
   });
 
@@ -194,6 +219,19 @@ describe("submissionsAwaitingBrief", () => {
       await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
 
       expect(await submissionsAwaitingBrief(db, org.id)).toHaveLength(1);
+    });
+  });
+
+  /** A writer that fails the same way three times is not going to come good on the fourth paid call. */
+  it("stops offering one the writer has given up on", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const submissionId = await submitted(db, org.id);
+      for (let i = 0; i < MAX_BRIEF_WRITE_ATTEMPTS; i += 1) {
+        await writeBriefVersion(db, org.id, submissionId, new FailingWriter());
+      }
+
+      expect(await submissionsAwaitingBrief(db, org.id)).toHaveLength(0);
     });
   });
 });

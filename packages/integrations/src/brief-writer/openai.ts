@@ -2,6 +2,7 @@ import {
   BriefWriterError, StructuredBrief,
   type BriefWriterAdapter, type BriefWriterInput, type WrittenBrief,
 } from "./types.js";
+import { briefJsonSchema, dropNulls } from "./openai-schema.js";
 
 /**
  * The brief writer, through OpenAI's chat completions API.
@@ -95,9 +96,13 @@ export class OpenAiBriefWriter implements BriefWriterAdapter {
         },
         body: JSON.stringify({
           model: this.options.model,
-          // JSON mode rather than prose. A model that answers with a paragraph
-          // where a schema was asked for has not done the job.
-          response_format: { type: "json_object" },
+          // The brief's own schema, strictly. `json_object` only promised some
+          // JSON, so the model invented a shape and every reply failed — see
+          // `briefJsonSchema` for why this is derived from the Zod definition.
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "website_brief", strict: true, schema: briefJsonSchema() },
+          },
           messages: [
             { role: "system", content: BRIEF_SYSTEM_PROMPT },
             { role: "user", content: buildBriefPrompt(input) },
@@ -131,7 +136,7 @@ export class OpenAiBriefWriter implements BriefWriterAdapter {
       throw new BriefWriterError("the brief writer did not return JSON", content.slice(0, 600));
     }
 
-    const checked = StructuredBrief.safeParse(parsed);
+    const checked = StructuredBrief.safeParse(dropNulls(parsed));
     if (!checked.success) {
       // Refused rather than patched. A brief that half matches its schema is
       // one somebody has to check line by line, which is worse than not having
