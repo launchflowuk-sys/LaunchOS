@@ -5,6 +5,7 @@ import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { activeSubscriptionForClient } from "../billing/subscriptions.js";
+import { activeServicesForClient, hasContentService, includesForServices } from "../clients/services.js";
 import { assertClientInOrganisation } from "../tenancy/assert-owned.js";
 import { spreadSlotTimes } from "./schedule.js";
 import {
@@ -160,6 +161,18 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
   ));
   if (!pkg) throw new ContentRefused("no_package", "The client's package could not be found.");
 
+  // Paying for posts is not the same as us posting. Only the services a person
+  // has switched on get slots; the rest of the package reads as zero, so they
+  // are neither planned nor reported as "paying with nowhere to publish".
+  const active = await activeServicesForClient(db, organisationId, v.clientId);
+  if (!hasContentService(active)) {
+    throw new ContentRefused(
+      "service_inactive",
+      "No content service is switched on for this client. Switch on blog, social or Google Business posts under the client's Services tab first.",
+    );
+  }
+  const includes = includesForServices(pkg.includes, active);
+
   const channels = await db
     .select({ channel: schema.contentChannels.channel })
     .from(schema.contentChannels)
@@ -171,7 +184,7 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
     ));
   const connected = new Set(channels.map((row) => row.channel));
 
-  const { slots, unplanned } = slotsFor(v.periodKey, pkg.includes, connected);
+  const { slots, unplanned } = slotsFor(v.periodKey, includes, connected);
   const tasks = await recurringTasksFor(db, organisationId, v.clientId, v.periodKey);
 
   let created = 0;

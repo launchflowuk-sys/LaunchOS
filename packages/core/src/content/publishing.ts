@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { serviceActiveSql, serviceForChannelSql } from "../clients/services.js";
 import { fanOutPublishedPost, type FanOutResult } from "./fan-out.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { truncate, MAX_ERROR_CHARS } from "../text.js";
@@ -71,6 +72,11 @@ export async function claimDueContent(db: Db, organisationId: string, input: Cla
         eq(schema.contentItems.status, "approved"),
         lte(schema.contentItems.scheduledFor, v.now),
         isNull(schema.contentItems.deletedAt),
+        // A post for a service that has been switched off is held, not claimed:
+        // it stays approved, and goes out on the next sweep after the service is
+        // switched back on. Filtered here rather than after the claim so a held
+        // post never takes a place in the batch from one that can go.
+        serviceActiveSql(organisationId, schema.contentItems.clientId, serviceForChannelSql(schema.contentItems.channel)),
       ))
       .orderBy(asc(schema.contentItems.scheduledFor), asc(schema.contentItems.id))
       .limit(v.limit)

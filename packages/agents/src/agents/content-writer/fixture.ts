@@ -3,6 +3,7 @@ import { createKnowledgeArticle, planContentMonth, setContentChannel, upsertCont
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { PackageIncludes } from "@launchos/db/schema";
+import { activateClientServices } from "@launchos/db/test";
 
 export const PERIOD = "2026-09";
 
@@ -31,6 +32,7 @@ export async function writerFixture(db: Db, opts: { includes?: PackageIncludes; 
     websiteUrl: "https://grayscabline.co.uk", city: "Grays", packageId: pkg!.id,
   }).returning();
   const clientId = client!.id;
+  await activateClientServices(db, orgId, clientId);
   await db.insert(schema.subscriptions).values({
     organisationId: orgId, clientId, packageId: pkg!.id, status: "active",
     currentPeriodStart: new Date("2026-09-01T00:00:00Z"), currentPeriodEnd: new Date("2026-09-30T23:59:59Z"),

@@ -90,7 +90,9 @@ export async function ingestDailyMetrics(
   ads: AdsAdapter,
 ): Promise<IngestResult> {
   const v = IngestDailyMetricsInput.parse(input);
-  const accounts = await listAdAccounts(db, organisationId, { status: "active" });
+  // Only clients we manage ads for. An account left connected for a client who
+  // stopped paying costs a provider call a day and tells nobody anything.
+  const accounts = await listAdAccounts(db, organisationId, { status: "active", managedOnly: true });
 
   let snapshots = 0;
   const failed: IngestFailure[] = [];

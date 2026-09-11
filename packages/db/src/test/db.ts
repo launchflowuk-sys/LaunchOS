@@ -1,4 +1,5 @@
 import { createDb, type Db } from "../client.js";
+import { clientServiceEnum, clientServices, type ClientService } from "../schema/client-services.js";
 
 const url = process.env.DATABASE_URL_TEST ?? process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL or DATABASE_URL_TEST must be set for tests");
@@ -37,4 +38,26 @@ export async function withTestDb(fn: (db: Db) => Promise<void>): Promise<void> {
   } catch (e) {
     if (!(e instanceof Rollback)) throw e;
   }
+}
+
+/**
+ * Switches services on for a test client, all four by default.
+ *
+ * Every service is off until a person switches it on, so a fixture for a test
+ * about ads or posting has to say it is a client we actually do that for —
+ * otherwise the gate the test is not about quietly makes it assert on nothing.
+ */
+export async function activateClientServices(
+  db: Db,
+  organisationId: string,
+  clientId: string,
+  services: readonly ClientService[] = clientServiceEnum.enumValues,
+): Promise<void> {
+  if (services.length === 0) return;
+  await db.insert(clientServices)
+    .values(services.map((service) => ({ organisationId, clientId, service, active: true })))
+    .onConflictDoUpdate({
+      target: [clientServices.organisationId, clientServices.clientId, clientServices.service],
+      set: { active: true },
+    });
 }

@@ -6,6 +6,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { createContentAsset, getContentItem, publicAssetUrl, requestContentApproval } from "@launchos/core";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
+import { setClientService } from "@launchos/core";
 import { PERIOD, writerFixture } from "../agents/content-writer/fixture.js";
 import { buildContext } from "../kernel/run-loop.js";
 import { contentGetBrief } from "./content-get-brief.js";
@@ -68,6 +69,23 @@ describe("content_list_slots", () => {
       expect(after.slots.find((s) => s.channel === "facebook")).toMatchObject({ unfilled: false, hasBody: true });
       // Another month is another list.
       expect((await contentListSlots.execute({ clientId: f.clientId, periodKey: "2026-10" }, ctx)).slots).toEqual([]);
+    });
+  });
+
+  it("holds the slots of a service switched off after planning, so the writer leaves them alone", async () => {
+    await withTestDb(async (db) => {
+      const f = await writerFixture(db);
+      const ctx = await ctxFor(db, f.orgId);
+      await setClientService(db, f.orgId, { clientId: f.clientId, service: "social", active: false, actorKind: "system" });
+
+      const out = await contentListSlots.execute({ clientId: f.clientId, periodKey: PERIOD }, ctx);
+
+      expect(out.slots).toHaveLength(4);
+      expect(out.unfilled).toBe(2);
+      for (const slot of out.slots) {
+        const social = slot.channel === "facebook" || slot.channel === "instagram";
+        expect(slot).toMatchObject({ held: social, unfilled: !social });
+      }
     });
   });
 });

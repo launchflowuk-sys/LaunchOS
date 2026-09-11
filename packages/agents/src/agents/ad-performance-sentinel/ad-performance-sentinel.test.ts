@@ -5,7 +5,7 @@ import { MockEmailAdapter } from "@launchos/channels";
 import { createAdAccount, decideApproval, saveDraftAdReport } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { FakeLlmClient, text, toolUse } from "../../kernel/llm.js";
 import type { AgentDefinition } from "../../kernel/types.js";
 import { resumeAgent } from "../../kernel/resume-agent.js";
@@ -23,6 +23,7 @@ async function droppingAccount(db: Db) {
   const [client] = await db.insert(schema.clients)
     .values({ organisationId: org!.id, name: "Grays CabLine", slug: `grays-${randomUUID()}`, email: "info@grays.test" })
     .returning();
+  await activateClientServices(db, org!.id, client!.id, ["ads"]);
   const account = await createAdAccount(db, org!.id, {
     clientId: client!.id, platform: "google", externalId: "123-456-7890", name: "Grays CabLine — Search",
   });

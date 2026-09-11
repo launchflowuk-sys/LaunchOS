@@ -62,7 +62,7 @@ export async function ingestDailyCampaignMetrics(
   ads: AdsAdapter,
 ): Promise<CampaignIngestResult> {
   const v = IngestCampaignMetricsInput.parse(input);
-  const accounts = await listAdAccounts(db, organisationId, { status: "active" });
+  const accounts = await listAdAccounts(db, organisationId, { status: "active", managedOnly: true });
 
   let campaigns = 0;
   let unsupported = 0;

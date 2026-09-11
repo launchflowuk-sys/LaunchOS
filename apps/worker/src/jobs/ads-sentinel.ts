@@ -1,7 +1,7 @@
 import { AD_SENTINEL_KEY } from "@launchos/agents";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { QUEUE, dailyDedupe } from "../boss.js";
 import type { AgentRunJob } from "./agent-run.js";
 import type { BossSender } from "./dispatch-event.js";
@@ -18,6 +18,13 @@ export async function buildSentinelJobs(db: Db, now: Date): Promise<AgentRunJob[
     .where(and(
       eq(schema.agentEnablement.agentKey, AD_SENTINEL_KEY),
       eq(schema.agentEnablement.enabled, true),
+      // An Opus-priced run for an organisation with no client on ads
+      // management would read an empty account list and stop. Not started.
+      sql`exists (
+        select 1 from client_services cs
+        where cs.organisation_id = ${schema.agentEnablement.organisationId}
+          and cs.service = 'ads' and cs.active and cs.deleted_at is null
+      )`,
     ));
   return rows.map((row) => ({
     agentKey: AD_SENTINEL_KEY,

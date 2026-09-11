@@ -3,6 +3,7 @@ import { schema } from "@launchos/db";
 import type { PackageIncludes, TaskAssigneeRole, TaskKind, TaskRecurrence } from "@launchos/db/schema";
 import { and, asc, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
+import { activeServicesForClient, includesForServices, SERVICE_FOR_TASK_KIND } from "../clients/services.js";
 import { getPackage } from "../packages/list-packages.js";
 import { listTaskTemplates } from "../packages/list-task-templates.js";
 import { autoAssignTask, taskAssignmentOn } from "../assignment/auto-assign.js";
@@ -72,13 +73,20 @@ export async function generateRecurringTasks(db: Db, organisationId: string, inp
     try {
       const pkg = await getPackage(db, organisationId, client.packageId!);
       if (!pkg || !pkg.active) continue;
+      // Service work is created only for the services switched on. A package
+      // selling eight social posts to a client with social off is not eight
+      // tasks on somebody's list.
+      const active = await activeServicesForClient(db, organisationId, client.id);
+      const includes = includesForServices(pkg.includes, active);
 
       const templates = (await listTaskTemplates(db, organisationId, {
         phase: "recurring", packageId: pkg.id, includeGlobal: true,
       })).filter((t) => t.recurrence !== "none");
 
       for (const template of templates) {
-        const quantity = quantityFor(template.kind, template.recurrence, pkg.includes);
+        const service = SERVICE_FOR_TASK_KIND[template.kind];
+        if (service && !active.has(service)) continue;
+        const quantity = quantityFor(template.kind, template.recurrence, includes);
         if (quantity < 1) continue;
         const period = periodBounds(template.recurrence, now);
 

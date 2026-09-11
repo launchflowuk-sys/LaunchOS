@@ -1,7 +1,9 @@
-import { CHANNEL_LABEL, ContentRefused, notifyOwner, periodKeyFor, planContentMonth } from "@launchos/core";
+import {
+  activeServicesByClient, CHANNEL_LABEL, ContentRefused, includesForServices, notifyOwner, periodKeyFor, planContentMonth,
+} from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { PackageIncludes } from "@launchos/db/schema";
+import type { ClientService, PackageIncludes } from "@launchos/db/schema";
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { QUEUE, dailyDedupe } from "../boss.js";
 import type { ContentDraftJob } from "./content-draft.js";
@@ -10,6 +12,8 @@ import { sweep, throwOnSweepFailure, type SweepLogger } from "./sweep.js";
 
 /** The subscription statuses that are still paying for a package: the same three `activeSubscriptionForClient` reads. */
 const SUBSCRIBED = ["trialing", "active", "past_due"] as const;
+
+const NO_SERVICES: ReadonlySet<ClientService> = new Set();
 
 export interface PlanMonthLogger extends SweepLogger {
   info(...args: unknown[]): void;
@@ -63,9 +67,12 @@ export async function clientsOwedContent(db: Db, organisationId: string): Promis
       eq(schema.clients.status, "active"),
       isNull(schema.clients.deletedAt),
     ));
+  // What they pay for, cut down to what somebody has switched on. A client on a
+  // posting package with posting switched off is not owed a month.
+  const active = await activeServicesByClient(db, organisationId);
   const seen = new Set<string>();
   return rows
-    .filter((row) => hasContentQuota(row.includes))
+    .filter((row) => hasContentQuota(includesForServices(row.includes, active.get(row.clientId) ?? NO_SERVICES)))
     .filter((row) => (seen.has(row.clientId) ? false : (seen.add(row.clientId), true)))
     .map((row) => ({ clientId: row.clientId, clientName: row.clientName }));
 }

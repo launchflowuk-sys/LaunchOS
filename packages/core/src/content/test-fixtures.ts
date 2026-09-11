@@ -2,7 +2,8 @@ import type { ContentChannel } from "@launchos/db/schema";
 import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { PackageIncludes } from "@launchos/db/schema";
+import type { ClientService, PackageIncludes } from "@launchos/db/schema";
+import { activateClientServices } from "@launchos/db/test";
 import { and, eq } from "drizzle-orm";
 
 export const INCLUDES: PackageIncludes = {
@@ -26,6 +27,12 @@ export async function contentFixture(
      * month. Pass a shorter list to test what a client with one Page gets.
      */
     channels?: readonly ContentChannel[];
+    /**
+     * Which services are switched on. All of them by default, for the same
+     * reason as `channels`: a client nobody has switched on gets no content at
+     * all, and a test about planning would be asserting on an empty month.
+     */
+    services?: readonly ClientService[];
   } = {},
 ) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `content-${randomUUID()}` }).returning();
@@ -61,6 +68,8 @@ export async function contentFixture(
       })),
     );
   }
+
+  await activateClientServices(db, org!.id, client!.id, opts.services);
 
   return { orgId: org!.id, ownerId, clientId: client!.id, packageId: pkg!.id, portalUserId, subscription };
 }

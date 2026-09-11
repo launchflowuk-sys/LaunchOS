@@ -106,6 +106,7 @@ export type ContentRefusedReason =
   | "not_publishing"
   | "no_active_subscription"
   | "no_package"
+  | "service_inactive"
   | "not_portal_user"
   | "already_sent"
   | "no_image_channel"

@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  cancelContentItem, ContentRefused, getContentAsset, getContentItem, IMAGE_RENDERABLE_STATUSES, planContentMonth,
+  activeServicesForClient, cancelContentItem, ContentRefused, hasContentService, getContentAsset, getContentItem, IMAGE_RENDERABLE_STATUSES, planContentMonth,
   publicAssetUrl, requestContentApproval, updateContentItem,
 } from "@launchos/core";
 import { QUEUE, type QueueName } from "@launchos/core/queue";
@@ -80,6 +80,15 @@ export async function contentMonthAction(formData: FormData): Promise<ActionResu
         };
       }
       return { status: "ok", id: `${result.created}:${result.skipped}` };
+    }
+
+    // Said here, before a billed run is queued, rather than as a skipped row in
+    // the ledger that nobody pressing the button will go and read.
+    if (!hasContentService(await activeServicesForClient(getDb(), session.organisationId, clientId))) {
+      return {
+        status: "error",
+        message: "No content service is switched on for this client. Switch one on under the client's Services tab before drafting.",
+      };
     }
 
     // A draft run is a real, billed Claude run. The cron send is keyed

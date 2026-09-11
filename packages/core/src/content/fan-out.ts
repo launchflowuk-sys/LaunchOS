@@ -2,6 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, isNull } from "drizzle-orm";
 import { recordAudit } from "../audit/record-audit.js";
+import { activeServicesForClient, SERVICE_FOR_CHANNEL } from "../clients/services.js";
 import { listContentChannels } from "./channels.js";
 import type { ContentChannel } from "@launchos/db/schema";
 import type { ContentItemRow } from "./shared.js";
@@ -85,7 +86,11 @@ export async function fanOutPublishedPost(
   // Only where the client actually has that channel connected. A Facebook
   // share for a client with no Page is a draft nobody can ever approve.
   const connected = await listContentChannels(db, organisationId, { clientId: item.clientId, enabledOnly: true });
+  // And only where we are doing that work for them. A client with blog posts
+  // switched on and social switched off gets the article, not a Facebook share.
+  const active = await activeServicesForClient(db, organisationId, item.clientId);
   const targets = FAN_OUT_CHANNELS
+    .filter((channel) => active.has(SERVICE_FOR_CHANNEL[channel]))
     .filter((channel) => connected.some((row) => row.channel === channel))
     .filter((channel) => !done.has(channel));
 

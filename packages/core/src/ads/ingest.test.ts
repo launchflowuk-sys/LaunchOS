@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { MockAdsAdapter, type AdsAdapter, type AdDailyMetrics } from "@launchos/integrations";
 import { createAdAccount, listAdAccounts } from "./accounts.js";
 import { AdIngestError, ingestDailyMetrics, isPermanentAuthFailure } from "./ingest.js";
@@ -39,8 +39,42 @@ async function orgWithClient(db: Db) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `ads-${randomUUID()}` }).returning();
   const [client] = await db.insert(schema.clients)
     .values({ organisationId: org!.id, name: "Grays CabLine", slug: `grays-${randomUUID()}` }).returning();
+  await activateClientServices(db, org!.id, client!.id, ["ads"]);
   return { orgId: org!.id, clientId: client!.id };
 }
+
+/** The deterministic mock, remembering which accounts it was asked about. */
+class RecordingAdsAdapter implements AdsAdapter {
+  readonly name = "mock" as const;
+  readonly fetched: string[] = [];
+  private readonly good = new MockAdsAdapter();
+  async listAccounts() {
+    return this.good.listAccounts();
+  }
+  async fetchDailyMetrics(accountId: string, date: string): Promise<AdDailyMetrics> {
+    this.fetched.push(accountId);
+    return this.good.fetchDailyMetrics(accountId, date);
+  }
+}
+
+describe("ingestDailyMetrics — ads management switched off", () => {
+  it("never asks the provider about an account whose client has ads switched off, but still lists it", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, clientId } = await orgWithClient(db);
+      const [unmanaged] = await db.insert(schema.clients)
+        .values({ organisationId: orgId, name: "Stopped paying", slug: `stopped-${randomUUID()}` }).returning();
+      await createAdAccount(db, orgId, { clientId, platform: "google", externalId: "111-111-1111", name: "Managed" });
+      await createAdAccount(db, orgId, { clientId: unmanaged!.id, platform: "google", externalId: "222-222-2222", name: "Left connected" });
+      const ads = new RecordingAdsAdapter();
+
+      const result = await ingestDailyMetrics(db, orgId, { date: "2026-09-01" }, ads);
+
+      expect(ads.fetched).toEqual(["111-111-1111"]);
+      expect(result).toMatchObject({ accounts: 1, snapshots: 1, failed: [] });
+      expect(await listAdAccounts(db, orgId)).toHaveLength(2);
+    });
+  });
+});
 
 describe("createAdAccount / listAdAccounts", () => {
   it("creates an account and lists it with its client name", async () => {

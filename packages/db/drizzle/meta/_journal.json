@@ -372,6 +372,13 @@
       "when": 1789025881223,
       "tag": "0052_neat_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1789097322413,
+      "tag": "0053_tranquil_namorita",
+      "breakpoints": true
     }
   ]
 }

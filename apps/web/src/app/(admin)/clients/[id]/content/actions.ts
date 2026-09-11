@@ -1,7 +1,7 @@
 "use server";
 
 import {
-  BRIEF_IMAGES_METADATA_KEY, ContentRefused, deleteContentAsset, recordAudit, setClientBrand, setContentChannel,
+  activeServicesForClient, BRIEF_IMAGES_METADATA_KEY, ContentRefused, hasContentService, deleteContentAsset, recordAudit, setClientBrand, setContentChannel,
   upsertContentBrief,
 } from "@launchos/core";
 import { schema } from "@launchos/db";
@@ -362,6 +362,14 @@ export async function draftBriefAction(formData: FormData): Promise<ActionResult
   // Said here rather than discovered three turns into a billed run.
   if (!client.websiteUrl) {
     return { status: "error", message: "Add the client's website address first — the brief is written from it." };
+  }
+  // A brief is what the writer works from. For a client we write nothing for,
+  // it is a billed run that produces a document nobody will use.
+  if (!hasContentService(await activeServicesForClient(getDb(), gate.session.organisationId, clientId.data))) {
+    return {
+      status: "error",
+      message: "No content service is switched on for this client. Switch one on under the client's Services tab first.",
+    };
   }
 
   await sendJob(

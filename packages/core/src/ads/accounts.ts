@@ -4,6 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { serviceActiveSql } from "../clients/services.js";
 import { assertOwned } from "../tenancy/assert-owned.js";
 
 /**
@@ -163,6 +164,12 @@ export async function listAdAccounts(
   filter: {
     clientId?: string;
     status?: "active" | "paused" | "disconnected";
+    /**
+     * Only accounts whose client has ads management switched on. Every job
+     * that calls a provider or a model about an account passes this; the admin
+     * screens do not, so an account nobody is managing is still visible.
+     */
+    managedOnly?: boolean;
     limit?: number;
   } = {},
 ): Promise<AdAccountRow[]> {
@@ -171,6 +178,7 @@ export async function listAdAccounts(
     isNull(schema.adAccounts.deletedAt),
     ...(filter.clientId ? [eq(schema.adAccounts.clientId, filter.clientId)] : []),
     ...(filter.status ? [eq(schema.adAccounts.status, filter.status)] : []),
+    ...(filter.managedOnly ? [serviceActiveSql(organisationId, schema.adAccounts.clientId, "ads")] : []),
   ];
   return db.select({
     id: schema.adAccounts.id,

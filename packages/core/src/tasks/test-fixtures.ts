@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
+import { activateClientServices } from "@launchos/db/test";
 
 /**
  * The smallest world a task test needs: an organisation, an owner user and
@@ -20,6 +21,8 @@ export async function seedOrgWithClient(db: Db) {
   const [client] = await db.insert(schema.clients).values({
     organisationId: organisation!.id, name: "Grays CabLine", slug: `client-${randomUUID()}`, packageId: pkg!.id,
   }).returning();
+  // A client we do everything for. Tests about a switched-off service say so.
+  await activateClientServices(db, organisation!.id, client!.id);
   return { organisationId: organisation!.id, ownerUserId: ownerUser!.id, clientId: client!.id, packageId: pkg!.id };
 }
 

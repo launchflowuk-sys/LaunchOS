@@ -102,6 +102,10 @@ export const MOVE_SPECS: readonly MoveSpec[] = [
   { key: "content_reports", table: schema.contentReports, conflict: sql`k.period_key = t.period_key`, onConflict: "leave" },
   { key: "client_reports", table: schema.clientReports, conflict: sql`k.period_start = t.period_start`, onConflict: "leave" },
   { key: "client_users", table: schema.clientUsers, conflict: sql`k.user_id = t.user_id`, onConflict: "drop" },
+  // The kept client's switches stand: a merge is not a decision to start
+  // posting or running ads for anyone. A switch only the merged client had
+  // comes across as it was, so work somebody did turn on is not silently lost.
+  { key: "client_services", table: schema.clientServices, conflict: sql`k.service = t.service`, onConflict: "drop" },
   // One support address per client, and the kept client keeps its own: the
   // duplicate's identity is retired. Its `clients.support_email` stays on the
   // archived row (it is globally unique), so nobody else can be given it.

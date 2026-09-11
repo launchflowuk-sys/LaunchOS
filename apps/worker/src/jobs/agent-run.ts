@@ -43,6 +43,11 @@ const SKIP_REASON = {
  */
 async function recordSkip(deps: AgentRunDeps, job: AgentRunJob, reason: keyof typeof SKIP_REASON) {
   deps.logger.info(`agent ${job.agentKey} ${reason} for ${job.organisationId}; skipping`);
+  await recordSkippedRun(deps, job, SKIP_REASON[reason]);
+}
+
+/** The ledger row for a run a caller decided not to start, with the sentence that says why. */
+export async function recordSkippedRun(deps: Pick<AgentRunDeps, "db">, job: AgentRunJob, summary: string) {
   const now = new Date();
   await deps.db.insert(schema.agentRuns).values({
     organisationId: job.organisationId,
@@ -50,7 +55,7 @@ async function recordSkip(deps: AgentRunDeps, job: AgentRunJob, reason: keyof ty
     trigger: job.trigger,
     status: "skipped",
     input: job.payload,
-    summary: SKIP_REASON[reason],
+    summary,
     startedAt: now,
     finishedAt: now,
   });

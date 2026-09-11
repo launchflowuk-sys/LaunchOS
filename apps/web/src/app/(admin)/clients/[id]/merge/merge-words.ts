@@ -39,6 +39,7 @@ const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]
   content_reports: ["content report", "content reports"],
   client_reports: ["client report", "client reports"],
   client_users: ["portal login", "portal logins"],
+  client_services: ["service switch", "service switches"],
   email_identities: ["support address", "support addresses"],
 };
 

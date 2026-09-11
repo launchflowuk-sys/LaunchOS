@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { createTaskTemplate, generateRecurringTasks, notifyOverdueTasks } from "@launchos/core";
 import { randomUUID } from "node:crypto";
@@ -14,6 +14,7 @@ async function world(db: Parameters<typeof handleGenerateOnboarding>[0]) {
     includes: { website: true, seo: false, ads: false, socialPostsPerMonth: 0, blogPostsPerMonth: 1, gbpUpdatesPerMonth: 0 },
   }).returning();
   const [client] = await db.insert(schema.clients).values({ organisationId: org!.id, name: "C", slug: `c-${randomUUID()}`, packageId: pkg!.id }).returning();
+  await activateClientServices(db, org!.id, client!.id);
   return { organisationId: org!.id, clientId: client!.id, packageId: pkg!.id };
 }
 

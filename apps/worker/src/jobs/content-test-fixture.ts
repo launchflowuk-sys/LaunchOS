@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { createContentItem, setContentChannel } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { ContentChannel, PackageIncludes } from "@launchos/db/schema";
+import type { ClientService, ContentChannel, PackageIncludes } from "@launchos/db/schema";
+import { activateClientServices } from "@launchos/db/test";
 import { eq } from "drizzle-orm";
 
 export const INCLUDES: PackageIncludes = {
@@ -14,7 +15,10 @@ export const INCLUDES: PackageIncludes = {
  * subscribed unless told otherwise. Test-only: `packages/core`'s own fixture
  * is not exported, and these jobs need a few shapes it does not make.
  */
-export async function contentJobFixture(db: Db, opts: { includes?: PackageIncludes; subscribed?: boolean; name?: string } = {}) {
+export async function contentJobFixture(
+  db: Db,
+  opts: { includes?: PackageIncludes; subscribed?: boolean; name?: string; services?: readonly ClientService[] } = {},
+) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `cj-${randomUUID()}` }).returning();
   const orgId = org!.id;
   const ownerId = randomUUID();
@@ -38,6 +42,8 @@ export async function addClient(
      * plans an empty month and every assertion below would be about nothing.
      */
     channels?: readonly ContentChannel[];
+    /** Switched-on services. All of them by default, for the same reason as `channels`. */
+    services?: readonly ClientService[];
   },
 ) {
   const [pkg] = await db.insert(schema.packages).values({
@@ -46,6 +52,7 @@ export async function addClient(
   const [client] = await db.insert(schema.clients).values({
     organisationId: orgId, name: opts.name, slug: `c-${randomUUID()}`, email: "info@client.test", packageId: pkg!.id,
   }).returning();
+  await activateClientServices(db, orgId, client!.id, opts.services);
   if (opts.subscribed !== false) {
     await db.insert(schema.subscriptions).values({
       organisationId: orgId, clientId: client!.id, packageId: pkg!.id, status: "active",

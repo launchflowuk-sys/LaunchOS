@@ -1,6 +1,7 @@
 export * from "./auth.js";
 export * from "./system.js";
 export * from "./clients.js";
+export * from "./client-services.js";
 export * from "./packages.js";
 export * from "./tasks.js";
 export * from "./sites.js";

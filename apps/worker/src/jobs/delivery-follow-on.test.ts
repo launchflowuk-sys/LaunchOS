@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import { createProject, periodKeyFor, renderDeliveryReport, setContentChannel, setEnqueue, signOffDelivery } from "@launchos/core";
 import type { PackageIncludes } from "@launchos/db/schema";
 import { schema, type Db } from "@launchos/db";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { handleDeliveryFollowOn } from "./delivery-follow-on.js";
 import type { BossSender } from "./dispatch-event.js";
 
@@ -54,6 +54,7 @@ async function fixture(db: Db, options: { withSubscription?: boolean } = {}) {
   const [client] = await db.insert(schema.clients).values({
     organisationId, name: "KD Landscapes", slug: `kd-${randomUUID()}`, email: "kelly@kdlandscapes.test", packageId: pkg!.id,
   }).returning();
+  await activateClientServices(db, organisationId, client!.id);
   await db.insert(schema.taskTemplates).values({
     organisationId, packageId: pkg!.id, phase: "recurring", kind: "social", recurrence: "monthly",
     title: "Write and post", sortOrder: 1,

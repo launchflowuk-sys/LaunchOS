@@ -3,15 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import { AD_SENTINEL_KEY } from "@launchos/agents";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { buildSentinelJobs, dispatchSentinelRuns } from "./ads-sentinel.js";
 import type { BossSender } from "./dispatch-event.js";
 
 const NOW = new Date("2026-09-04T07:00:00Z");
 
-async function organisation(db: Db, slug: string) {
+/** An organisation with one client on ads management, unless told otherwise — the only kind the Sentinel starts for. */
+async function organisation(db: Db, slug: string, opts: { managedAds?: boolean } = {}) {
   const [org] = await db.insert(schema.organisations)
     .values({ name: "T", slug: `${slug}-${randomUUID()}` }).returning();
+  const [client] = await db.insert(schema.clients)
+    .values({ organisationId: org!.id, name: "C", slug: `c-${randomUUID()}` }).returning();
+  if (opts.managedAds !== false) await activateClientServices(db, org!.id, client!.id, ["ads"]);
   return org!.id;
 }
 
@@ -60,6 +64,18 @@ describe("buildSentinelJobs", () => {
   it("produces nothing for an organisation with no enablement row at all", async () => {
     await withTestDb(async (db) => {
       const organisationId = await organisation(db, "sentinel-none");
+
+      const jobs = await buildSentinelJobs(db, NOW);
+
+      expect(jobs.filter((j) => j.organisationId === organisationId)).toEqual([]);
+    });
+  });
+
+  it("starts no Opus run for an organisation with the Sentinel on but no client on ads management", async () => {
+    await withTestDb(async (db) => {
+      const organisationId = await organisation(db, "sentinel-unmanaged", { managedAds: false });
+      await db.insert(schema.agentEnablement)
+        .values({ organisationId, agentKey: AD_SENTINEL_KEY, enabled: true });
 
       const jobs = await buildSentinelJobs(db, NOW);
 

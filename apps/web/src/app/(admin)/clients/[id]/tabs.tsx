@@ -9,15 +9,19 @@ export type ClientTabKey = "overview" | "contacts" | "sites";
  * rather than `?tab=` sections: each owns its own queries, forms and server
  * actions, which would push the detail page well past the file-size rule.
  */
-export type ClientTabRoute = "access" | "tasks" | "content" | "support" | "portal-users" | "invoices" | "payments" | "reports";
+export type ClientTabRoute =
+  | "services" | "access" | "tasks" | "content" | "support" | "portal-users" | "invoices" | "payments" | "reports";
 export type ClientTabActive = ClientTabKey | ClientTabRoute;
 
-const ROUTES: readonly ClientTabRoute[] = ["access", "tasks", "content", "support", "portal-users", "invoices", "payments", "reports"];
+const ROUTES: readonly ClientTabRoute[] = [
+  "services", "access", "tasks", "content", "support", "portal-users", "invoices", "payments", "reports",
+];
 
 const TABS = [
   { key: "overview", label: "Overview" },
   { key: "contacts", label: "Contacts & Billing" },
   { key: "sites", label: "Sites & Domains" },
+  { key: "services", label: "Services" },
   { key: "access", label: "Access" },
   { key: "tasks", label: "Tasks" },
   { key: "content", label: "Content" },

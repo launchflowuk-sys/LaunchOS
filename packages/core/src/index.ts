@@ -39,6 +39,12 @@ export { mergeClients, mergePreview, MergeRefused, MergeClientsInput, MergePrevi
 export type { MergeClientsResult, MergePreview, MergeCounts } from "./clients/merge-clients.js";
 export { MOVE_SPECS } from "./clients/merge-clients-tables.js";
 export {
+  activeServicesByClient, activeServicesForClient, clientIdsWithService, CLIENT_SERVICES, CONTENT_SERVICES, hasContentService, includesForServices,
+  listClientServices, SERVICE_FOR_CHANNEL, SERVICE_FOR_TASK_KIND, SERVICE_LABEL, serviceActiveSql, serviceForChannelSql,
+  servicesPaidFor, setClientService, SetClientServiceInput,
+} from "./clients/services.js";
+export type { ClientServiceState } from "./clients/services.js";
+export {
   getClientBrand, setClientBrand, clientBrandFrom,
   ClientBrandSchema, GetClientBrandInput, SetClientBrandInput,
   BRAND_METADATA_KEY, DEFAULT_BRAND_PRIMARY, DEFAULT_BRAND_ACCENT,

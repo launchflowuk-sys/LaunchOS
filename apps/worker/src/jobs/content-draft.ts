@@ -1,5 +1,6 @@
 import { CONTENT_WRITER_KEY } from "@launchos/agents";
-import { handleAgentRun, type AgentRunDeps } from "./agent-run.js";
+import { activeServicesForClient, hasContentService } from "@launchos/core";
+import { handleAgentRun, recordSkippedRun, type AgentRunDeps, type AgentRunJob } from "./agent-run.js";
 
 /**
  * One writer run for one client's month. Sent by `content.plan-month` on the
@@ -24,16 +25,29 @@ export interface ContentDraftJob {
   trigger?: "cron" | "event" | "manual";
 }
 
+const CONTENT_SWITCHED_OFF =
+  "Skipped: no content service is switched on for this client. Switch one on under the client's Services tab.";
+
 /**
  * Runs the Content Writer for the client and month in the job. Everything
  * else — enablement, policy, the run record — is `handleAgentRun`'s, so a
  * disabled writer is skipped here exactly as a disabled Sentinel is.
+ *
+ * Checked again here, not only where the job is sent: a job queued this
+ * morning for a client whose posting was switched off at lunch must not start
+ * an Opus run this afternoon.
  */
 export async function handleContentDraft(deps: AgentRunDeps, job: ContentDraftJob) {
-  return handleAgentRun(deps, {
+  const run: AgentRunJob = {
     agentKey: CONTENT_WRITER_KEY,
     organisationId: job.organisationId,
     trigger: job.trigger ?? "cron",
     payload: { clientId: job.clientId, periodKey: job.periodKey },
-  });
+  };
+  const active = await activeServicesForClient(deps.db, job.organisationId, job.clientId);
+  if (!hasContentService(active)) {
+    deps.logger.info(`content writer skipped for client ${job.clientId}: no content service switched on`);
+    return recordSkippedRun(deps, run, CONTENT_SWITCHED_OFF);
+  }
+  return handleAgentRun(deps, run);
 }

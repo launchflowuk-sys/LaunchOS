@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withTestDb } from "@launchos/db/test";
+import { activateClientServices, withTestDb } from "@launchos/db/test";
 import { schema } from "@launchos/db";
 import { eq } from "drizzle-orm";
 import { createTaskTemplate } from "../packages/create-task-template.js";
@@ -103,6 +103,7 @@ describe("generateRecurringTasks", () => {
       const [clientB] = await db.insert(schema.clients).values({
         organisationId, name: "Client B", slug: `client-b-${crypto.randomUUID()}`, packageId: packageB!.id,
       }).returning();
+      await activateClientServices(db, organisationId, clientB!.id);
 
       await createTaskTemplate(db, organisationId, { phase: "recurring", kind: "content", title: "Blog post", recurrence: "monthly" });
       await updatePackage(db, organisationId, { packageId: packageA, active: false });
@@ -124,6 +125,7 @@ describe("generateRecurringTasks", () => {
       const [clientB] = await db.insert(schema.clients).values({
         organisationId, name: "Client B", slug: `client-b-${crypto.randomUUID()}`, packageId: packageB!.id,
       }).returning();
+      await activateClientServices(db, organisationId, clientB!.id);
 
       const brokenTemplate = await createTaskTemplate(db, organisationId, { packageId: packageA, phase: "recurring", kind: "content", title: "Blog post A", recurrence: "monthly" });
       await createTaskTemplate(db, organisationId, { packageId: packageB!.id, phase: "recurring", kind: "content", title: "Blog post B", recurrence: "monthly" });
