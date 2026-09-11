@@ -73,6 +73,33 @@ describe("MockSiteGenerator", () => {
   });
 });
 
+describe("OpenAiSiteGenerator request", () => {
+  /**
+   * The brief writer asked for `json_object` with no schema and the model
+   * answered in a shape of its own, every time. The generator asked the same
+   * way; a site is too important to leave to the model reading a prompt.
+   */
+  it("sends the site's own schema in strict mode, so the reply cannot come back in a shape of the model's choosing", async () => {
+    let body: { response_format?: { type: string; json_schema: { name: string; strict: boolean; schema: Record<string, any> } } } | undefined;
+    const fetchImpl = (async (_url: string, init?: RequestInit) => {
+      body = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({
+        pages: [{ path: "/", title: "Home", html: "<h1>Taylor Plumbing</h1>" }], css: "body{}", notes: "done",
+      }) } }] }), { status: 200 });
+    }) as unknown as typeof fetch;
+
+    const site = await new OpenAiSiteGenerator({ apiKey: "sk-test", model: "some-model", fetchImpl }).generate(BRIEF);
+
+    expect(body?.response_format).toMatchObject({ type: "json_schema", json_schema: { name: "generated_site", strict: true } });
+    const schema = body!.response_format!.json_schema.schema;
+    expect(schema.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(["pages", "css", "notes"]);
+    expect(schema.properties.pages.items.additionalProperties).toBe(false);
+    expect(schema.properties.pages.items.required).toEqual(["path", "title", "html"]);
+    expect(site.pages.map((page) => page.path)).toEqual(["/"]);
+  });
+});
+
 describe("parseGeneratedSite", () => {
   it("accepts a well-formed reply and records which model made it", () => {
     const site = parseGeneratedSite(

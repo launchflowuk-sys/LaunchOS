@@ -35,6 +35,40 @@ const SYSTEM_PROMPT = [
   "If the brief does not say something, leave it out rather than filling the gap.",
 ].join(" ");
 
+/**
+ * The shape a generated site must come back in, for OpenAI's strict structured
+ * outputs.
+ *
+ * `json_object` alone only promises *some* JSON. The brief writer asked that
+ * way and the model answered in a shape of its own on every single call; the
+ * prompt's description of the shape is a suggestion, and this is a contract.
+ * Strict mode needs every object closed and every property required, which
+ * matches what `parseGeneratedSite` wants anyway. It still checks the reply —
+ * a schema the provider enforces is not a reason to stop checking what arrives.
+ */
+export const GENERATED_SITE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["pages", "css", "notes"],
+  properties: {
+    pages: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["path", "title", "html"],
+        properties: {
+          path: { type: "string", description: "Where the page lives, starting with /." },
+          title: { type: "string" },
+          html: { type: "string", description: "Body content only: no <html>, <head>, <body> or <script>." },
+        },
+      },
+    },
+    css: { type: "string", description: "One stylesheet for the whole site." },
+    notes: { type: "string", description: "What was built and anything left out, for the reviewer." },
+  },
+} as const;
+
 /** The brief as a prompt. Exported so a person can read exactly what was sent. */
 export function buildSitePrompt(brief: SiteBrief): string {
   const lines = [
@@ -76,7 +110,10 @@ export class OpenAiSiteGenerator implements SiteGeneratorAdapter {
         },
         body: JSON.stringify({
           model: this.options.model,
-          response_format: { type: "json_object" },
+          response_format: {
+            type: "json_schema",
+            json_schema: { name: "generated_site", strict: true, schema: GENERATED_SITE_SCHEMA },
+          },
           messages: [
             { role: "system", content: SYSTEM_PROMPT },
             { role: "user", content: buildSitePrompt(brief) },
