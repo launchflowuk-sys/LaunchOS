@@ -149,16 +149,41 @@ Metered cost is an estimate until the bill arrives. Where a provider has a usage
 API (OpenAI, Anthropic admin keys; Postmark; ScreenshotOne), a monthly job
 compares metered against billed and shows the gap. Any gap over 10% is flagged.
 
-### Needed from Shoji before building
-1. Every subscription with its price, billing period and business. I'll pre-fill
-   the register with what the code knows; Shoji corrects the numbers.
-2. Admin (usage) API keys for OpenAI and Anthropic, if reconciliation is wanted.
-3. VAT: report costs and revenue ex-VAT (recommended) or inc-VAT?
+### Answered by Shoji, 13 Sep 2026 — do not re-ask
 
-### Build order
-1. Admin email setting (small).
-2. Alert fan-out + WhatsApp adapter (mock-first; live once Twilio is set up).
-3. Usage ledger + rate card, metering agents and OpenAI calls first (they are the variable cost).
-4. Cost register (generalise `supplier_costs`) + Stripe fees.
-5. Profit screens.
+1. **VAT: ex-VAT, with the gross shown alongside.** Margin is calculated
+   ex-VAT, because VAT charged is not income and VAT paid is reclaimable, and
+   a margin computed on gross figures is simply wrong. The inc-VAT total sits
+   beside it so a figure on screen can still be matched against the bank.
+   Every stored amount therefore needs its VAT treatment recorded, not
+   inferred: a Hetzner invoice under reverse charge and a Hostinger one with
+   UK VAT on it cannot be told apart from the number alone.
+2. **Reconcile against the real bills: yes.** Shoji is getting OpenAI and
+   Anthropic **admin** usage keys (separate credentials from the normal API
+   keys). The monthly job compares metered against billed and flags any gap
+   over 10%. Build the ledger so reconciliation can be switched on per
+   provider — the keys will not all arrive at once, and a missing key must
+   mean "not reconciled", never a zero.
+3. **Build the cost register first**, ahead of the usage ledger. Shoji wants
+   the Profit screens showing something he can correct rather than waiting on
+   metering. Consequence to be honest about on screen: until the usage ledger
+   lands, every figure is subscriptions and revenue only — no AI, image,
+   screenshot or message cost is in it. Label the screens as incomplete rather
+   than presenting a margin that quietly ignores the variable cost.
+
+**Still owed by Shoji:** the subscription list itself — every supplier with
+price, billing period, currency and which business it belongs to (LaunchFlow /
+Cabio / Grays CabLine / shared). Pre-fill the register with what the code
+already knows (Hostinger sync, the providers named in `.env`) and let him
+correct the numbers.
+
+### Build order (revised 13 Sep — Shoji moved the register up)
+1. Cost register (generalise `supplier_costs`, add `business`, currency and VAT
+   treatment) + the Finance → Profit and Settings → Costs screens.
+2. Usage ledger + rate card, metering agents and OpenAI calls first (they are
+   the variable cost), then the client Profit tab.
+3. Reconciliation job against the provider usage APIs, per provider.
+4. Stripe fees.
+5. Admin email setting and the alert fan-out + WhatsApp adapter, which this
+   displaces rather than cancels — see the 11 Sep handoff, §6 and §7.
 6. Reconciliation.

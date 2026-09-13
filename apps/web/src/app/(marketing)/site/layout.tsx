@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
+import { Analytics } from "@/components/analytics";
 import { AttributionCapture } from "@/components/attribution-capture";
+import { analyticsConfig } from "@/lib/analytics-config";
 import { appHost, marketingHost } from "@/lib/env";
 import { marketingLinks } from "@/lib/marketing/links";
 import { OG_IMAGE, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from "@/lib/marketing/site";
@@ -42,6 +44,11 @@ export default async function MarketingLayout({ children }: LayoutProps<"/site">
       {/* The campaign cookie: written once, on the first page a paid or
           referred visitor lands on, and read back by the contact form. */}
       <AttributionCapture ownHosts={[marketingHost(), appHost()]} />
+      {/* The advertising tags and the consent banner they require. Renders
+          nothing at all until the ids are set in the environment, which is the
+          state this ships in. Read on the server so a pixel id is a Coolify
+          variable and a restart, not a rebuild. */}
+      <Analytics config={analyticsConfig()} />
       {/* The mobile menu is a native `<details>`, so it opens without a
           script — but `open` is DOM state and this layout survives a
           client-side navigation, which left the menu covering the page it had

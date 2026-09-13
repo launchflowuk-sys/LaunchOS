@@ -4,6 +4,7 @@ import { ArrowRight, Check, Loader2, TriangleAlert } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { reportLeadSubmitted } from "@/lib/analytics";
 import { Field, type FieldDef } from "./fields";
 import { SaveExit } from "./save-exit";
 import { useDraft } from "./use-draft";
@@ -96,6 +97,13 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
         return;
       }
       setReference(result.reference);
+      // The one primary conversion, and the only place it is reported: the
+      // server has committed the brief and minted this reference. Not a button
+      // press, not reaching the last step, not rendering the screen below —
+      // those all happen for people who never enquired. Idempotent per
+      // reference, and a no-op when nothing is configured or consent was
+      // refused.
+      reportLeadSubmitted(result.reference);
     } finally {
       setBusy(false);
     }
