@@ -1,4 +1,4 @@
-# Costing: the register, and what it does not yet know
+# Costing: fixed, variable, and checked against the bill
 
 What LaunchFlow pays, against what it collects. **Ex-VAT with the gross
 alongside**, which is Shoji's call and the right one: VAT charged is not income
@@ -6,8 +6,12 @@ and VAT paid is reclaimable, so a margin computed on gross figures is simply
 wrong — the gross sits beside it so a number on screen can be matched to the
 bank.
 
-Two screens: **Settings → Costs** is the register, **Money → Profit** is the
-report.
+Three screens: **Settings → Costs** is the register and the rate card,
+**Money → Profit** is the company report, and each client has a **Profit** tab.
+
+Two halves make up cost: the **register** (subscriptions and fixed costs) and
+the **usage ledger** (every paid call, priced when it was made). Either on its
+own is a number somebody would quote and be wrong about.
 
 ## The register is one table, not two
 
@@ -85,25 +89,27 @@ unrecognised key is left unattributed rather than guessed into `launchflow`: a
 mis-attributed cost is worse than an unattributed one, because nobody goes
 looking for a number that already has an owner.
 
-The reader is **read-only and says so**. It summarises and splits; it stores
-nothing, because the usage ledger it would write into does not exist. Claiming
-to have "imported" would be a lie.
+The reader is **read-only and says so**. It summarises and splits so the figure
+can be checked against the ledger by eye; it does not write usage events,
+because the ledger's own rule is that a call is priced at the moment it is
+made, and a CSV read three weeks later cannot honour that.
 
 For scale: the whole Anthropic bill for the 30 days to 13 Sep 2026 was
 **$14.19** across every business, of which LaunchOS was **$4.73**. Which is why
-the register was built before the usage ledger — metering tokens to the penny
-is engineering effort spent measuring pocket change, while the subscriptions
-are where the money actually is.
+the register was built before the ledger — the subscriptions are where the
+money actually is, and metering tokens to the penny matters for *attribution*
+(which client cost what) far more than for the total.
 
 ## What is not counted, and why the screen says so
 
-The Profit screen carries a permanent, non-dismissible notice listing what is
-missing: AI tokens, generated images, website screenshots, email and message
-sends, Stripe card fees. `profitReport` returns `complete: false` so no screen
-can forget to state it.
+`profitReport` returns **`complete`, computed** — never a constant. It is false
+while any usage event this month has no rate, any register line has no price,
+or any currency has no exchange rate, and `excludes` names each of those in
+words. The Profit screen prints that list in a notice that cannot be dismissed,
+and stops calling itself incomplete on its own once the list is empty.
 
-A margin that silently omits the variable cost is worse than no margin — it is
-a number somebody will quote.
+A margin that silently omits a cost is worse than no margin — it is a number
+somebody will quote.
 
 ## The usage ledger
 
