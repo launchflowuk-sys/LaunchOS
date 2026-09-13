@@ -1,0 +1,13 @@
+{
+  "approved_source_commit": "b1da5ffc03fa4eb68a0f46370b91f022c86dcc0c",
+  "files": {
+    "website/app.js": "80fc1ed3ef1e89bb1d7cfc037d3e89d503e12a4b126ae95cdeb44c24382b160a",
+    "website/assets/geist.woff2": "9b6f5ff45b278c744b5f379a2c4ecbaf858a842b8eaf82ac8d21b699ca16c608",
+    "website/assets/grays.jpg": "57405e14fd9d7c41d1f5841d9674d397a76e30c44b6101412f4951d43426602a",
+    "website/assets/grooming.jpg": "c31a70d20b65f599fbe544759a31002a6a5ba715966b9ccb070d13caf0c30e27",
+    "website/assets/logo.png": "5fcd55f74efe0ee11388a9473acf835af587155dc91051d6147e67bdd86496dc",
+    "website/assets/salon.jpg": "e3b2ad5c5d1d39e76c3f57e71c873e1e72c8fe2650871014a657b9e823fb343e",
+    "website/index.html": "c25dac8e19b6b4800703e19377f0fb4f86f526f9a292db5e3ae3bfe90eb08696",
+    "website/style.css": "adb13916cbaa83c151cf2678f54d1aa4a42c3a7760e20f90c5104ab4f6c84ebc"
+  }
+}

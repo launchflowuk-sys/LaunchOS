@@ -1,0 +1,277 @@
+/**
+ * Ad measurement for the campaign landing page — dormant until it is configured.
+ *
+ * This file is a template. `docker-entrypoint.sh` runs `envsubst` over it at
+ * container start with an explicit variable list, writing the result to
+ * `/usr/share/nginx/html/tracking.js`. That is how a plain static page gets
+ * account ids without any id ever being committed to git: the values live in
+ * Coolify's environment, exactly like every other secret in this repo.
+ *
+ * **With no ids set, nothing happens.** No script is fetched, no cookie is
+ * written, no consent banner is drawn, and the page behaves precisely as the
+ * approved source does. That is the state this ships in.
+ *
+ * What it does once ids are set:
+ *
+ * - Google Consent Mode v2 is armed **denied by default**, before gtag.js
+ *   loads, which is the only order that makes the default meaningful.
+ * - A consent banner appears. Analytics and advertising storage are granted
+ *   only on an explicit yes, and the choice is remembered in `localStorage`
+ *   for this origin. A refusal is remembered too, and never asked again.
+ * - A CTA click is reported as `funnel_cta_click` — a **secondary** event.
+ *   It is deliberately not `generate_lead` and not Meta `Lead`: a click on a
+ *   button is not an enquiry, and counting it as one would teach both ad
+ *   platforms to buy the wrong person. The primary conversion fires on
+ *   launchflow.co.uk, after the backend confirms a submitted brief.
+ *
+ * Nothing personal is ever collected here. The page has no form, and the only
+ * values read from the URL are campaign tags, which `app.js` already forwards.
+ *
+ * Consent is per origin. A visitor who accepts here is asked again on
+ * launchflow.co.uk, because browsers do not share `localStorage` between
+ * hostnames and this implementation deliberately does not try to work around
+ * that with a shared-domain cookie.
+ */
+(function () {
+  "use strict";
+
+  /** Substituted by `envsubst` at container start. Empty string means "not configured". */
+  var config = {
+    ga4Id: "${GROW_GA4_ID}",
+    metaPixelId: "${GROW_META_PIXEL_ID}",
+    /** Only used to tell gtag which Ads account may receive conversions from this page. */
+    adsConversionId: "${GROW_ADS_CONVERSION_ID}",
+  };
+
+  /** A value that envsubst left untouched is a variable that was never set. */
+  function configured(value) {
+    return typeof value === "string" && value.length > 0 && value.indexOf("$") !== 0;
+  }
+
+  var ga4 = configured(config.ga4Id) ? config.ga4Id : null;
+  var pixel = configured(config.metaPixelId) ? config.metaPixelId : null;
+  var ads = configured(config.adsConversionId) ? config.adsConversionId : null;
+  if (!ga4 && !pixel) return;
+
+  var CONSENT_KEY = "lf_consent";
+  var GRANTED = "granted";
+  var DENIED = "denied";
+
+  function storedConsent() {
+    try {
+      var value = window.localStorage.getItem(CONSENT_KEY);
+      return value === GRANTED || value === DENIED ? value : null;
+    } catch (error) {
+      // A browser refusing storage is a visitor we simply do not measure.
+      return null;
+    }
+  }
+
+  function rememberConsent(value) {
+    try {
+      window.localStorage.setItem(CONSENT_KEY, value);
+    } catch (error) {
+      /* Nothing to do. The banner reappears next visit; the page still works. */
+    }
+  }
+
+  // --- Google: consent defaults first, then the tag ------------------------
+
+  window.dataLayer = window.dataLayer || [];
+  function gtag() {
+    window.dataLayer.push(arguments);
+  }
+
+  if (ga4) {
+    gtag("consent", "default", {
+      ad_storage: DENIED,
+      ad_user_data: DENIED,
+      ad_personalization: DENIED,
+      analytics_storage: DENIED,
+      functionality_storage: "granted",
+      security_storage: "granted",
+      wait_for_update: 500,
+    });
+  }
+
+  var googleLoaded = false;
+  function loadGoogle() {
+    if (googleLoaded || !ga4) return;
+    googleLoaded = true;
+    var script = document.createElement("script");
+    script.async = true;
+    script.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(ga4);
+    document.head.appendChild(script);
+    gtag("js", new Date());
+    // `url_passthrough` keeps the click ids on the URL when storage is refused,
+    // which is what lets Ads still attribute a visit it may not cookie.
+    gtag("set", "url_passthrough", true);
+    gtag("config", ga4);
+    if (ads) gtag("config", ads);
+  }
+
+  // --- Meta ----------------------------------------------------------------
+
+  var metaLoaded = false;
+  function loadMeta() {
+    if (metaLoaded || !pixel) return;
+    metaLoaded = true;
+    /* eslint-disable */
+    !(function (f, b, e, v, n, t, s) {
+      if (f.fbq) return;
+      n = f.fbq = function () {
+        n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
+      };
+      if (!f._fbq) f._fbq = n;
+      n.push = n;
+      n.loaded = !0;
+      n.version = "2.0";
+      n.queue = [];
+      t = b.createElement(e);
+      t.async = !0;
+      t.src = v;
+      s = b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t, s);
+    })(window, document, "script", "https://connect.facebook.net/en_US/fbevents.js");
+    /* eslint-enable */
+    window.fbq("init", pixel);
+    window.fbq("track", "PageView");
+  }
+
+  // --- Consent gate --------------------------------------------------------
+
+  var active = false;
+
+  function grant() {
+    if (active) return;
+    active = true;
+    if (ga4) {
+      gtag("consent", "update", {
+        ad_storage: GRANTED,
+        ad_user_data: GRANTED,
+        ad_personalization: GRANTED,
+        analytics_storage: GRANTED,
+      });
+    }
+    loadGoogle();
+    loadMeta();
+  }
+
+  function refuse() {
+    if (!ga4) return;
+    // Consent Mode still reports a cookieless ping, which is the point of it:
+    // the visit is counted, the visitor is not identified.
+    gtag("consent", "update", {
+      ad_storage: DENIED,
+      ad_user_data: DENIED,
+      ad_personalization: DENIED,
+      analytics_storage: DENIED,
+    });
+    loadGoogle();
+  }
+
+  function banner() {
+    var wrap = document.createElement("div");
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-label", "Cookies");
+    wrap.style.cssText =
+      "position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;max-width:640px;margin:0 auto;" +
+      "background:#fff;border:1px solid #dbe3ea;border-radius:16px;padding:18px 20px;" +
+      "box-shadow:0 18px 48px rgba(8,45,70,.18);font:inherit;color:#0f2733;" +
+      "display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between";
+
+    var text = document.createElement("p");
+    text.style.cssText = "margin:0;flex:1 1 280px;font-size:.92rem;line-height:1.45";
+    text.appendChild(document.createTextNode("We use cookies to measure how our ads perform. "));
+    var link = document.createElement("a");
+    link.href = "https://launchflow.co.uk/privacy";
+    link.textContent = "Privacy";
+    link.style.cssText = "color:#087caf;text-decoration:underline";
+    text.appendChild(link);
+    text.appendChild(document.createTextNode("."));
+
+    var buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;gap:8px;flex:0 0 auto";
+
+    function make(label, background, colour, border) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.style.cssText =
+        "cursor:pointer;border-radius:999px;padding:10px 18px;font:inherit;font-size:.9rem;font-weight:600;" +
+        "background:" + background + ";color:" + colour + ";border:1px solid " + border;
+      return button;
+    }
+
+    var no = make("No thanks", "#fff", "#0f2733", "#dbe3ea");
+    var yes = make("Accept", "#087caf", "#fff", "#087caf");
+    yes.addEventListener("mouseenter", function () {
+      yes.style.background = "#066591";
+      yes.style.borderColor = "#066591";
+    });
+    yes.addEventListener("mouseleave", function () {
+      yes.style.background = "#087caf";
+      yes.style.borderColor = "#087caf";
+    });
+
+    function close() {
+      if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    }
+    no.addEventListener("click", function () {
+      rememberConsent(DENIED);
+      refuse();
+      close();
+    });
+    yes.addEventListener("click", function () {
+      rememberConsent(GRANTED);
+      grant();
+      close();
+    });
+
+    buttons.appendChild(no);
+    buttons.appendChild(yes);
+    wrap.appendChild(text);
+    wrap.appendChild(buttons);
+    document.body.appendChild(wrap);
+    yes.focus();
+  }
+
+  var decision = storedConsent();
+  if (decision === GRANTED) grant();
+  else if (decision === DENIED) refuse();
+  else banner();
+
+  // --- Secondary event: a CTA was followed ---------------------------------
+
+  /**
+   * The seven enquiry buttons, matched on the destination rather than a class,
+   * so it keeps working if the markup is ever restyled — and so it cannot fire
+   * on the portfolio or pricing links beside them.
+   *
+   * `app.js` has already rewritten these hrefs with the campaign tags by the
+   * time a person can click one, so the check is on origin and path.
+   */
+  function isFunnelCta(anchor) {
+    if (!anchor || !anchor.href) return false;
+    try {
+      var url = new URL(anchor.href);
+      return url.hostname === "launchflow.co.uk" && url.pathname === "/start";
+    } catch (error) {
+      return false;
+    }
+  }
+
+  document.addEventListener(
+    "click",
+    function (event) {
+      if (!active) return;
+      var anchor = event.target && event.target.closest ? event.target.closest("a") : null;
+      if (!isFunnelCta(anchor)) return;
+      // Engagement, not a conversion. Never `generate_lead`, never Meta `Lead`.
+      if (ga4) gtag("event", "funnel_cta_click", { link_url: anchor.href });
+      if (pixel && window.fbq) window.fbq("trackCustom", "FunnelCtaClick");
+    },
+    // Capture, so the event is recorded before navigation begins.
+    true,
+  );
+})();

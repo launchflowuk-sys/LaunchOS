@@ -1,0 +1,19 @@
+# Shell scripts are LF, everywhere, always.
+#
+# `core.autocrlf=true` on a Windows checkout rewrites them to CRLF on the way
+# out of git. A shell script with CRLF line endings has `\r` on the end of its
+# shebang, so the kernel looks for an interpreter called `/bin/sh\r` and the
+# container dies with `no such file or directory` — an error that names the
+# script, not the line endings, and reads as a missing file.
+#
+# It cost time here: `apps/grow/docker-entrypoint.sh` was written LF, survived
+# one docker build, then came back CRLF from a `git stash pop` and broke the
+# next one. The repository always held LF, so Coolify's Linux build was never
+# at risk — but a local build must behave the same way as the real one, or it
+# is not a test of anything.
+*.sh text eol=lf
+
+# Dockerfiles and compose files are read by the same Linux tooling.
+Dockerfile* text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
