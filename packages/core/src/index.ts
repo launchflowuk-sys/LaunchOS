@@ -883,8 +883,14 @@ export { parseAnthropicCostCsv, businessForApiKey, centsByBusiness } from "./cos
 export type { AnthropicCostRow, AnthropicImportResult, AnthropicImportSummary } from "./costs/anthropic-import.js";
 export {
   recordUsage, setUsageRate, rateInForce, usageTotals, clientUsagePence, unpricedUsage,
-  costPenceFor, RecordUsageInput, SetUsageRateInput, USAGE_PRODUCTS,
+  costPenceFor, meterLlmUsage, RecordUsageInput, SetUsageRateInput, USAGE_PRODUCTS,
 } from "./costs/usage.js";
-export type { UsageProduct, UsageSource, UsageTotals } from "./costs/usage.js";
+export type { UsageProduct, UsageSource, UsageTotals, MeteredLlmUsage } from "./costs/usage.js";
 export { prefillRates, listRates, KNOWN_RATES, RATE_EPOCH } from "./costs/known-rates.js";
 export type { KnownRate } from "./costs/known-rates.js";
+export { clientProfit } from "./costs/client-profit.js";
+export type { ClientProfit } from "./costs/client-profit.js";
+export { syncStripeFees, FEE_LOOKBACK_DAYS } from "./costs/stripe-fees.js";
+export type { StripeFeeSyncResult } from "./costs/stripe-fees.js";
+export { reconcileSupplier, meteredForMonth, GAP_TOLERANCE_PERCENT } from "./costs/reconcile.js";
+export type { ReconcileResult, ReconcileStatus } from "./costs/reconcile.js";

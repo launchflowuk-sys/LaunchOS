@@ -1,3 +1,4 @@
+import { openAiUsage } from "../llm-usage.js";
 import { SiteGenerationError, type GeneratedSite, type SiteBrief, type SiteGeneratorAdapter } from "./types.js";
 
 /**
@@ -140,7 +141,8 @@ export class OpenAiSiteGenerator implements SiteGeneratorAdapter {
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) throw new SiteGenerationError("openai", "the reply carried no content");
 
-    return parseGeneratedSite(content, this.options.model);
+    const usage = openAiUsage(payload, this.options.model);
+    return { ...parseGeneratedSite(content, this.options.model), ...(usage ? { usage } : {}) };
   }
 }
 

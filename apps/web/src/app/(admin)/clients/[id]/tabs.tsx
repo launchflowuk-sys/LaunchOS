@@ -10,11 +10,11 @@ export type ClientTabKey = "overview" | "contacts" | "sites";
  * actions, which would push the detail page well past the file-size rule.
  */
 export type ClientTabRoute =
-  | "services" | "access" | "tasks" | "content" | "support" | "portal-users" | "invoices" | "payments" | "reports";
+  | "services" | "access" | "tasks" | "content" | "support" | "portal-users" | "invoices" | "payments" | "profit" | "reports";
 export type ClientTabActive = ClientTabKey | ClientTabRoute;
 
 const ROUTES: readonly ClientTabRoute[] = [
-  "services", "access", "tasks", "content", "support", "portal-users", "invoices", "payments", "reports",
+  "services", "access", "tasks", "content", "support", "portal-users", "invoices", "payments", "profit", "reports",
 ];
 
 const TABS = [
@@ -29,6 +29,7 @@ const TABS = [
   { key: "portal-users", label: "Portal users" },
   { key: "invoices", label: "Invoices" },
   { key: "payments", label: "Payments" },
+  { key: "profit", label: "Profit" },
   { key: "reports", label: "Reports" },
 ] as const satisfies readonly { key: ClientTabActive; label: string }[];
 

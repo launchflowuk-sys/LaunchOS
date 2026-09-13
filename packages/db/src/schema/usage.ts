@@ -37,6 +37,15 @@ export const usageProductEnum = pgEnum("usage_product", [
   "email",
   /** One SMS or WhatsApp message segment. */
   "message",
+  /**
+   * A payment processor's cut on one transaction.
+   *
+   * Unlike everything else here it is not a call we make — it is deducted from
+   * money coming in — so it arrives through a sync rather than at the moment
+   * it happens. It belongs in the ledger all the same: it is a per-transaction
+   * variable cost, which is exactly what this table is for.
+   */
+  "fee",
 ]);
 
 /** What produced the usage, so a figure on a screen can be traced to the thing that spent it. */
@@ -49,6 +58,8 @@ export const usageSourceEnum = pgEnum("usage_source", [
   "screenshot",
   "email_send",
   "message_send",
+  /** A processor fee, read back off the provider's own ledger. */
+  "processor_fee",
   "other",
 ]);
 

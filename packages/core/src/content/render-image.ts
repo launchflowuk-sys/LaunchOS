@@ -9,6 +9,7 @@ import { contentAssetFilePath, createContentAsset, getContentAsset, publicAssetU
 import { recordAudit } from "../audit/record-audit.js";
 import { clientBrandFrom, type ResolvedClientBrand } from "../clients/brand.js";
 import { activeServicesForClient, SERVICE_FOR_CHANNEL } from "../clients/services.js";
+import { recordUsage } from "../costs/usage.js";
 import { IMAGE_METADATA_KEY, estimatePence, imagegenSpentThisMonth, monthlyCapPence } from "./image-budget.js";
 import { headlineFrom, kickerFrom } from "./image-headline.js";
 // Type-only, deliberately. The module itself is loaded where it is used, a
@@ -402,6 +403,19 @@ async function generateOrFallBack(
 
   try {
     const generated = await deps.imagegen.generate({ prompt: subject.prompt, size });
+    // One image, priced by size through the rate card. Attributed to the
+    // client whose post it is, which is the point of metering it at all.
+    await recordUsage(db, organisationId, {
+      supplier: "openai",
+      product: "image",
+      variant: size,
+      quantity: 1,
+      unit: "image",
+      clientId: subject.item.clientId,
+      source: "image_render",
+      sourceId: subject.item.id,
+      idempotencyKey: `image:${subject.item.id}`,
+    }).catch(() => undefined);
     return { bytes: owned(generated.bytes), mime: generated.mime, mode: "ai", model: generated.model, costPence: generated.costPence };
   } catch (error) {
     if (!isImageGenRefused(error)) throw error;

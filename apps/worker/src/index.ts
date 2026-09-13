@@ -21,6 +21,7 @@ import { runMonitorSweep } from "./jobs/monitor-check.js";
 import { handleAgentRun, type AgentRunJob } from "./jobs/agent-run.js";
 import { handleAgentResume, type AgentResumeJob } from "./jobs/agent-resume.js";
 import { handleInboundMessage, type InboundMessageJob } from "./jobs/inbound-message.js";
+import { handleCostsReconcile } from "./jobs/costs-reconcile.js";
 import { handleOutboundMessage, type OutboundMessageJob } from "./jobs/outbound-message.js";
 import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type GenerateOnboardingJob } from "./jobs/task-generation.js";
 import { dispatchEvent } from "./jobs/dispatch-event.js";
@@ -170,6 +171,18 @@ async function main() {
   await boss.work(QUEUE.billingInvoiceDocuments, async () => {
     await sweepOrganisations(db, "invoice documents", async (organisationId) => {
       await runInvoiceDocuments(db, organisationId, { env: process.env });
+    });
+  });
+
+  await boss.work(QUEUE.costsReconcile, async () => {
+    await sweepOrganisations(db, "costs reconcile", async (organisationId) => {
+      console.info(
+        await handleCostsReconcile(
+          { db, payments: integrations.payments, logger: console, env: process.env },
+          { organisationId },
+        ),
+        "costs reconcile",
+      );
     });
   });
 
@@ -377,6 +390,10 @@ async function main() {
   await boss.schedule(QUEUE.agentRunsStuckSweep, "*/10 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksGenerateRecurring, "0 6 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.tasksCheckOverdue, "0 8 * * *", {}, { tz: "Europe/London" });
+  // 04:20: after the screenshot run at 03:40, so the night's captures are in
+  // the ledger before it is compared against the bills, and long before
+  // anybody opens Profit in the morning.
+  await boss.schedule(QUEUE.costsReconcile, "20 4 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
   // Daily, not weekly. A site added on Monday waited until Sunday for its
   // first picture, so the websites screen showed empty slots for most sites

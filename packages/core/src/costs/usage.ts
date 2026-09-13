@@ -257,3 +257,67 @@ export async function unpricedUsage(db: Db, organisationId: string, now: Date = 
     )
     .groupBy(schema.usageEvents.supplier, schema.usageEvents.product, schema.usageEvents.variant);
 }
+
+/** What a model call reported, as the integrations leaf hands it back. */
+export interface MeteredLlmUsage {
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens?: number;
+  model: string;
+}
+
+/**
+ * Records one model call's tokens — input, output and cache reads.
+ *
+ * A helper because every call site would otherwise repeat three near-identical
+ * `recordUsage` calls and invent its own key shape, and an inconsistent key is
+ * a double charge waiting for a retry.
+ *
+ * `keyPrefix` must identify the thing that produced the usage and nothing
+ * else: `brief:<submissionId>:v3`, never a timestamp. Never throws — a cost we
+ * failed to write is worth less than the work that was actually done.
+ */
+export async function meterLlmUsage(
+  db: Db,
+  organisationId: string,
+  usage: MeteredLlmUsage | undefined,
+  context: {
+    supplier: "anthropic" | "openai";
+    source: UsageSource;
+    sourceId?: string | null;
+    clientId?: string | null;
+    business?: (typeof schema.costBusinessEnum.enumValues)[number];
+    keyPrefix: string;
+  },
+): Promise<void> {
+  if (!usage) return;
+  const common = {
+    supplier: context.supplier,
+    variant: usage.model,
+    unit: "token",
+    clientId: context.clientId ?? null,
+    business: context.business ?? ("launchflow" as const),
+    source: context.source,
+    sourceId: context.sourceId ?? null,
+  };
+  try {
+    await Promise.all([
+      recordUsage(db, organisationId, {
+        ...common, product: "tokens_in", quantity: usage.inputTokens,
+        idempotencyKey: `${context.keyPrefix}:tokens_in`,
+      }),
+      recordUsage(db, organisationId, {
+        ...common, product: "tokens_out", quantity: usage.outputTokens,
+        idempotencyKey: `${context.keyPrefix}:tokens_out`,
+      }),
+      recordUsage(db, organisationId, {
+        ...common, product: "tokens_in_cached", quantity: usage.cachedInputTokens ?? 0,
+        idempotencyKey: `${context.keyPrefix}:tokens_cached`,
+      }),
+    ]);
+  } catch {
+    // Deliberately swallowed. See the note above: the brief, the site or the
+    // image is the valuable output, and a ledger write must never be what
+    // fails it.
+  }
+}

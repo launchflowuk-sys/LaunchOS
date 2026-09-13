@@ -1,5 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
+import { meterLlmUsage } from "../costs/usage.js";
 import type { BriefWriterAdapter } from "@launchos/integrations";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { notifyOwner } from "../notifications/notify.js";
@@ -92,6 +93,15 @@ export async function writeBriefVersion(
       generatorVersion: `brief-writer-${writer.name}`,
       schemaVersion: "1",
       model: written.model,
+    });
+
+    // What the brief cost. Keyed on the submission and version, so the retry
+    // that follows a transient failure does not charge the month twice.
+    await meterLlmUsage(db, organisationId, written.usage, {
+      supplier: "openai",
+      source: "brief_writer",
+      sourceId: submissionId,
+      keyPrefix: `brief:${submissionId}:v${nextVersion}`,
     });
 
     return { status: "written", version: nextVersion };

@@ -393,6 +393,13 @@
       "when": 1789336187346,
       "tag": "0055_abandoned_nitro",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1789337903553,
+      "tag": "0056_huge_vision",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import type { LlmUsage } from "../llm-usage.js";
 import { z } from "zod";
 
 /**
@@ -90,6 +91,8 @@ export interface WrittenBrief {
   structured: StructuredBrief;
   markdown: string;
   model: string;
+  /** What the call consumed, when the provider said. Undefined means not metered, not free. */
+  usage?: LlmUsage;
 }
 
 export class BriefWriterError extends Error {

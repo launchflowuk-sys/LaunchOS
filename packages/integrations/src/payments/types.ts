@@ -182,6 +182,20 @@ export function isProviderId(prefix: "price" | "prod" | "cus" | "sub", id: strin
   return typeof id === "string" && id.startsWith(`${prefix}_`);
 }
 
+/** One line of the processor's ledger: what moved, and what they took. */
+export interface PaymentsBalanceTransaction {
+  /** The processor's own id. The idempotency key for the ledger write. */
+  id: string;
+  /** `charge`, `refund`, `payout`, `adjustment` — their word, unmapped. */
+  type: string;
+  /** Minor units, gross, in the transaction's own currency. */
+  amount: number;
+  /** Minor units the processor kept. This is the cost. */
+  fee: number;
+  currency: string;
+  createdAt: Date;
+}
+
 export interface PaymentsAdapter {
   readonly name: "mock" | "stripe";
   createCustomer(input: CreateCustomerInput): Promise<PaymentsCustomer>;
@@ -194,6 +208,14 @@ export interface PaymentsAdapter {
   createSubscription(input: CreateSubscriptionInput): Promise<{ subscription: PaymentsSubscription; invoice: PaymentsInvoice }>;
   cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription>;
   listInvoices(customerId: string): Promise<PaymentsInvoice[]>;
+  /**
+   * The processor's own ledger since a moment, so its cut can be counted.
+   *
+   * Fees are not visible on an invoice or a payment — Stripe deducts them from
+   * the balance and reports them separately — so this is the only honest
+   * source. Read-only and paged by the adapter.
+   */
+  listBalanceTransactions(since: Date): Promise<PaymentsBalanceTransaction[]>;
   webhookVerify(rawBody: string, signature: string): PaymentsWebhookEvent;
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession>;
   retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession>;

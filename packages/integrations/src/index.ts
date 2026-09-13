@@ -108,3 +108,7 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
 export * from "./sitegen/index.js";
 export * from "./hosting-provision/index.js";
 export * from "./brief-writer/index.js";
+export { openAiUsage } from "./llm-usage.js";
+export type { LlmUsage } from "./llm-usage.js";
+export { openAiMonthlyCost } from "./openai-costs.js";
+export type { OpenAiCostWindow, OpenAiCostsOptions } from "./openai-costs.js";

@@ -1,5 +1,5 @@
 import {
-  advanceSiteBuild, activeSiteBuilds, briefFromLead, notifyOwner,
+  advanceSiteBuild, activeSiteBuilds, briefFromLead, meterLlmUsage, notifyOwner,
   type SiteBuildRow,
 } from "@launchos/core";
 import type { Db } from "@launchos/db";
@@ -98,6 +98,16 @@ async function advanceOne(
       if (!build.leadId) throw new Error("the build has no lead to write a brief from");
       const { brief } = await briefFromLead(deps.db, organisationId, build.leadId);
       const site = await deps.generator.generate(brief);
+      // Generating a site is the single most expensive call this platform
+      // makes. Keyed on the build, so the retry that follows a provisioning
+      // failure does not charge for the generation twice.
+      await meterLlmUsage(deps.db, organisationId, site.usage, {
+        supplier: "openai",
+        source: "site_build",
+        sourceId: build.id,
+        clientId: build.clientId ?? null,
+        keyPrefix: `site_build:${build.id}`,
+      });
       await advanceSiteBuild(deps.db, organisationId, build.id, "provisioning", {
         generated: site as unknown as Record<string, unknown>,
         generatorModel: site.model,

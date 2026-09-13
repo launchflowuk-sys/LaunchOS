@@ -1,3 +1,4 @@
+import { openAiUsage } from "../llm-usage.js";
 import {
   BriefWriterError, StructuredBrief,
   type BriefWriterAdapter, type BriefWriterInput, type WrittenBrief,
@@ -126,6 +127,9 @@ export class OpenAiBriefWriter implements BriefWriterAdapter {
     }
 
     const payload = (await response.json()) as { choices?: { message?: { content?: string } }[] };
+    // Read before anything can throw on the content, so a usable usage block
+    // is not lost to a schema failure further down.
+    const usage = openAiUsage(payload, this.options.model);
     const content = payload.choices?.[0]?.message?.content;
     if (!content) throw new BriefWriterError("the brief writer returned nothing");
 
@@ -148,6 +152,7 @@ export class OpenAiBriefWriter implements BriefWriterAdapter {
       structured: checked.data,
       markdown: structuredToMarkdown(checked.data),
       model: this.options.model,
+      ...(usage ? { usage } : {}),
     };
   }
 }

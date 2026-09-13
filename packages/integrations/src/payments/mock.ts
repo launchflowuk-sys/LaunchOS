@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
-  type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCustomer, type PaymentsInvoice, type PaymentsSubscription,
+  type PaymentsBalanceTransaction, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCustomer,
+  type PaymentsInvoice, type PaymentsSubscription,
   type PaymentsSubscriptionDetail, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
@@ -158,6 +159,18 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
 
   async listInvoices(customerId: string): Promise<PaymentsInvoice[]> {
     return [...this.invoices.values()].filter((i) => i.customerId === customerId);
+  }
+
+  /**
+   * Two fixed lines, so a test can assert a fee total without a network.
+   * Stripe's UK card fee is 1.5% + 20p; these are that on £59.99 and £45.
+   */
+  async listBalanceTransactions(since: Date): Promise<PaymentsBalanceTransaction[]> {
+    const all: PaymentsBalanceTransaction[] = [
+      { id: "txn_mock_1", type: "charge", amount: 5999, fee: 110, currency: "GBP", createdAt: new Date("2026-09-02T10:00:00Z") },
+      { id: "txn_mock_2", type: "charge", amount: 4500, fee: 88, currency: "GBP", createdAt: new Date("2026-09-09T10:00:00Z") },
+    ];
+    return all.filter((row) => row.createdAt >= since);
   }
 
   webhookVerify(rawBody: string, signature: string): PaymentsWebhookEvent {

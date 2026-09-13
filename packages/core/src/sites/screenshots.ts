@@ -1,5 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
+import { recordUsage } from "../costs/usage.js";
 import {
   MAX_SCREENSHOT_BYTES,
   ScreenshotFailed,
@@ -193,6 +194,22 @@ export async function captureSiteScreenshot(
   if (shot.bytes.byteLength > MAX_SCREENSHOT_BYTES) {
     return failed(`image is ${shot.bytes.byteLength} bytes, over the ${MAX_SCREENSHOT_BYTES} byte ceiling`);
   }
+
+  // One paid capture. Recorded only once the provider actually returned an
+  // image: a refused or oversized shot is not something we were billed for.
+  // Keyed on the site and the day, because the job is daily and a retry
+  // inside the same day is the same capture.
+  await recordUsage(db, organisationId, {
+    supplier: "screenshotone",
+    product: "screenshot",
+    variant: adapter.name,
+    quantity: 1,
+    unit: "capture",
+    source: "screenshot",
+    sourceId: input.siteId,
+    occurredAt: now,
+    idempotencyKey: `screenshot:${input.siteId}:${now.toISOString().slice(0, 10)}`,
+  }).catch(() => undefined);
 
   const bytes = Buffer.from(shot.bytes);
   await db

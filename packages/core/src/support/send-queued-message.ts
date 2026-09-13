@@ -5,6 +5,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
 import { recordAudit } from "../audit/record-audit.js";
+import { recordUsage } from "../costs/usage.js";
 import { brandEmailContext, inboundEmailEnabled, replyMailbox } from "../config.js";
 import { notifyOwner } from "../notifications/notify.js";
 import { PROJECT_PORTAL_PATH } from "../projects/shared.js";
@@ -508,6 +509,21 @@ export async function sendQueuedMessage(
     const sent = await patchMessage(db, organisationId, v.messageId, {
       status: "sent", deliveredAt: new Date(), externalId: result.providerMessageId, metadata: released(claimed.metadata),
     });
+    // One accepted email. Recorded after the provider took it, so a refused
+    // send is not billed, and keyed on the message so a retry that follows a
+    // timeout after acceptance does not count twice. Attributed to the client
+    // whose conversation it is.
+    await recordUsage(db, organisationId, {
+      supplier: "postmark",
+      product: "email",
+      variant: adapter.name,
+      quantity: 1,
+      unit: "email",
+      clientId: context?.clientId ?? null,
+      source: "email_send",
+      sourceId: v.messageId,
+      idempotencyKey: `email:${v.messageId}`,
+    }).catch(() => undefined);
     await recordAudit(db, organisationId, {
       actorKind: "system", action: "message.sent", targetType: "message", targetId: v.messageId, before: message, after: sent,
     });

@@ -1,3 +1,4 @@
+import type { LlmUsage } from "../llm-usage.js";
 /**
  * Handing a brief to a model and getting a website back.
  *
@@ -35,6 +36,8 @@ export interface GeneratedPage {
 }
 
 export interface GeneratedSite {
+  /** What the call consumed, when the provider said. Undefined means not metered, not free. */
+  usage?: LlmUsage;
   pages: GeneratedPage[];
   /** One stylesheet for the whole site. */
   css: string;

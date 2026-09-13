@@ -105,19 +105,80 @@ can forget to state it.
 A margin that silently omits the variable cost is worse than no margin — it is
 a number somebody will quote.
 
+## The usage ledger
+
+`usage_events` records every paid call. Two rules, both so a past month's
+figure never moves: **priced at write time** from the rate in force that day,
+and **written once** — the idempotency key is built from the thing that
+produced the usage, so a pg-boss retry after a commit does not double the
+month.
+
+`usage_rates` is effective-dated and `setUsageRate` only ever adds. A
+correction is a new rate from today, never an edit to the row that priced
+August.
+
+Prices are **micro-pence per unit** because Opus output is 0.0059p a token.
+Anything coarser rounds every call to zero and the month comes out far short.
+
+### What is metered, and where
+
+| Meter | Where | Key |
+| --- | --- | --- |
+| Agent tokens | `run-recorder.addTokens` | `agent_run:<run>:<seq>:<product>` |
+| Brief writer | `brief-funnel/write-brief.ts` | `brief:<submission>:v<n>` |
+| Site generator | `worker/jobs/site-build-run.ts` | `site_build:<build>` |
+| Images | `content/render-image.ts` | `image:<item>` |
+| Screenshots | `sites/screenshots.ts` | `screenshot:<site>:<day>` |
+| Outbound email | `support/send-queued-message.ts` | `email:<message>` |
+| Stripe fees | `costs/stripe-fees.ts`, nightly | `stripe_fee:<txn>` |
+
+`WrittenBrief` and `GeneratedSite` carry a `usage` block. `integrations` stays
+a leaf: it reports what the provider said and never prices it, because pricing
+needs the rate card that `core` owns.
+
+An unpriced call is recorded at zero with a null `rateId`. Visible and free
+beats invisible — `unpricedUsage` names exactly what needs a rate.
+
+## Per-client profit
+
+`clientProfit` answers what a client is worth: revenue collected, their own
+register lines, their metered usage, and **their share of shared cost split by
+measured usage**. A client generating forty images a month leans on the servers
+harder than one with a static page, and an even split would flatter the
+expensive one at the cheap one's expense. With nothing metered it falls back to
+even, because dividing by zero usage would land the whole server bill on
+whoever came first.
+
+## Stripe fees
+
+The one cost that cannot be metered when it happens: Stripe deducts its cut
+from the balance rather than putting it on an invoice, so the only honest
+source is asking afterwards. `listBalanceTransactions` on the payments adapter,
+idempotent on Stripe's own transaction id — the window is a ten-day lookback,
+so an overlapping re-run is the normal case rather than the exception.
+
+## Reconciliation
+
+Nightly at 04:20, after the screenshot run so the night's captures are already
+in the ledger. Per provider, and **a missing credential reads as
+`not_reconciled`, never as a zero gap** — a provider nobody could check must
+look unchecked, because reporting a perfect match because we never asked is the
+failure worth engineering against.
+
+| Provider | How |
+| --- | --- |
+| OpenAI | organisation Costs API, `OPENAI_ADMIN_KEY` |
+| Anthropic | Console CSV — admin keys are Team/Enterprise only |
+| Stripe | nothing to reconcile; the fees *are* Stripe's own figures |
+
+The owner is belled only on a real gap over 10%. A nightly "could not check"
+would be noise that teaches him to ignore the bell.
+
 ## Still to build
 
-1. **Usage ledger + rate card.** `usage_events` priced from an editable rate
-   card with effective dates, so a price change does not rewrite history. Meter
-   agent runs (`agent_runs.tokens_in/out` already exist), the OpenAI brief
-   writer and site generator (`usage` comes back on the response),
-   `image-budget`, ScreenshotOne, Postmark, Twilio.
-2. **Per-client Profit tab.** Direct costs plus metered usage plus a share of
-   the unmetered remainder, split by measured usage as agreed.
-3. **Reconciliation, per provider.** OpenAI has an admin key now; Anthropic is
-   the CSV; Postmark and ScreenshotOne need no new credentials. Build it so a
-   missing key reads as "not reconciled", never as a zero.
-4. **Stripe fees** from balance transactions.
+Nothing in the costing system. What would extend it: storing the reconciliation
+results so a gap has a history rather than only a notification, and metering
+Twilio once WhatsApp is live.
 
 ## Files
 

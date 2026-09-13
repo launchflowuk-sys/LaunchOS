@@ -3,7 +3,8 @@ import {
   addDays, isProviderId, subscriptionStatusFromProvider,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
   type PaymentsBillingInterval, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCheckoutStatus,
-  type PaymentsCustomer, type PaymentsInvoice, type PaymentsInvoiceStatus, type PaymentsSubscription,
+  type PaymentsCustomer, type PaymentsBalanceTransaction,
+  type PaymentsInvoice, type PaymentsInvoiceStatus, type PaymentsSubscription,
   type PaymentsSubscriptionDetail, type PaymentsWebhookEvent,
 } from "./types.js";
 
@@ -113,6 +114,28 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
   async listInvoices(customerId: string): Promise<PaymentsInvoice[]> {
     const page = await this.client.invoices.list({ customer: customerId, limit: 100 });
     return page.data.map((invoice) => this.toInvoice(invoice));
+  }
+
+  /**
+   * The processor's ledger since a moment, paged to the end.
+   *
+   * `autoPagingToArray` rather than one `limit: 100` page: a busy month is
+   * more than a hundred transactions, and a silently truncated page would
+   * under-report the fees, which is the one direction that matters. The
+   * ceiling is a safety valve, not an expected limit.
+   */
+  async listBalanceTransactions(since: Date): Promise<PaymentsBalanceTransaction[]> {
+    const rows = await this.client.balanceTransactions
+      .list({ created: { gte: Math.floor(since.getTime() / 1000) }, limit: 100 })
+      .autoPagingToArray({ limit: 10_000 });
+    return rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      amount: row.amount,
+      fee: row.fee,
+      currency: row.currency.toUpperCase(),
+      createdAt: new Date(row.created * 1000),
+    }));
   }
 
   webhookVerify(rawBody: string, signature: string): PaymentsWebhookEvent {
