@@ -91,13 +91,18 @@ worked around with a shared-domain cookie.
 
 ## Coolify
 
-A second application on the same repository:
+**Live since 13 Sep 2026** at https://grow.launchflow.co.uk — application
+`z793rvhukrqyarj7kvw9pwu9`, in the LaunchOS project's production environment.
 
-- Build pack **Dockerfile**, Dockerfile `infra/Dockerfile.grow`, base directory
-  the repository root, port **80**.
-- Domain `https://grow.launchflow.co.uk`, HTTPS on.
-- Set the three variables above only when the real ids exist.
+- Build pack **Dockerfile**, Dockerfile `/infra/Dockerfile.grow`, base
+  directory `/`, port **80**.
+- Auto-deploy on, force-HTTPS on, Let's Encrypt certificate.
+- Its uuid is in `infra/server/launchos-image-cleanup.sh` so old images are
+  tidied like the other two apps'.
 
 It shares the repository with the web and worker apps, so a push to `main`
-rebuilds it too. The image is a few megabytes; see `infra/README.md` for the
-cleanup that keeps old ones off the disk.
+rebuilds all three. This one builds in about sixteen seconds — it is a file
+copy into nginx, with nothing to install and nothing to compile.
+
+Set `GROW_GA4_ID`, `GROW_META_PIXEL_ID` and `GROW_ADS_CONVERSION_ID` on **this**
+application, not on `launchos-web`, and only once the real ids exist.

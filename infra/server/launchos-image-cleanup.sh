@@ -32,11 +32,10 @@
 #   DRY_RUN=1 launchos-image-cleanup        # say what would go, remove nothing
 set -eu
 
-# Add the campaign landing page's uuid here once its Coolify application
-# exists (apps/grow, infra/Dockerfile.grow). Its image is about 80MB against
-# the web app's 2.7GB, so it is not urgent — but a push rebuilds all three, and
-# an app missing from this list is an app nothing ever tidies up.
-REPOS="tm9ihp9bjjjeew5g8nzuqqsg n7sb6hq1fnuvfufmvstwrotf"   # LaunchOS web, LaunchOS worker
+# The campaign landing page is here too. Its image is about 79MB against the
+# web app's 2.7GB, so it is not what fills a disk — but a push rebuilds all
+# three, and an app missing from this list is an app nothing ever tidies up.
+REPOS="tm9ihp9bjjjeew5g8nzuqqsg n7sb6hq1fnuvfufmvstwrotf z793rvhukrqyarj7kvw9pwu9"   # LaunchOS web, worker, grow
 KEEP="${KEEP:-2}"
 DRY_RUN="${DRY_RUN:-0}"
 
