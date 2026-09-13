@@ -18,7 +18,54 @@ import { domains } from "./sites.js";
  * synced read-only.
  */
 
-export const supplierEnum = pgEnum("supplier", ["hostinger"]);
+/**
+ * Who we pay. `hostinger` was the only one while this table was a read-only
+ * mirror of one registrar's API; the rest arrived when it became the cost
+ * register — the place a human records Hetzner, the AI providers and every
+ * other subscription that used to live only on a card statement.
+ *
+ * `other` is deliberate. A register that cannot record a supplier it has never
+ * heard of is a register somebody keeps in a spreadsheet instead.
+ */
+export const supplierEnum = pgEnum("supplier", [
+  "hostinger", "hetzner", "coolify", "anthropic", "openai", "google", "mapbox",
+  "github", "postmark", "twilio", "screenshotone", "stripe", "apple", "expo",
+  "microsoft", "other",
+]);
+
+/**
+ * Which business a cost belongs to.
+ *
+ * Mapbox is Cabio's, not LaunchFlow's. Without this column every provider bill
+ * landed on one pile and LaunchFlow's margin carried the taxi platform's
+ * mapping bill — which is not a rounding error, it is the difference between a
+ * profitable month and a loss.
+ *
+ * `shared` is for the things that genuinely cannot be split by supplier — the
+ * servers, GitHub — and is apportioned by measured usage at report time.
+ */
+export const costBusinessEnum = pgEnum("cost_business", [
+  "launchflow", "cabio", "grays_cabline", "mobile_pc_doctor", "agent_zero",
+  "nexus_education", "strix", "grays_park_masjid", "shared",
+]);
+
+/**
+ * How VAT sits on the amount, because the number alone cannot say.
+ *
+ * A Hetzner invoice under the reverse charge and a Hostinger one carrying UK
+ * VAT look identical as integers, and treating them the same overstates cost
+ * by a fifth on one of them. Stored per row rather than inferred from the
+ * supplier: the same supplier can bill either way depending on the entity.
+ *
+ * - `standard` — UK VAT charged on top, reclaimable. The register holds the
+ *   net and the gross is derived.
+ * - `reverse_charge` — EU/overseas B2B. No VAT paid; net and gross are equal.
+ * - `exempt` / `none` — outside the scope, or a supplier who does not charge it.
+ */
+export const vatTreatmentEnum = pgEnum("vat_treatment", ["standard", "reverse_charge", "exempt", "none"]);
+
+/** Whether a row came from a supplier's API or from a person typing it in. */
+export const costSourceEnum = pgEnum("cost_source", ["sync", "manual"]);
 
 /**
  * How a cost came to be attached to a client, because the difference matters
@@ -40,8 +87,20 @@ export const supplierCosts = pgTable(
   {
     ...tenantColumns(),
     supplier: supplierEnum("supplier").notNull(),
-    /** The supplier's own id for the subscription. Unique per organisation and supplier. */
-    externalId: text("external_id").notNull(),
+    /**
+     * The supplier's own id for the subscription. Unique per organisation and
+     * supplier, and **null for a row somebody typed in** — a manual entry has
+     * no upstream identity to be keyed on. Postgres allows many nulls in a
+     * unique index, so the sync's guarantee is unaffected.
+     */
+    externalId: text("external_id"),
+    source: costSourceEnum("source").default("sync").notNull(),
+    /** Which business pays for this. See `costBusinessEnum`. */
+    business: costBusinessEnum("business").default("launchflow").notNull(),
+    /** How VAT sits on `renewalPrice`. See `vatTreatmentEnum`. */
+    vatTreatment: vatTreatmentEnum("vat_treatment").default("none").notNull(),
+    /** Anything a person needs to remember about the line. Never shown to a client. */
+    notes: text("notes"),
     /** Their words — ".LIVE Domain", "Starter Business Email". Never ours. */
     name: text("name").notNull(),
     /** Their status verbatim: `active`, `in_trial`, `cancelled`… */
@@ -80,5 +139,6 @@ export const supplierCosts = pgTable(
     uniqueIndex("supplier_costs_external").on(t.organisationId, t.supplier, t.externalId),
     index("supplier_costs_client").on(t.organisationId, t.clientId),
     index("supplier_costs_billing").on(t.organisationId, t.nextBillingAt),
+    index("supplier_costs_business").on(t.organisationId, t.business),
   ],
 );

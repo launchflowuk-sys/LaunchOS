@@ -379,6 +379,13 @@
       "when": 1789097322413,
       "tag": "0053_tranquil_namorita",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1789331628910,
+      "tag": "0054_lying_lockjaw",
+      "breakpoints": true
     }
   ]
 }

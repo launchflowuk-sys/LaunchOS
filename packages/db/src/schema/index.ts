@@ -32,4 +32,5 @@ export * from "./funnels.js";
 export * from "./api.js";
 export * from "./portal-purchases.js";
 export * from "./supplier-costs.js";
+export * from "./fx-rates.js";
 export * from "./subscription-lines.js";

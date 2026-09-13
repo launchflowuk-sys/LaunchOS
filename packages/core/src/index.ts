@@ -868,3 +868,16 @@ export { issueResumeToken, draftForEmail, exchangeResumeToken, RESUME_TOKEN_TTL_
 export type { IssuedResumeToken, ExchangeResult } from "./brief-funnel/resume.js";
 export { sendBriefSubmittedEmails } from "./brief-funnel/submitted-emails.js";
 export type { SubmittedEmailResult } from "./brief-funnel/submitted-emails.js";
+
+export {
+  upsertCost, deleteCost, listRegister, prefillRegister, unpricedCosts, UpsertCostInput,
+  COST_BUSINESSES, COST_SUPPLIERS, VAT_TREATMENTS, BUSINESS_LABELS, VAT_TREATMENT_LABELS, KNOWN_SUPPLIERS,
+} from "./costs/register.js";
+export type { CostBusiness, CostSupplier, RegisterEntry, RegisterRow } from "./costs/register.js";
+export { monthlyMinor, yearlyMinor, grossFromNet, netFromStored, convert } from "./costs/normalise.js";
+export type { CostLike, VatTreatment } from "./costs/normalise.js";
+export { setFxRate, rateFor, ratesForCurrencies, missingRates, REPORTING_CURRENCY, SetFxRateInput } from "./costs/fx.js";
+export { profitReport } from "./costs/profit.js";
+export type { ProfitReport, SupplierLine } from "./costs/profit.js";
+export { parseAnthropicCostCsv, businessForApiKey, centsByBusiness } from "./costs/anthropic-import.js";
+export type { AnthropicCostRow, AnthropicImportResult, AnthropicImportSummary } from "./costs/anthropic-import.js";
