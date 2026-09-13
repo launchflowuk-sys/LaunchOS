@@ -3,7 +3,13 @@ import { schema } from "@launchos/db";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
+import { ATTRIBUTION_METADATA_KEY, attributionSummary, hasAttribution } from "../leads/attribution.js";
 import { notifyOwner } from "../notifications/notify.js";
+import {
+  attributionFromSessionSource,
+  LATEST_ATTRIBUTION_METADATA_KEY,
+  latestAttributionFromSessionSource,
+} from "./lead-attribution.js";
 
 /**
  * Turning a half-filled form into somebody we can ring.
@@ -71,10 +77,24 @@ export async function captureLeadFromDraft(
       .where(and(eq(schema.briefSessions.id, sessionId), eq(schema.briefSessions.organisationId, organisationId)));
     if (!session) throw new Error("that draft could not be found");
 
+    const attribution = attributionFromSessionSource(session.source);
+    const latest = latestAttributionFromSessionSource(session.source);
+
     if (session.leadId) {
       // Already captured. Keep the lead in step with what they have since
       // corrected — a typo'd email fixed on the second screen has to reach the
       // record we would actually reply to.
+      //
+      // The latest touch is refreshed here too, because a person who comes
+      // back on a second ad and then types their number is a second touch we
+      // only learn about on this write. The original attribution is never
+      // touched: it is read from the draft once, at creation, and after that
+      // it is history.
+      const [existing] = await tx
+        .select({ metadata: schema.leads.metadata })
+        .from(schema.leads)
+        .where(and(eq(schema.leads.id, session.leadId), eq(schema.leads.organisationId, organisationId)));
+
       await tx
         .update(schema.leads)
         .set({
@@ -82,13 +102,16 @@ export async function captureLeadFromDraft(
           ...(v.email ? { email: v.email } : {}),
           ...(v.phone ? { phone: v.phone } : {}),
           ...(v.business ? { business: v.business } : {}),
+          ...(existing && hasAttribution(latest)
+            ? { metadata: { ...existing.metadata, [LATEST_ATTRIBUTION_METADATA_KEY]: latest } }
+            : {}),
           updatedAt: new Date(),
         })
         .where(and(eq(schema.leads.id, session.leadId), eq(schema.leads.organisationId, organisationId)));
-      return { leadId: session.leadId, created: false };
+      return { leadId: session.leadId, created: false, attribution };
     }
 
-    if (!isContactable(v)) return { leadId: null, created: false };
+    if (!isContactable(v)) return { leadId: null, created: false, attribution };
 
     const [lead] = await tx
       .insert(schema.leads)
@@ -103,6 +126,13 @@ export async function captureLeadFromDraft(
         ...(v.business ? { business: v.business } : {}),
         source: "brief-funnel",
         status: "new",
+        // The campaign that brought them, carried across from the draft. Every
+        // funnel lead before this stored nothing here, so the leads board, the
+        // campaign filter and cost-per-lead all showed the funnel as a blank.
+        metadata: {
+          ...(hasAttribution(attribution) ? { [ATTRIBUTION_METADATA_KEY]: attribution } : {}),
+          ...(hasAttribution(latest) ? { [LATEST_ATTRIBUTION_METADATA_KEY]: latest } : {}),
+        },
       })
       .returning();
 
@@ -116,22 +146,28 @@ export async function captureLeadFromDraft(
       action: "lead.captured",
       targetType: "lead",
       targetId: lead!.id,
-      after: { source: "brief-funnel", contactable: true },
+      after: { source: "brief-funnel", contactable: true, attribution },
     });
 
-    return { leadId: lead!.id, created: true };
+    return { leadId: lead!.id, created: true, attribution };
   });
 
   // Outside the transaction: the bell is a nicety and must never be the reason
   // a captured lead rolls back.
+  const campaign = attributionSummary(outcome.attribution);
   if (outcome.created && outcome.leadId) {
     await notifyOwner(db, organisationId, {
       kind: "lead.captured",
       title: `New enquiry: ${v.name ?? v.business ?? "someone"}`,
-      body: `${v.email ?? v.phone} — started a website brief. They may not have finished it.`,
+      body:
+        `${v.email ?? v.phone} — started a website brief. They may not have finished it.` +
+        // The campaign, on the bell itself. `createLead` has said this since
+        // the contact form was built; a funnel lead said nothing, so the one
+        // enquiry that cost money to win was the one that looked organic.
+        (campaign ? `\nCampaign: ${campaign}` : ""),
       link: `/leads/${outcome.leadId}`,
     }).catch(() => undefined);
   }
 
-  return outcome;
+  return { leadId: outcome.leadId, created: outcome.created };
 }

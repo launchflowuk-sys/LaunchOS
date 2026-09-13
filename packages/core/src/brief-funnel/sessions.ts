@@ -3,6 +3,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, lte } from "drizzle-orm";
 import { z } from "zod";
+import { CAMPAIGN_SOURCE_KEYS, LATEST_TOUCH_PREFIX, prefixLatestTouch } from "./lead-attribution.js";
 
 /**
  * Starting, reading and writing a website brief draft.
@@ -62,20 +63,63 @@ export function hashSecret(secret: string): string {
  * An allow-list rather than "whatever was on the URL": a query string is
  * attacker-controlled and ends up in analytics, logs and a staff screen. Values
  * are truncated because a 4KB utm_content is not campaign data, it is a payload.
+ *
+ * The click identifiers are here as well as the UTM tags, and they matter more
+ * than they look. A Facebook or Google ad frequently delivers a click with no
+ * UTM tags at all — auto-tagging puts `gclid`, `gbraid`, `wbraid` or `fbclid`
+ * on the URL instead — so an allow-list of UTM tags alone recorded a paid
+ * click as a direct visit and made the campaign that paid for it look barren.
  */
-const SOURCE_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "entry_route"] as const;
+const SOURCE_KEYS = CAMPAIGN_SOURCE_KEYS;
 const SOURCE_MAX_CHARS = 200;
 
 export function safeSource(input: Record<string, unknown> | undefined): Record<string, string> {
   if (!input) return {};
   const out: Record<string, string> = {};
   for (const key of SOURCE_KEYS) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      out[key] = value.trim().slice(0, SOURCE_MAX_CHARS);
+    for (const name of [key, `${LATEST_TOUCH_PREFIX}${key}`]) {
+      const value = input[name];
+      if (typeof value === "string" && value.trim().length > 0) {
+        out[name] = value.trim().slice(0, SOURCE_MAX_CHARS);
+      }
     }
   }
   return out;
+}
+
+/**
+ * Records that the same person came back on a different campaign.
+ *
+ * Merged, never replaced, and only into the `latest_` half of the source: the
+ * keys recorded when the draft was opened are the acquisition and stay exactly
+ * as they were. Somebody who first found us through organic search in March
+ * and returned through a Facebook ad in April is one lead with two true facts
+ * about it, and overwriting the first would quietly credit paid social with an
+ * enquiry it did not win.
+ *
+ * A no-op for a visit carrying nothing — a returning bookmark is not a touch.
+ */
+export async function recordLatestTouch(
+  db: Db,
+  organisationId: string,
+  sessionId: string,
+  source: Record<string, unknown>,
+): Promise<void> {
+  const latest = safeSource(prefixLatestTouch(source));
+  if (Object.keys(latest).length === 0) return;
+
+  await db.transaction(async (tx) => {
+    const [before] = await tx
+      .select()
+      .from(schema.briefSessions)
+      .where(and(eq(schema.briefSessions.id, sessionId), eq(schema.briefSessions.organisationId, organisationId)));
+    if (!before) return;
+
+    await tx
+      .update(schema.briefSessions)
+      .set({ source: { ...before.source, ...latest }, updatedAt: new Date() })
+      .where(and(eq(schema.briefSessions.id, sessionId), eq(schema.briefSessions.organisationId, organisationId)));
+  });
 }
 
 export const StartSessionInput = z.object({

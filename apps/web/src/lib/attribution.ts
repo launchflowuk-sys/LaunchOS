@@ -25,10 +25,15 @@ export type Attribution = {
   utmCampaign?: string;
   utmTerm?: string;
   utmContent?: string;
+  utmId?: string;
   landingPath?: string;
   referrer?: string;
   gclid?: string;
   fbclid?: string;
+  gbraid?: string;
+  wbraid?: string;
+  msclkid?: string;
+  ttclid?: string;
 };
 
 const FIELD_MAX = 200;
@@ -41,8 +46,17 @@ const PARAM_FIELDS: readonly (readonly [param: string, field: keyof Attribution]
   ["utm_campaign", "utmCampaign"],
   ["utm_term", "utmTerm"],
   ["utm_content", "utmContent"],
+  ["utm_id", "utmId"],
   ["gclid", "gclid"],
   ["fbclid", "fbclid"],
+  // Google sends `gbraid` or `wbraid` instead of `gclid` for an iOS or
+  // web-to-app click, which is a large share of paid traffic — without these,
+  // the cookie recorded a paid visit as a direct one. `msclkid` and `ttclid`
+  // are Microsoft's and TikTok's, here so a campaign on either needs no change.
+  ["gbraid", "gbraid"],
+  ["wbraid", "wbraid"],
+  ["msclkid", "msclkid"],
+  ["ttclid", "ttclid"],
 ];
 
 const KNOWN_KEYS: ReadonlySet<string> = new Set<string>([

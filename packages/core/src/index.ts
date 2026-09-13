@@ -836,10 +836,14 @@ export type { SiteBuildRecipient, NotifySiteBuildResult } from "./site-builds/no
 
 export {
   startBriefSession, briefSessionBySecret, patchBriefSession, completeBriefStep,
-  expireStaleSessions, toSafeSession, hashSecret, safeSource, RevisionConflict,
+  expireStaleSessions, toSafeSession, hashSecret, safeSource, recordLatestTouch, RevisionConflict,
   SESSION_TTL_DAYS, QUESTIONNAIRE_VERSION, TOTAL_STEPS,
   StartSessionInput, PatchInput,
 } from "./brief-funnel/sessions.js";
+export {
+  attributionFromSessionSource, latestAttributionFromSessionSource, latestAttributionOf,
+  prefixLatestTouch, CAMPAIGN_SOURCE_KEYS, LATEST_TOUCH_PREFIX, LATEST_ATTRIBUTION_METADATA_KEY,
+} from "./brief-funnel/lead-attribution.js";
 export type { BriefSessionRow, SafeSession, PatchResult } from "./brief-funnel/sessions.js";
 export { captureLeadFromDraft, isContactable, ContactFields } from "./brief-funnel/capture.js";
 export type { LeadCaptureResult } from "./brief-funnel/capture.js";

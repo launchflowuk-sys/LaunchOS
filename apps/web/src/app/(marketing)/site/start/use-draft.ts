@@ -82,6 +82,17 @@ export function useDraft() {
         const body = (await existing.json()) as { session: DraftSession };
         revision.current = body.session.revision;
         setSession(body.session);
+        // They already had a draft, so no source was read on this visit — and
+        // if they arrived on an advert, that click would otherwise vanish. Not
+        // awaited: attribution must never delay the form appearing.
+        const returning = sourceFromLocation();
+        if (hasCampaign(returning)) {
+          void fetch("/api/brief-funnel/touch", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ source: returning }),
+          }).catch(() => undefined);
+        }
         // Anything typed before the draft arrived wins: it is newer than what
         // the server had, and it is what the customer can see on screen.
         setAnswers((typed) => ({ ...body.session.answers, ...typed }));
@@ -302,13 +313,41 @@ export function useDraft() {
  * means contact details never leave the page in the first place, rather than
  * being sent and then discarded.
  */
+const CAMPAIGN_PARAMS = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "utm_id",
+  "gclid",
+  "fbclid",
+  "gbraid",
+  "wbraid",
+  "msclkid",
+  "ttclid",
+] as const;
+
 function sourceFromLocation(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
   const out: Record<string, string> = { entry_route: window.location.pathname };
-  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
+  for (const key of CAMPAIGN_PARAMS) {
     const value = params.get(key);
     if (value) out[key] = value;
   }
+  // The host only, never the full URL: a referring page's own query string is
+  // somebody else's business and has no place on our lead.
+  try {
+    const host = document.referrer ? new URL(document.referrer).hostname.toLowerCase() : "";
+    if (host && host !== window.location.hostname.toLowerCase()) out.referrer = host;
+  } catch {
+    // An unparseable referrer is a visit with no referrer.
+  }
   return out;
+}
+
+/** True when this particular page view carries a campaign, not merely a path. */
+function hasCampaign(source: Record<string, string>): boolean {
+  return CAMPAIGN_PARAMS.some((key) => typeof source[key] === "string" && source[key]!.length > 0);
 }
