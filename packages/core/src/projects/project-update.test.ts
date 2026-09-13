@@ -19,7 +19,26 @@ import {
   requestProjectUpdateApproval,
 } from "./update-approval.js";
 
+/**
+ * The clock the report is asked about.
+ *
+ * **Every write the assertions depend on must be stamped with this too.**
+ * `reachMilestone` and `setPhaseStatus` default `reachedAt`/`now` to real time,
+ * so pinning only the query meant the test passed during the week of the 11th
+ * and failed every week after — the work landed outside the window it was
+ * being counted in. That is exactly what it did: green on 11 Sep, red from the
+ * 14th.
+ */
 const NOW = new Date("2026-09-11T16:00:00Z");
+
+/**
+ * When the work happened: an hour inside the window, not on its edge.
+ *
+ * `inWindow` is `at >= from && at < to`, so a write stamped at exactly `NOW`
+ * is one millisecond too late to count. Stamping the work an hour earlier says
+ * what is actually meant — it happened during the week being reported.
+ */
+const DURING = new Date(NOW.getTime() - 60 * 60 * 1000);
 const ENV = { APP_URL: "https://os.launchflow.test", BRAND_SUPPORT_EMAIL: "support@launchflow.test" } as NodeJS.ProcessEnv;
 
 function catchEvents() {
@@ -45,7 +64,7 @@ async function fixture(db: Db, options: { portalUser?: boolean } = {}) {
     ],
     actorKind: "user",
     actorId: seeded.ownerUserId,
-    now: NOW,
+    now: DURING,
   });
   return { ...seeded, ...created };
 }
@@ -57,14 +76,14 @@ describe("the week the reporter reads", () => {
       const f = await fixture(db);
       const design = f.phases.find((phase) => phase.key === "design")!;
       await setPhaseStatus(db, f.organisationId, {
-        projectId: f.project.id, phaseId: design.id, status: "done", actorKind: "user", actorId: f.ownerUserId,
+        projectId: f.project.id, phaseId: design.id, status: "done", actorKind: "user", actorId: f.ownerUserId, now: DURING,
       });
       await reachMilestone(db, f.organisationId, {
-        projectId: f.project.id, milestoneId: f.milestones[0]!.id, actorKind: "user", actorId: f.ownerUserId,
+        projectId: f.project.id, milestoneId: f.milestones[0]!.id, actorKind: "user", actorId: f.ownerUserId, reachedAt: DURING,
       });
       // The internal one is reached too — and must not show up.
       await reachMilestone(db, f.organisationId, {
-        projectId: f.project.id, milestoneId: f.milestones[1]!.id, actorKind: "user", actorId: f.ownerUserId,
+        projectId: f.project.id, milestoneId: f.milestones[1]!.id, actorKind: "user", actorId: f.ownerUserId, reachedAt: DURING,
       });
       await requestClientReview(db, f.organisationId, {
         projectId: f.project.id, note: "Have a look at the green.", actorKind: "user", actorId: f.ownerUserId,
