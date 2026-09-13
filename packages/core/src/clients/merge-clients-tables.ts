@@ -34,6 +34,10 @@ export interface MoveSpec {
 
 export const MOVE_SPECS: readonly MoveSpec[] = [
   { key: "client_contacts", table: schema.clientContacts },
+  // Metered usage. Many rows per client and nothing unique about any of
+  // them, so a plain move: the cost was incurred for this client and
+  // follows them to the kept record.
+  { key: "usage_events", table: schema.usageEvents },
   { key: "client_payment_accounts", table: schema.clientPaymentAccounts },
   { key: "subscriptions", table: schema.subscriptions },
   { key: "invoices", table: schema.invoices },

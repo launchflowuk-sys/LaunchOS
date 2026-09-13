@@ -5,6 +5,7 @@ import { vatRateForOrganisation } from "../billing/vat-rate.js";
 import { missingRates, ratesForCurrencies, REPORTING_CURRENCY } from "./fx.js";
 import { convert, grossFromNet, type VatTreatment } from "./normalise.js";
 import { BUSINESS_LABELS, listRegister, type CostBusiness, type RegisterEntry } from "./register.js";
+import { usageTotals, type UsageTotals } from "./usage.js";
 
 /**
  * What LaunchFlow makes, and what it spends to make it.
@@ -14,11 +15,14 @@ import { BUSINESS_LABELS, listRegister, type CostBusiness, type RegisterEntry } 
  * computed on gross figures is simply wrong. The gross is kept beside it so a
  * number on screen can still be matched against the bank.
  *
- * **This is deliberately incomplete and says so.** Only the register is in
- * here — subscriptions and fixed costs. No AI tokens, no images, no
- * screenshots, no email or message costs, because the usage ledger does not
- * exist yet. `complete: false` is returned so every screen must state it
- * rather than presenting a margin that quietly ignores the variable cost.
+ * Two halves, added together: the **register** (subscriptions and fixed costs)
+ * and the **usage ledger** (every paid call, priced when it was made). Either
+ * on its own is a number somebody would quote and be wrong about.
+ *
+ * `complete` is computed rather than hard-coded. It is false while any usage
+ * event this month has no rate — cost is then understated by however much
+ * those come to — and `excludes` names what is still not metered, so a screen
+ * can say so rather than implying a total is final.
  */
 
 export interface SupplierLine {
@@ -62,22 +66,30 @@ export interface ProfitReport {
   missingRateCurrencies: string[];
   /** Rows priced at zero — the register is not finished until this is empty. */
   unpricedCount: number;
+  /** The variable half: metered calls, priced at the moment they were made. */
+  usage: UsageTotals;
+  /** Register plus usage, which is the figure that actually matters. */
+  totalCostNetPence: number;
+  /** Revenue less register and usage. */
+  trueMarginNetPence: number;
   /**
-   * False while the usage ledger is unbuilt. Every screen must say so: a
-   * margin that silently omits the variable cost is worse than no margin.
+   * True only when nothing is understated: every usage event this month is
+   * priced, every register line has a figure, and every currency converts.
+   * A screen that reads this must say so when it is false.
    */
-  complete: false;
-  /** What is not counted, in words, for the screen to print. */
+  complete: boolean;
+  /** What is still not counted, in words, for the screen to print. */
   excludes: readonly string[];
 }
 
-const EXCLUDES = [
-  "AI tokens (Claude, OpenAI)",
-  "generated images",
-  "website screenshots",
-  "email and message sends",
-  "Stripe card fees",
-] as const;
+/**
+ * What the ledger still does not meter.
+ *
+ * Stripe fees come off a balance transaction rather than a call we make, so
+ * there is nothing to record at the time — they need their own sync and are
+ * named here until it exists.
+ */
+const ALWAYS_EXCLUDED = ["Stripe card fees"] as const;
 
 /** Money collected between two instants, net and gross, in GBP pence. */
 async function collectedRevenue(db: Db, organisationId: string, from: Date, to: Date): Promise<{ net: number; gross: number }> {
@@ -116,11 +128,12 @@ export async function profitReport(db: Db, organisationId: string, now: Date = n
   const nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
   const yearStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 11, 1));
 
-  const [register, vatRate, revenue, yearRevenue] = await Promise.all([
+  const [register, vatRate, revenue, yearRevenue, usage] = await Promise.all([
     listRegister(db, organisationId),
     vatRateForOrganisation(db, organisationId),
     collectedRevenue(db, organisationId, monthStart, nextMonth),
     collectedRevenue(db, organisationId, yearStart, nextMonth),
+    usageTotals(db, organisationId, now),
   ]);
 
   const currencies = register.map((row) => row.currencyCode);
@@ -145,6 +158,21 @@ export async function profitReport(db: Db, organisationId: string, now: Date = n
   }
 
   const month = `${monthStart.getUTCFullYear()}-${String(monthStart.getUTCMonth() + 1).padStart(2, "0")}`;
+  const unpricedCount = register.filter((row) => row.renewalPrice === 0 && row.status !== "cancelled").length;
+  const totalCostNetPence = costNet + usage.totalPence;
+
+  // Usage cost also belongs to a business. Added after the register so one
+  // figure per business covers both halves rather than two tables to add up.
+  for (const line of usage.byBusiness) {
+    byBusiness.set(line.business, (byBusiness.get(line.business) ?? 0) + line.pence);
+  }
+
+  const excludes = [
+    ...ALWAYS_EXCLUDED,
+    ...(usage.unpricedEvents > 0 ? [`${usage.unpricedEvents} metered calls with no rate set`] : []),
+    ...(unpricedCount > 0 ? [`${unpricedCount} register lines with no price`] : []),
+    ...(missing.length > 0 ? [`costs in ${missing.join(", ")} (no exchange rate)`] : []),
+  ];
 
   return {
     month,
@@ -161,9 +189,15 @@ export async function profitReport(db: Db, organisationId: string, now: Date = n
       .map(([business, monthlyNetPence]) => ({ business, label: BUSINESS_LABELS[business], monthlyNetPence })),
     lines: lines.sort((a, b) => b.monthlyNetPence - a.monthlyNetPence),
     missingRateCurrencies: missing,
-    unpricedCount: register.filter((row) => row.renewalPrice === 0 && row.status !== "cancelled").length,
-    complete: false,
-    excludes: EXCLUDES,
+    unpricedCount,
+    usage,
+    totalCostNetPence,
+    trueMarginNetPence: revenue.net - totalCostNetPence,
+    // Stripe fees are always missing today, so this cannot yet be true. It is
+    // computed rather than hard-coded so it becomes true on its own the day
+    // that sync lands, instead of needing somebody to remember.
+    complete: excludes.length === 0,
+    excludes,
   };
 }
 

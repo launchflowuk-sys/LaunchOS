@@ -1,4 +1,5 @@
 import type { Db } from "@launchos/db";
+import { recordUsage } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
@@ -113,7 +114,21 @@ export class RunRecorder {
     return row!;
   }
 
-  async addTokens(tokensIn: number, tokensOut: number): Promise<void> {
+  /**
+   * Adds a step's token counts to the run, and prices them into the usage
+   * ledger.
+   *
+   * The counts have always been stored; what was missing was the money. The
+   * ledger entry is keyed on `agent_run:<run>:<seq>:in|out`, so a job that
+   * retries after committing does not charge the month twice — which for
+   * pg-boss is normal behaviour rather than an edge case.
+   *
+   * `model` is the variant the rate card prices on, and it is optional so an
+   * older caller still records tokens rather than failing. Usage recording
+   * never throws into the run: a cost we could not write is worth less than
+   * the agent's actual work, so it is caught and dropped.
+   */
+  async addTokens(tokensIn: number, tokensOut: number, model?: string): Promise<void> {
     const [run] = await this.db
       .select({ i: schema.agentRuns.tokensIn, o: schema.agentRuns.tokensOut })
       .from(schema.agentRuns)
@@ -122,6 +137,21 @@ export class RunRecorder {
       .update(schema.agentRuns)
       .set({ tokensIn: (run?.i ?? 0) + tokensIn, tokensOut: (run?.o ?? 0) + tokensOut })
       .where(eq(schema.agentRuns.id, this.runId));
+
+    const meter = async (product: "tokens_in" | "tokens_out", quantity: number) => {
+      if (quantity <= 0) return;
+      await recordUsage(this.db, this.organisationId, {
+        supplier: "anthropic",
+        product,
+        variant: model ?? null,
+        quantity,
+        unit: "token",
+        source: "agent_run",
+        sourceId: this.runId,
+        idempotencyKey: `agent_run:${this.runId}:${this.seq}:${product}`,
+      });
+    };
+    await Promise.all([meter("tokens_in", tokensIn), meter("tokens_out", tokensOut)]).catch(() => undefined);
   }
 
   /**

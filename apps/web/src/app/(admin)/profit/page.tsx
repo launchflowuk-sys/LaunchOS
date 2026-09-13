@@ -18,9 +18,13 @@ export const metadata = { title: "Profit" };
  * is reclaimable, so a margin computed on gross figures is wrong; the gross is
  * kept alongside so a figure here can be matched against the bank.
  *
- * The screen states, prominently and permanently until it is untrue, that the
- * variable costs are not in it. A margin that silently omits the AI, image and
- * message spend is worse than no margin: it is a number somebody will quote.
+ * Both halves are counted: the register (subscriptions) and the usage ledger
+ * (metered calls, priced when they were made). The notice at the top says what
+ * is *still* missing and reads from `report.complete` rather than a constant,
+ * so it stops claiming incompleteness on its own once nothing is left out.
+ *
+ * A margin that silently omits a cost is worse than no margin: it is a number
+ * somebody will quote.
  */
 
 function gbp(pence: number): string {
@@ -44,7 +48,7 @@ export default async function ProfitPage() {
     year: "numeric",
     timeZone: "UTC",
   });
-  const positive = report.marginNetPence >= 0;
+  const positive = report.trueMarginNetPence >= 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -53,16 +57,17 @@ export default async function ProfitPage() {
         description={`Revenue collected against what the company pays out. ${monthLabel}, ex-VAT.`}
       />
 
-      {/* Not a dismissible toast: it is true until the usage ledger is built,
-          and the figures below are wrong without it being read. */}
+      {/* Not dismissible. While anything is unpriced the totals below are
+          understated, and that has to be read rather than flicked away. */}
       <div className="flex gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
         <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
         <div>
-          <p className="font-medium">These figures are incomplete.</p>
+          <p className="font-medium">
+            {report.complete ? "These figures are complete." : "These figures are incomplete."}
+          </p>
           <p className="mt-1">
-            Only the cost register is counted — subscriptions and fixed costs. Not counted yet:{" "}
-            {report.excludes.join(", ")}. The usage ledger that meters those is not built, so the margin below is
-            better than reality by whatever they come to.
+            Subscriptions and metered usage are both counted. Still missing: {report.excludes.join(", ")}. The margin
+            above is better than reality by whatever those come to.
           </p>
           {report.unpricedCount > 0 ? (
             <p className="mt-1">
@@ -93,15 +98,15 @@ export default async function ProfitPage() {
           icon={TrendingUp}
         />
         <StatCard
-          label="Cost (register only)"
-          value={gbp(report.costNetPence)}
-          hint={`${gbp(report.costGrossPence)} inc. VAT`}
+          label="Total cost"
+          value={gbp(report.totalCostNetPence)}
+          hint={`${gbp(report.costNetPence)} subscriptions + ${gbp(report.usage.totalPence)} usage`}
           icon={Wallet}
         />
         <StatCard
           label="Margin this month"
-          value={gbp(report.marginNetPence)}
-          hint={positive ? "Revenue exceeds register cost" : "Register cost exceeds revenue"}
+          value={gbp(report.trueMarginNetPence)}
+          hint={positive ? "Revenue exceeds cost" : "Cost exceeds revenue"}
           icon={positive ? TrendingUp : TrendingDown}
         />
         <StatCard
@@ -140,8 +145,55 @@ export default async function ProfitPage() {
         </Section>
       ) : null}
 
+      {report.usage.bySupplier.length > 0 || report.usage.unpricedEvents > 0 ? (
+        <Section
+          title="Metered usage this month"
+          description="Every paid call, priced at the rate in force when it was made — so a provider's price rise never rewrites a closed month."
+        >
+          {report.usage.unpricedEvents > 0 ? (
+            <p className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              <strong>{report.usage.unpricedEvents}</strong> metered{" "}
+              {report.usage.unpricedEvents === 1 ? "call has" : "calls have"} no rate on the card, so{" "}
+              {report.usage.unpricedEvents === 1 ? "it counts" : "they count"} as nothing.{" "}
+              <Link href="/settings/costs" className="underline">
+                Seed the rate card
+              </Link>{" "}
+              to price them.
+            </p>
+          ) : null}
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">By supplier</p>
+              <table className="w-full border-collapse text-sm">
+                <tbody>
+                  {report.usage.bySupplier.map((row) => (
+                    <tr key={row.supplier} className="border-t border-slate-100">
+                      <td className="py-1.5 text-slate-700">{row.supplier}</td>
+                      <td className="py-1.5 text-right tabular-nums text-slate-900">{gbp(row.pence)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-500">By what spent it</p>
+              <table className="w-full border-collapse text-sm">
+                <tbody>
+                  {report.usage.bySource.map((row) => (
+                    <tr key={row.source} className="border-t border-slate-100">
+                      <td className="py-1.5 text-slate-700">{row.source.replace(/_/g, " ")}</td>
+                      <td className="py-1.5 text-right tabular-nums text-slate-900">{gbp(row.pence)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Section>
+      ) : null}
+
       <Section
-        title="Every cost"
+        title="Subscriptions and fixed costs"
         description="Normalised to a month in GBP, ex-VAT, at the rate stored for the first of this month — so a closed month never changes."
         actions={
           <Link href="/settings/costs" className="text-sm text-slate-600 underline">

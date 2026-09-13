@@ -8,6 +8,7 @@
 const WORDS: Readonly<Record<string, readonly [singular: string, plural: string]>> = {
   billing_profiles: ["billing profile", "billing profiles"],
   client_contacts: ["contact", "contacts"],
+  usage_events: ["metered charge", "metered charges"],
   client_payment_accounts: ["payment account", "payment accounts"],
   subscriptions: ["subscription", "subscriptions"],
   invoices: ["invoice", "invoices"],

@@ -68,7 +68,7 @@ export async function runLoop(
     for (let turn = 0; turn < def.maxTurns; turn++) {
       const res = await llm.complete({ model, system: def.systemPrompt, messages, tools });
       await recorder.step("llm", { output: res.content, tokensIn: res.usage.inputTokens, tokensOut: res.usage.outputTokens });
-      await recorder.addTokens(res.usage.inputTokens, res.usage.outputTokens);
+      await recorder.addTokens(res.usage.inputTokens, res.usage.outputTokens, model);
       messages = [...messages, { role: "assistant", content: res.content as Anthropic.Beta.BetaContentBlockParam[] }];
 
       if (res.stopReason === "refusal") {

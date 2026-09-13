@@ -881,3 +881,10 @@ export { profitReport } from "./costs/profit.js";
 export type { ProfitReport, SupplierLine } from "./costs/profit.js";
 export { parseAnthropicCostCsv, businessForApiKey, centsByBusiness } from "./costs/anthropic-import.js";
 export type { AnthropicCostRow, AnthropicImportResult, AnthropicImportSummary } from "./costs/anthropic-import.js";
+export {
+  recordUsage, setUsageRate, rateInForce, usageTotals, clientUsagePence, unpricedUsage,
+  costPenceFor, RecordUsageInput, SetUsageRateInput, USAGE_PRODUCTS,
+} from "./costs/usage.js";
+export type { UsageProduct, UsageSource, UsageTotals } from "./costs/usage.js";
+export { prefillRates, listRates, KNOWN_RATES, RATE_EPOCH } from "./costs/known-rates.js";
+export type { KnownRate } from "./costs/known-rates.js";

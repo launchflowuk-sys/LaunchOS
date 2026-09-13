@@ -7,6 +7,7 @@ import {
   deleteCost,
   parseAnthropicCostCsv,
   prefillRegister,
+  prefillRates,
   setFxRate,
   upsertCost,
 } from "@launchos/core";
@@ -113,10 +114,19 @@ export async function prefillCostsAction(): Promise<ActionResult> {
   const gate = await requirePermission("billing");
   if (!gate.ok) return { status: "error", message: gate.message };
   try {
-    const { added } = await prefillRegister(getDb(), gate.session.organisationId, gate.session.userId);
+    // Both halves in one press: the subscriptions to price by hand, and the
+    // rate card the usage ledger needs to turn tokens into money.
+    const [register, rates] = await Promise.all([
+      prefillRegister(getDb(), gate.session.organisationId, gate.session.userId),
+      prefillRates(getDb(), gate.session.organisationId),
+    ]);
     revalidatePath("/settings/costs");
     revalidatePath("/profit");
-    return { status: "ok", id: added === 0 ? "Nothing missing" : `${added} added — now set the prices` };
+    const parts = [
+      register.added === 0 ? "no new suppliers" : `${register.added} suppliers added`,
+      rates.added === 0 ? "rate card already set" : `${rates.added} rates seeded`,
+    ];
+    return { status: "ok", id: parts.join(" · ") };
   } catch (error) {
     return { status: "error", message: error instanceof Error ? error.message : "Could not prefill" };
   }
