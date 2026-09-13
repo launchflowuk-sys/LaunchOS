@@ -29,6 +29,7 @@ import {
   Archive,
   Download,
   Settings,
+  TrendingUp,
   ShieldCheck,
   SquareCheckBig,
   Split,
@@ -135,6 +136,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Ad reports", href: "/ads/reports", icon: ChartColumn, permission: "billing" },
       { label: "Reports", href: "/reports", icon: ChartLine, permission: "billing" },
       { label: "Costs", href: "/settings/costs", icon: Wallet, permission: "billing" },
+      { label: "Profit", href: "/profit", icon: TrendingUp, permission: "billing" },
     ],
   },
   {

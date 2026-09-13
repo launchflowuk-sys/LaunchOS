@@ -1,4 +1,7 @@
-import { listClients, listSupplierCosts, upcomingCosts, type CostRow } from "@launchos/core";
+import {
+  listClients, listRegister, listSupplierCosts, missingRates, ratesForCurrencies,
+  upcomingCosts, type CostRow,
+} from "@launchos/core";
 import { CalendarClock, CircleHelp, TriangleAlert, Users, Wallet } from "lucide-react";
 import Link from "next/link";
 import { ActionForm } from "@/components/action-form";
@@ -13,6 +16,8 @@ import { getDb } from "@/lib/db";
 import { formatDate } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { assignCostAction, syncCostsAction } from "./actions";
+import { AnthropicImportSection } from "./anthropic-section";
+import { RegisterSection } from "./register-section";
 
 export const dynamic = "force-dynamic";
 
@@ -67,11 +72,20 @@ export default async function CostsPage() {
   const session = await requireAdmin();
   const db = getDb();
 
-  const [costs, upcoming, clients] = await Promise.all([
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+
+  const [costs, upcoming, clients, register] = await Promise.all([
     listSupplierCosts(db, session.organisationId),
     upcomingCosts(db, session.organisationId),
     listClients(db, session.organisationId, {}),
+    listRegister(db, session.organisationId),
   ]);
+
+  // Which currencies the register cannot convert, so the register section can
+  // offer to fix exactly those rather than listing every currency.
+  const rates = await ratesForCurrencies(db, session.organisationId, register.map((r) => r.currencyCode), monthStart);
+  const missing = missingRates(register.map((r) => r.currencyCode), rates);
 
   const live = costs.filter((row) => row.status !== "cancelled");
   const trials = costs.filter((row) => row.status === "in_trial" && row.autoRenewed);
@@ -283,6 +297,10 @@ export default async function CostsPage() {
           />
         </Section>
       ) : null}
+
+      <RegisterSection rows={register} missingRateCurrencies={missing} />
+
+      <AnthropicImportSection />
 
       <Section title="Every subscription" description="The full list, whatever state it is in.">
         {costs.length === 0 ? (
