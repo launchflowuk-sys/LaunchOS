@@ -1,41 +1,10 @@
 import { publicSiteReviews } from "@launchos/core";
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { clientAddress, RateLimiter } from "@/lib/rate-limit";
+import { clientAddress } from "@/lib/rate-limit";
+import { CORS, limiter, MAX_AGE_SECONDS } from "./limits";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Generous, because the callers are websites and the answer is cacheable.
- *
- * A busy client homepage behind a shared CDN node can legitimately ask often,
- * and every answer carries an hour of `max-age` — so this limit exists to stop
- * somebody scraping the whole slug space, not to ration real traffic. The
- * leads endpoint is ten a minute because each call *writes*; this one reads
- * one already-fetched row.
- */
-const REVIEWS_RATE_LIMIT = { limit: 120, windowMs: 60_000 } as const;
-
-export const limiter = new RateLimiter(REVIEWS_RATE_LIMIT);
-
-/** An hour, matching the brief and comfortably shorter than the daily refresh. */
-const MAX_AGE_SECONDS = 3600;
-
-/**
- * Any origin, because that is the entire point.
- *
- * A client's website is on their own domain and must be able to read this from
- * the browser. Nothing here is private: it is Google's public reviews of a
- * business that has asked us to show them. There is no cookie, no credential
- * and no `Access-Control-Allow-Credentials`, so an open origin grants a
- * stranger exactly what it grants the client's own page — a copy of something
- * already public.
- */
-const CORS = {
-  "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET, OPTIONS",
-  "access-control-max-age": "86400",
-} as const;
 
 /**
  * A client's Google reviews, for their own website to render.
