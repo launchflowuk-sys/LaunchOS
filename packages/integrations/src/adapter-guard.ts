@@ -29,6 +29,7 @@ import { GBP_ENV_KEYS, META_SOCIAL_ENV_KEYS } from "./social/index.js";
 import { ZOOM_ENV_KEYS } from "./meetings/index.js";
 import { IMAGEGEN_ADAPTER_NAMES, IMAGEGEN_ADAPTER_VARIABLE, IMAGEGEN_ENV_KEYS } from "./imagegen/index.js";
 import { SEARCH_CONSOLE_ENV_KEYS } from "./search-console/index.js";
+import { REVIEWS_ENV_KEY } from "./reviews/index.js";
 import { SCREENSHOT_ADAPTER_NAMES, SCREENSHOT_ADAPTER_VARIABLE, SCREENSHOT_ENV_KEYS } from "./screenshots/index.js";
 
 /**
@@ -70,6 +71,7 @@ export interface AdapterEnv {
   readonly GBP_CLIENT_SECRET?: string | undefined;
   readonly GBP_REFRESH_TOKEN?: string | undefined;
   readonly GSC_SERVICE_ACCOUNT_JSON?: string | undefined;
+  readonly GOOGLE_MAPS_API_KEY?: string | undefined;
   readonly COOLIFY_API_URL?: string | undefined;
   readonly COOLIFY_API_TOKEN?: string | undefined;
   readonly HOSTINGER_API_TOKEN?: string | undefined;
@@ -276,6 +278,14 @@ export function resolveAdapters(env: AdapterEnv): AdapterResolution[] {
       hasRealImplementation: true,
       mockWhenUnset: "log",
       mockEffect: "every website thumbnail is a coloured placeholder rather than the site; the list still works and nothing else uses them",
+    },
+    {
+      name: "reviews",
+      variable: REVIEWS_ENV_KEY,
+      ...resolveReviews(env),
+      hasRealImplementation: true,
+      mockWhenUnset: "log",
+      mockEffect: "any client website showing its Google reviews through us serves four obviously-invented placeholder reviews on its own homepage; this one is visible to the client's customers, so it matters more than the other mocks",
     },
     {
       name: "search-console",
@@ -629,6 +639,19 @@ function resolveImageGen(env: AdapterEnv): SelectionOutcome {
  * and is reported, because a placeholder that nobody was told about looks like
  * twenty broken websites.
  */
+/**
+ * Selected by key alone — there is no `REVIEWS_ADAPTER`.
+ *
+ * Nothing is fetched for a site until somebody sets a place id and switches
+ * `reviews_enabled` on, so that switch is the deliberate act a second
+ * environment variable would otherwise be asking for twice.
+ */
+function resolveReviews(env: AdapterEnv): SelectionOutcome {
+  const key = trimmedOrUnset(env[REVIEWS_ENV_KEY]);
+  if (key === undefined) return { requested: "mock", ...builds("mock", `Missing: ${REVIEWS_ENV_KEY}.`) };
+  return { requested: "google-places", ...builds("google-places") };
+}
+
 function resolveScreenshots(env: AdapterEnv): SelectionOutcome {
   const requested = trimmedOrUnset(env.SCREENSHOT_ADAPTER);
   if (requested === undefined || requested === "mock") return { requested: "mock", ...builds("mock") };

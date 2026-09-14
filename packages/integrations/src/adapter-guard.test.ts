@@ -88,23 +88,25 @@ const GSC = {
   ).toString("base64"),
 };
 
+const REVIEWS = { GOOGLE_MAPS_API_KEY: "places-key" };
+
 /** Every adapter real. */
-const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH, ...ZOOM, ...IMAGEGEN, ...GSC, ...SHOTS };
+const fullyLive = { ...live, ...GOOGLE, ...META, ...GBP, ...COOLIFY, ...DNS, ...CMS, ...PUSH, ...ZOOM, ...IMAGEGEN, ...GSC, ...SHOTS, ...REVIEWS };
 
 describe("adapter guard", () => {
   it("names what each factory will actually build", () => {
     expect(describeAdapters(live)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
-      imagegen: "mock", "search-console": "mock", screenshots: "mock",
+      imagegen: "mock", "search-console": "mock", screenshots: "mock", reviews: "mock",
     });
     expect(describeAdapters(fullyLive)).toEqual({
       email: "smtp", payments: "stripe", uptime: "http", ads: "google+meta", hosting: "coolify", dns: "hostinger+cloudflare",
       cms: "wordpress", social: "meta+gbp", push: "web-push", meetings: "zoom", imagegen: "openai", "search-console": "google",
-      screenshots: "screenshotone",
+      screenshots: "screenshotone", reviews: "google-places",
     });
     expect(describeAdapters({})).toEqual({
       email: "mock", payments: "mock", uptime: "mock", ads: "mock", hosting: "mock", dns: "mock", cms: "mock", social: "mock", push: "mock", meetings: "mock",
-      imagegen: "mock", "search-console": "mock", screenshots: "mock",
+      imagegen: "mock", "search-console": "mock", screenshots: "mock", reviews: "mock",
     });
   });
 
@@ -153,8 +155,12 @@ describe("adapter guard", () => {
     const warnings = productionMockWarnings(live);
     expect(warnings.map((w) => w.variable)).toEqual([
       "ADS_ADAPTER", "COOLIFY_API_URL", "HOSTINGER_API_TOKEN,CLOUDFLARE_API_TOKEN", "SECRETS_ENCRYPTION_KEY",
-      SOCIAL_VARIABLE, PUSH_VARIABLE, MEETINGS_VARIABLE, "IMAGEGEN_ADAPTER", "SCREENSHOT_ADAPTER", "GSC_SERVICE_ACCOUNT_JSON",
+      SOCIAL_VARIABLE, PUSH_VARIABLE, MEETINGS_VARIABLE, "IMAGEGEN_ADAPTER", "SCREENSHOT_ADAPTER",
+      "GOOGLE_MAPS_API_KEY", "GSC_SERVICE_ACCOUNT_JSON",
     ]);
+    // The reviews mock is the one a client's own customers would see, so the
+    // warning says whose homepage it lands on rather than only naming it.
+    expect(warnings.find((w) => w.variable === "GOOGLE_MAPS_API_KEY")!.message).toMatch(/placeholder reviews/);
     expect(warnings[5]!.message).toMatch(/push adapter is the MOCK/);
     expect(warnings[5]!.message).toMatch(/never reach a phone/);
     expect(warnings[4]!.message).toMatch(/social adapter is the MOCK/);

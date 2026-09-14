@@ -1,4 +1,4 @@
-import { boolean, customType, integer, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, customType, integer, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 
@@ -9,16 +9,114 @@ export const domainStatusEnum = pgEnum("domain_status", ["active", "expiring", "
 export const dnsTypeEnum = pgEnum("dns_type", ["A", "AAAA", "CNAME", "MX", "TXT", "SRV"]);
 export const dnsProviderEnum = pgEnum("dns_provider", ["cloudflare", "registrar", "other", "hostinger"]);
 
-export const sites = pgTable("sites", {
-  ...tenantColumns(),
-  clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
-  name: text("name").notNull(),
-  primaryUrl: text("primary_url").notNull(),
-  platform: sitePlatformEnum("platform").default("wordpress").notNull(),
-  hostingProvider: hostingProviderEnum("hosting_provider").default("coolify").notNull(),
-  hostingRef: text("hosting_ref"),
-  status: siteStatusEnum("status").default("live").notNull(),
-});
+export const sites = pgTable(
+  "sites",
+  {
+    ...tenantColumns(),
+    clientId: uuid("client_id").notNull().references(() => clients.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /**
+     * The handle a client's own website calls us by — `?site=<slug>` on the
+     * public reviews endpoint.
+     *
+     * **Per site, not per client, and it cannot be derived from the client.**
+     * Four organisations on the live database have two sites each under one
+     * client — AMO Rendering and AMO Services, Thurrock Accountants and BA
+     * Associates, and two taxi firms apiece — with different Google listings
+     * behind them. A client-keyed lookup would be ambiguous for a quarter of
+     * the roster and would answer with the wrong business's reviews, which is
+     * worse than answering with none.
+     *
+     * Nullable because a site only needs one when something outside LaunchOS
+     * asks for it by name. Unique per organisation where it is set, so the
+     * lookup can never match two rows.
+     */
+    slug: text("slug"),
+    primaryUrl: text("primary_url").notNull(),
+    platform: sitePlatformEnum("platform").default("wordpress").notNull(),
+    hostingProvider: hostingProviderEnum("hosting_provider").default("coolify").notNull(),
+    hostingRef: text("hosting_ref"),
+    status: siteStatusEnum("status").default("live").notNull(),
+    /**
+     * The Google Places id for this business's listing, from the owner's
+     * claimed Business Profile. Typed in by hand — there is no reliable way to
+     * resolve one from a name, and a wrong guess publishes another company's
+     * reviews on a client's homepage.
+     */
+    googlePlaceId: text("google_place_id"),
+    /**
+     * Whether the public endpoint will answer for this site at all.
+     *
+     * Defaults to **false**: a place id being present is not consent to
+     * publish. Somebody turns this on per site, and turning it off is how a
+     * client's reviews band goes away without deleting anything.
+     */
+    reviewsEnabled: boolean("reviews_enabled").default(false).notNull(),
+  },
+  (t) => [uniqueIndex("sites_org_slug").on(t.organisationId, t.slug)],
+);
+
+/**
+ * What Google last told us about a site's listing.
+ *
+ * A table of its own rather than columns on `sites` for two reasons. The blob
+ * is a few kilobytes of other people's prose that every query touching `sites`
+ * would otherwise carry, and the fetch has its own failure story — a listing
+ * can go unreadable for a fortnight while the site row is perfectly healthy,
+ * so `fetched_at` and `failure_reason` belong to the fetch and not to the
+ * site. `site_screenshots` is laid out the same way and for the same reason.
+ *
+ * One row per site: a refresh replaces it. There is no history here because
+ * nothing asks what a rating was last March, and keeping one would mean
+ * storing every review body for ever.
+ */
+export const siteReviews = pgTable(
+  "site_reviews",
+  {
+    ...tenantColumns(),
+    siteId: uuid("site_id").notNull().references(() => sites.id, { onDelete: "cascade" }),
+    /** Google's own average, to one decimal. Null when the listing has no rating yet. */
+    rating: text("rating"),
+    /**
+     * `user_ratings_total` — every rating the listing has, **not** the number
+     * of review bodies returned. Places Details hands back at most five
+     * reviews, so counting the array would tell a client with four hundred
+     * reviews that they have five.
+     */
+    count: integer("count").default(0).notNull(),
+    reviews: jsonb("reviews").$type<StoredGoogleReview[]>().default([]).notNull(),
+    /** The listing's own Google Maps address, for "see all reviews". */
+    googleUrl: text("google_url"),
+    /** When the last *successful* fetch landed. Null while one has never succeeded. */
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }),
+    /** When we last tried, successfully or not — what the daily sweep reads. */
+    attemptedAt: timestamp("attempted_at", { withTimezone: true }).defaultNow().notNull(),
+    /**
+     * Why the last attempt failed, or null. Kept beside the last good data on
+     * purpose: a listing that breaks today should keep serving yesterday's
+     * reviews rather than blank a client's homepage.
+     */
+    failureReason: text("failure_reason"),
+  },
+  (t) => [uniqueIndex("site_reviews_site").on(t.siteId)],
+);
+
+/**
+ * One review as stored, already trimmed to what a homepage band renders.
+ *
+ * `time` is Unix **seconds**, which is Places' own unit and what the client
+ * sites compute "2 months ago" from in English and Urdu. `relativeTime` is
+ * Google's pre-rendered English string and is only a fallback — storing it as
+ * the primary would ship English into an Urdu page.
+ */
+export interface StoredGoogleReview {
+  author: string;
+  rating: number;
+  text: string;
+  relativeTime: string;
+  time: number;
+  profilePhotoUrl?: string;
+}
 
 export const domains = pgTable(
   "domains",

@@ -9,6 +9,7 @@ import { createSocialPublisherFromEnv, type SocialPublisher } from "./social/ind
 import { createMeetingsAdapterFromEnv, type MeetingsAdapter } from "./meetings/index.js";
 import { createImageGenAdapterFromEnv, type ImageGenAdapter } from "./imagegen/index.js";
 import { createSearchConsoleFromEnv, type SearchConsoleAdapter } from "./search-console/index.js";
+import { createReviewsProviderFromEnv, type ReviewsProvider } from "./reviews/index.js";
 import { createScreenshotAdapterFromEnv, type ScreenshotAdapter } from "./screenshots/index.js";
 
 export * from "./uptime/index.js";
@@ -22,6 +23,7 @@ export * from "./social/index.js";
 export * from "./meetings/index.js";
 export * from "./imagegen/index.js";
 export * from "./search-console/index.js";
+export * from "./reviews/index.js";
 export * from "./screenshots/index.js";
 export * from "./registrar/index.js";
 import { createRegistrarAdapterFromEnv } from "./registrar/hostinger.js";
@@ -46,6 +48,12 @@ export interface Integrations {
   searchConsole: SearchConsoleAdapter;
   /** Thumbnails of a client's live site, for the websites list. Mock draws a placeholder in process. */
   screenshots: ScreenshotAdapter;
+  /**
+   * Google reviews for a client's own website. Falls back to the mock when
+   * `GOOGLE_MAPS_API_KEY` is unset — nothing is fetched for a site until
+   * somebody enables reviews on it, so the mock costs nothing while it waits.
+   */
+  reviews: ReviewsProvider;
   /**
    * The registrar, read-only, for renewal dates. **Null when no token is
    * configured** rather than a mock, because a mock here would report an empty
@@ -101,6 +109,7 @@ export function createIntegrations(env: NodeJS.ProcessEnv, deps: IntegrationDeps
     imagegen: createImageGenAdapterFromEnv(env),
     searchConsole: createSearchConsoleFromEnv(env),
     screenshots: createScreenshotAdapterFromEnv(env),
+    reviews: createReviewsProviderFromEnv(env),
     registrar: createRegistrarAdapterFromEnv(env),
   };
 }

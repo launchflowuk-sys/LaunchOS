@@ -27,6 +27,7 @@ import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type Gene
 import { dispatchEvent } from "./jobs/dispatch-event.js";
 import { handlePaymentsWebhook, type PaymentsWebhookJob } from "./jobs/payments-webhook.js";
 import { runAdsCampaignIngest, runAdsIngest } from "./jobs/ads-ingest.js";
+import { runSiteReviews } from "./jobs/site-reviews.js";
 import { runSiteScreenshots } from "./jobs/site-screenshots.js";
 import { dispatchSentinelRuns } from "./jobs/ads-sentinel.js";
 import { runDomainExpirySweep } from "./jobs/domains-expiry.js";
@@ -210,6 +211,19 @@ async function main() {
       console.info(
         await runSiteScreenshots(db, organisationId, integrations.screenshots, { now }),
         "site screenshots",
+      );
+    });
+  });
+
+  // A client's homepage shows their Google reviews from our copy, so the copy
+  // has to stay within a day of Google's. Only sites with reviews switched on
+  // and a place id set are read; everything else costs nothing.
+  await boss.work(QUEUE.siteReviews, async () => {
+    const now = new Date();
+    await sweepOrganisations(db, "site reviews", async (organisationId) => {
+      console.info(
+        await runSiteReviews(db, organisationId, integrations.reviews, { now }),
+        "site reviews",
       );
     });
   });
@@ -401,6 +415,9 @@ async function main() {
   // sites with no usable capture are due, so a daily run costs one provider
   // call per new or previously-failed site, not one per site per day.
   await boss.schedule(QUEUE.siteScreenshots, "40 3 * * *", {}, { tz: "Europe/London" });
+  // 05:10: after the screenshot run and the costs reconcile, and early enough
+  // that every client's reviews band is current before their trade opens.
+  await boss.schedule(QUEUE.siteReviews, "10 5 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsSentinel, "0 7 * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.domainsExpiry, "15 7 * * *", {}, { tz: "Europe/London" });
   // 07:00, ahead of the overdue chase at 07:30.

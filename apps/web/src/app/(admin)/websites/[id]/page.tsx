@@ -1,4 +1,12 @@
-import { getClient, getSite, getSiteCmsCredentialStatus, isEncryptionConfigured, listDnsRecords, listDomains } from "@launchos/core";
+import {
+  getClient,
+  getSite,
+  getSiteCmsCredentialStatus,
+  isEncryptionConfigured,
+  listDnsRecords,
+  listDomains,
+  siteReviewsStatus,
+} from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Activity, KeyRound, Network, ShieldAlert, TableProperties } from "lucide-react";
@@ -13,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { ReviewsPanel } from "./reviews-panel";
 import { WordPressConnection } from "./wordpress-connection";
 
 export const dynamic = "force-dynamic";
@@ -88,7 +97,7 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
   const site = await getSite(db, session.organisationId, id);
   if (!site) notFound();
 
-  const [client, domains, monitors, incidents, cmsCredential] = await Promise.all([
+  const [client, domains, monitors, incidents, cmsCredential, reviews] = await Promise.all([
     getClient(db, session.organisationId, site.clientId),
     listDomains(db, session.organisationId, { siteId: site.id }),
     db
@@ -109,6 +118,7 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
       .limit(INCIDENT_LIMIT),
     // Status only — the page never decrypts the stored application password.
     getSiteCmsCredentialStatus(db, session.organisationId, id),
+    siteReviewsStatus(db, session.organisationId, id),
   ]);
 
   // One flat DNS table across every domain pointed at this site; editing lives
@@ -181,6 +191,16 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
           connectedAs={cmsCredential?.username ?? null}
           connectedAt={cmsCredential?.updatedAt ?? null}
         />
+      </Section>
+
+      {/* After the WordPress connection because both are "what this site is
+          wired to", and before Domains because a client asks about their
+          reviews far more often than about a DNS record. */}
+      <Section
+        title="Google reviews"
+        description="This site can show its Google reviews without holding a Google key — we read the listing every morning and serve it on a public URL the site fetches."
+      >
+        <ReviewsPanel site={site} stored={reviews} />
       </Section>
 
       <Section title="Domains" description="Every domain pointed at this website.">
