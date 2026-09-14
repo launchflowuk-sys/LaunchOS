@@ -1,516 +1,96 @@
-import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
-import { schema } from "@launchos/db";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { seedOpenDemoLead, type DemoLeadResult } from "./open-lead.js";
+import { seedDeliveredDemoClient } from "./riverside-dental.js";
+import { type DemoClientResult, removeDemoClients } from "./shared.js";
+import { seedInFlightDemoClient } from "./thameside-garage.js";
 
 /**
- * One client, carried the whole way through: enquiry, brief, proposal, build,
- * launch, marketing. Something to show people.
+ * The demo data, as one call.
  *
- * **Direct inserts, deliberately, not the real `createLead` and friends.**
- * Those are correct for real work and wrong here: `createLead` queues an
- * acknowledgement email and emits `lead.created`, which starts the Lead
- * Qualifier. A demo that emails a made-up address and burns agent tokens is
- * not a demo, it is an incident. Every row here is written flat, with nothing
- * queued, nothing emitted and nothing sent.
+ * Three records rather than one, because a client can only be at one point in
+ * the pipeline and the pipeline is the thing worth demonstrating:
  *
- * Everything is prefixed `DEMO — ` and the client's slug starts `demo-`, so it
- * is unmistakable on any screen and `removeDemoClient` can find all of it
- * again. Nothing here should ever be mistaken for a paying client, least of
- * all by Shoji at eleven at night.
+ * 1. **Riverside Dental** — delivered. The whole journey, past tense.
+ * 2. **Thameside Garage** — mid-build. Phases running, an invoice overdue,
+ *    content waiting on approval, site still building.
+ * 3. **Lumen Hair Studio** — an open lead. Proposal sent, read, undecided.
+ *    No client row, because nobody has accepted anything.
  *
- * Safe to run twice: it removes the previous demo first — including the brief
- * chain, which hangs off the lead rather than the client and was the thing the
- * first version forgot — so re-running is how you reset it rather than how you
- * get a unique-constraint failure.
+ * Between them every screen has something on it in a state a prospect
+ * recognises. One delivered client on its own leaves the in-progress half of
+ * the software looking empty, and that is the half that sells it.
+ *
+ * Safe to run twice: it removes the previous demo first — all of it, found by
+ * prefix rather than by parent — so re-running is how you reset the demo
+ * rather than how you get a unique-constraint failure.
  */
 
-export const DEMO_PREFIX = "DEMO — ";
-export const DEMO_SLUG_PREFIX = "demo-";
-/** The handle that survives a half-finished run, when nothing else does. */
-export const DEMO_REFERENCE_PREFIX = "LF-DEMO-";
+export {
+  DEMO_PREFIX,
+  DEMO_PROPOSAL_PREFIX,
+  DEMO_REFERENCE_PREFIX,
+  DEMO_SLUG_PREFIX,
+  removeDemoClients,
+  type DemoClientResult,
+} from "./shared.js";
+export { seedDeliveredDemoClient } from "./riverside-dental.js";
+export { seedInFlightDemoClient } from "./thameside-garage.js";
+export { seedOpenDemoLead, type DemoLeadResult } from "./open-lead.js";
 
-const DEMO = {
-  business: "Riverside Dental Practice",
-  slug: "demo-riverside-dental",
-  contact: "Priya Raman",
-  email: "priya@riverside-dental.example",
-  phone: "01375 555 0142",
-  domain: "riverside-dental.example",
-} as const;
-
-export interface DemoClientResult {
-  clientId: string;
-  leadId: string;
-  projectId: string;
-  reference: string;
-  /** What was created, for the log. */
+export interface DemoSeedResult {
+  delivered: DemoClientResult;
+  inFlight: DemoClientResult;
+  openLead: DemoLeadResult;
+  /** Every row written, summed across the three records. */
   created: Record<string, number>;
 }
 
-/** Days ago, as a date. The story reads as the last three months. */
-function daysAgo(days: number, now: Date): Date {
-  return new Date(now.getTime() - days * 86_400_000);
+/**
+ * Removes any previous demo and writes all three records.
+ *
+ * Sequential on purpose. They share a reference sequence and a slug prefix, so
+ * running them concurrently would race the removal and each other for no
+ * benefit — the whole thing takes well under a second either way.
+ */
+export async function seedDemoClients(
+  db: Db,
+  organisationId: string,
+  now: Date = new Date(),
+): Promise<DemoSeedResult> {
+  await removeDemoClients(db, organisationId);
+
+  const delivered = await seedDeliveredDemoClient(db, organisationId, now);
+  const inFlight = await seedInFlightDemoClient(db, organisationId, now);
+  const openLead = await seedOpenDemoLead(db, organisationId, now);
+
+  const created: Record<string, number> = {};
+  for (const part of [delivered.created, inFlight.created, openLead.created]) {
+    for (const [key, value] of Object.entries(part)) {
+      created[key] = (created[key] ?? 0) + value;
+    }
+  }
+
+  return { delivered, inFlight, openLead, created };
 }
 
 /**
- * The same instant as `YYYY-MM-DD`.
+ * The single-client seeder, kept for anything that still calls it.
  *
- * `proposals.valid_until` and `projects.target_date` are `date` columns, not
- * timestamps, so Drizzle types them as strings. Passing a `Date` typechecks
- * nowhere and is the sort of thing that only shows up at the insert.
+ * It seeds **only** the delivered client, which is what it always did — after
+ * removing every demo record, which is also what it always did. Prefer
+ * `seedDemoClients`: one delivered client is not a demo of a pipeline.
  */
-function dayOnly(days: number, now: Date): string {
-  return daysAgo(days, now).toISOString().slice(0, 10);
-}
-
-/**
- * Removes the demo client and everything hanging off it.
- *
- * Hard deletes rather than soft: a demo has no audit value and a soft-deleted
- * one would sit in the tables for ever, turning up in any count that forgets
- * its `deleted_at` filter. The order is children before parents because the
- * foreign keys are `restrict` in places.
- */
-export async function removeDemoClient(db: Db, organisationId: string): Promise<{ removed: boolean }> {
-  /**
-   * The brief chain, found by its own reference rather than by the lead.
-   *
-   * It hangs off the lead, which is why the first version of this missed it
-   * and re-running failed on `brief_submissions_reference`. Keying off the
-   * lead was not enough either: deleting a lead sets the session's `lead_id`
-   * to null, so a half-finished run leaves a submission that no lead points
-   * at and nothing can find. The reference prefix is the only handle that
-   * survives that, which is the whole reason demo references are prefixed.
-   */
-  const demoSubmissions = await db
-    .select({ id: schema.briefSubmissions.id, sessionId: schema.briefSubmissions.sessionId })
-    .from(schema.briefSubmissions)
-    .where(
-      and(
-        eq(schema.briefSubmissions.organisationId, organisationId),
-        like(schema.briefSubmissions.reference, `${DEMO_REFERENCE_PREFIX}%`),
-      ),
-    );
-
-  if (demoSubmissions.length > 0) {
-    const submissionIds = demoSubmissions.map((row) => row.id);
-    const sessionIds = [...new Set(demoSubmissions.map((row) => row.sessionId))];
-    await db.delete(schema.briefVersions).where(inArray(schema.briefVersions.submissionId, submissionIds));
-    await db.delete(schema.briefSubmissions).where(inArray(schema.briefSubmissions.id, submissionIds));
-    await db.delete(schema.briefMutations).where(inArray(schema.briefMutations.sessionId, sessionIds));
-    await db.delete(schema.briefSessions).where(inArray(schema.briefSessions.id, sessionIds));
-  }
-
-  const [client] = await db
-    .select({ id: schema.clients.id })
-    .from(schema.clients)
-    .where(and(eq(schema.clients.organisationId, organisationId), like(schema.clients.slug, `${DEMO_SLUG_PREFIX}%`)));
-
-  if (!client) {
-    // The lead may exist without the client if a previous run half-failed.
-    await db.delete(schema.leads).where(and(eq(schema.leads.organisationId, organisationId), like(schema.leads.name, `${DEMO_PREFIX}%`)));
-    return { removed: false };
-  }
-
-  const byClient = (table: typeof schema.contentItems) =>
-    db.delete(table).where(and(eq(table.organisationId, organisationId), eq(table.clientId, client.id)));
-
-  await byClient(schema.contentItems);
-  await db.delete(schema.contentBriefs).where(and(eq(schema.contentBriefs.organisationId, organisationId), eq(schema.contentBriefs.clientId, client.id)));
-  await db.delete(schema.contentChannels).where(and(eq(schema.contentChannels.organisationId, organisationId), eq(schema.contentChannels.clientId, client.id)));
-  await db.delete(schema.projectMilestones).where(and(eq(schema.projectMilestones.organisationId, organisationId), eq(schema.projectMilestones.clientId, client.id)));
-  await db.delete(schema.projectPhases).where(and(eq(schema.projectPhases.organisationId, organisationId), eq(schema.projectPhases.clientId, client.id)));
-  await db.delete(schema.projects).where(and(eq(schema.projects.organisationId, organisationId), eq(schema.projects.clientId, client.id)));
-  await db.delete(schema.invoices).where(and(eq(schema.invoices.organisationId, organisationId), eq(schema.invoices.clientId, client.id)));
-  await db.delete(schema.subscriptions).where(and(eq(schema.subscriptions.organisationId, organisationId), eq(schema.subscriptions.clientId, client.id)));
-  await db.delete(schema.domains).where(and(eq(schema.domains.organisationId, organisationId), eq(schema.domains.clientId, client.id)));
-  await db.delete(schema.sites).where(and(eq(schema.sites.organisationId, organisationId), eq(schema.sites.clientId, client.id)));
-  await db.delete(schema.proposals).where(and(eq(schema.proposals.organisationId, organisationId), eq(schema.proposals.clientId, client.id)));
-  await db.delete(schema.activityEvents).where(and(eq(schema.activityEvents.organisationId, organisationId), eq(schema.activityEvents.clientId, client.id)));
-  await db.delete(schema.clients).where(and(eq(schema.clients.organisationId, organisationId), eq(schema.clients.id, client.id)));
-  await db.delete(schema.leads).where(and(eq(schema.leads.organisationId, organisationId), like(schema.leads.name, `${DEMO_PREFIX}%`)));
-
-  return { removed: true };
-}
-
 export async function seedDemoClient(
   db: Db,
   organisationId: string,
   now: Date = new Date(),
 ): Promise<DemoClientResult> {
-  await removeDemoClient(db, organisationId);
-  const created: Record<string, number> = {};
-  const count = (key: string) => {
-    created[key] = (created[key] ?? 0) + 1;
-  };
+  await removeDemoClients(db, organisationId);
+  return seedDeliveredDemoClient(db, organisationId, now);
+}
 
-  // --- 1. The enquiry, from a paid Facebook click -------------------------
-  const [lead] = await db
-    .insert(schema.leads)
-    .values({
-      organisationId,
-      name: `${DEMO_PREFIX}${DEMO.contact}`,
-      email: DEMO.email,
-      phone: DEMO.phone,
-      business: DEMO.business,
-      message: "We need a new website. Patients keep ringing to book because the current site has no online booking, and the receptionist spends half her day on the phone.",
-      source: "brief-funnel",
-      status: "converted",
-      createdAt: daysAgo(84, now),
-      qualification: { budget: "3000_7500", timeline: "1_3_months", decisionMaker: true },
-      // The attribution the funnel now carries. This is what a paid click
-      // looks like once it reaches a lead.
-      metadata: {
-        attribution: {
-          utmSource: "facebook",
-          utmMedium: "paid_social",
-          utmCampaign: "launchflow_growth",
-          utmContent: "creative_a",
-          fbclid: "IwAR-demo-click",
-          landingPath: "/start",
-        },
-      },
-    })
-    .returning();
-  count("leads");
-
-  // --- 2. The brief they filled in, and the written version ---------------
-  const reference = `${DEMO_REFERENCE_PREFIX}0001`;
-  const [session] = await db
-    .insert(schema.briefSessions)
-    .values({
-      organisationId,
-      sessionSecretHash: randomUUID().replace(/-/g, ""),
-      questionnaireVersion: 1,
-      status: "submitted",
-      currentStep: 8,
-      completedSteps: [1, 2, 3, 4, 5, 6, 7, 8],
-      leadId: lead!.id,
-      source: { utm_source: "facebook", utm_medium: "paid_social", utm_campaign: "launchflow_growth", entry_route: "/start" },
-      expiresAt: daysAgo(-30, now),
-      createdAt: daysAgo(84, now),
-      answers: {
-        name: DEMO.contact,
-        email: DEMO.email,
-        phone: DEMO.phone,
-        business: DEMO.business,
-        whatYouDo: "NHS and private dentistry in Grays, seven surgeries, twenty-two staff.",
-        problem: "No online booking. Reception takes 60+ calls a day, most of them appointments.",
-        wantFromSite: "Online booking, treatment prices, new-patient registration, and a way to remind people about check-ups.",
-        audience: "Local families and private patients within about ten miles.",
-        budget: "£3,000–£7,500",
-        timeline: "Within three months",
-      },
-    })
-    .returning();
-  count("briefSessions");
-
-  const [submission] = await db
-    .insert(schema.briefSubmissions)
-    .values({
-      organisationId,
-      sessionId: session!.id,
-      answers: session!.answers,
-      sourceRevision: 14,
-      questionnaireVersion: 1,
-      idempotencyKey: randomUUID(),
-      reference,
-      createdAt: daysAgo(84, now),
-    })
-    .returning();
-  count("briefSubmissions");
-
-  await db.insert(schema.briefVersions).values({
-    organisationId,
-    submissionId: submission!.id,
-    version: 1,
-    generatorVersion: "brief-writer-demo",
-    model: "gpt-6-astra",
-    schemaVersion: "1",
-    createdAt: daysAgo(84, now),
-    markdown: [
-      `# ${DEMO.business} — website and booking`,
-      "",
-      "## The business",
-      "A seven-surgery NHS and private dental practice in Grays, Essex, with twenty-two staff. Established, busy, and losing reception time to a phone that never stops.",
-      "",
-      "## The problem worth solving",
-      "Reception handles more than sixty calls a day and most are appointment bookings that could happen without a person. The current site is a brochure: it lists services and a phone number and does nothing else. Every booking therefore costs staff time, and calls outside opening hours are simply lost.",
-      "",
-      "## What the build needs to do",
-      "- Online booking that writes into the practice diary, not a form that emails reception",
-      "- Treatment prices, published and easy to keep current",
-      "- New-patient registration completed before the first visit",
-      "- Recall reminders for check-ups",
-      "",
-      "## Scope",
-      "A new website with a connected booking system and a back office for reception. Payments are out of scope for phase one — NHS charges are taken at the desk, and private treatment is quoted per plan.",
-      "",
-      "## Worth raising with them",
-      "Their diary software is the constraint. If it has no API the booking has to live in LaunchOS and be reconciled, which is a different shape of job and a different price. Ask before quoting.",
-    ].join("\n"),
-    structured: {
-      projectTitle: `${DEMO.business} — website and booking`,
-      businessSummary: "Seven-surgery NHS and private dental practice in Grays, Essex. Twenty-two staff.",
-      goals: ["Take bookings without reception", "Publish prices", "Register new patients before arrival", "Automate check-up recalls"],
-      outOfScope: ["Online payment for NHS charges"],
-      risks: ["The practice diary software may have no API, which changes the shape and price of the booking work"],
-    },
-  });
-  count("briefVersions");
-
-  // --- 3. The proposal ----------------------------------------------------
-  const [proposal] = await db
-    .insert(schema.proposals)
-    .values({
-      organisationId,
-      leadId: lead!.id,
-      reference: "LF-P-DEMO-01",
-      title: `${DEMO_PREFIX}Website and booking system`,
-      summary: "A new website with online booking, prices, new-patient registration and recall reminders.",
-      status: "accepted",
-      publicToken: randomUUID().replace(/-/g, ""),
-      sentAt: daysAgo(77, now),
-      firstViewedAt: daysAgo(76, now),
-      decidedAt: daysAgo(74, now),
-      createdAt: daysAgo(78, now),
-      scope: {
-        deliverables: [
-          "Eight-page website",
-          "Online booking connected to the practice diary",
-          "Published treatment prices",
-          "New-patient registration form",
-          "Check-up recall reminders",
-          "Reception back office",
-        ],
-        outOfScope: ["Card payment for NHS charges", "Migration of historic patient records"],
-        timeline: "Eight weeks from sign-off, in two stages.",
-      },
-      // The three amounts are derived from the proposal's lines in real use.
-      // Written directly here because a demo has no lines to derive them from.
-      pricing: {
-        shape: "setup_plus_monthly",
-        setupPence: 545_000,
-        monthlyPence: 19_900,
-        oneOffPence: 0,
-        currency: "GBP",
-        vatNote: "No VAT — LaunchFlow UK Limited is not VAT registered.",
-      },
-      terms: "50% on acceptance, 50% on launch. Care plan monthly, cancel with 30 days' notice.",
-      validUntil: dayOnly(60, now),
-    })
-    .returning();
-  count("proposals");
-
-  // --- 4. The client -----------------------------------------------------
-  const [client] = await db
-    .insert(schema.clients)
-    .values({
-      organisationId,
-      name: `${DEMO_PREFIX}${DEMO.business}`,
-      slug: DEMO.slug,
-      tradingName: DEMO.business,
-      email: DEMO.email,
-      phone: DEMO.phone,
-      city: "Grays",
-      postcode: "RM17 6ES",
-      country: "GB",
-      industry: "Dentistry",
-      websiteUrl: `https://${DEMO.domain}`,
-      status: "active",
-      onboardedAt: daysAgo(74, now),
-      handoverAt: daysAgo(21, now),
-      createdAt: daysAgo(74, now),
-      notes: "Demonstration client. Not real, not billed, safe to delete.",
-    })
-    .returning();
-  count("clients");
-
-  await db.update(schema.leads).set({ clientId: client!.id }).where(eq(schema.leads.id, lead!.id)).catch(() => undefined);
-  await db.update(schema.proposals).set({ clientId: client!.id }).where(eq(schema.proposals.id, proposal!.id));
-
-  // --- 5. The build -------------------------------------------------------
-  const [project] = await db
-    .insert(schema.projects)
-    .values({
-      organisationId,
-      clientId: client!.id,
-      proposalId: proposal!.id,
-      name: `${DEMO_PREFIX}Website and booking build`,
-      summary: "New website, online booking, reception back office.",
-      status: "delivered",
-      startedAt: daysAgo(72, now),
-      targetDate: dayOnly(24, now),
-      deliveredAt: daysAgo(21, now),
-      createdAt: daysAgo(74, now),
-    })
-    .returning();
-  count("projects");
-
-  // The keys are a fixed vocabulary — `brief`, `design`, `build`, `review`,
-  // `launch`, `care` — so the phase names here follow the schema rather than
-  // whatever a project plan happens to call its stages.
-  const phases = [
-    { key: "brief", name: "Brief and discovery", days: 70 },
-    { key: "design", name: "Design", days: 62 },
-    { key: "build", name: "Build", days: 48 },
-    { key: "review", name: "Content and review", days: 32 },
-    { key: "launch", name: "Launch", days: 21 },
-    { key: "care", name: "Care plan", days: 20 },
-  ] as const;
-  for (const [index, phase] of phases.entries()) {
-    await db.insert(schema.projectPhases).values({
-      organisationId,
-      projectId: project!.id,
-      clientId: client!.id,
-      key: phase.key,
-      name: phase.name,
-      status: "done",
-      sort: index + 1,
-      startedAt: daysAgo(phase.days + 6, now),
-      doneAt: daysAgo(phase.days, now),
-    });
-    count("projectPhases");
-  }
-
-  const milestones = [
-    { title: "Design signed off", days: 60, visible: true },
-    { title: "Booking connected to the practice diary", days: 44, visible: true },
-    { title: "Content loaded and proofed", days: 30, visible: true },
-    { title: "Site live", days: 21, visible: true },
-    { title: "DNS moved, old host cancelled", days: 20, visible: false },
-  ] as const;
-  for (const [index, milestone] of milestones.entries()) {
-    await db.insert(schema.projectMilestones).values({
-      organisationId,
-      projectId: project!.id,
-      clientId: client!.id,
-      title: milestone.title,
-      clientVisible: milestone.visible,
-      sort: index + 1,
-      reachedAt: daysAgo(milestone.days, now),
-    });
-    count("projectMilestones");
-  }
-
-  // --- 6. The live site and domain ---------------------------------------
-  const [site] = await db
-    .insert(schema.sites)
-    .values({
-      organisationId,
-      clientId: client!.id,
-      name: `${DEMO.business} website`,
-      primaryUrl: `https://${DEMO.domain}`,
-      status: "live",
-      platform: "nextjs",
-      createdAt: daysAgo(48, now),
-    })
-    .returning();
-  count("sites");
-
-  await db.insert(schema.domains).values({
-    organisationId,
-    clientId: client!.id,
-    name: DEMO.domain,
-    registrar: "hostinger",
-    registeredAt: daysAgo(50, now),
-    expiresAt: daysAgo(-315, now),
-    autoRenew: true,
-  });
-  count("domains");
-
-  // --- 7. The money -------------------------------------------------------
-  await db.insert(schema.subscriptions).values({
-    organisationId,
-    clientId: client!.id,
-    status: "active",
-    amountPence: 19_900,
-    currentPeriodStart: daysAgo(9, now),
-    currentPeriodEnd: daysAgo(-21, now),
-    createdAt: daysAgo(21, now),
-  });
-  count("subscriptions");
-
-  // No VAT on any of these. LaunchFlow UK Limited is not VAT registered, so a
-  // demo invoice showing 20% is a demo of something that cannot happen — and
-  // it is the kind of detail a prospect notices on a screenshare.
-  // `vatRateForOrganisation` returns 0 without a registration number, which is
-  // what a real invoice would carry.
-  for (const invoice of [
-    { number: "DEMO-0001", days: 74, subtotal: 272_500, note: "Build, first half" },
-    { number: "DEMO-0002", days: 21, subtotal: 272_500, note: "Build, second half" },
-    { number: "DEMO-0003", days: 9, subtotal: 19_900, note: "Care plan" },
-  ]) {
-    const vat = 0;
-    await db.insert(schema.invoices).values({
-      organisationId,
-      clientId: client!.id,
-      number: invoice.number,
-      status: "paid",
-      issuedAt: daysAgo(invoice.days, now),
-      dueAt: daysAgo(invoice.days - 14, now),
-      paidAt: daysAgo(invoice.days - 3, now),
-      subtotalPence: invoice.subtotal,
-      vatPence: vat,
-      totalPence: invoice.subtotal + vat,
-      lineItems: [{ description: invoice.note, quantity: 1, unitPence: invoice.subtotal }],
-    });
-    count("invoices");
-  }
-
-  // --- 8. The marketing that follows the launch ---------------------------
-  await db.insert(schema.contentBriefs).values({
-    organisationId,
-    clientId: client!.id,
-    tone: "Warm, plain, never salesy. Patients are often nervous — reassurance before persuasion.",
-    audience: "Local families and private patients within ten miles of Grays.",
-    services: "NHS and private dentistry, hygienist, whitening, Invisalign, emergency appointments.",
-    offers: "Free children's check-ups on the NHS. New-patient examination at £39.",
-    area: "Grays, Tilbury, Chafford Hundred, South Ockendon and the rest of Thurrock.",
-    doNotSay: "No before-and-after photos without written consent. Nothing that reads as a medical claim or a guarantee of outcome. No discount or urgency language — it reads badly for a dental practice.",
-    notes: "Nervous patients are a large part of the audience. Reassurance before persuasion, every time.",
-  });
-  count("contentBriefs");
-
-  await db.insert(schema.contentChannels).values({
-    organisationId,
-    clientId: client!.id,
-    channel: "facebook",
-    externalId: "000000000000000",
-    displayName: `${DEMO.business} (demo)`,
-    // Off on purpose. A demo channel that is enabled is a demo the publisher
-    // would try to post to, against a Page id that does not exist.
-    enabled: false,
-  });
-  count("contentChannels");
-
-  const period = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-  const posts = [
-    { channel: "blog" as const, kind: "blog_post" as const, status: "published" as const, days: 14, title: "What happens at your first visit", body: "Nobody enjoys a first appointment at a new practice. Here is exactly what happens, in order, so there are no surprises." },
-    { channel: "facebook" as const, kind: "social_post" as const, status: "published" as const, days: 11, title: null, body: "Booking a check-up now takes about thirty seconds online — no phone queue, no waiting for reception to pick up. Link in bio." },
-    { channel: "facebook" as const, kind: "social_post" as const, status: "published" as const, days: 6, title: null, body: "Nervous about the dentist? Tell us when you book and we will give you a longer appointment and go at your pace." },
-    { channel: "blog" as const, kind: "blog_post" as const, status: "approved" as const, days: -3, title: "Our treatment prices, explained", body: "Private dentistry pricing is usually opaque. Here is what each treatment costs and why." },
-    { channel: "facebook" as const, kind: "social_post" as const, status: "awaiting_approval" as const, days: -5, title: null, body: "Children's check-ups are free on the NHS. If your child has not been seen in a while, we have space this month." },
-  ];
-  for (const post of posts) {
-    await db.insert(schema.contentItems).values({
-      organisationId,
-      clientId: client!.id,
-      channel: post.channel,
-      kind: post.kind,
-      status: post.status,
-      periodKey: period,
-      title: post.title,
-      body: post.body,
-      source: "agent",
-      scheduledFor: daysAgo(post.days, now),
-      ...(post.status === "published"
-        ? { publishedAt: daysAgo(post.days, now), externalUrl: `https://${DEMO.domain}/news` }
-        : {}),
-    });
-    count("contentItems");
-  }
-
-  return { clientId: client!.id, leadId: lead!.id, projectId: project!.id, reference, created };
+/** Removes every demo record. Named in the singular for its old callers. */
+export async function removeDemoClient(db: Db, organisationId: string): Promise<{ removed: boolean }> {
+  const { removed } = await removeDemoClients(db, organisationId);
+  return { removed: removed > 0 };
 }

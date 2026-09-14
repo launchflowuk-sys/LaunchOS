@@ -13,7 +13,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "demo:seed": "tsx --env-file-if-exists=../../.env src/demo/cli.ts"
   },
   "dependencies": {
     "@fontsource/geist-sans": "^5.3.0",
@@ -29,6 +30,7 @@
   "devDependencies": {
     "@launchos/config": "workspace:*",
     "@types/node": "^24",
+    "tsx": "^4",
     "typescript": "^5",
     "vitest": "^3"
   }

@@ -19,6 +19,7 @@
     "db:bootstrap": "pnpm --filter @launchos/db bootstrap",
     "db:reconcile-support-emails": "pnpm --filter @launchos/db reconcile-support-emails",
     "db:studio": "pnpm --filter @launchos/db studio",
+    "demo:seed": "pnpm --filter @launchos/core demo:seed",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },
