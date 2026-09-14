@@ -41,7 +41,7 @@ They add LaunchFlow as a **Partner** on their Facebook Page, with **Manage
 Page / Create content** access.
 
 In *their* Meta Business Suite: **Settings → Partners → Add Partner** →
-LaunchFlow's Business portfolio ID → tick the Page → give **Content** access.
+LaunchFlow's Business portfolio ID — `925233161834616` — → tick the Page → give **Content** access.
 
 If they have no Business portfolio, the simpler route is to add Shoji as a
 **Page admin** and the Page gets claimed into LaunchFlow's portfolio from
@@ -83,12 +83,24 @@ This is where the actual work is, and it is not per client.
 The live system-user token carries `pages_manage_posts`,
 `pages_read_engagement` and `pages_show_list`. Facebook posting works today.
 
-### Instagram: blocked, and this is the blocker
+### Instagram: the permissions are done, and **no App Review was needed**
 
-The same token carries **neither `instagram_basic` nor
-`instagram_content_publish`**. Until both are on it, Instagram publishing
-cannot work for anybody — and that has nothing to do with what clients have
-or have not connected.
+Settled by testing rather than by reading, on 14 Sep 2026. The system-user
+token now carries `instagram_basic`, `instagram_content_publish`,
+`instagram_manage_comments`, `instagram_manage_insights` and
+`instagram_manage_messages`, all at **Standard Access**, with no App Review
+and no Business Verification — the portfolio still shows
+`verification_status: None`.
+
+So the earlier conclusion in this file was wrong in the expensive direction:
+it would have cost a week of screencasts and written use cases for something
+that took one dashboard visit. Standard Access covers assets the app's own
+portfolio owns or is a Partner on, which is every case LaunchFlow has.
+
+Advanced Access and App Review remain the answer only for reaching accounts
+with no relationship to the portfolio — which is not a thing LaunchFlow does.
+
+**What is left is not permissions.** It is the two per-Page steps below.
 
 To fix, in the Meta app dashboard (app `1454866403356430`):
 
@@ -137,16 +149,39 @@ the GBP publisher is not active. Its own OAuth, separate from Meta.
 
 ## Where it currently stands
 
+Measured against the live token on 14 Sep 2026, after the new token landed.
+
 | | |
 | --- | --- |
-| Pages reachable by the token | **1** — AMO Rendering (`1348180978370412`) |
-| Client channels connected in LaunchOS | **1** — AMO Rendering, Facebook |
-| Instagram accounts connected | **0** |
-| Instagram possible at all | **No** — token lacks both permissions |
+| LaunchFlow Business portfolio | `925233161834616` — **this is the ID clients need** |
+| System user | `launchos` (`122100159885476252`), token does not expire |
+| Instagram permissions on the token | **all five present, Standard Access, no App Review** |
+| Pages **owned** by the portfolio | **1** — AMO Rendering (`1348180978370412`) |
+| Pages **shared** via Partner access | **0** |
+| Pages assigned to the system user | **1** — AMO Rendering |
+| Instagram accounts linked to any Page | **0** |
+| Instagram publishing possible today | **No** — not for want of permission; there is no Instagram account linked to a Page |
 | GBP | Not configured |
 
-So the pipeline is proven on one Page and one channel. Nothing is wrong with
-it; it simply has not been given anything else to post to.
+So the ceiling is no longer Meta's. It is that only one Page has ever been
+put in the portfolio, and that Page has no Instagram attached. Both are
+dashboard work measured in minutes.
+
+### The two steps, per Page
+
+1. **Get the Page into the portfolio.** Own pages:
+   `business.facebook.com/settings/pages` → **Add → Claim a Page** (instant
+   when you are already its admin). Client pages: they add you as a Partner
+   with the ID above.
+2. **Assign it to the system user.** Business Settings → Users → System Users
+   → `launchos` → **Add Assets** → Pages → tick it → Manage Page.
+
+Then link the Instagram account to that Page, and LaunchOS reads the
+Instagram id off the Page itself.
+
+Thurrock Tuition Academy, Grays CabLine and Mobile PC Doctor are all Shoji's
+own and none of them are in the portfolio yet. They are the right place to
+prove Instagram publishing: no client waiting, and no client watching.
 
 ## The email to send a client
 
@@ -154,7 +189,7 @@ it; it simply has not been given anything else to post to.
 > passwords, and nothing that gives us access to your personal account.
 >
 > **1. Facebook Page access.** In Meta Business Suite go to
-> Settings → Partners → Add Partner, enter `<LaunchFlow Business ID>`, tick
+> Settings → Partners → Add Partner, enter `925233161834616`, tick
 > your Page and give Content access.
 >
 > **2. Instagram linked to that Page.** Your Instagram needs to be a Business
