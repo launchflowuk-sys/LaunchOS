@@ -4,12 +4,27 @@ What LaunchOS needs from a client before it can post for them, and what has to
 be true on LaunchFlow's side first.
 
 Checked against the live production token on 14 Sep 2026, not from the docs.
+Revised the same day: the two gates, the system-user asset step, and Standard
+Access before App Review.
 
 ## The short version
 
 **From the client you need one thing: access to their Facebook Page.** Not a
 password, not a token, no Instagram login. Everything else is derived or is
 LaunchFlow's own problem.
+
+**But there are two separate gates, and confusing them wastes days.**
+
+| Gate | Granted how | How often |
+| --- | --- | --- |
+| The app may *use* a permission | added to the Meta app, once | **once, for every client, for ever** |
+| The token may *reach one account* | the asset is in LaunchFlow's portfolio **and assigned to the system user** | once per client |
+
+Adding `instagram_content_publish` to the app does not give access to a single
+Instagram account. It gives the app the *right to ask*. Which accounts it can
+ask about is decided entirely by the second gate. So one permission grant
+covers every client LaunchFlow will ever have — and every client still has to
+hand over their Page individually.
 
 That is because LaunchOS does not hold per-client credentials. It holds **one**
 Meta app and **one** system-user token (`META_ADS_ACCESS_TOKEN`,
@@ -77,14 +92,43 @@ or have not connected.
 
 To fix, in the Meta app dashboard (app `1454866403356430`):
 
-1. Add `instagram_basic` and `instagram_content_publish` to the app.
-2. Both need **Advanced Access**, which means **Business Verification** and
-   **App Review**. Budget days, not minutes — Meta asks for a screencast of the
-   publishing flow and a written use case.
+1. Add `instagram_basic` and `instagram_content_publish` to the app. The
+   button may read **+ Add** or **Add to App Review** depending on which
+   version of the dashboard is served; both do the same thing, and neither
+   submits anything. A submission only happens when the use-case form is
+   filled in and **Submit for review** is pressed.
+2. **Try Standard Access first.** Standard Access is what `ads_management`
+   runs on in production today, and it covers assets the app's own Business
+   portfolio owns or has been made a Partner on — which is exactly this case.
+   **Advanced Access** — and therefore Business Verification and App Review —
+   is for reaching accounts that have no relationship with the app's business.
+   Meta's documentation and Meta's actual behaviour do not always agree on
+   where publishing sits, so this is a question to settle with one API call
+   rather than by reading. If it fails, the error text is what the review
+   submission should be written against.
 3. **Regenerate the system-user token** afterwards. Adding a permission to the
    app does not add it to a token that already exists, and this is the step
    that gets missed: the review passes, nothing changes, and the cause is a
    stale token.
+
+### The step that is nobody's job and breaks everything
+
+**A system user does not inherit the portfolio's assets.** Each Page has to be
+assigned to it by hand:
+
+> Business Settings → **Users → System Users** → the user → **Add Assets** →
+> Pages → tick the Page → **Manage Page** / Content
+
+This is almost certainly why exactly one Page is reachable today. Being a Page
+admin personally is not the same thing, and neither is the client having
+granted Partner access — the grant puts the Page in the portfolio, and this
+step puts it in the token's reach. A client who has done everything right
+still publishes nothing until this is done, and the failure looks identical to
+a missing permission.
+
+Shoji's own Pages — Thurrock Tuition Academy, Grays CabLine, Mobile PC Doctor
+— skip the Partner step entirely and still need this one. They are the right
+place to prove the pipeline: no client waiting, and no client watching.
 
 ### Google Business Profile: not configured
 
@@ -121,6 +165,27 @@ it; it simply has not been given anything else to post to.
 >
 > That is everything. We never see your login, and you can remove our access at
 > any time from the same Partners screen.
+
+## If Instagram should do everything it can
+
+The two above are the minimum: read the account, publish to it. What each
+further permission buys, in the order worth adding them:
+
+| Permission | What it unlocks | Worth it when |
+| --- | --- | --- |
+| `instagram_basic` | read the account and its media | **required** |
+| `instagram_content_publish` | publish feed posts, carousels, reels, stories | **required** |
+| `instagram_manage_comments` | read, reply to, hide and delete comments | as soon as a client has any engagement — an unanswered comment is a lost enquiry, and this is what turns comments into support cases |
+| `instagram_manage_insights` | reach, impressions, profile views, follower demographics | the monthly client report stops being a list of what was posted and becomes a list of what it did |
+| `instagram_manage_messages` | read and send Instagram DMs | the salon in the demo takes every booking by DM. This is where that goes into the LaunchOS inbox instead of a phone |
+| `pages_manage_metadata` | subscribe the Page to webhooks | comments and DMs arrive as they happen rather than whenever a poll runs |
+| `pages_messaging` | send as the Page | needed in practice alongside `instagram_manage_messages` |
+| `business_management` | read the portfolio's assets | client Pages get discovered instead of typed in by hand |
+
+Not worth adding: `instagram_shopping_tag_products` (no client sells online)
+and the `instagram_branded_content_*` family (no influencer work). An unused
+permission on an app is a question to answer at the next review, so the list
+should stay as short as the work allows.
 
 ## Things that will bite later
 
