@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, like } from "drizzle-orm";
+import { and, eq, inArray, like } from "drizzle-orm";
 
 /**
  * One client, carried the whole way through: enquiry, brief, proposal, build,
@@ -19,12 +19,16 @@ import { and, eq, like } from "drizzle-orm";
  * again. Nothing here should ever be mistaken for a paying client, least of
  * all by Shoji at eleven at night.
  *
- * Safe to run twice: it removes the previous demo first, so re-running is how
- * you reset it rather than how you get two.
+ * Safe to run twice: it removes the previous demo first — including the brief
+ * chain, which hangs off the lead rather than the client and was the thing the
+ * first version forgot — so re-running is how you reset it rather than how you
+ * get a unique-constraint failure.
  */
 
 export const DEMO_PREFIX = "DEMO — ";
 export const DEMO_SLUG_PREFIX = "demo-";
+/** The handle that survives a half-finished run, when nothing else does. */
+export const DEMO_REFERENCE_PREFIX = "LF-DEMO-";
 
 const DEMO = {
   business: "Riverside Dental Practice",
@@ -69,6 +73,35 @@ function dayOnly(days: number, now: Date): string {
  * foreign keys are `restrict` in places.
  */
 export async function removeDemoClient(db: Db, organisationId: string): Promise<{ removed: boolean }> {
+  /**
+   * The brief chain, found by its own reference rather than by the lead.
+   *
+   * It hangs off the lead, which is why the first version of this missed it
+   * and re-running failed on `brief_submissions_reference`. Keying off the
+   * lead was not enough either: deleting a lead sets the session's `lead_id`
+   * to null, so a half-finished run leaves a submission that no lead points
+   * at and nothing can find. The reference prefix is the only handle that
+   * survives that, which is the whole reason demo references are prefixed.
+   */
+  const demoSubmissions = await db
+    .select({ id: schema.briefSubmissions.id, sessionId: schema.briefSubmissions.sessionId })
+    .from(schema.briefSubmissions)
+    .where(
+      and(
+        eq(schema.briefSubmissions.organisationId, organisationId),
+        like(schema.briefSubmissions.reference, `${DEMO_REFERENCE_PREFIX}%`),
+      ),
+    );
+
+  if (demoSubmissions.length > 0) {
+    const submissionIds = demoSubmissions.map((row) => row.id);
+    const sessionIds = [...new Set(demoSubmissions.map((row) => row.sessionId))];
+    await db.delete(schema.briefVersions).where(inArray(schema.briefVersions.submissionId, submissionIds));
+    await db.delete(schema.briefSubmissions).where(inArray(schema.briefSubmissions.id, submissionIds));
+    await db.delete(schema.briefMutations).where(inArray(schema.briefMutations.sessionId, sessionIds));
+    await db.delete(schema.briefSessions).where(inArray(schema.briefSessions.id, sessionIds));
+  }
+
   const [client] = await db
     .select({ id: schema.clients.id })
     .from(schema.clients)
@@ -143,7 +176,7 @@ export async function seedDemoClient(
   count("leads");
 
   // --- 2. The brief they filled in, and the written version ---------------
-  const reference = "LF-DEMO-0001";
+  const reference = `${DEMO_REFERENCE_PREFIX}0001`;
   const [session] = await db
     .insert(schema.briefSessions)
     .values({
@@ -262,7 +295,7 @@ export async function seedDemoClient(
         monthlyPence: 19_900,
         oneOffPence: 0,
         currency: "GBP",
-        vatNote: "All figures exclude VAT at 20%.",
+        vatNote: "No VAT — LaunchFlow UK Limited is not VAT registered.",
       },
       terms: "50% on acceptance, 50% on launch. Care plan monthly, cancel with 30 days' notice.",
       validUntil: dayOnly(60, now),
@@ -399,12 +432,17 @@ export async function seedDemoClient(
   });
   count("subscriptions");
 
+  // No VAT on any of these. LaunchFlow UK Limited is not VAT registered, so a
+  // demo invoice showing 20% is a demo of something that cannot happen — and
+  // it is the kind of detail a prospect notices on a screenshare.
+  // `vatRateForOrganisation` returns 0 without a registration number, which is
+  // what a real invoice would carry.
   for (const invoice of [
     { number: "DEMO-0001", days: 74, subtotal: 272_500, note: "Build, first half" },
     { number: "DEMO-0002", days: 21, subtotal: 272_500, note: "Build, second half" },
     { number: "DEMO-0003", days: 9, subtotal: 19_900, note: "Care plan" },
   ]) {
-    const vat = Math.round(invoice.subtotal * 0.2);
+    const vat = 0;
     await db.insert(schema.invoices).values({
       organisationId,
       clientId: client!.id,
