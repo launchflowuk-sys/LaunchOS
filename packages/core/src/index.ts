@@ -894,3 +894,5 @@ export { syncStripeFees, FEE_LOOKBACK_DAYS } from "./costs/stripe-fees.js";
 export type { StripeFeeSyncResult } from "./costs/stripe-fees.js";
 export { reconcileSupplier, meteredForMonth, GAP_TOLERANCE_PERCENT } from "./costs/reconcile.js";
 export type { ReconcileResult, ReconcileStatus } from "./costs/reconcile.js";
+export { seedDemoClient, removeDemoClient, DEMO_PREFIX, DEMO_SLUG_PREFIX } from "./demo/demo-client.js";
+export type { DemoClientResult } from "./demo/demo-client.js";
