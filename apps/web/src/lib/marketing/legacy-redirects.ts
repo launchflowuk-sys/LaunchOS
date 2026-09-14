@@ -38,11 +38,11 @@ export const LEGACY_REDIRECTS: Readonly<Record<string, string>> = {
   // Plans.
   "/hosting-upgrade": "/pricing",
 
-  // One privacy page replaces four legal ones.
+  // Privacy took two of the old legal URLs; the terms ones now reach /terms.
   "/privacy-policy": "/privacy",
   "/cookie-policy": "/privacy",
-  "/terms-of-service": "/privacy",
-  "/legal": "/privacy",
+  "/terms-of-service": "/terms",
+  "/legal": "/terms",
 
   // The template demos and the one client page that had its own URL. The work
   // index is the honest successor: it is what somebody looking at a cleaning

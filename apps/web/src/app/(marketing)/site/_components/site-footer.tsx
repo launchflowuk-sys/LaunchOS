@@ -69,6 +69,12 @@ export async function SiteFooter() {
             <Link href={href("/privacy")} className="hover:text-[var(--ink)]">
               Privacy policy
             </Link>
+            <span aria-hidden className="mx-2">
+              ·
+            </span>
+            <Link href={href("/terms")} className="hover:text-[var(--ink)]">
+              Terms
+            </Link>
           </p>
           <a href="#top" className="tlink tlink-quiet text-sm">
             Back to top

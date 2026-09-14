@@ -27,10 +27,16 @@ export default function PrivacyPage() {
           </section>
 
           <section>
-            <h2 className="h-sub">No ad tracking</h2>
+            <h2 className="h-sub">Measuring our own advertising</h2>
             <p className="body mt-3 leading-relaxed">
-              There is no Google Analytics, no Meta pixel and no third-party cookie on this site. We do not sell or share your details with anyone, and
-              there is no mailing list to fall into.
+              We run Google Analytics and a Meta pixel so we can tell which of our own adverts are worth paying for. Neither loads until you accept
+              the cookie banner, and if you decline, nothing is set and the site works exactly the same. You can change your mind by clearing this
+              site&rsquo;s data in your browser.
+            </p>
+            <p className="body mt-3 leading-relaxed">
+              We also keep a first-party record of which advert or search brought you here — the campaign tags on the link, never your name or email —
+              so that an enquiry can be credited to the right advert. We do not sell or share your details with anyone, and there is no mailing list
+              to fall into.
             </p>
           </section>
 

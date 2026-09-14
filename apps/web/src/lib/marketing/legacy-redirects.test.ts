@@ -26,13 +26,13 @@ describe("legacyRedirectFor", () => {
   });
 
   it("never touches a page that exists today", () => {
-    for (const p of ["/", "/pricing", "/services", "/contact", "/work", "/about", "/privacy", "/products"]) {
+    for (const p of ["/", "/pricing", "/services", "/contact", "/work", "/about", "/privacy", "/terms", "/products"]) {
       expect(legacyRedirectFor(p), p).toBeNull();
     }
   });
 
   it("points every target at a real page, so no redirect lands on a 404", () => {
-    const live = new Set(["/", "/work", "/products", "/services", "/pricing", "/about", "/contact", "/privacy"]);
+    const live = new Set(["/", "/work", "/products", "/services", "/pricing", "/about", "/contact", "/privacy", "/terms"]);
     for (const [from, to] of Object.entries(LEGACY_REDIRECTS)) {
       expect(live.has(to), `${from} -> ${to}`).toBe(true);
     }
