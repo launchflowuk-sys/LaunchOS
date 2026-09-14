@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TabScroller } from "@/components/tab-scroller";
 import { cn } from "@/lib/utils";
 
 /** Sections the client detail page renders itself, chosen with `?tab=`. */
@@ -44,14 +45,21 @@ function hrefFor(clientId: string, key: ClientTabActive): string {
 
 /**
  * Links rather than a Radix `Tabs` list: each tab is a real navigation with its
- * own URL, and half of them are routes of their own. Ten labels never fit one
- * phone width, so the row scrolls sideways inside itself instead of wrapping to
- * three lines.
+ * own URL, and most of them are routes of their own. Thirteen labels never fit
+ * one phone width — and do not fit a laptop either — so the row scrolls
+ * sideways inside itself instead of wrapping to three lines.
+ *
+ * `TabScroller` is what makes that scroll *visible*. Without it the row was
+ * still scrollable and looked broken: the scrollbar is hidden by design, so
+ * "Reports" was sliced down the middle of its first letter with nothing to
+ * suggest there was anything past it, and from the Profit tab there was no way
+ * to reach Reports at all. It also scrolls the current tab into view, so
+ * landing on a late tab does not leave it off-screen.
  */
 export function ClientTabs({ clientId, active }: { clientId: string; active: ClientTabActive }) {
   return (
     <div className="mb-6 border-b">
-      <div className="scrollbar-none -mb-px flex gap-1 overflow-x-auto">
+      <TabScroller className="-mb-px gap-1">
         {TABS.map((tab) => (
           <Link
             key={tab.key}
@@ -67,7 +75,7 @@ export function ClientTabs({ clientId, active }: { clientId: string; active: Cli
             {tab.label}
           </Link>
         ))}
-      </div>
+      </TabScroller>
     </div>
   );
 }
