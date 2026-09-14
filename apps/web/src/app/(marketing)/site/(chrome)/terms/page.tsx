@@ -14,15 +14,19 @@ export const metadata: Metadata = marketingMetadata({
  * **A first draft that has not been read by a solicitor.** It reflects how
  * LaunchFlow actually works — the three pricing shapes, care plans on thirty
  * days' notice, scope agreed per project in writing — rather than generic
- * boilerplate, which makes it more useful and no more authoritative. Two
- * things need Shoji's hand before this is relied on:
+ * boilerplate, which makes it more useful and no more authoritative.
  *
- *   1. The legal entity and company number, if LaunchFlow is a limited
- *      company. The placeholder below says sole trader, which is a statement
- *      about liability and must be right.
- *   2. A read-through. These are the terms attached to five-thousand-pound
- *      contracts and to client data, and the limitation clause in particular
- *      is the sort of thing worth twenty minutes of a professional's time.
+ * The entity details are from Companies House, not from memory:
+ * LAUNCHFLOW UK LIMITED, 17178069, incorporated 24 April 2026, registered at
+ * 103a London Road, Grays RM17 5YB. A UK company has to show its registered
+ * name, number and office on its website, so this page carries them whether
+ * or not anybody asks.
+ *
+ * The company is **not VAT registered** — there is no VAT number on the
+ * organisation record — so the payment section says prices carry no VAT
+ * rather than implying it is added. Charging VAT while unregistered is not a
+ * paperwork slip: every invoice raised that way has to be credited and
+ * reissued, which is why `vat-rate.ts` refuses to do it.
  */
 export default function TermsPage() {
   return (
@@ -39,8 +43,9 @@ export default function TermsPage() {
           <section>
             <h2 className="h-sub">Who we are</h2>
             <p className="body mt-3 leading-relaxed">
-              LaunchFlow is a web design and software business run from {LOCATION}, United Kingdom. In these terms &ldquo;we&rdquo; and
-              &ldquo;us&rdquo; mean LaunchFlow, and &ldquo;you&rdquo; means the business or person who engages us.
+              LaunchFlow is the trading name of <strong>LaunchFlow UK Limited</strong>, a company registered in England and Wales, company number{" "}
+              <strong>17178069</strong>, registered office 103a London Road, Grays, England, RM17 5YB. In these terms &ldquo;we&rdquo; and
+              &ldquo;us&rdquo; mean LaunchFlow UK Limited, and &ldquo;you&rdquo; means the business or person who engages us.
             </p>
           </section>
 
@@ -72,8 +77,9 @@ export default function TermsPage() {
               </li>
             </ul>
             <p className="body mt-3 leading-relaxed">
-              Invoices are due within fourteen days unless the proposal says otherwise. Prices exclude VAT, which is added where it applies. Card
-              payments are handled by Stripe; we never see your card number.
+              Invoices are due within fourteen days unless the proposal says otherwise. We are not currently VAT registered, so no VAT is added to
+              our prices; if that changes we will tell you before it affects an invoice. Card payments are handled by Stripe; we never see your card
+              number.
             </p>
             <p className="body mt-3 leading-relaxed">
               Third-party costs — domain registration, hosting, paid plugins, stock images, ad spend — are yours and are either billed at cost or paid
@@ -187,7 +193,10 @@ export default function TermsPage() {
             </p>
           </section>
 
-          <p className="text-sm text-[var(--mute)]">LaunchFlow is run from {LOCATION}, United Kingdom.</p>
+          <p className="text-sm text-[var(--mute)]">
+            LaunchFlow UK Limited, registered in England and Wales, company number 17178069. Registered office: 103a London Road, Grays, England,
+            RM17 5YB. Trading from {LOCATION}.
+          </p>
         </div>
       </article>
     </Container>

@@ -60,7 +60,10 @@ export default function PrivacyPage() {
             </p>
           </section>
 
-          <p className="text-sm text-[var(--mute)]">LaunchFlow is run from {LOCATION}, United Kingdom, and is the data controller for the details above.</p>
+          <p className="text-sm text-[var(--mute)]">
+            LaunchFlow UK Limited, registered in England and Wales, company number 17178069, registered office 103a London Road, Grays, England,
+            RM17 5YB, is the data controller for the details above. Trading from {LOCATION}.
+          </p>
         </div>
       </article>
     </Container>
