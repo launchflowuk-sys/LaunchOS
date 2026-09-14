@@ -7,7 +7,7 @@ import {
   dayOnly,
   DEMO_PREFIX,
   DEMO_PROPOSAL_PREFIX,
-  DEMO_REFERENCE_PREFIX,
+  demoReference,
 } from "./shared.js";
 
 /**
@@ -80,7 +80,7 @@ export async function seedOpenDemoLead(
     .returning();
   count("leads");
 
-  const reference = `${DEMO_REFERENCE_PREFIX}0003`;
+  const reference = demoReference(organisationId, 3);
   const [session] = await db
     .insert(schema.briefSessions)
     .values({

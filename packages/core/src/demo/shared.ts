@@ -37,6 +37,27 @@ export interface DemoClientResult {
   created: Record<string, number>;
 }
 
+/**
+ * The demo's brief reference, made unique per organisation.
+ *
+ * `brief_submissions.reference` is unique **globally**, not per organisation —
+ * unlike `proposals_org_reference` and `invoices_org_number`, which are
+ * scoped. So a flat `LF-DEMO-0001` can exist exactly once in a database,
+ * which broke two things at once: the schema is meant to let this be sold as
+ * SaaS without a migration, and a second tenant seeding a demo would collide
+ * with the first; and no test could run against a database that already had
+ * the demo seeded into it, which is every developer machine where anybody has
+ * pressed the button.
+ *
+ * Six hex characters of the organisation id is enough — these are demo rows
+ * in one database, not addresses — and the `LF-DEMO-` prefix survives, which
+ * is what every cleanup path matches on.
+ */
+export function demoReference(organisationId: string, index: number): string {
+  const short = organisationId.replace(/-/g, "").slice(0, 6);
+  return `${DEMO_REFERENCE_PREFIX}${short}-${String(index).padStart(4, "0")}`;
+}
+
 /** A counter that reads as a sentence at the call site. */
 export function counter(): { created: Record<string, number>; count: (key: string) => void } {
   const created: Record<string, number> = {};

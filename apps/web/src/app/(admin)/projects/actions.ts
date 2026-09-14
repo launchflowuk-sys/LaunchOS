@@ -2,13 +2,16 @@
 
 import {
   addMilestone,
+  ClientReviewRefused,
   createProject,
   deliverProject,
   ProjectRefused,
   reachMilestone,
+  requestClientReview,
   setPhaseStatus,
   updateMilestone,
   updateProject,
+  withdrawClientReview,
 } from "@launchos/core";
 import { revalidatePath, updateTag } from "next/cache";
 import { getDb } from "@/lib/db";
@@ -24,9 +27,11 @@ import {
   firstIssue,
   MilestoneVisibilitySchema,
   ReachMilestoneSchema,
+  RequestClientReviewSchema,
   SetPhaseStatusSchema,
   UpdateProjectSchema,
   value,
+  WithdrawClientReviewSchema,
 } from "./schemas";
 
 /**
@@ -50,6 +55,9 @@ import {
  */
 function failed(error: unknown, fallback: string): ActionResult {
   if (error instanceof ProjectRefused) return { status: "error", message: error.message };
+  // Written for the same reader: "Dean has already been asked to look at
+  // Design sign-off." goes to the toast unchanged.
+  if (error instanceof ClientReviewRefused) return { status: "error", message: error.message };
   console.error(`[projects] ${fallback}`, { error });
   return { status: "error", message: fallback };
 }
@@ -264,5 +272,81 @@ export async function deliverProjectAction(formData: FormData): Promise<ActionRe
     return { status: "ok", id: project.id };
   } catch (error) {
     return failed(error, "Could not deliver that project");
+  }
+}
+
+/**
+ * Asks the client to look at something.
+ *
+ * The one thing that was missing: `requestClientReview` has existed, tested,
+ * in core since P4b and nothing ever called it — so the portal's "One thing to
+ * look at" panel was wired to a queue that could never fill, and the Ops
+ * Brief's unanswered-review count could only ever be zero.
+ *
+ * `requireAdmin` and nothing narrower, like every other action in this module:
+ * a review is delivery work. Note what this deliberately does **not** do —
+ * send anything. Core writes the card and a client-visible timeline entry and
+ * stops; the client meets it in their portal and in the Friday update they
+ * already get. Chasing them would contradict the whole point of a review that
+ * blocks nothing.
+ */
+export async function requestClientReviewAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = RequestClientReviewSchema.safeParse({
+    projectId: value(formData, "projectId"),
+    milestoneId: value(formData, "milestoneId") ?? "",
+    note: value(formData, "note"),
+    links: value(formData, "links"),
+  });
+  if (!parsed.success) return { status: "error", message: firstIssue(parsed.error, "Check the review and try again") };
+  const v = parsed.data;
+
+  try {
+    const { approval } = await requestClientReview(getDb(), session.organisationId, {
+      projectId: v.projectId,
+      ...(v.milestoneId ? { milestoneId: v.milestoneId } : {}),
+      note: v.note,
+      links: v.links,
+      actorKind: "user",
+      actorId: session.userId,
+    });
+    revalidateProject(v.projectId);
+    return { status: "ok", id: approval.id };
+  } catch (error) {
+    return failed(error, "Could not ask for that review");
+  }
+}
+
+/**
+ * Takes a review back.
+ *
+ * Soft delete, which frees the partial unique index so the same thing can be
+ * asked about again — the realistic use is a note with the wrong staging URL
+ * in it, where the fix is to withdraw and re-ask rather than to leave a card
+ * pointing at a dead page.
+ *
+ * There is no admin route to *answer* one, and there should not be: the client
+ * decides a client review. `decideApproval` is reachable from the approvals
+ * screen for every other kind, and a review answered by us would put the words
+ * "the client is happy with this" on a timeline on nobody's authority.
+ */
+export async function withdrawClientReviewAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const parsed = WithdrawClientReviewSchema.safeParse({
+    projectId: value(formData, "projectId"),
+    approvalId: value(formData, "approvalId"),
+  });
+  if (!parsed.success) return { status: "error", message: "Could not withdraw that review" };
+  const v = parsed.data;
+
+  try {
+    await withdrawClientReview(getDb(), session.organisationId, {
+      approvalId: v.approvalId,
+      actorId: session.userId,
+    });
+    revalidateProject(v.projectId);
+    return { status: "ok", id: v.approvalId };
+  } catch (error) {
+    return failed(error, "Could not withdraw that review");
   }
 }

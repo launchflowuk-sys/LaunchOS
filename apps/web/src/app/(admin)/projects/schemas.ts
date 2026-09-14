@@ -120,6 +120,41 @@ export const DeliverProjectSchema = z.object({
   note: z.string().trim().max(2000).optional(),
 });
 
+/**
+ * Links, one per line, from a textarea.
+ *
+ * A textarea rather than a repeating field because the realistic case is one
+ * staging URL and occasionally two, and a line each is the fastest thing to
+ * paste. Blank lines are dropped rather than refused — a trailing newline is
+ * not a mistake worth a red message.
+ *
+ * The bounds mirror `RequestClientReviewInput` in
+ * `packages/core/src/projects/client-review.ts` so a bad URL is a sentence on
+ * the form rather than a Zod error thrown out of core.
+ */
+export const ReviewLinksSchema = z
+  .string()
+  .optional()
+  .transform((raw) => (raw ?? "").split(/\r?\n/).map((line) => line.trim()).filter((line) => line.length > 0))
+  .pipe(
+    z
+      .array(z.string().url("a link must start with http:// or https://").max(500))
+      .max(10, "ten links is plenty — put the rest in the note"),
+  );
+
+export const RequestClientReviewSchema = z.object({
+  projectId: z.string().uuid(),
+  /** Blank means the review is about the whole project rather than one milestone. */
+  milestoneId: z.union([z.literal(""), z.string().uuid()]).optional(),
+  note: z.string().trim().min(1, "say what you would like them to look at").max(4000),
+  links: ReviewLinksSchema,
+});
+
+export const WithdrawClientReviewSchema = z.object({
+  projectId: z.string().uuid(),
+  approvalId: z.string().uuid(),
+});
+
 /** The first thing that is wrong with the form, in the words the schema used. */
 export function firstIssue(error: z.ZodError, fallback: string): string {
   return error.issues[0]?.message ?? fallback;

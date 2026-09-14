@@ -8,7 +8,7 @@ import {
   dayOnly,
   DEMO_PREFIX,
   DEMO_PROPOSAL_PREFIX,
-  DEMO_REFERENCE_PREFIX,
+  demoReference,
   type DemoClientResult,
   periodKey,
 } from "./shared.js";
@@ -91,7 +91,7 @@ export async function seedInFlightDemoClient(
   count("leads");
 
   // --- 2. The brief -------------------------------------------------------
-  const reference = `${DEMO_REFERENCE_PREFIX}0002`;
+  const reference = demoReference(organisationId, 2);
   const [session] = await db
     .insert(schema.briefSessions)
     .values({

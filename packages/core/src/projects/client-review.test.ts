@@ -11,6 +11,7 @@ import { opsMetricsSnapshot } from "../team/ops-metrics.js";
 import {
   ClientReviewRefused,
   approveClientReview,
+  clientReviewSummaries,
   clientReviewTargetRef,
   commentOnClientReview,
   commentsOf,
@@ -18,6 +19,7 @@ import {
   listClientReviews,
   requestClientReview,
   staleClientReviews,
+  summariseClientReview,
   withdrawClientReview,
 } from "./client-review.js";
 import { createProject } from "./crud.js";
@@ -272,6 +274,131 @@ describe("client reviews", () => {
       expect(added.reachedAt).toBeNull();
       const detail = (await getProject(db, organisationId, project.id))!;
       expect(detail.milestones).toHaveLength(3);
+    });
+  });
+  /**
+   * The projection both the admin panel and `GET /api/v1/client-reviews` read.
+   *
+   * `answered` is the field worth pinning: the brief's question is not
+   * pending-vs-decided but *has the client engaged at all*, so a commented
+   * review counts as answered while still sitting `pending`. Get that wrong
+   * and Shoji is told to ring somebody who has already written to him.
+   */
+  describe("summaries", () => {
+    it("flattens a review, and a comment makes it answered without deciding it", async () => {
+      await withTestDb(async (db) => {
+        const { organisationId, ownerUserId, clientId, project, milestones } = await projectFixture(db);
+        const userId = await portalUser(db, organisationId, clientId);
+        const design = milestones[0]!;
+
+        const { approval } = await requestClientReview(db, organisationId, {
+          projectId: project.id,
+          milestoneId: design.id,
+          note: "Have a look at the homepage on the staging link.",
+          links: ["https://staging.example.test/"],
+          actorKind: "user",
+          actorId: ownerUserId,
+        });
+
+        const [fresh] = await clientReviewSummaries(db, organisationId, { projectId: project.id, now: NOW });
+        expect(fresh).toMatchObject({
+          approvalId: approval.id,
+          status: "pending",
+          projectId: project.id,
+          milestoneId: design.id,
+          about: design.title,
+          note: "Have a look at the homepage on the staging link.",
+          links: ["https://staging.example.test/"],
+          daysWaiting: 0,
+          commentedAt: null,
+          comments: [],
+          answered: false,
+        });
+        // The internal fields are dropped rather than renamed: nothing on a
+        // screen or in an API response needs the target ref or who asked.
+        expect(fresh).not.toHaveProperty("targetRef");
+        expect(fresh).not.toHaveProperty("requestedByKind");
+
+        await commentOnClientReview(db, organisationId, {
+          approvalId: approval.id,
+          actorUserId: userId,
+          note: "The green is too dark.",
+        });
+
+        const [talked] = await clientReviewSummaries(db, organisationId, { projectId: project.id, now: NOW });
+        expect(talked!.status).toBe("pending");
+        expect(talked!.answered).toBe(true);
+        expect(talked!.commentedAt).not.toBeNull();
+        expect(talked!.comments.map((comment) => comment.body)).toEqual(["The green is too dark."]);
+      });
+    });
+
+    it("ages a review against the caller's clock, and never negatively", async () => {
+      await withTestDb(async (db) => {
+        const { organisationId, ownerUserId, project } = await projectFixture(db);
+        const { approval } = await requestClientReview(db, organisationId, {
+          projectId: project.id, note: "A look at the whole thing.", actorKind: "user", actorId: ownerUserId,
+        });
+
+        const sixDaysOn = new Date(approval.createdAt.getTime() + 6 * 24 * 60 * 60 * 1000);
+        expect(summariseClientReview(approval, sixDaysOn)!.daysWaiting).toBe(6);
+
+        // A clock behind the row — a replica a second stale, a machine whose
+        // time drifted — must not produce "waiting -1 days" on a screen.
+        const before = new Date(approval.createdAt.getTime() - 60_000);
+        expect(summariseClientReview(approval, before)!.daysWaiting).toBe(0);
+      });
+    });
+
+    it("agrees with the brief about which reviews are unanswered", async () => {
+      await withTestDb(async (db) => {
+        const { organisationId, ownerUserId, clientId, project, milestones } = await projectFixture(db);
+        const userId = await portalUser(db, organisationId, clientId);
+
+        const quiet = await requestClientReview(db, organisationId, {
+          projectId: project.id, milestoneId: milestones[0]!.id, note: "Homepage, when you get a minute.",
+          actorKind: "user", actorId: ownerUserId,
+        });
+        const talking = await requestClientReview(db, organisationId, {
+          projectId: project.id, milestoneId: milestones[1]!.id, note: "And the quote form.",
+          actorKind: "user", actorId: ownerUserId,
+        });
+        await commentOnClientReview(db, organisationId, {
+          approvalId: talking.approval.id, actorUserId: userId, note: "Can the button be bigger?",
+        });
+
+        // Well past the stale threshold, so the brief has an opinion.
+        const later = new Date(quiet.approval.createdAt.getTime() + 9 * 24 * 60 * 60 * 1000);
+        const stale = await staleClientReviews(db, organisationId, { now: later });
+        const summaries = await clientReviewSummaries(db, organisationId, { projectId: project.id, now: later });
+
+        expect(stale.map((row) => row.approval.id)).toEqual([quiet.approval.id]);
+        expect(summaries.filter((review) => !review.answered).map((review) => review.approvalId)).toEqual([
+          quiet.approval.id,
+        ]);
+      });
+    });
+
+    it("drops a row whose payload is not a review rather than throwing the list away", async () => {
+      await withTestDb(async (db) => {
+        const { organisationId, ownerUserId, project } = await projectFixture(db);
+        await requestClientReview(db, organisationId, {
+          projectId: project.id, note: "A look at the whole thing.", actorKind: "user", actorId: ownerUserId,
+        });
+        // What a future migration or a hand-edited row looks like. One bad
+        // card must not take out the screen that would let somebody withdraw
+        // it, so the summary is skipped and the good one still arrives.
+        await db.insert(schema.approvals).values({
+          organisationId,
+          kind: "client_review",
+          title: "Malformed",
+          payload: { action: "client_review", note: "no project id here" },
+        });
+
+        const summaries = await clientReviewSummaries(db, organisationId, { now: NOW });
+        expect(summaries).toHaveLength(1);
+        expect(summaries[0]!.projectId).toBe(project.id);
+      });
     });
   });
 });

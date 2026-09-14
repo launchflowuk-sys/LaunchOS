@@ -1,4 +1,4 @@
-import { describeProgress, getCaseStudyForProject, getClient, getProject, UNPHASED } from "@launchos/core";
+import { clientReviewSummaries, describeProgress, getCaseStudyForProject, getClient, getProject, UNPHASED } from "@launchos/core";
 import { schema } from "@launchos/db";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { SquareCheckBig } from "lucide-react";
@@ -15,6 +15,7 @@ import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
 import { ProgressPanel } from "../progress-panel";
 import { ProjectStatusBadge } from "../project-status-badge";
+import { ClientReviewsPanel } from "./client-reviews-panel";
 import { HandoverPanel } from "./handover-panel";
 import { MilestoneList } from "./milestone-list";
 import { PhaseSpine } from "./phase-spine";
@@ -55,10 +56,11 @@ export default async function ProjectDetailPage({ params }: PageProps<"/projects
   if (!detail) notFound();
   const { project, phases, milestones, tasks, tasksByPhase, progress } = detail;
 
-  const [client, caseStudy, taskRows] = await Promise.all([
+  const [client, caseStudy, taskRows, reviews] = await Promise.all([
     getClient(db, session.organisationId, project.clientId),
     getCaseStudyForProject(db, session.organisationId, project.id),
     linkedTasks(session.organisationId, project.id),
+    clientReviewSummaries(db, session.organisationId, { projectId: project.id }),
   ]);
 
   const phaseName = new Map(phases.map((phase) => [phase.id, phase.name]));
@@ -150,6 +152,15 @@ export default async function ProjectDetailPage({ params }: PageProps<"/projects
         description="What we promised, in the client's words. Marking one reached emails them the same day, once."
       >
         <MilestoneList projectId={project.id} milestones={milestones} phases={phases} />
+      </Section>
+
+      {/* After Milestones on purpose: a review is usually asking about one,
+          so it reads as the next thing you do rather than a separate module. */}
+      <Section
+        title="Client review"
+        description="Ask them to look at something. It appears in their portal and holds nothing up — the build carries on whether they answer or not, and after five days the morning brief tells you to ring them."
+      >
+        <ClientReviewsPanel projectId={project.id} reviews={reviews} milestones={milestones} />
       </Section>
 
       <Section

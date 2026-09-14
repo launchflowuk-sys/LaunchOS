@@ -100,6 +100,14 @@ export {
 export { upsertBillingProfile, getBillingProfile, UpsertBillingProfileInput } from "./billing/upsert-billing-profile.js";
 export { updateSite, UpdateSiteInput } from "./sites/update-site.js";
 export { listSites, getSite, ListSitesInput } from "./sites/list-sites.js";
+// Google reviews, fetched by us and served to the client's own website.
+export {
+  SiteReviewsRefused, SiteSlug, SiteReviewSettingsInput,
+  MAX_PUBLISHED_REVIEWS, REVIEWS_REFRESH_AFTER_HOURS,
+  setSiteReviewSettings, publishableReviews, refreshSiteReviews,
+  publicSiteReviews, sitesDueReviewRefresh, siteReviewsStatus,
+} from "./sites/reviews.js";
+export type { RefreshSiteReviewsResult, PublicSiteReviews, SiteDueReviewRefresh } from "./sites/reviews.js";
 export {
   captureSiteScreenshot,
   readSiteThumbnail,
@@ -677,9 +685,10 @@ export {
   clientReviewTargetRef, commentsOf,
   requestClientReview, listClientReviews, getClientReview,
   approveClientReview, commentOnClientReview, staleClientReviews, withdrawClientReview,
+  summariseClientReview, clientReviewSummaries,
   RequestClientReviewInput, ListClientReviewsInput, AnswerClientReviewInput, CommentOnClientReviewInput,
 } from "./projects/client-review.js";
-export type { ClientReviewComment, StaleClientReview } from "./projects/client-review.js";
+export type { ClientReviewComment, StaleClientReview, ClientReviewSummary } from "./projects/client-review.js";
 // P4c — the Friday update: what the reporter reads, and the card it raises.
 export { projectWeekActivity, projectsDueAnUpdate, ProjectWeekActivityInput, PROJECT_WEEK_MS } from "./projects/week-activity.js";
 export type {

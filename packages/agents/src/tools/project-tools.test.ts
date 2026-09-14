@@ -17,6 +17,7 @@ import { caseStudyGetMaterial } from "./case-study-get-material.js";
 import { caseStudyPublish } from "./case-study-publish.js";
 import { caseStudySaveDraft } from "./case-study-save-draft.js";
 import { projectGetWeek } from "./project-get-week.js";
+import { projectRequestClientReview } from "./project-request-client-review.js";
 import { CASE_STUDY_WRITER_KEY, PROJECT_REPORTER_KEY } from "./project-shared.js";
 import { projectUpdateRequestApproval } from "./project-update-request-approval.js";
 
@@ -108,6 +109,61 @@ describe("the Project Reporter's tools", () => {
       const second = await projectUpdateRequestApproval.execute(input, ctx);
       expect(second).toMatchObject({ requested: false });
       expect("reason" in second && second.reason).toMatch(/already waiting/i);
+    });
+  });
+
+  /**
+   * The risk grading is the test, and it is the opposite of the tool above.
+   *
+   * `project_update_request_approval` is `safe` because the card it writes
+   * *is* the gate. This one writes a card **and** a client-visible timeline
+   * entry carrying the agent's own words, with nothing behind it — so it must
+   * be `requires_approval` or an agent publishes to a client on its own
+   * authority, which is CLAUDE.md rule 2. If someone relaxes this to `safe`
+   * to shorten the Friday queue, this fails and says why.
+   */
+  it("suggests a review as requires_approval, and refuses a second one about the same thing", async () => {
+    await withTestDb(async (db) => {
+      const f = await fixture(db);
+      const ctx = await ctxFor(db, f.organisationId, PROJECT_REPORTER_KEY);
+      const design = f.milestones.find((milestone) => milestone.title === "The homepage design")!;
+
+      expect(projectRequestClientReview.risk).toBe("requires_approval");
+
+      const first = await projectRequestClientReview.execute(
+        { projectId: f.project.id, milestoneId: design.id, note: "The homepage is ready for your thoughts." },
+        ctx,
+      );
+      expect(first).toMatchObject({ requested: true, about: "The homepage design" });
+
+      const [approval] = await db.select().from(schema.approvals)
+        .where(eq(schema.approvals.organisationId, f.organisationId));
+      expect(approval!.kind).toBe("client_review");
+
+      // The partial unique index, surfaced as an answer the model can act on
+      // rather than a thrown fault that fails the run.
+      const again = await projectRequestClientReview.execute(
+        { projectId: f.project.id, milestoneId: design.id, note: "Any thoughts on the homepage?" },
+        ctx,
+      );
+      expect(again).toMatchObject({ requested: false });
+      expect("reason" in again && again.reason).toMatch(/already been asked/i);
+    });
+  });
+
+  /** A project that is not ours is `not found`, not a stack trace. */
+  it("answers rather than throws when the project is another tenant's", async () => {
+    await withTestDb(async (db) => {
+      const mine = await fixture(db);
+      const theirs = await fixture(db);
+      const ctx = await ctxFor(db, mine.organisationId, PROJECT_REPORTER_KEY);
+
+      const result = await projectRequestClientReview.execute(
+        { projectId: theirs.project.id, note: "Have a look at this." },
+        ctx,
+      );
+      expect(result).toMatchObject({ requested: false });
+      expect(await db.select().from(schema.approvals).where(eq(schema.approvals.organisationId, mine.organisationId))).toHaveLength(0);
     });
   });
 });

@@ -3,6 +3,7 @@ import { withTestDb } from "@launchos/db/test";
 import { and, eq, isNull, like } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { DEMO_PREFIX, DEMO_SLUG_PREFIX, removeDemoClients, seedDemoClients } from "./demo-client.js";
+import { demoReference } from "./shared.js";
 
 async function makeOrg(db: Db) {
   const [org] = await db
@@ -26,9 +27,12 @@ describe("seedDemoClients", () => {
 
       const result = await seedDemoClients(db, org.id, NOW);
 
-      expect(result.delivered.reference).toBe("LF-DEMO-0001");
-      expect(result.inFlight.reference).toBe("LF-DEMO-0002");
-      expect(result.openLead.reference).toBe("LF-DEMO-0003");
+      // Suffixed with the organisation, because `brief_submissions.reference`
+      // is unique globally rather than per organisation — so a flat
+      // LF-DEMO-0001 could exist only once in a whole database.
+      expect(result.delivered.reference).toMatch(/^LF-DEMO-[0-9a-f]{6}-0001$/);
+      expect(result.inFlight.reference).toMatch(/^LF-DEMO-[0-9a-f]{6}-0002$/);
+      expect(result.openLead.reference).toMatch(/^LF-DEMO-[0-9a-f]{6}-0003$/);
 
       // Two clients, because the open lead deliberately has none.
       const clients = await db
@@ -148,13 +152,17 @@ describe("seedDemoClients", () => {
       await seedDemoClients(db, org.id, NOW);
       const third = await seedDemoClients(db, org.id, NOW);
 
-      expect(third.delivered.reference).toBe("LF-DEMO-0001");
+      expect(third.delivered.reference).toMatch(/^LF-DEMO-[0-9a-f]{6}-0001$/);
 
       const submissions = await db
         .select({ reference: schema.briefSubmissions.reference })
         .from(schema.briefSubmissions)
         .where(eq(schema.briefSubmissions.organisationId, org.id));
-      expect(submissions.map((row) => row.reference).sort()).toEqual(["LF-DEMO-0001", "LF-DEMO-0002", "LF-DEMO-0003"]);
+      expect(submissions.map((row) => row.reference).sort()).toEqual([
+        demoReference(org.id, 1),
+        demoReference(org.id, 2),
+        demoReference(org.id, 3),
+      ]);
 
       const clients = await db
         .select({ id: schema.clients.id })
@@ -203,6 +211,31 @@ describe("seedDemoClients", () => {
 
       const leads = await db.select({ name: schema.leads.name }).from(schema.leads).where(eq(schema.leads.organisationId, org.id));
       expect(leads.map((row) => row.name)).toEqual(["Ahmed Mohebi"]);
+    });
+  });
+  /**
+   * Two tenants, one database. `brief_submissions.reference` is unique
+   * globally, so before the organisation suffix the second organisation to
+   * seed a demo failed on the first one's reference — a multi-tenancy bug in
+   * a schema whose whole point is to be sellable as SaaS without a migration.
+   */
+  it("lets two organisations each have a demo in the same database", async () => {
+    await withTestDb(async (db) => {
+      const first = await makeOrg(db);
+      const second = await makeOrg(db);
+
+      const a = await seedDemoClients(db, first.id, NOW);
+      const b = await seedDemoClients(db, second.id, NOW);
+
+      expect(a.delivered.reference).not.toBe(b.delivered.reference);
+
+      // And removing one tenant's demo leaves the other's alone.
+      await removeDemoClients(db, first.id);
+      const left = await db
+        .select({ reference: schema.briefSubmissions.reference })
+        .from(schema.briefSubmissions)
+        .where(eq(schema.briefSubmissions.organisationId, second.id));
+      expect(left).toHaveLength(3);
     });
   });
 });

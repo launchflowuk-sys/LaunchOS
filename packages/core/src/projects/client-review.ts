@@ -432,6 +432,109 @@ export interface StaleClientReview {
 }
 
 /**
+ * One review, flattened for a screen or an API response.
+ *
+ * The raw approval is the wrong thing to hand out twice over. `listApprovals`
+ * withholds `payload` on every other kind because it carries the outward
+ * message — but a review's payload is the sentence *the client is already
+ * reading in their portal*, so withholding it here would hide nothing and
+ * leave both callers unable to say what the review is about. What this does
+ * instead is drop the parts neither caller has any business with: the
+ * `requestedBy` actor, the internal `targetRef`, and the metadata blob.
+ *
+ * `daysWaiting` and `answered` are computed rather than stored so that a
+ * review's age is always read against the caller's clock. A stored age would
+ * be wrong by the time anybody looked at it.
+ */
+export interface ClientReviewSummary {
+  approvalId: string;
+  status: (typeof schema.approvalStatusEnum.enumValues)[number];
+  projectId: string;
+  projectName: string;
+  clientId: string;
+  clientName: string;
+  milestoneId: string | null;
+  /** The milestone's title where there is one, the project's name otherwise. */
+  about: string;
+  note: string;
+  links: readonly string[];
+  screenshots: readonly string[];
+  requestedAt: Date;
+  /** Whole days since it was raised, against the clock the caller passed. */
+  daysWaiting: number;
+  /** When the client last said something, or null if they never have. */
+  commentedAt: Date | null;
+  comments: readonly ClientReviewComment[];
+  /**
+   * Decided, or commented on, or both — anything other than silence.
+   *
+   * The distinction the brief cares about is not pending-vs-decided but
+   * *has the client engaged at all*, because a review being discussed needs
+   * no phone call. See `staleClientReviews`.
+   */
+  answered: boolean;
+}
+
+/** The `commentedAt` stamp as a date, or null when it is absent or unparseable. */
+function commentedAtOf(approval: ApprovalRow): Date | null {
+  const raw = approval.metadata[CLIENT_REVIEW_COMMENTED_AT];
+  if (typeof raw !== "string") return null;
+  const at = new Date(raw);
+  return Number.isNaN(at.getTime()) ? null : at;
+}
+
+/**
+ * Flattens a review row. Returns null when the payload is not one — the caller
+ * gets to skip it rather than have a list read throw on a single bad row.
+ */
+export function summariseClientReview(approval: ApprovalRow, now: Date = new Date()): ClientReviewSummary | null {
+  const parsed = ClientReviewPayload.safeParse(approval.payload);
+  if (!parsed.success) return null;
+  const payload = parsed.data;
+  const commentedAt = commentedAtOf(approval);
+  return {
+    approvalId: approval.id,
+    status: approval.status,
+    projectId: payload.projectId,
+    projectName: payload.projectName,
+    clientId: payload.clientId,
+    clientName: payload.clientName,
+    milestoneId: payload.milestoneId,
+    about: payload.milestoneTitle ?? payload.projectName,
+    note: payload.note,
+    links: payload.links,
+    screenshots: payload.screenshots,
+    requestedAt: approval.createdAt,
+    daysWaiting: Math.max(0, Math.floor((now.getTime() - approval.createdAt.getTime()) / (24 * 60 * 60 * 1000))),
+    commentedAt,
+    comments: commentsOf(approval),
+    answered: approval.status !== "pending" || commentedAt !== null,
+  };
+}
+
+/**
+ * The reviews on a project or client, flattened, newest first.
+ *
+ * What both the admin panel and `GET /api/v1/client-reviews` call. Rows whose
+ * payload does not parse are dropped, not thrown on: one malformed card from
+ * some future migration must not take out the screen that would let somebody
+ * withdraw it.
+ */
+export async function clientReviewSummaries(
+  db: Db,
+  organisationId: string,
+  input: ListClientReviewsInput & { now?: Date } = {},
+): Promise<ClientReviewSummary[]> {
+  const { now, ...listInput } = input;
+  const rows = await listClientReviews(db, organisationId, listInput);
+  const at = now ?? new Date();
+  return rows.flatMap((row) => {
+    const summary = summariseClientReview(row, at);
+    return summary ? [summary] : [];
+  });
+}
+
+/**
  * Reviews raised more than `CLIENT_REVIEW_STALE_DAYS` ago that the client has
  * neither answered nor commented on — the Ops Brief's one line, and the only
  * consequence an unanswered review has anywhere in LaunchOS.

@@ -71,6 +71,7 @@ export {
   PROJECT_UPDATE_TARGET_WORDS, CASE_STUDY_SECTION_MAX_CHARS, CASE_STUDY_BUILT_MAX_CHARS,
 } from "./tools/project-shared.js";
 export { projectGetWeek } from "./tools/project-get-week.js";
+export { projectRequestClientReview } from "./tools/project-request-client-review.js";
 export { projectUpdateRequestApproval } from "./tools/project-update-request-approval.js";
 export type { ProjectUpdateRequestApprovalResult } from "./tools/project-update-request-approval.js";
 export { caseStudyGetMaterial } from "./tools/case-study-get-material.js";
