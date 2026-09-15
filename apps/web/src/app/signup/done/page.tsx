@@ -1,5 +1,7 @@
 import { createEmailAdapter } from "@launchos/channels";
 import { completeSignup, SignupRefused } from "@launchos/core";
+import { schema } from "@launchos/db";
+import { and, eq, isNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { z } from "zod";
@@ -10,6 +12,7 @@ import { getPayments } from "@/lib/integrations";
 import { publicOrganisationId } from "@/lib/public-organisation";
 import { installWebEnqueue } from "@/lib/queue";
 import { SignupShell } from "../signup-shell";
+import { NextSteps, type PurchaseSummary } from "./next-steps";
 
 export const dynamic = "force-dynamic";
 
@@ -18,14 +21,63 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type Outcome = { tone: InlineAlertTone; title: string; body: string; done: boolean };
+type Outcome = {
+  tone: InlineAlertTone;
+  title: string;
+  body: string;
+  done: boolean;
+  /** Present only once the purchase is real, and it is what the page is for. */
+  summary?: PurchaseSummary;
+};
 
+/**
+ * The fallback when the purchase is real but its details could not be read.
+ *
+ * Kept deliberately: a client whose package row has since been renamed or
+ * archived must still be told they are in, rather than shown an error for a
+ * payment that worked.
+ */
 const WELCOME: Outcome = {
   tone: "success",
   title: "You're in",
-  body: "Check your email for your portal login — it has a temporary password and a link to sign in. Your first invoice is on its way too.",
+  body: "Check your email for your portal login — it has a temporary password and a link to sign in.",
   done: true,
 };
+
+/**
+ * What the plan is called and what it costs, read from our own rows.
+ *
+ * Not from the Checkout session: Stripe's product name is "LaunchFlow
+ * Standard" while everything the client will ever see afterwards — the portal,
+ * their invoices, the pricing page — says "Standard". Two names for one plan on
+ * the first screen after paying is the sort of small wrongness that makes
+ * somebody wonder what else is wrong.
+ */
+async function purchaseSummary(
+  organisationId: string,
+  packageId: string,
+  email: string,
+  name: string | undefined,
+  paidByCard: boolean,
+): Promise<PurchaseSummary | null> {
+  const [pkg] = await getDb()
+    .select({ name: schema.packages.name, monthlyPricePence: schema.packages.monthlyPricePence })
+    .from(schema.packages)
+    .where(and(
+      eq(schema.packages.id, packageId),
+      eq(schema.packages.organisationId, organisationId),
+      isNull(schema.packages.deletedAt),
+    ));
+  if (!pkg) return null;
+  const firstName = name?.trim().split(/\s+/)[0] ?? null;
+  return {
+    packageName: pkg.name,
+    monthlyPricePence: pkg.monthlyPricePence,
+    email,
+    firstName: firstName && firstName.length > 0 ? firstName : null,
+    paidByCard,
+  };
+}
 
 /**
  * Stripe (or the mock) sent the buyer back with a session id. The session
@@ -52,7 +104,15 @@ async function outcomeForCheckout(sessionId: string): Promise<Outcome> {
   installWebEnqueue();
   try {
     await completeSignup(getDb(), organisationId, { session }, { email: createEmailAdapter(process.env) });
-    return WELCOME;
+    // The metadata is ours — `completeSignup` has just validated it against
+    // the organisation — so reading the package id back off it is safe.
+    const meta = session.metadata ?? {};
+    const packageId = typeof meta["packageId"] === "string" ? meta["packageId"] : null;
+    const buyerEmail = (typeof meta["email"] === "string" ? meta["email"] : null) ?? session.customerEmail ?? "";
+    const summary = packageId
+      ? await purchaseSummary(organisationId, packageId, buyerEmail, typeof meta["name"] === "string" ? meta["name"] : undefined, true)
+      : null;
+    return summary ? { ...WELCOME, summary } : WELCOME;
   } catch (error) {
     if (error instanceof SignupRefused) {
       console.warn("[signup/done] signup refused", { sessionId, reason: error.reason });
@@ -92,17 +152,29 @@ export default async function SignupDonePage({ searchParams }: PageProps<"/signu
       <InlineAlert tone={outcome.tone} title={outcome.title}>
         {outcome.body}
       </InlineAlert>
-      <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
-        {outcome.done ? (
-          <Button asChild size="lg" className="btn btn-ink">
-            <Link href="/sign-in">Go to sign in</Link>
-          </Button>
-        ) : (
-          <Button asChild size="lg" variant="secondary" className="btn btn-white">
-            <Link href="/signup">Back to sign-up</Link>
-          </Button>
-        )}
-      </div>
+
+      {/* With the purchase details we can say what they bought and who does
+          what next; without them the alert above plus one button is still an
+          honest answer, which is what a renamed or archived package falls
+          back to. `NextSteps` carries its own actions, so the button row below
+          is only for the cases it does not render. */}
+      {outcome.summary ? (
+        <div className="mt-8 text-left">
+          <NextSteps summary={outcome.summary} />
+        </div>
+      ) : (
+        <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
+          {outcome.done ? (
+            <Button asChild size="lg" className="btn btn-ink">
+              <Link href="/sign-in">Go to sign in</Link>
+            </Button>
+          ) : (
+            <Button asChild size="lg" variant="secondary" className="btn btn-white">
+              <Link href="/signup">Back to sign-up</Link>
+            </Button>
+          )}
+        </div>
+      )}
     </SignupShell>
   );
 }
