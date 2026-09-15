@@ -73,6 +73,82 @@ describe("runPublishDue", () => {
     });
   });
 
+  /**
+   * The estate is mostly Next.js applications on Coolify, which have no CMS to
+   * push into. Publishing one is marking it published — the application fetches
+   * it from the public blog endpoint — so there must be no outbound call, and
+   * the post must still get a permanent address on the client's own domain.
+   */
+  it("publishes a blog post for a non-WordPress application without any outbound call", async () => {
+    await withTestDb(async (db) => {
+      const f = await contentJobFixture(db);
+      const [site] = await db.insert(schema.sites).values({
+        organisationId: f.orgId, clientId: f.clientId, name: "LifeStyle Windows",
+        primaryUrl: "https://lifestylewindows.co.uk", platform: "nextjs", slug: "lifestyle-windows",
+      }).returning();
+      await connectChannel(db, f.orgId, f.clientId, "blog", site!.id);
+      const item = await approvedItem(db, f.orgId, f.clientId, "blog", DUE, {
+        title: "Five signs your windows need replacing", body: "## Draughts\n\nA draught is a seal gone.",
+      });
+      const { social, cms, deps: d } = deps(db);
+
+      const result = await runPublishDue(d, f.orgId, { now: NOW });
+
+      expect(result).toMatchObject({ claimed: 1, published: 1, failed: 0 });
+      // Nothing was pushed anywhere.
+      expect(cms.posts).toEqual([]);
+      expect(social.calls).toEqual([]);
+
+      const after = await itemById(db, item.id);
+      const slug = `five-signs-your-windows-need-replacing-${item.id.replace(/-/g, "").slice(0, 8)}`;
+      expect(after).toMatchObject({
+        status: "published",
+        externalId: slug,
+        externalUrl: `https://lifestylewindows.co.uk/blog/${slug}`,
+      });
+    });
+  });
+
+  /**
+   * The application fetches by the site's slug, so a site without one has no
+   * address to be served at. Marking the post published anyway would make it
+   * live and unreachable at the same time.
+   */
+  it("refuses a non-WordPress blog post when the site has no slug", async () => {
+    await withTestDb(async (db) => {
+      const f = await contentJobFixture(db);
+      const [site] = await db.insert(schema.sites).values({
+        organisationId: f.orgId, clientId: f.clientId, name: "No slug",
+        primaryUrl: "https://noslug.example", platform: "nextjs",
+      }).returning();
+      await connectChannel(db, f.orgId, f.clientId, "blog", site!.id);
+      const item = await approvedItem(db, f.orgId, f.clientId, "blog", DUE, { title: "Orphan", body: "Words." });
+      const { deps: d } = deps(db);
+
+      const result = await runPublishDue(d, f.orgId, { now: NOW });
+
+      expect(result).toMatchObject({ claimed: 1, published: 0, failed: 1 });
+      const after = await itemById(db, item.id);
+      expect(after.status).toBe("failed");
+      expect(after.lastError).toMatch(/no slug/i);
+    });
+  });
+
+  /** A channel left pointing at a site somebody deleted is refused, not crashed on. */
+  it("refuses a blog post whose channel points at a site that no longer exists", async () => {
+    await withTestDb(async (db) => {
+      const f = await contentJobFixture(db);
+      await connectChannel(db, f.orgId, f.clientId, "blog", "00000000-0000-4000-8000-000000000000");
+      const item = await approvedItem(db, f.orgId, f.clientId, "blog", DUE, { title: "Nowhere", body: "Words." });
+      const { deps: d } = deps(db);
+
+      const result = await runPublishDue(d, f.orgId, { now: NOW });
+
+      expect(result).toMatchObject({ claimed: 1, published: 0, failed: 1 });
+      expect((await itemById(db, item.id)).lastError).toMatch(/no longer exists/i);
+    });
+  });
+
   it("routes GBP and Instagram to the social publisher, passing the image through", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);

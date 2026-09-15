@@ -55,7 +55,16 @@ export function ChannelsForm({
 }) {
   const byChannel = new Map(channels.map((row) => [row.channel, row]));
   const facebookFieldId = "channel-facebook-id";
-  const wordpressSites = sites.filter((site) => site.platform === "wordpress");
+  // Every site, not only the WordPress ones. A Next.js application on Coolify
+  // has no CMS to push into, so LaunchOS serves its posts from the public blog
+  // endpoint instead — which is most of the estate, and used to have no way to
+  // have a blog at all because this list was empty for them.
+  const blogSites = sites;
+  // Derived from the site actually saved on the channel, not from the select's
+  // current value: the sentence has to be true of what is connected, and a
+  // value the user has changed but not saved is not connected to anything.
+  const savedBlogSite = sites.find((site) => site.id === byChannel.get("blog")?.externalId);
+  const blogDelivery = savedBlogSite ? (savedBlogSite.platform === "wordpress" ? "push" : "pull") : null;
 
   return (
     <div className="grid gap-4">
@@ -84,18 +93,25 @@ export function ChannelsForm({
             </div>
             {channel === "blog" ? (
               <div className="min-w-0 space-y-1.5">
-                <Label htmlFor={fieldId}>WordPress site</Label>
+                <Label htmlFor={fieldId}>Site</Label>
                 <NativeSelect key={row?.externalId ?? ""} id={fieldId} name="externalId" defaultValue={row?.externalId ?? ""} required>
                   <option value="" disabled>
-                    {wordpressSites.length === 0 ? "No WordPress site on this client" : "Choose a site"}
+                    {blogSites.length === 0 ? "No site on this client" : "Choose a site"}
                   </option>
-                  {wordpressSites.map((site) => (
+                  {blogSites.map((site) => (
                     <option key={site.id} value={site.id}>
                       {site.name} — {site.primaryUrl}
+                      {site.platform === "wordpress" ? " (WordPress)" : ""}
                     </option>
                   ))}
                 </NativeSelect>
-                <p className="text-meta text-muted-foreground">Posts publish with the WordPress app password saved on the site.</p>
+                <p className="text-meta text-muted-foreground">
+                  {blogDelivery === "push"
+                    ? "WordPress: posts are written into the site with the application password saved on it."
+                    : blogDelivery === "pull"
+                      ? "Posts are served to this application from LaunchOS — no password needed."
+                      : "A WordPress site is posted into directly; anything else is served its posts by LaunchOS."}
+                </p>
               </div>
             ) : channel === "instagram" ? (
               <InstagramIdField

@@ -1,6 +1,7 @@
 import { cmsProviderFor, type CmsProviderFactory } from "@launchos/agents";
 import {
-  claimDueContent, excerpt, listContentChannels, markContentFailed, markContentPublished, type ContentItemRow,
+  blogDeliveryFor, blogPostSlug, claimDueContent, excerpt, listContentChannels, markContentFailed,
+  markContentPublished, siteForBlogChannel, type ContentItemRow,
 } from "@launchos/core";
 import type { Db } from "@launchos/db";
 import type { ContentChannel } from "@launchos/db/schema";
@@ -100,6 +101,34 @@ async function publishOne(
   }
 
   if (item.channel === "blog") {
+    const site = await siteForBlogChannel(deps.db, organisationId, channel.externalId);
+    if (!site) {
+      throw new PublishRefused(
+        "The blog channel points at a site that no longer exists. Reconnect it on the client's Content tab.",
+        false,
+      );
+    }
+
+    // Most of the estate is a Next.js application on Coolify, which has no CMS
+    // to push into: LaunchOS keeps the post and the application fetches it from
+    // the public blog endpoint. So there is nothing to send — marking it
+    // published *is* the publish, and the slug is settled here so the address
+    // never moves if the title is edited later.
+    if (blogDeliveryFor(site.platform) === "pull") {
+      // The application fetches its posts by the site's slug, so a site without
+      // one has no address to be served at. Publishing anyway would mark the
+      // post live and leave it unreachable, which is the one outcome worth
+      // refusing over — and it is a one-field fix on the website record.
+      if (!site.slug) {
+        throw new PublishRefused(
+          "This site has no slug, so its application cannot fetch the post. Give the website a slug and send it again.",
+          false,
+        );
+      }
+      const slug = blogPostSlug(item.title, item.id);
+      return { externalId: slug, externalUrl: `${site.primaryUrl.replace(/\/+$/, "")}/blog/${slug}` };
+    }
+
     const provider = cmsProviderFor(deps.cms, { db: deps.db, organisationId });
     const result = await provider.createPost({
       siteId: channel.externalId,

@@ -3,6 +3,7 @@ import { tenantColumns } from "./_shared.js";
 import { clients } from "./clients.js";
 
 export const sitePlatformEnum = pgEnum("site_platform", ["wordpress", "static", "nextjs", "other"]);
+export type SitePlatform = (typeof sitePlatformEnum.enumValues)[number];
 export const hostingProviderEnum = pgEnum("hosting_provider", ["coolify", "other"]);
 export const siteStatusEnum = pgEnum("site_status", ["live", "building", "paused", "archived"]);
 export const domainStatusEnum = pgEnum("domain_status", ["active", "expiring", "expired", "transferring"]);
