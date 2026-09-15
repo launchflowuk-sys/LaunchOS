@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "gbp:token": "tsx src/social/gbp-token-cli.ts"
   },
   "dependencies": {
     "ssh2-sftp-client": "^12.1.1",
@@ -23,6 +24,7 @@
     "@launchos/config": "workspace:*",
     "@types/node": "^24",
     "@types/ssh2-sftp-client": "^9.0.6",
+    "tsx": "^4",
     "typescript": "^5",
     "vitest": "^3"
   }

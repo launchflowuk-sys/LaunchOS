@@ -21,6 +21,7 @@
     "db:seed-onboarding-templates": "pnpm --filter @launchos/db seed-onboarding-templates",
     "db:studio": "pnpm --filter @launchos/db studio",
     "demo:seed": "pnpm --filter @launchos/core demo:seed",
+    "gbp:token": "pnpm --filter @launchos/integrations gbp:token",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down"
   },

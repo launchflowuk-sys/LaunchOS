@@ -142,10 +142,35 @@ Shoji's own Pages — Thurrock Tuition Academy, Grays CabLine, Mobile PC Doctor
 — skip the Partner step entirely and still need this one. They are the right
 place to prove the pipeline: no client waiting, and no client watching.
 
-### Google Business Profile: not configured
+### Google Business Profile: not configured, and it is sold
 
 `GBP_CLIENT_ID`, `GBP_CLIENT_SECRET` and `GBP_REFRESH_TOKEN` are all unset, so
 the GBP publisher is not active. Its own OAuth, separate from Meta.
+
+**This one is commercial, not cosmetic.** Standard (£110) and Growth (£220)
+both promise four Google Business updates a month, so until those three values
+exist that part of both plans cannot run.
+
+The first two come from the Google Cloud console — enable the Google Business
+Profile API on a project, then Credentials → OAuth client ID → **Desktop app**.
+The third cannot be copied from anywhere: a refresh token is only issued after
+a human consents in a browser. So:
+
+    pnpm gbp:token -- --client-id=<id> --client-secret=<secret>
+
+It prints a consent URL, listens on a loopback port, exchanges the code and
+prints the refresh token. Sign in as the Google account that will hold Manager
+access on clients' listings. Nothing is written to disk — paste all three into
+Coolify on **web and worker** and restart both.
+
+Two things that make people think they have done it wrong:
+
+- The consent URL must carry `access_type=offline` **and** `prompt=consent`.
+  Without the first there is no refresh token at all; without the second an
+  account that has consented before is sent back without one. The command
+  sets both.
+- Enabling the API can need approval from Google and take days. Start that
+  before anything else.
 
 ## Where it currently stands
 
