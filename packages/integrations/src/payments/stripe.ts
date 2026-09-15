@@ -3,6 +3,7 @@ import {
   addDays, isProviderId, subscriptionStatusFromProvider,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
   type PaymentsBillingInterval, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCheckoutStatus,
+  type PaymentsPrice,
   type PaymentsCustomer, type PaymentsBalanceTransaction,
   type PaymentsInvoice, type PaymentsInvoiceStatus, type PaymentsSubscription,
   type PaymentsSubscriptionDetail, type PaymentsWebhookEvent,
@@ -182,6 +183,41 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
         : { payment_intent_data: { metadata: input.metadata } }),
     });
     return toCheckoutSession(session);
+  }
+
+  /**
+   * One price, for the guard that checks what a package will really charge.
+   *
+   * `resource_missing` comes back as **null**, not an exception: a price id
+   * Stripe does not know is a configuration mistake the caller should act on,
+   * whereas a timeout is not, and collapsing the two would make a Stripe blip
+   * look like a mistyped id. Every other error is rethrown.
+   */
+  async retrievePrice(priceId: string): Promise<PaymentsPrice | null> {
+    let price: Stripe.Price;
+    try {
+      price = await this.client.prices.retrieve(priceId, { expand: ["product"] });
+    } catch (error) {
+      if (typeof error === "object" && error !== null && (error as { code?: unknown }).code === "resource_missing") {
+        return null;
+      }
+      throw error;
+    }
+    const product = price.product;
+    const named = typeof product === "object" && product !== null && !product.deleted ? product : null;
+    return {
+      priceId: price.id,
+      amountPence: price.unit_amount ?? 0,
+      currency: price.currency.toUpperCase(),
+      interval: price.recurring && BILLING_INTERVALS.has(price.recurring.interval)
+        ? (price.recurring.interval as PaymentsBillingInterval)
+        : null,
+      intervalCount: price.recurring?.interval_count ?? 0,
+      priceActive: price.active,
+      productName: named?.name ?? "",
+      // A deleted product cannot back a subscription, so absent reads as inactive.
+      productActive: named?.active ?? false,
+    };
   }
 
   async retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession> {

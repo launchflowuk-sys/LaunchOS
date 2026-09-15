@@ -196,6 +196,29 @@ export interface PaymentsBalanceTransaction {
   createdAt: Date;
 }
 
+/**
+ * One price, as the provider has it right now.
+ *
+ * Exists so a caller can check what a stored `stripe_price_id` will actually
+ * charge before sending a buyer to pay it. `listCatalog` answers the same
+ * question but pages every active recurring price in the account to do it,
+ * which is the wrong shape for a check that runs on one signup.
+ *
+ * `priceActive` and `productActive` are separate because Stripe archives them
+ * independently and either one is enough to stop a new subscription.
+ */
+export interface PaymentsPrice {
+  priceId: string;
+  amountPence: number;
+  currency: string;
+  /** Null for a one-off price — which cannot back a subscription. */
+  interval: PaymentsBillingInterval | null;
+  intervalCount: number;
+  priceActive: boolean;
+  productName: string;
+  productActive: boolean;
+}
+
 export interface PaymentsAdapter {
   readonly name: "mock" | "stripe";
   createCustomer(input: CreateCustomerInput): Promise<PaymentsCustomer>;
@@ -219,6 +242,15 @@ export interface PaymentsAdapter {
   webhookVerify(rawBody: string, signature: string): PaymentsWebhookEvent;
   createCheckoutSession(input: CreateCheckoutSessionInput): Promise<PaymentsCheckoutSession>;
   retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession>;
+  /**
+   * One price by id, or **null when the provider does not have it**.
+   *
+   * Null rather than throwing for a missing price, because "this id is wrong"
+   * is an answer the caller acts on, while a network failure is not — the two
+   * must be distinguishable or a Stripe blip becomes indistinguishable from a
+   * mistyped price id.
+   */
+  retrievePrice(priceId: string): Promise<PaymentsPrice | null>;
 }
 
 export const PAYMENT_TERMS_DEFAULT_DAYS = 14;

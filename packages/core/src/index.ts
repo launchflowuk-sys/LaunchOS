@@ -539,10 +539,10 @@ export {
 } from "./meetings/reminders.js";
 export type { ReminderSweepResult, FollowUpSweepResult } from "./meetings/reminders.js";
 export {
-  createSignupSession, completeSignup, SignupRefused, CreateSignupSessionInput, CompleteSignupInput,
+  createSignupSession, priceMismatchReason, completeSignup, SignupRefused, CreateSignupSessionInput, CompleteSignupInput,
   SIGNUP_MARKER, SIGNUP_LEAD_SOURCE, SIGNUP_COMPLETED_NOTIFICATION_KIND, SIGNUP_CLAIM_TTL_MS,
 } from "./signup/signup.js";
-export type { SignupDeps, SignupSessionResult, CompleteSignupResult } from "./signup/signup.js";
+export type { SignupDeps, SignupSessionResult, CompleteSignupResult, PackagePricing } from "./signup/signup.js";
 export {
   storeDocument, getDocument, listDocuments, readDocumentBytes, documentFilePath,
   DocumentRefused, StoreDocumentInput, GetDocumentInput, ListDocumentsInput,

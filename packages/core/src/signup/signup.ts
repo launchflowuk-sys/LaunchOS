@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { createEmailAdapter, renderBrandedEmail, type EmailAdapter } from "@launchos/channels";
-import { addMonths, type PaymentsAdapter, type PaymentsCheckoutSession } from "@launchos/integrations";
+import { addMonths, type PaymentsAdapter, type PaymentsCheckoutSession, type PaymentsPrice } from "@launchos/integrations";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordActivity } from "../activity/record-activity.js";
@@ -23,7 +23,16 @@ export const SIGNUP_COMPLETED_NOTIFICATION_KIND = "signup.completed";
 export const SIGNUP_CLAIM_TTL_MS = 5 * 60_000;
 
 export class SignupRefused extends Error {
-  constructor(readonly reason: "unknown_package" | "not_paid" | "not_a_signup" | "wrong_organisation", message: string) {
+  constructor(
+    readonly reason:
+      | "unknown_package"
+      | "not_paid"
+      | "not_a_signup"
+      | "wrong_organisation"
+      /** The stored Stripe price disagrees with the package, or cannot back a subscription. */
+      | "price_mismatch",
+    message: string,
+  ) {
     super(message);
     this.name = "SignupRefused";
   }
@@ -84,6 +93,104 @@ async function activePackageBySlug(db: Db, organisationId: string, slug: string)
  * abandons Checkout is still a lead on the Leads page, and the Checkout
  * session id on it is what `completeSignup` keys on.
  */
+
+/** What a package promises, for the price check. */
+export interface PackagePricing {
+  name: string;
+  monthlyPricePence: number;
+  setupPricePence: number;
+  currency: string;
+}
+
+/**
+ * Why the stored Stripe price cannot be used for this package, or null when it
+ * can.
+ *
+ * **Pure, and separate from the fetch, because this is the part that must be
+ * right.** Nothing else in the system compares these two numbers.
+ * `packages.monthly_price_pence` is what the pricing page prints and what the
+ * invoices and the Profit screen are built from; `stripe_price_id` is what the
+ * card is actually charged. They are typed in by hand, separately, months
+ * apart — and the live data makes the trap concrete: an archived package
+ * called "Standard Plan" at £45 with a working Stripe price sits beside the
+ * active "Standard" at £110. Paste the wrong one and every buyer is charged
+ * £45 for a £110 plan while the invoice still says £110, and nothing anywhere
+ * complains until somebody reconciles the bank months later.
+ *
+ * The message is written for whoever has to fix it, because that is the only
+ * audience: it names the package, both figures, and the Stripe product.
+ */
+export function priceMismatchReason(price: PaymentsPrice, pkg: PackagePricing): string | null {
+  if (!price.priceActive || !price.productActive) {
+    return `${pkg.name} points at an archived Stripe price, which cannot take a new subscription.`;
+  }
+  if (price.interval !== "month" || price.intervalCount !== 1) {
+    const shape = price.interval ? `every ${price.intervalCount} ${price.interval}` : "a one-off charge";
+    return `${pkg.name} is a monthly plan but its Stripe price is ${shape}.`;
+  }
+  if (price.currency !== pkg.currency.toUpperCase()) {
+    return `${pkg.name} is priced in ${pkg.currency} but its Stripe price is in ${price.currency}.`;
+  }
+  if (price.amountPence !== pkg.monthlyPricePence) {
+    const money = (pence: number) => `£${(pence / 100).toFixed(2)}`;
+    return (
+      `${pkg.name} is ${money(pkg.monthlyPricePence)} a month here but its Stripe price charges ` +
+      `${money(price.amountPence)}` + (price.productName ? ` ("${price.productName}")` : "") + "."
+    );
+  }
+  return null;
+}
+
+/**
+ * Refuses to open Checkout when the price would not charge what the package
+ * says — before the buyer is sent anywhere and before a session exists.
+ *
+ * A buyer seeing "we could not start that, email us" is a far cheaper failure
+ * than a wrong charge nobody can explain.
+ *
+ * **A setup fee is refused too, and that is not pedantry.** Checkout here is
+ * subscription-only: it subscribes to the monthly price and never charges
+ * `setup_price_pence`, so a package with a setup fee sold this way silently
+ * collects nothing for it.
+ *
+ * Two deliberate non-refusals:
+ *
+ * - **The mock adapter is not checked.** Its prices are invented, so there is
+ *   no Stripe to disagree with and comparing against fiction would only break
+ *   local signups. The guard is a production protection and says so.
+ * - **A verification error is not a refusal.** If the price cannot be read at
+ *   all — a timeout, a 500 — the signup proceeds, because the very next call
+ *   is `createCheckoutSession` against the same API and fails on its own if
+ *   Stripe is down. A misconfiguration, unlike an outage, is still there on
+ *   the next attempt.
+ */
+async function assertPriceMatchesPackage(
+  payments: PaymentsAdapter,
+  stripePriceId: string,
+  pkg: PackagePricing,
+): Promise<void> {
+  if (pkg.setupPricePence > 0) {
+    throw new SignupRefused(
+      "price_mismatch",
+      `${pkg.name} has a setup fee, which self-serve Checkout does not collect. Sell it by proposal instead, or move the setup fee into the plan.`,
+    );
+  }
+  if (payments.name === "mock") return;
+
+  let price;
+  try {
+    price = await payments.retrievePrice(stripePriceId);
+  } catch (error) {
+    console.error("[signup] could not verify the Stripe price; continuing", { stripePriceId, error });
+    return;
+  }
+  if (!price) {
+    throw new SignupRefused("price_mismatch", `${pkg.name} points at a Stripe price that no longer exists (${stripePriceId}).`);
+  }
+  const reason = priceMismatchReason(price, pkg);
+  if (reason) throw new SignupRefused("price_mismatch", reason);
+}
+
 export async function createSignupSession(
   db: Db,
   organisationId: string,
@@ -107,6 +214,14 @@ export async function createSignupSession(
     }, deps, env);
     return { mode: "invoice", ...provisioned, url: `${appUrl(env)}/signup/done?client=${provisioned.clientId}` };
   }
+
+  // Before a buyer is sent anywhere, and before a Checkout session exists.
+  await assertPriceMatchesPackage(deps.payments, pkg.stripePriceId, {
+    name: pkg.name,
+    monthlyPricePence: pkg.monthlyPricePence,
+    setupPricePence: pkg.setupPricePence,
+    currency: pkg.currency,
+  });
 
   const base = appUrl(env);
   const metadata: z.infer<typeof SignupMetadata> = {

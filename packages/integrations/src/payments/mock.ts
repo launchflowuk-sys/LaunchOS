@@ -3,7 +3,7 @@ import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
   type PaymentsBalanceTransaction, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCustomer,
-  type PaymentsInvoice, type PaymentsSubscription,
+  type PaymentsInvoice, type PaymentsPrice, type PaymentsSubscription,
   type PaymentsSubscriptionDetail, type PaymentsSubscriptionStatus, type PaymentsWebhookEvent,
 } from "./types.js";
 
@@ -218,6 +218,27 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
    * saw is reconstructed as complete for the same reason `recall` tolerates
    * unknown subscription ids.
    */
+  /**
+   * The mock's prices are whatever `listCatalog` invented, so a lookup is a
+   * search of that list. An id it has never heard of returns null — the same
+   * answer Stripe gives for `resource_missing`, so the guard above it behaves
+   * identically in tests and in production.
+   */
+  async retrievePrice(priceId: string): Promise<PaymentsPrice | null> {
+    const found = (await this.listCatalog()).find((item) => item.priceId === priceId);
+    if (!found) return null;
+    return {
+      priceId: found.priceId,
+      amountPence: found.amountPence,
+      currency: found.currency,
+      interval: found.interval,
+      intervalCount: found.intervalCount,
+      priceActive: true,
+      productName: found.productName,
+      productActive: found.productActive,
+    };
+  }
+
   async retrieveCheckoutSession(sessionId: string): Promise<PaymentsCheckoutSession> {
     const existing = this.checkouts.get(sessionId);
     if (existing && existing.status !== "open") return existing;

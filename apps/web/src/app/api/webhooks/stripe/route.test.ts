@@ -27,6 +27,9 @@ const fakeAdapter: PaymentsAdapter = {
   async createCustomer() {
     throw new Error("not used by this route");
   },
+  async retrievePrice() {
+    throw new Error("not used by this route");
+  },
   async listBalanceTransactions() {
     throw new Error("not used by this route");
   },

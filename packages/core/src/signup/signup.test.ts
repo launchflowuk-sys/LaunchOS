@@ -8,7 +8,8 @@ import { and, eq } from "drizzle-orm";
 import { syncFromPaymentsEvent } from "../billing/webhook-sync.js";
 import { setEnqueue, type DomainEvent } from "../events/emit.js";
 import { checkoutOrganisationFromEvent } from "../billing/webhook-sync.js";
-import { completeSignup, createSignupSession, SignupRefused } from "./signup.js";
+import { completeSignup, createSignupSession, priceMismatchReason, SignupRefused } from "./signup.js";
+import type { PaymentsPrice } from "@launchos/integrations";
 
 afterEach(() => setEnqueue(async () => {}));
 
@@ -180,6 +181,145 @@ describe("completeSignup", () => {
       expect(profile?.organisationId).toBe(orgId);
       const other = await seed(db, null);
       expect(await syncFromPaymentsEvent(db, other.orgId, event, env)).toEqual({ handled: false, action: "signup.wrong_organisation" });
+    });
+  });
+});
+
+/**
+ * The guard on what a package will actually charge.
+ *
+ * These are the only checks standing between a mistyped `stripe_price_id` and
+ * a customer's card, so each wrong shape gets its own case and each asserts
+ * the *message* as well as the refusal — the message is the whole value, since
+ * the person reading it is whoever has to go and fix the price.
+ */
+describe("priceMismatchReason", () => {
+  const pkg = { name: "Standard", monthlyPricePence: 11_000, setupPricePence: 0, currency: "GBP" };
+  const good: PaymentsPrice = {
+    priceId: "price_std", amountPence: 11_000, currency: "GBP", interval: "month", intervalCount: 1,
+    priceActive: true, productName: "Standard", productActive: true,
+  };
+
+  it("passes a price that matches", () => {
+    expect(priceMismatchReason(good, pkg)).toBeNull();
+  });
+
+  /**
+   * The live trap: an archived "Standard Plan" at £45 with a working Stripe
+   * price sits beside the active "Standard" at £110. Paste the wrong one and
+   * every buyer is charged £45 while the invoice still says £110.
+   */
+  it("catches the wrong amount and names both figures", () => {
+    const reason = priceMismatchReason({ ...good, amountPence: 4_500, productName: "Standard Plan" }, pkg);
+    expect(reason).toContain("£110.00");
+    expect(reason).toContain("£45.00");
+    expect(reason).toContain("Standard Plan");
+  });
+
+  it("catches a yearly price sold as a monthly plan", () => {
+    expect(priceMismatchReason({ ...good, interval: "year" }, pkg)).toMatch(/every 1 year/);
+  });
+
+  it("catches a quarterly price", () => {
+    expect(priceMismatchReason({ ...good, intervalCount: 3 }, pkg)).toMatch(/every 3 month/);
+  });
+
+  it("catches a one-off price, which cannot back a subscription", () => {
+    expect(priceMismatchReason({ ...good, interval: null, intervalCount: 0 }, pkg)).toMatch(/one-off/);
+  });
+
+  it("catches the wrong currency", () => {
+    expect(priceMismatchReason({ ...good, currency: "USD" }, pkg)).toMatch(/GBP.*USD/);
+  });
+
+  it("catches an archived price and an archived product separately", () => {
+    expect(priceMismatchReason({ ...good, priceActive: false }, pkg)).toMatch(/archived/);
+    expect(priceMismatchReason({ ...good, productActive: false }, pkg)).toMatch(/archived/);
+  });
+});
+
+describe("createSignupSession price guard", () => {
+  /** A stub rather than the mock: the mock's prices are invented, so only a stub can disagree on purpose. */
+  function stubPayments(price: PaymentsPrice | null, overrides: Partial<{ throws: boolean }> = {}) {
+    const mock = new MockPaymentsAdapter();
+    return Object.assign(Object.create(Object.getPrototypeOf(mock)), mock, {
+      name: "stripe" as const,
+      retrievePrice: async () => {
+        if (overrides.throws) throw new Error("stripe is down");
+        return price;
+      },
+    });
+  }
+  const priceFor = (amountPence: number): PaymentsPrice => ({
+    priceId: "price_growth", amountPence, currency: "GBP", interval: "month", intervalCount: 1,
+    priceActive: true, productName: "Growth", productActive: true,
+  });
+
+  it("refuses before a session exists when the amount disagrees", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_growth");
+      // The package is £149; the Stripe price would charge £45.
+      const payments = stubPayments(priceFor(4_500));
+      await expect(createSignupSession(db, orgId, buyer, { payments }, env)).rejects.toMatchObject({
+        name: "SignupRefused", reason: "price_mismatch",
+      });
+      // Nothing was opened, so nobody was sent anywhere to pay.
+      expect(await db.select().from(schema.leads).where(eq(schema.leads.organisationId, orgId))).toHaveLength(1);
+    });
+  });
+
+  it("refuses a price Stripe no longer has", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_gone");
+      await expect(createSignupSession(db, orgId, buyer, { payments: stubPayments(null) }, env)).rejects.toMatchObject({
+        reason: "price_mismatch",
+      });
+    });
+  });
+
+  it("opens Checkout when the price agrees", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_growth");
+      const result = await createSignupSession(db, orgId, buyer, { payments: stubPayments(priceFor(14_900)) }, env);
+      expect(result.mode).toBe("checkout");
+    });
+  });
+
+  /**
+   * An outage is not a misconfiguration. If the price cannot be read the
+   * signup proceeds, because the very next call is to the same API and fails
+   * on its own if Stripe is genuinely down — while a wrong price id is still
+   * wrong on the next attempt and gets caught then.
+   */
+  it("proceeds when the price cannot be checked at all", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_growth");
+      const result = await createSignupSession(db, orgId, buyer, { payments: stubPayments(null, { throws: true }) }, env);
+      expect(result.mode).toBe("checkout");
+    });
+  });
+
+  /**
+   * Checkout here is subscription-only: it subscribes to the monthly price and
+   * never charges `setup_price_pence`. Selling such a package this way would
+   * silently collect nothing for the setup.
+   */
+  it("refuses a package with a setup fee, which Checkout would never collect", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, pkg } = await seed(db, "price_growth");
+      await db.update(schema.packages).set({ setupPricePence: 50_000 }).where(eq(schema.packages.id, pkg.id));
+      await expect(
+        createSignupSession(db, orgId, buyer, { payments: stubPayments(priceFor(14_900)) }, env),
+      ).rejects.toMatchObject({ reason: "price_mismatch" });
+    });
+  });
+
+  /** The mock has no real prices, so there is nothing to verify and local signups must still work. */
+  it("does not check the mock adapter", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await seed(db, "price_nothing_the_mock_knows");
+      const result = await createSignupSession(db, orgId, buyer, { payments: new MockPaymentsAdapter() }, env);
+      expect(result.mode).toBe("checkout");
     });
   });
 });
