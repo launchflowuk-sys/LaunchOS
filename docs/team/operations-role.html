@@ -1,0 +1,402 @@
+<title>Operations Role at LaunchFlow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;540;600&display=swap">
+<style>
+  /* LaunchFlow's own palette, from apps/web/.../marketing.css. Light only:
+     the brand has no dark variant. Every colour painted explicitly so the
+     page holds on any host ground. */
+  :root {
+    --ink: #141b29;
+    --blue: #0969ca;
+    --blue-deep: #0757a8;
+    --mute: #606b7c;
+    --mute-2: #4d5c70;
+    --line: #e3e7ed;
+    --line-2: #cfd7e1;
+    --tint: #edf5fb;
+    --off: #f5f7fa;
+    --paper: #ffffff;
+    --warn-bg: #fdf6e9;
+    --warn-line: #f0dcb4;
+    --warn-ink: #7a4b00;
+    --sans: "Geist", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--off); color: var(--ink);
+    font-family: var(--sans); font-size: 16px; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sheet { max-width: 54rem; margin: 0 auto; background: var(--paper); border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+  .pad { padding: 0 clamp(1.25rem, 5vw, 4rem); }
+  .rule { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+  header.masthead {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1.5rem; flex-wrap: wrap;
+    padding-top: clamp(1.75rem, 4vw, 2.75rem); padding-bottom: 1.5rem;
+  }
+  header.masthead img { display: block; width: 176px; height: auto; }
+  header.masthead .filed { font-size: 0.75rem; color: var(--mute); text-align: right; line-height: 1.5; }
+  header.masthead .filed b { display: block; font-weight: 540; color: var(--ink); }
+
+  .eyebrow {
+    display: inline-flex; align-items: center; gap: 0.75rem;
+    font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--blue); line-height: 1.2;
+  }
+  .eyebrow::before { content: ""; width: 1.25rem; height: 1px; background: currentColor; flex: none; }
+
+  h1 { font-size: clamp(2rem, 1.3rem + 2.6vw, 3rem); font-weight: 540; letter-spacing: -0.045em; line-height: 1.06; text-wrap: balance; margin: 1.25rem 0 0; }
+  h2 { font-size: clamp(1.3rem, 1.05rem + 0.9vw, 1.625rem); font-weight: 520; letter-spacing: -0.03em; line-height: 1.16; text-wrap: balance; margin: 0; }
+  h3 { font-size: 1.0625rem; font-weight: 560; letter-spacing: -0.012em; margin: 0; }
+  .lede { font-size: 1.0625rem; color: var(--mute); max-width: 62ch; text-wrap: pretty; margin: 1.125rem 0 0; }
+  p { margin: 0; max-width: 68ch; text-wrap: pretty; }
+  .body { color: var(--mute-2); }
+  .small { font-size: 0.9375rem; }
+  .tiny { font-size: 0.8125rem; }
+
+  section { padding-top: clamp(2.25rem, 5vw, 3.25rem); }
+  .stack { display: flex; flex-direction: column; gap: 1rem; }
+  .stack-sm { display: flex; flex-direction: column; gap: 0.5rem; }
+
+  ul.plain, ol.plain { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; color: var(--mute-2); max-width: 66ch; }
+  ul.plain li::marker { color: var(--line-2); }
+  ol.plain li::marker { color: var(--blue); font-weight: 600; }
+  strong { font-weight: 560; color: var(--ink); }
+
+  /* Tables carry most of the real content here, so they get the care. */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9375rem; }
+  th, td { text-align: left; vertical-align: top; padding: 0.6875rem 0.875rem 0.6875rem 0; border-bottom: 1px solid var(--line); }
+  th { font-weight: 560; font-size: 0.8125rem; letter-spacing: 0.01em; color: var(--ink); border-bottom-color: var(--line-2); }
+  td { color: var(--mute-2); }
+  td:first-child { color: var(--ink); font-weight: 500; white-space: nowrap; padding-right: 1.25rem; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  .panel { background: var(--tint); border: 1px solid #d7e7f5; border-radius: 0.75rem; padding: clamp(1.25rem, 3vw, 1.625rem); }
+  .panel .label { font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--blue-deep); }
+  .flag { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 0.5rem; padding: 0.875rem 1rem; color: var(--warn-ink); font-size: 0.9375rem; max-width: 66ch; }
+  .note { border-left: 2px solid var(--line); padding-left: 0.9375rem; color: var(--mute); font-size: 0.9375rem; max-width: 64ch; }
+  .note b { color: var(--ink); font-weight: 540; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875em; background: var(--off); padding: 0.1em 0.35em; border-radius: 0.25rem; }
+
+  .yesno { display: grid; gap: 1.25rem; grid-template-columns: 1fr; }
+  @media (min-width: 46rem) { .yesno { grid-template-columns: 1fr 1fr; } }
+  .yesno > div { border: 1px solid var(--line); border-radius: 0.75rem; padding: 1.25rem; }
+  .yesno h3 { margin-bottom: 0.625rem; }
+
+  footer { padding: 1.75rem clamp(1.25rem, 5vw, 4rem) 2.5rem; color: var(--mute); font-size: 0.75rem; line-height: 1.6; display: flex; flex-direction: column; gap: 0.375rem; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+  @media print {
+    body { background: #fff; font-size: 10.5pt; }
+    .sheet { border: 0; max-width: none; }
+    section { padding-top: 1.4rem; break-inside: avoid; }
+    h1 { font-size: 22pt; } h2 { font-size: 13pt; }
+    table, .panel, .flag, .yesno > div { break-inside: avoid; }
+    @page { margin: 16mm 14mm; }
+  }
+</style>
+
+<div class="sheet">
+  <div class="pad">
+    <header class="masthead">
+      <img src="launchflow-logo.png" alt="LaunchFlow" width="585" height="126">
+      <div class="filed">
+        <b>Role brief</b>
+        Operations · Grays, Essex
+      </div>
+    </header>
+  </div>
+  <hr class="rule">
+
+  <div class="pad">
+    <section style="padding-top: clamp(2rem, 5vw, 2.75rem)">
+      <span class="eyebrow">The job</span>
+      <h1>Running the day, so the building can carry on</h1>
+      <p class="lede">
+        LaunchFlow builds and looks after websites and business software for small firms around Thurrock. There is one
+        person in it. This role is everything that happens daily — support, the builds, the posting, checking things
+        actually work — so that person can keep building and selling instead of firefighting.
+      </p>
+      <p class="lede">
+        You would not be filling a gap in a big team. You would be the second person, and the first one who is not
+        Shoji.
+      </p>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>What the business actually is</h2>
+        <p class="body">
+          Around twenty clients: taxi firms, a tuition centre, accountants, a window company, a beauty salon, a
+          rendering firm. Mostly Thurrock, mostly owner-run, mostly not technical. They pay monthly for their website
+          to be looked after and, on the bigger plans, for someone to write and post for them and run their
+          advertising.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Plan</th><th class="num">Monthly</th><th>What they get</th></tr></thead>
+            <tbody>
+              <tr><td>Presence</td><td class="num">£45</td><td>Hosting, updates, backups, monitoring, a monthly report, small changes on request.</td></tr>
+              <tr><td>Standard</td><td class="num">£110</td><td>All of that, plus eight social posts, four articles and four Google Business updates a month.</td></tr>
+              <tr><td>Growth</td><td class="num">£220</td><td>All of that, plus advertising managed, a monthly call, same-day replies and WhatsApp.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          <b>No VAT is charged.</b> LaunchFlow UK Limited is not VAT registered, so prices are prices. If a client asks
+          about VAT, that is the whole answer.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>The system you would live in</h2>
+        <p class="body">
+          Everything runs through <strong>LaunchOS</strong>, software built in-house for exactly this business. It is
+          not a CRM somebody bought. Clients log into their own portal in it; you work the other side of the same
+          system.
+        </p>
+        <p class="body">You would spend your day in six places:</p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Where</th><th>What it is for</th></tr></thead>
+            <tbody>
+              <tr><td>Support</td><td>Cases. Client emails arrive here as tickets, with a first-response clock running.</td></tr>
+              <tr><td>Tasks</td><td>Your work list. Onboarding a new client generates 7&ndash;14 tasks automatically; recurring work appears monthly.</td></tr>
+              <tr><td>Content</td><td>Briefs, the calendar, and every post before it goes out.</td></tr>
+              <tr><td>Approvals</td><td>What the AI has drafted and is waiting on a human for. Reports, replies, posts.</td></tr>
+              <tr><td>Clients</td><td>One page per client. The top of it says whether they are actually connected and what is missing.</td></tr>
+              <tr><td>Projects</td><td>Builds, in six steps: brief, design, build, review, launch, care.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top: 0.75rem">There are ten AI agents already working here</h3>
+        <p class="body">
+          They draft the monthly reports, triage incoming support, write the social posts, qualify leads, write the
+          morning brief, and watch the ad accounts. <strong>They draft; a person decides.</strong> Nothing an agent
+          produces reaches a client until somebody approves it — and clearing that queue properly would be a real part
+          of your day.
+        </p>
+        <p class="body small">
+          So this is not a job where you write everything from scratch. It is closer to being an editor with authority:
+          the first draft usually exists, and your job is to judge whether it is good enough to send, fix it when it
+          is not, and notice when the machine is wrong.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>What is yours, and what is not</h2>
+        <p class="body">
+          LaunchOS grants permissions in six named areas. This is not an abstraction — it is literally how your account
+          would be set up on day one.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Area</th><th>Yours?</th><th>Why</th></tr></thead>
+            <tbody>
+              <tr><td>Support</td><td><strong>Yes</strong></td><td>Cases and the inbox. This is the core of the role.</td></tr>
+              <tr><td>Content</td><td><strong>Yes</strong></td><td>Briefs, the calendar, posts. Writing and scheduling.</td></tr>
+              <tr><td>Approvals</td><td><strong>Yes, once trusted</strong></td><td>Deciding what the agents queue. Granted after the first month, not on day one.</td></tr>
+              <tr><td>Billing</td><td>No</td><td>Invoices, subscriptions, prices. Money stays with Shoji.</td></tr>
+              <tr><td>Access</td><td>No</td><td>The vault holding clients&rsquo; passwords. Kept to one person on purpose.</td></tr>
+              <tr><td>Settings</td><td>No</td><td>The organisation, the team, the agents, email routing.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          Not a comment on trust — it is how the system is built. Every action is written to an audit log against the
+          person who did it, which protects you as much as anyone. If a client says something was changed, the record
+          says what happened and who did it.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>A normal week</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>When</th><th>What</th></tr></thead>
+            <tbody>
+              <tr><td>Every morning</td><td>Read the Ops Brief — the system writes it overnight. It names what is breaching, what is overdue, what is waiting. Then clear support first.</td></tr>
+              <tr><td>Through the day</td><td>Cases, tasks, and the approvals queue. Post what is scheduled. Answer clients.</td></tr>
+              <tr><td>Fridays</td><td>Each active build gets a short update to the client. The system drafts it; you check it is true and send it.</td></tr>
+              <tr><td>Start of month</td><td>Content planned for every client on Standard or Growth. Monthly reports go out.</td></tr>
+              <tr><td>When a client signs up</td><td>Their onboarding tasks appear. Work them. Chasing access is the hard part — see below.</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3 style="margin-top: 0.75rem">Support has a clock on it</h3>
+        <p class="body">Cases carry a target by severity, in calendar hours from the moment the case opens:</p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Severity</th><th class="num">Target</th><th>Means</th></tr></thead>
+            <tbody>
+              <tr><td>Critical</td><td class="num">2 hours</td><td>Site down, nobody can buy or book.</td></tr>
+              <tr><td>High</td><td class="num">8 hours</td><td>Something important broken; the business is still trading.</td></tr>
+              <tr><td>Medium</td><td class="num">48 hours</td><td>A real problem that is not costing money today.</td></tr>
+              <tr><td>Low</td><td class="num">72 hours</td><td>A change request, a question, a tidy-up.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="body small">
+          Separately, every case has a <strong>first response</strong> target. A holding reply inside it is not a
+          formality — for a one-person firm it is the entire difference between a client who trusts us and one who
+          rings twice. Say you have it and when you will have looked, even if you have not looked yet.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>The hardest part of the job, honestly</h2>
+        <p class="body">
+          To post for a client we need access to their Facebook Page, their Instagram and their Google listing. Almost
+          none of them can do that themselves. They are plumbers, drivers and salon owners; they do not know what a
+          Business Manager is and they should not have to.
+        </p>
+        <p class="body">
+          So the method is: <strong>you request access from our side, then ring them and stay on the phone while they
+          tap Approve.</strong> Not a PDF, not an email with eight steps. One notification, one blue button, you
+          talking them through it. Every client page in LaunchOS shows exactly what is still missing and whose job it
+          is, so you always know what to ask for.
+        </p>
+        <div class="flag">
+          <strong>Patience with non-technical people is the single most important quality in this role.</strong> More
+          than writing, more than software. Someone who gets frustrated with a sixty-year-old taxi firm owner who
+          cannot find his Facebook notifications will not be able to do this job, however good they are at everything
+          else.
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>What we need you to be able to do</h2>
+        <div class="yesno">
+          <div>
+            <h3>Required</h3>
+            <ul class="plain">
+              <li><strong>Write plain English well.</strong> Client emails, social posts, articles. British spelling, no jargon, no waffle. This is most of the job.</li>
+              <li><strong>Be organised without being chased.</strong> A list of forty tasks with dates on them is the tool; you have to actually work it.</li>
+              <li><strong>Be patient on the phone</strong> with people who are not technical, and stay patient the third time.</li>
+              <li><strong>Notice when something is wrong</strong> and say so, rather than assuming it is meant to be like that.</li>
+              <li><strong>Comfortable in a browser all day</strong> — web apps, Facebook and Instagram, Google Business Profile, email.</li>
+            </ul>
+          </div>
+          <div>
+            <h3>Helpful, and teachable</h3>
+            <ul class="plain">
+              <li>WordPress, or any CMS.</li>
+              <li>Editing an image so it fits — cropping, resizing.</li>
+              <li>Having run a business page on Facebook or Instagram.</li>
+              <li>Basic SEO literacy — what a title tag is and why it matters.</li>
+              <li>Google Ads awareness, for the Growth clients.</li>
+            </ul>
+            <p class="tiny" style="margin-top: 0.875rem; color: var(--mute)">
+              None of the second list is a filter. All of it can be learned in a month by somebody with the first list.
+            </p>
+          </div>
+        </div>
+        <p class="note">
+          <b>You do not need to be able to code.</b> Nothing in this role touches the codebase. If something needs
+          building, it goes to Shoji.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>How the job is measured</h2>
+        <p class="body">
+          The system already counts all of this and writes it into the morning brief, so there is no separate
+          reporting to do and no ambiguity about how you are doing:
+        </p>
+        <ul class="plain">
+          <li>Cases <strong>awaiting a first response</strong>, and any breaching their target.</li>
+          <li>Tasks <strong>open and overdue</strong>.</li>
+          <li>Approvals <strong>pending, and how stale</strong> the oldest is.</li>
+          <li>Content <strong>published, and failed</strong>.</li>
+          <li>Client reviews nobody has answered after five days.</li>
+          <li>Client satisfaction scores, where clients have rated a case.</li>
+          <li>Hours clocked, and who is clocked in.</li>
+        </ul>
+        <p class="body small">
+          Which means the honest version of the deal: nobody will be standing over you, and nothing you leave undone
+          will go unnoticed. Those two facts are the same fact.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>First week, first month</h2>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>When</th><th>What we expect</th></tr></thead>
+            <tbody>
+              <tr><td>Week one</td><td>Read every client&rsquo;s page. Answer support with a holding reply, with Shoji checking each one before it goes. Learn where the six modules are.</td></tr>
+              <tr><td>Week two</td><td>Handling support unsupervised, with anything unusual escalated. Writing posts that need editing rather than rewriting.</td></tr>
+              <tr><td>Month one</td><td>Owning the morning brief, clearing approvals, running onboarding for a new client end to end. Approvals permission granted.</td></tr>
+              <tr><td>Month three</td><td>Shoji does not look at support at all unless you bring him something. That is the point of the role.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>The rules that do not bend</h2>
+        <ol class="plain">
+          <li><strong>Nothing goes to a client without approval</strong> — yours once you have it, Shoji&rsquo;s until then. No exceptions for "it was obviously fine".</li>
+          <li><strong>Never promise a date Shoji has not agreed.</strong> "I will find out today" is always available and always better than a guess.</li>
+          <li><strong>Never quote a price.</strong> Prices are on the website; anything else goes to Shoji. This is not negotiable even when the client pushes.</li>
+          <li><strong>Never post about a client without their approval in the system.</strong> Not a verbal yes on the phone — the approval in LaunchOS.</li>
+          <li><strong>A client&rsquo;s data is theirs.</strong> Their enquiries, their customers&rsquo; details. It does not leave the system and it does not go in a personal spreadsheet.</li>
+          <li><strong>If you break something, say so immediately.</strong> Everything is backed up and almost everything is reversible. A broken thing hidden for a day is the only version that becomes serious.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section>
+      <div class="panel">
+        <span class="label">What good looks like</span>
+        <p class="body" style="margin-top: 0.75rem; color: var(--ink)">
+          Three months in, a client rings about something going wrong and you have already spotted it, already fixed
+          it, and already told them. Shoji finds out from the timeline.
+        </p>
+        <p class="body small" style="margin-top: 0.75rem">
+          That is the whole job, described in one sentence. Everything above is the scaffolding that makes it possible.
+        </p>
+      </div>
+    </section>
+
+    <section style="padding-bottom: 0.5rem">
+      <div class="stack-sm">
+        <h2>Asking about it</h2>
+        <p class="body">
+          Email <a href="mailto:hello@launchflow.co.uk" style="color: var(--blue)">hello@launchflow.co.uk</a>. Tell us
+          what you have run or looked after before — it does not have to be an agency, and a job outside this industry
+          where you were the one who kept things straight counts for more than a marketing qualification.
+        </p>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    <span>LaunchFlow is the trading name of <b>LaunchFlow UK Limited</b>, registered in England and Wales, company number 17178069.</span>
+    <span>Registered office: 103a London Road, Grays, England, RM17 5YB.</span>
+    <span>Internal role brief. Not a contract of employment, and not an offer.</span>
+  </footer>
+</div>
