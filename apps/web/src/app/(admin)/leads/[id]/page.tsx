@@ -35,7 +35,23 @@ function metadataRows(metadata: Record<string, unknown>): { label: string; value
 function attributionRows(metadata: Record<string, unknown>): { label: string; value: string; hint?: string }[] {
   const attribution = attributionOf(metadata);
   const summary = attributionSummary(attribution);
-  if (!summary) return [];
+
+  /**
+   * The plan gets its own row, and it is built before the campaign check
+   * rather than folded into it.
+   *
+   * The case that matters most has no campaign at all: somebody finds the
+   * pricing page through search, reads it, clicks the card for Growth and
+   * fills in the brief. There is no UTM on that visit, so a plan shown only
+   * as a footnote to a campaign would never appear for the person it is most
+   * useful for — the one you can ring back and say "you were looking at
+   * Growth" to.
+   */
+  const rows: { label: string; value: string; hint?: string }[] = attribution.plan
+    ? [{ label: "Plan they clicked", value: attribution.plan, hint: "The pricing card they came here from" }]
+    : [];
+
+  if (!summary) return rows;
   const detail = [
     attribution.utmTerm ? `term: ${attribution.utmTerm}` : null,
     attribution.utmContent ? `content: ${attribution.utmContent}` : null,
@@ -43,7 +59,7 @@ function attributionRows(metadata: Record<string, unknown>): { label: string; va
     attribution.gclid ? "Google Ads click id" : null,
     attribution.fbclid ? "Facebook click id" : null,
   ].filter((v): v is string => v !== null);
-  return [{ label: "Campaign", value: summary, ...(detail.length > 0 ? { hint: detail.join(" · ") } : {}) }];
+  return [...rows, { label: "Campaign", value: summary, ...(detail.length > 0 ? { hint: detail.join(" · ") } : {}) }];
 }
 
 export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {

@@ -91,6 +91,19 @@ export default async function PricingPage() {
                     <Btn href={signup(pkg.slug)} external tone={isRecommended ? "ink" : "white"} size="lg" className="btn-block" ariaLabel={`Get started with ${pkg.name}`}>
                       Get started
                     </Btn>
+                    {/* The second door, and the reason `?plan=` is on it: most
+                        people reading a pricing card are not ready to pay,
+                        they want to ask. Sending them to the brief with the
+                        plan attached means the lead arrives saying which card
+                        they were looking at, so the call back can start from
+                        "you were looking at Growth" rather than "what do you
+                        need". Carried, never asked — the brief already asks
+                        for a budget range, which is the better question. */}
+                    <p className="mt-3 text-center text-sm">
+                      <Link href={href(`/start?plan=${encodeURIComponent(pkg.slug)}`)} className="link-blue">
+                        Rather talk it through first?
+                      </Link>
+                    </p>
                   </div>
                 </article>
               );

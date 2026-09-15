@@ -328,11 +328,21 @@ const CAMPAIGN_PARAMS = [
   "ttclid",
 ] as const;
 
+/**
+ * Params that say what the visitor was *looking at*, not where they came from.
+ *
+ * Kept out of `CAMPAIGN_PARAMS` on purpose: `hasCampaign` uses that list to
+ * decide whether a return visit counts as a fresh advert touch, and clicking
+ * a pricing card is not an advert. A plan is captured like a campaign and
+ * treated like a landing path.
+ */
+const INTENT_PARAMS = ["plan"] as const;
+
 function sourceFromLocation(): Record<string, string> {
   if (typeof window === "undefined") return {};
   const params = new URLSearchParams(window.location.search);
   const out: Record<string, string> = { entry_route: window.location.pathname };
-  for (const key of CAMPAIGN_PARAMS) {
+  for (const key of [...CAMPAIGN_PARAMS, ...INTENT_PARAMS]) {
     const value = params.get(key);
     if (value) out[key] = value;
   }

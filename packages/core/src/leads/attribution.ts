@@ -20,6 +20,18 @@ export const LeadAttributionSchema = z.object({
   utmContent: Field.optional(),
   /** Meta's own campaign id, which is what its reporting joins on. */
   utmId: Field.optional(),
+  /**
+   * The package whose card they clicked to get here.
+   *
+   * Intent, not acquisition — but it belongs beside the campaign rather than
+   * in a field of its own, because it answers the same question: what was this
+   * person looking at when they decided to talk to us. A lead carrying
+   * `plan: "growth"` can be rung back about Growth instead of being asked what
+   * they need, which is the whole point of capturing it.
+   *
+   * A package slug, so it stays short and matches `packages.slug`.
+   */
+  plan: z.string().trim().max(60).optional(),
   landingPath: z.string().trim().max(500).optional(),
   referrer: z.string().trim().max(500).optional(),
   gclid: Field.optional(),

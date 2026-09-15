@@ -48,6 +48,7 @@ const FIELDS: readonly (readonly [key: string, field: keyof LeadAttribution])[] 
   ["msclkid", "msclkid"],
   ["ttclid", "ttclid"],
   ["referrer", "referrer"],
+  ["plan", "plan"],
   ["entry_route", "landingPath"],
 ];
 
@@ -62,7 +63,7 @@ export const CAMPAIGN_SOURCE_KEYS: readonly string[] = FIELDS.map(([key]) => key
  * meaningless within a week.
  */
 const CAMPAIGN_ONLY_KEYS: ReadonlySet<string> = new Set(
-  CAMPAIGN_SOURCE_KEYS.filter((key) => key !== "entry_route" && key !== "referrer"),
+  CAMPAIGN_SOURCE_KEYS.filter((key) => key !== "entry_route" && key !== "referrer" && key !== "plan"),
 );
 
 function map(source: Record<string, string>, prefix: string): LeadAttribution {

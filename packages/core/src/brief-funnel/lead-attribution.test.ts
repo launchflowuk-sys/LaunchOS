@@ -91,3 +91,44 @@ describe("prefixLatestTouch", () => {
     expect(prefixLatestTouch({ [`${LATEST_TOUCH_PREFIX}utm_source`]: "facebook" })).toEqual({});
   });
 });
+
+/**
+ * The pricing card they clicked, carried to the lead.
+ *
+ * Captured rather than asked: the brief already asks for a budget *range*,
+ * which is the better question, so the plan rides along as intent and the
+ * person answering the phone gets to open with "you were looking at Growth".
+ */
+describe("the plan they clicked", () => {
+  it("maps onto the lead's attribution", () => {
+    expect(attributionFromSessionSource({ plan: "growth", entry_route: "/start" })).toEqual({
+      plan: "growth",
+      landingPath: "/start",
+    });
+  });
+
+  /**
+   * A plan is intent, not acquisition. If it counted as a campaign then a
+   * returning visitor clicking a second card would register as a fresh advert
+   * touch and overwrite nothing useful while implying an ad click that never
+   * happened — the same reason `entry_route` and `referrer` are excluded.
+   */
+  it("does not register as a later campaign touch", () => {
+    // The guarantee is that a plan click never *creates* a later touch, which
+    // is what `prefixLatestTouch` decides. Reading a hand-written
+    // `latest_plan` back is deliberately left alone: the funnel cannot
+    // produce one, and a key that somehow exists is data, not a bug —
+    // `entry_route` is excluded on exactly the same terms.
+    expect(prefixLatestTouch({ plan: "standard" })).toEqual({});
+    expect(prefixLatestTouch({ plan: "standard", utm_source: "google" })).toEqual({
+      [`${LATEST_TOUCH_PREFIX}utm_source`]: "google",
+    });
+  });
+
+  /** A card click on an ad-driven visit keeps both facts. */
+  it("sits alongside a campaign rather than replacing it", () => {
+    expect(
+      attributionFromSessionSource({ utm_source: "google", utm_medium: "cpc", plan: "presence", entry_route: "/pricing" }),
+    ).toEqual({ utmSource: "google", utmMedium: "cpc", plan: "presence", landingPath: "/pricing" });
+  });
+});
