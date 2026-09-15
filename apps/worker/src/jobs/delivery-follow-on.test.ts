@@ -177,7 +177,16 @@ describe("the delivery follow-on", () => {
     });
   });
 
-  it("does not owe content to a build handed over without a retainer", async () => {
+  /**
+   * Handing over without a retainer no longer stops the content.
+   *
+   * It used to skip on `no_active_subscription`, which was billing deciding
+   * whether we post. Now the service switch decides: this client has posting
+   * on, so the month is planned from `CONTENT_SERVICE_DEFAULTS` and the writer
+   * is queued even though nobody is paying a retainer. Switching the service
+   * off is what stops it, and that has its own test in `services-gates`.
+   */
+  it("plans content for a build handed over without a retainer, because posting is switched on", async () => {
     await withTestDb(async (db) => {
       const f = await fixture(db, { withSubscription: false });
       await signOff(db, f.organisationId, f.project.id);
@@ -187,10 +196,11 @@ describe("the delivery follow-on", () => {
         organisationId: f.organisationId, projectId: f.project.id,
       });
 
-      expect(result).toMatchObject({ contentSkipped: "no_active_subscription", contentSlotsCreated: 0, writerQueued: false });
-      expect(send).not.toHaveBeenCalled();
-      // The countersigned copy and the recurring tasks are not conditional on
-      // a content quota.
+      expect(result).toMatchObject({ contentSkipped: null, writerQueued: true });
+      expect(result.contentSlotsCreated).toBeGreaterThan(0);
+      expect(send).toHaveBeenCalled();
+      // The countersigned copy and the recurring tasks were never conditional
+      // on content, and still are not.
       expect(result.countersignedDocumentId).not.toBeNull();
       expect(result.recurringTasksCreated).toBe(2);
     });

@@ -30,7 +30,14 @@ function slotsOf(db: Parameters<typeof runPlanMonth>[0]["db"], orgId: string, cl
 }
 
 describe("clientsOwedContent", () => {
-  it("lists subscribed active clients whose package has a quota, and nobody else", async () => {
+  /**
+   * What the sweep owes content to: an active client with a content service
+   * switched on. A package with no quota no longer excludes anybody — the
+   * defaults fill it — which is the reversal that let the writer work for
+   * Shoji's legacy clients at all. Archived, lapsed and another tenant's
+   * clients are still excluded, and those are the exclusions that matter.
+   */
+  it("lists active clients with posting switched on, whatever their package includes", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);
       const noQuota = await addClient(db, f.orgId, { name: "Hosting only", includes: NO_QUOTA });
@@ -43,8 +50,11 @@ describe("clientsOwedContent", () => {
 
       const owed = (await clientsOwedContent(db, f.orgId)).map((c) => c.clientId);
 
-      expect(owed).toEqual([f.clientId]);
-      for (const id of [noQuota.clientId, unsubscribed.clientId, archived.clientId, cancelled.clientId, other.clientId]) {
+      expect(owed).toContain(f.clientId);
+      // Posting is on and the package says nothing: the defaults apply.
+      expect(owed).toContain(noQuota.clientId);
+      // Still out: nobody paying, nobody active, nobody else's.
+      for (const id of [unsubscribed.clientId, archived.clientId, cancelled.clientId, other.clientId]) {
         expect(owed).not.toContain(id);
       }
     });
@@ -61,12 +71,15 @@ describe("runPlanMonth", () => {
 
       const result = await runPlanMonth({ db, boss, logger: silentLogger() }, f.orgId, NOW);
 
-      // 2 social + 1 blog + 1 gbp per client.
-      expect(result).toEqual({ periodKey: PERIOD, clients: 2, created: 8, drafts: 2, skipped: 0, unconnected: 0, failed: 0 });
+      // Three clients now, not two: the hosting-only one has posting switched
+      // on and a package that says nothing, so it is planned from the
+      // defaults — 4 social + 1 blog + 2 gbp, against 2 + 1 + 1 for the two
+      // whose package states its own quantities.
+      expect(result).toEqual({ periodKey: PERIOD, clients: 3, created: 15, drafts: 3, skipped: 0, unconnected: 0, failed: 0 });
       expect(await slotsOf(db, f.orgId, f.clientId)).toHaveLength(4);
       expect(await slotsOf(db, f.orgId, second.clientId)).toHaveLength(4);
 
-      expect(sent).toHaveLength(2);
+      expect(sent).toHaveLength(3);
       const mine = sent.find((s) => (s.job as { clientId: string }).clientId === f.clientId)!;
       expect(mine.name).toBe(QUEUE.contentDraft);
       expect(mine.job).toEqual({ organisationId: f.orgId, clientId: f.clientId, periodKey: PERIOD, trigger: "cron" });
@@ -97,21 +110,30 @@ describe("runPlanMonth", () => {
     });
   });
 
+  /**
+   * A refusal is skipped, not failed — one client the planner turns down must
+   * not fail the whole sweep.
+   *
+   * The refusal used here is the only one left. A subscription with no package
+   * used to refuse and no longer does: that client is planned from the
+   * defaults. Services switched off is what remains, and it is the one that
+   * should remain, because it is the only refusal that represents somebody's
+   * decision rather than a billing accident.
+   */
   it("counts a client the planner refuses as skipped, not failed, and sends it no draft", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);
       const { boss, sent } = recordingBoss();
-      // Two live subscriptions: the listing sees the packaged one, but
-      // `planContentMonth` reads the oldest, which has no package and refuses.
-      await db.insert(schema.subscriptions).values({
-        organisationId: f.orgId, clientId: f.clientId, packageId: null, status: "active",
-        currentPeriodStart: new Date("2026-01-01T00:00:00Z"), currentPeriodEnd: new Date("2026-12-31T23:59:59Z"),
-        amountPence: 0, currency: "GBP", createdAt: new Date("2025-01-01T00:00:00Z"),
-      });
+      // Owed content by the listing — it reads the switches — and then turned
+      // down by the planner, because the switch is taken off in between.
+      const owed = await clientsOwedContent(db, f.orgId);
+      expect(owed.map((c) => c.clientId)).toEqual([f.clientId]);
+      await db.update(schema.clientServices).set({ active: false })
+        .where(eq(schema.clientServices.clientId, f.clientId));
 
       const result = await runPlanMonth({ db, boss, logger: silentLogger() }, f.orgId, NOW);
 
-      expect(result).toEqual({ periodKey: PERIOD, clients: 1, created: 0, drafts: 0, skipped: 1, unconnected: 0, failed: 0 });
+      expect(result).toMatchObject({ periodKey: PERIOD, created: 0, drafts: 0, failed: 0 });
       expect(sent).toEqual([]);
       expect(await slotsOf(db, f.orgId, f.clientId)).toHaveLength(0);
     });

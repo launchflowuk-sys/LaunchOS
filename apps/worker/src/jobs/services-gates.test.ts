@@ -10,7 +10,16 @@ import { addClient, contentJobFixture, INCLUDES, silentLogger } from "./content-
 /** The worker's side of the service switches: nothing is owed and nothing is written for work nobody switched on. */
 
 describe("clientsOwedContent and the service switches", () => {
-  it("owes nothing to a paying client whose posting is switched off, or whose switched-on service the package does not include", async () => {
+  /**
+   * The switch is the gate, and it is the *only* gate.
+   *
+   * Posting off owes nothing, and ads alone is not posting. But a client whose
+   * switched-on service the package does not include **is** owed content now,
+   * from `CONTENT_SERVICE_DEFAULTS` — that is the reversal, and it is the
+   * whole reason the Content Writer had never run: every one of Shoji's
+   * clients is on a legacy plan that includes no posts.
+   */
+  it("owes nothing where posting is switched off, and owes the defaults where the package includes none", async () => {
     await withTestDb(async (db) => {
       const f = await contentJobFixture(db);
       const off = await addClient(db, f.orgId, { name: "Paying, posting off", services: [] });
@@ -21,8 +30,11 @@ describe("clientsOwedContent and the service switches", () => {
 
       const owed = (await clientsOwedContent(db, f.orgId)).map((c) => c.clientId);
 
-      expect(owed).toEqual([f.clientId]);
-      for (const id of [off.clientId, adsOnly.clientId, blogOnNoQuota.clientId]) expect(owed).not.toContain(id);
+      expect(owed).toContain(f.clientId);
+      // The switch is on; the package's silence is filled by the defaults.
+      expect(owed).toContain(blogOnNoQuota.clientId);
+      // Off is still nothing, and ads is not content.
+      for (const id of [off.clientId, adsOnly.clientId]) expect(owed).not.toContain(id);
     });
   });
 });

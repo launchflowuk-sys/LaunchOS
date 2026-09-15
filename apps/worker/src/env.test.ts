@@ -217,8 +217,10 @@ describe("worker env", () => {
       const warnings = logger.warn.mock.calls.map(([message]) => String(message));
       // hosting, dns, cms, ads, social, push, meetings, the image generator
       // since the branded post images landed, search console since the client
-      // traffic panels started, and screenshots since the websites grid did.
-      expect(warnings).toHaveLength(10);
+      // traffic panels started, screenshots since the websites grid did, and
+      // reviews since a client's homepage started showing its Google rating —
+      // that last one is the only mock a client's own customers would see.
+      expect(warnings).toHaveLength(11);
       expect(warnings.some((w) => w.startsWith("meetings adapter is the MOCK"))).toBe(true);
       expect(warnings.join(" ")).toMatch(/search-console adapter is the MOCK/);
       expect(warnings.join(" ")).toMatch(/push adapter is the MOCK/);
