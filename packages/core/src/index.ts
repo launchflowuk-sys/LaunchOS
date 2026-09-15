@@ -50,6 +50,8 @@ export {
   BRAND_METADATA_KEY, DEFAULT_BRAND_PRIMARY, DEFAULT_BRAND_ACCENT,
 } from "./clients/brand.js";
 export type { ClientBrand, ResolvedClientBrand } from "./clients/brand.js";
+export { clientConnectivity } from "./clients/connectivity.js";
+export type { ClientConnectivity, ConnectivityCheck, CheckState, CheckOwner, SocialReality } from "./clients/connectivity.js";
 export { createSite, CreateSiteInput } from "./sites/create-site.js";
 export { createMonitor, CreateMonitorInput } from "./monitoring/create-monitor.js";
 export { recordCheck, RecordCheckInput, FAILURE_THRESHOLD } from "./monitoring/record-check.js";

@@ -1,4 +1,6 @@
 import { getBillingProfile, getClient, listActivity, listContacts, listDomains, listSites } from "@launchos/core";
+import { schema } from "@launchos/db";
+import { and, eq, isNull } from "drizzle-orm";
 import { Activity, Globe, Merge, Network, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,6 +14,7 @@ import { DomainExpiry } from "@/components/domain-expiry";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { isInAppPath } from "@/lib/in-app-path";
+import { ConnectivityPanel } from "./connectivity-panel";
 import { sessionPermissions } from "@/lib/permissions";
 import { requireAdmin } from "@/lib/session";
 import { uuidOr404 } from "@/lib/uuid-route";
@@ -96,15 +99,40 @@ async function MergedBanner({ client, organisationId }: { client: ClientRecord; 
  * timeline is a list rather than a `DataList`: these are events in order,
  * not rows to compare, and every entry is one sentence with a time beside it.
  */
+/** The Facebook Page id on this client's channel row, if they have one. */
+async function facebookPageIdFor(organisationId: string, clientId: string): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ externalId: schema.contentChannels.externalId })
+    .from(schema.contentChannels)
+    .where(and(
+      eq(schema.contentChannels.organisationId, organisationId),
+      eq(schema.contentChannels.clientId, clientId),
+      eq(schema.contentChannels.channel, "facebook"),
+      isNull(schema.contentChannels.deletedAt),
+    ));
+  return row?.externalId ?? null;
+}
+
 async function OverviewTab({ client }: { client: ClientRecord }) {
   const session = await requireAdmin();
-  const [events, permissions] = await Promise.all([
+  const [events, permissions, facebookPageId] = await Promise.all([
     listActivity(getDb(), session.organisationId, { clientId: client.id }),
     sessionPermissions(),
+    facebookPageIdFor(session.organisationId, client.id),
   ]);
 
   return (
     <>
+    {/* First on the page on purpose. Before anything else about a client,
+        the question is whether the plumbing is done — because if it is not,
+        no amount of work on the rest of this page moves them forward. */}
+    <Section
+      title="Connected"
+      description="What this client's plan needs, and what is still missing. Anything marked Them is a single tap you can walk them through on the phone."
+    >
+      <ConnectivityPanel organisationId={session.organisationId} clientId={client.id} facebookPageId={facebookPageId} />
+    </Section>
+
     <Section title="Details" description="The name on their record, and how we reach them. Support mail keeps routing to the same address.">
       <div className="rounded-[20px] border bg-card p-5">
         <ClientDetailsForm

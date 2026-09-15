@@ -16,6 +16,7 @@ export {
 } from "./gbp.js";
 export { GoogleOAuthTokenSource, GOOGLE_OAUTH_TOKEN_URL, type GoogleOAuthCredentials } from "./gbp-oauth.js";
 export { lookupInstagramForPage, type InstagramAccount, type InstagramLookupOptions } from "./instagram-lookup.js";
+export { listReachablePages, type ReachablePage, type PageAccessOptions } from "./page-access.js";
 
 /**
  * The same two variables the Meta *ads* adapter reads. One system-user token
