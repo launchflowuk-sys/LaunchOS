@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  deleteSite,
   refreshSiteReviews,
   setSiteCmsCredential,
   setSiteReviewSettings,
@@ -9,6 +10,7 @@ import {
 } from "@launchos/core";
 import { createCmsProviderFromEnv, createReviewsProviderFromEnv } from "@launchos/integrations";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import {
@@ -142,4 +144,38 @@ export async function refreshSiteReviewsAction(formData: FormData): Promise<Acti
     if (error instanceof SiteReviewsRefused) return { status: "error", message: error.message };
     return { status: "error", message: errorMessage(error) };
   }
+}
+
+/**
+ * Deletes a website record, for good.
+ *
+ * There was no way to do this, which is how Gateway Taxis ended up with the
+ * same site listed twice and no means of fixing it. `deleteSite` refuses when
+ * a monitor, domain, incident or case depends on the row, so the dangerous
+ * version of this button does not exist — the worst it can do is refuse and
+ * say why.
+ *
+ * Gated on `settings`, matching the client delete: removing a record for good
+ * is administration, not delivery.
+ */
+export async function deleteSiteAction(formData: FormData): Promise<ActionResult> {
+  const session = await requireAdmin();
+  const siteId = formData.get("siteId");
+  const confirmUrl = formData.get("confirmUrl");
+  if (typeof siteId !== "string" || typeof confirmUrl !== "string") {
+    return { status: "error", message: "Type the site address to confirm" };
+  }
+
+  try {
+    await deleteSite(getDb(), session.organisationId, {
+      siteId, confirmUrl, actorKind: "user", actorId: session.userId,
+    });
+  } catch (error) {
+    return { status: "error", message: errorMessage(error) };
+  }
+  revalidatePath("/websites");
+  // Outside the try: this is submitted from `/websites/<id>`, which no longer
+  // exists once the delete succeeds, and `redirect` signals by throwing — a
+  // catch around it would report the success as a failure.
+  redirect("/websites");
 }

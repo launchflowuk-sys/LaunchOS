@@ -102,6 +102,8 @@ export {
 export { upsertBillingProfile, getBillingProfile, UpsertBillingProfileInput } from "./billing/upsert-billing-profile.js";
 export { updateSite, UpdateSiteInput } from "./sites/update-site.js";
 export { listSites, getSite, ListSitesInput } from "./sites/list-sites.js";
+export { deleteSite, siteDeletionReport, DeleteSiteInput } from "./sites/delete-site.js";
+export type { SiteDeletionReport, SiteDeletionBlocker } from "./sites/delete-site.js";
 // Google reviews, fetched by us and served to the client's own website.
 export {
   SiteReviewsRefused, SiteSlug, SiteReviewSettingsInput,

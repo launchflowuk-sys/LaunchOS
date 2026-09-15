@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { DeleteSiteSection } from "./delete-site-section";
 import { ReviewsPanel } from "./reviews-panel";
 import { WordPressConnection } from "./wordpress-connection";
 
@@ -241,6 +242,15 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
           caption="Recent incidents"
           empty={<EmptyState icon={ShieldAlert}>No incidents recorded.</EmptyState>}
         />
+      </Section>
+
+      {/* Last on the page, like the client delete: a destructive action belongs
+          where somebody scrolls to it deliberately, not beside the edit form. */}
+      <Section
+        title="Delete this website"
+        description="Removes the record for good. Refused while a monitor, domain, incident or support case depends on it — so a duplicate row can go and a real one cannot."
+      >
+        <DeleteSiteSection siteId={site.id} />
       </Section>
     </>
   );
