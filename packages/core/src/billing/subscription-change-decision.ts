@@ -1,3 +1,4 @@
+import type { PaymentsAdapter } from "@launchos/integrations";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { and, eq, sql } from "drizzle-orm";
@@ -28,6 +29,20 @@ export interface ApplySubscriptionChangeDecisionResult {
   notices: (typeof schema.messages.$inferSelect)[];
   /** True when this approval had already been carried out; nothing was touched. */
   alreadyApplied: boolean;
+  /**
+   * What happened at the payment provider, which is a separate question from
+   * whether our own row moved:
+   *
+   * - `"scheduled"` — Stripe will stop billing when the paid period closes.
+   * - `"not_linked"` — the subscription has no provider id, so there was
+   *   nothing to cancel and nothing is owed.
+   * - `"failed"` — the record and the client's email stand, but the card is
+   *   still live. `providerError` says why, and it is audited.
+   * - `null` — nothing was cancelled by this call.
+   */
+  providerCancellation: "scheduled" | "not_linked" | "failed" | null;
+  /** The provider's complaint when `providerCancellation` is `"failed"`. */
+  providerError?: string;
 }
 
 /** Metadata stamped on the approval once its decision has been carried out. */
@@ -103,6 +118,13 @@ export async function applySubscriptionChangeDecision(
   organisationId: string,
   input: ApplySubscriptionChangeDecisionInput,
   env: NodeJS.ProcessEnv = process.env,
+  /**
+   * Required, not optional. An optional adapter here would mean a caller that
+   * forgot it silently went back to recording the cancellation and leaving the
+   * client's card being charged — which is the bug this argument exists to
+   * close, and it is not one that should be reachable by omission.
+   */
+  payments: PaymentsAdapter,
 ): Promise<ApplySubscriptionChangeDecisionResult> {
   const v = ApplySubscriptionChangeDecisionInput.parse(input);
   await assertOwned(db, organisationId, schema.approvals, v.approvalId);
@@ -145,12 +167,14 @@ export async function applySubscriptionChangeDecision(
     if (!claimed) return undefined;
 
     let cancelled = false;
+    let stripeSubscriptionId: string | null = null;
     if (decision === "approved" && payload.kind === "cancel") {
       const [before] = await tx
         .select()
         .from(schema.subscriptions)
         .where(and(eq(schema.subscriptions.id, payload.subscriptionId), eq(schema.subscriptions.organisationId, organisationId)))
         .for("update");
+      if (before) stripeSubscriptionId = before.stripeSubscriptionId;
       if (before && before.status !== "cancelled") {
         // TODO(stripe): call `payments.cancelSubscription(before.stripeSubscriptionId,
         // { atPeriodEnd: true })` here — the `StripePaymentsAdapter.cancelSubscription`
@@ -224,13 +248,13 @@ export async function applySubscriptionChangeDecision(
       }
     }
 
-    return { cancelled, notices };
+    return { cancelled, notices, stripeSubscriptionId };
   });
 
   if (!applied) {
     return {
       decision, kind: payload.kind, clientId: payload.clientId, subscriptionId: payload.subscriptionId,
-      cancelled: false, notices: [], alreadyApplied: true,
+      cancelled: false, notices: [], alreadyApplied: true, providerCancellation: null,
     };
   }
 
@@ -239,8 +263,70 @@ export async function applySubscriptionChangeDecision(
     await emit({ name: "message.queued", organisationId, messageId: notice.id });
   }
 
+  const provider = applied.cancelled
+    ? await stopBilling(db, organisationId, {
+        payments,
+        actorId: v.actorId,
+        subscriptionId: payload.subscriptionId,
+        stripeSubscriptionId: applied.stripeSubscriptionId,
+      })
+    : ({ providerCancellation: null } satisfies Pick<ApplySubscriptionChangeDecisionResult, "providerCancellation">);
+
   return {
     decision, kind: payload.kind, clientId: payload.clientId, subscriptionId: payload.subscriptionId,
     cancelled: applied.cancelled, notices: applied.notices, alreadyApplied: false,
+    ...provider,
   };
+}
+
+/**
+ * Tells the payment provider to stop billing, after our own record is durable.
+ *
+ * **At period end, not now.** The row this call follows records
+ * `metadata.cancelAtPeriodEnd`, and the client has been emailed to say their
+ * plan runs to the end of the period they have paid for. Cancelling outright
+ * would take those days back and make the two disagree.
+ *
+ * **Outside the transaction**, for the same reason `cancelSubscription` puts
+ * its round trip outside one: an HTTP call must never hold a database
+ * transaction open, and a provider cancellation performed inside a transaction
+ * that then rolled back would stop a live subscription whose row still said
+ * active — the one direction that cannot be undone from here.
+ *
+ * **It does not throw.** By this point the decision is committed and the
+ * client has been told; failing the call would leave the caller unable to tell
+ * which half happened, and a retry would re-apply nothing (the approval is
+ * already claimed) while still not cancelling. So the failure is audited under
+ * its own action and returned, and the card is still live until somebody acts
+ * on it — which is strictly better than today, where nothing was attempted and
+ * nothing was recorded.
+ */
+async function stopBilling(
+  db: Db,
+  organisationId: string,
+  args: {
+    payments: PaymentsAdapter;
+    actorId: string;
+    subscriptionId: string;
+    stripeSubscriptionId: string | null;
+  },
+): Promise<{ providerCancellation: "scheduled" | "not_linked" | "failed"; providerError?: string }> {
+  if (!args.stripeSubscriptionId) return { providerCancellation: "not_linked" };
+  try {
+    const after = await args.payments.cancelSubscription(args.stripeSubscriptionId, { atPeriodEnd: true });
+    await recordAudit(db, organisationId, {
+      actorKind: "user", actorId: args.actorId, action: "subscription.provider_cancel_scheduled",
+      targetType: "subscription", targetId: args.subscriptionId,
+      after: { provider: args.payments.name, stripeSubscriptionId: args.stripeSubscriptionId, providerStatus: after.status },
+    });
+    return { providerCancellation: "scheduled" };
+  } catch (error) {
+    const providerError = error instanceof Error ? error.message : String(error);
+    await recordAudit(db, organisationId, {
+      actorKind: "user", actorId: args.actorId, action: "subscription.provider_cancel_failed",
+      targetType: "subscription", targetId: args.subscriptionId,
+      after: { provider: args.payments.name, stripeSubscriptionId: args.stripeSubscriptionId, error: providerError },
+    });
+    return { providerCancellation: "failed", providerError };
+  }
 }

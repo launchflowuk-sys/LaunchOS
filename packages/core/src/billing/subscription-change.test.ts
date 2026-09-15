@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { MockEmailAdapter } from "@launchos/channels";
+import { MockPaymentsAdapter } from "@launchos/integrations";
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
@@ -34,6 +35,12 @@ async function withCapturedEvents<T>(run: (events: DomainEvent[]) => Promise<T>)
 }
 
 /** An organisation with an owner, a client on the Growth package and two portal users. */
+/**
+ * A fresh adapter per call, so one test's cancellations are never visible to
+ * another's assertions.
+ */
+const payments = () => new MockPaymentsAdapter();
+
 async function fixture(db: Db, opts: { withSubscription?: boolean; portalUsers?: number } = {}) {
   const [org] = await db.insert(schema.organisations).values({ name: "T", slug: `chg-${randomUUID()}` }).returning();
   const ownerId = randomUUID();
@@ -60,7 +67,7 @@ async function fixture(db: Db, opts: { withSubscription?: boolean; portalUsers?:
     : await db.insert(schema.subscriptions).values({
         organisationId: org!.id, clientId: client!.id, packageId: pkg!.id, status: "active",
         currentPeriodStart: new Date("2026-09-01T00:00:00Z"), currentPeriodEnd: PERIOD_END,
-        amountPence: 14900, currency: "GBP", stripeSubscriptionId: `sub_${randomUUID()}`,
+        amountPence: 14900, currency: "GBP", stripeSubscriptionId: `mock_sub_${randomUUID()}`,
       }).returning();
 
   return { orgId: org!.id, ownerId, clientId: client!.id, packageId: pkg!.id, subscription, portalUserIds };
@@ -158,6 +165,98 @@ describe("requestSubscriptionChange", () => {
 });
 
 describe("applySubscriptionChangeDecision", () => {
+  /**
+   * The gap this closes. Approving a client's cancellation used to move our own
+   * row to `cancelled` and stop there, so Stripe kept charging their card until
+   * somebody remembered to cancel it by hand — a client who had been emailed to
+   * say their plan was ending and was still being billed for it.
+   */
+  it("tells the provider to stop billing at the end of the paid period", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, ownerId, clientId, subscription, portalUserIds } = await fixture(db);
+      const approval = await requestSubscriptionChange(db, orgId, {
+        clientId, actorUserId: portalUserIds[0]!, kind: "cancel", message: "Closing down.",
+      });
+      await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: ownerId,
+      });
+      const provider = payments();
+
+      const result = await applySubscriptionChangeDecision(
+        db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, provider,
+      );
+
+      expect(result.providerCancellation).toBe("scheduled");
+      // At period end, not now: the client has been told their plan runs to the
+      // end of the period they paid for, and cancelling outright would take
+      // those days back.
+      expect(provider.cancelledAtPeriodEnd.has(subscription!.stripeSubscriptionId!)).toBe(true);
+
+      const audits = await db.select({ action: schema.auditLog.action })
+        .from(schema.auditLog).where(eq(schema.auditLog.organisationId, orgId));
+      expect(audits.map((a) => a.action)).toContain("subscription.provider_cancel_scheduled");
+    });
+  });
+
+  /**
+   * The decision and the client's email are already committed by the time the
+   * provider is called, so a refusal there must not throw the whole thing away
+   * — it has to be reported and recorded instead, because a card that is still
+   * live is a thing only a person can put right.
+   */
+  it("keeps the decision and says so when the provider refuses", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, ownerId, clientId, subscription, portalUserIds } = await fixture(db);
+      const approval = await requestSubscriptionChange(db, orgId, {
+        clientId, actorUserId: portalUserIds[0]!, kind: "cancel", message: "Closing down.",
+      });
+      await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: ownerId,
+      });
+      const refusing = payments();
+      refusing.cancelSubscription = async () => {
+        throw new Error("No such subscription");
+      };
+
+      const result = await applySubscriptionChangeDecision(
+        db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, refusing,
+      );
+
+      expect(result).toMatchObject({ cancelled: true, providerCancellation: "failed" });
+      expect(result.providerError).toMatch(/No such subscription/);
+      // Our own record still stands, and the client was still told.
+      const [after] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, subscription!.id));
+      expect(after!.status).toBe("cancelled");
+      expect(result.notices).toHaveLength(2);
+
+      const audits = await db.select({ action: schema.auditLog.action })
+        .from(schema.auditLog).where(eq(schema.auditLog.organisationId, orgId));
+      expect(audits.map((a) => a.action)).toContain("subscription.provider_cancel_failed");
+    });
+  });
+
+  /** A subscription never linked to Stripe owes the provider nothing. */
+  it("reports not_linked when there is no provider subscription to cancel", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, ownerId, clientId, subscription, portalUserIds } = await fixture(db);
+      await db.update(schema.subscriptions)
+        .set({ stripeSubscriptionId: null })
+        .where(eq(schema.subscriptions.id, subscription!.id));
+      const approval = await requestSubscriptionChange(db, orgId, {
+        clientId, actorUserId: portalUserIds[0]!, kind: "cancel", message: "Closing down.",
+      });
+      await decideApproval(db, orgId, {
+        approvalId: approval.id, decision: "approved", decidedByUserId: ownerId,
+      });
+
+      const result = await applySubscriptionChangeDecision(
+        db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments(),
+      );
+
+      expect(result).toMatchObject({ cancelled: true, providerCancellation: "not_linked" });
+    });
+  });
+
   it("approving a cancel ends the subscription at period end and emails every portal user", async () => {
     await withTestDb(async (db) => {
       await withCapturedEvents(async (events) => {
@@ -171,7 +270,7 @@ describe("applySubscriptionChangeDecision", () => {
         expect(decided.alreadyDecided).toBe(false);
         events.length = 0;
 
-        const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV);
+        const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments());
 
         expect(result).toMatchObject({ decision: "approved", kind: "cancel", cancelled: true, alreadyApplied: false });
         expect(result.notices).toHaveLength(2);
@@ -219,7 +318,7 @@ describe("applySubscriptionChangeDecision", () => {
       });
       await decideApproval(db, orgId, { approvalId: approval.id, decision: "approved", decidedByUserId: ownerId });
 
-      const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV);
+      const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments());
 
       expect(result).toMatchObject({ decision: "approved", kind: "upgrade", cancelled: false });
       const [after] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, subscription!.id));
@@ -238,7 +337,7 @@ describe("applySubscriptionChangeDecision", () => {
       });
       await decideApproval(db, orgId, { approvalId: approval.id, decision: "rejected", decidedByUserId: ownerId, note: "You are mid-contract." });
 
-      const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV);
+      const result = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments());
 
       expect(result).toMatchObject({ decision: "rejected", cancelled: false });
       const [after] = await db.select().from(schema.subscriptions).where(eq(schema.subscriptions.id, subscription!.id));
@@ -266,12 +365,12 @@ describe("applySubscriptionChangeDecision", () => {
         clientId, actorUserId: portalUserIds[0]!, kind: "cancel", message: "Closing down.",
       });
       await expect(
-        applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV),
+        applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments()),
       ).rejects.toThrow(/has not been decided/);
 
       await decideApproval(db, orgId, { approvalId: approval.id, decision: "approved", decidedByUserId: ownerId });
-      const first = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV);
-      const second = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV);
+      const first = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments());
+      const second = await applySubscriptionChangeDecision(db, orgId, { approvalId: approval.id, actorId: ownerId }, ENV, payments());
 
       expect(first.alreadyApplied).toBe(false);
       expect(second).toMatchObject({ alreadyApplied: true, cancelled: false, notices: [] });
@@ -289,7 +388,7 @@ describe("applySubscriptionChangeDecision", () => {
       await decideApproval(db, orgId, { approvalId: approval.id, decision: "approved", decidedByUserId: ownerId });
 
       await expect(
-        applySubscriptionChangeDecision(db, other.orgId, { approvalId: approval.id, actorId: other.ownerId }, ENV),
+        applySubscriptionChangeDecision(db, other.orgId, { approvalId: approval.id, actorId: other.ownerId }, ENV, payments()),
       ).rejects.toThrow(/not found in organisation/);
       expect(await notices(db, orgId)).toHaveLength(0);
     });

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import {
   PAYMENT_TERMS_DEFAULT_DAYS, addDays, addMonths, vatOf,
+  type CancelSubscriptionOptions,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
   type PaymentsBalanceTransaction, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCustomer,
   type PaymentsInvoice, type PaymentsPrice, type PaymentsSubscription,
@@ -30,6 +31,13 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
 
   private readonly customers = new Map<string, PaymentsCustomer>();
   private readonly subscriptions = new Map<string, PaymentsSubscription>();
+  /**
+   * Subscriptions asked to end when their paid period runs out. Public because
+   * it is the only observable difference between the two cancellations — the
+   * status deliberately stays `active` — and a caller's choice of which it
+   * meant is exactly what a test needs to assert.
+   */
+  readonly cancelledAtPeriodEnd = new Set<string>();
   private readonly invoices = new Map<string, PaymentsInvoice>();
   private readonly checkouts = new Map<string, PaymentsCheckoutSession>();
   private catalog: readonly PaymentsCatalogItem[] = [];
@@ -141,7 +149,20 @@ export class MockPaymentsAdapter implements PaymentsAdapter {
     return { subscription, invoice: this.issueInvoice(subscription) };
   }
 
-  async cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription> {
+  /**
+   * Mirrors the provider's two shapes rather than flattening them: an
+   * at-period-end cancellation leaves the subscription `active` — Stripe keeps
+   * billing nothing and ends it when the period closes — so a test asserting
+   * "cancelled now" cannot accidentally pass for "cancelled later". Which ids
+   * were scheduled is readable from `cancelledAtPeriodEnd`.
+   */
+  async cancelSubscription(subscriptionId: string, options: CancelSubscriptionOptions = {}): Promise<PaymentsSubscription> {
+    if (options.atPeriodEnd) {
+      const scheduled = this.recall(subscriptionId, "active");
+      this.subscriptions.set(subscriptionId, scheduled);
+      this.cancelledAtPeriodEnd.add(subscriptionId);
+      return scheduled;
+    }
     const cancelled = this.recall(subscriptionId, "cancelled");
     this.subscriptions.set(subscriptionId, cancelled);
     return cancelled;

@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import {
   addDays, isProviderId, subscriptionStatusFromProvider,
+  type CancelSubscriptionOptions,
   type CreateCheckoutSessionInput, type CreateCustomerInput, type CreateSubscriptionInput, type PaymentsAdapter,
   type PaymentsBillingInterval, type PaymentsCatalogItem, type PaymentsCheckoutSession, type PaymentsCheckoutStatus,
   type PaymentsPrice,
@@ -108,8 +109,16 @@ export class StripePaymentsAdapter implements PaymentsAdapter {
     return { subscription: this.toSubscription(subscription), invoice: this.toInvoice(latest) };
   }
 
-  async cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription> {
-    return this.toSubscription(await this.client.subscriptions.cancel(subscriptionId));
+  /**
+   * `cancel` ends it now and forfeits the rest of the paid period; the
+   * at-period-end form is an *update* setting `cancel_at_period_end`, not a
+   * cancel with a flag, which is the Stripe detail worth having written down.
+   */
+  async cancelSubscription(subscriptionId: string, options: CancelSubscriptionOptions = {}): Promise<PaymentsSubscription> {
+    const raw = options.atPeriodEnd
+      ? await this.client.subscriptions.update(subscriptionId, { cancel_at_period_end: true })
+      : await this.client.subscriptions.cancel(subscriptionId);
+    return this.toSubscription(raw);
   }
 
   async listInvoices(customerId: string): Promise<PaymentsInvoice[]> {

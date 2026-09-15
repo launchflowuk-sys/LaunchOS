@@ -1,6 +1,6 @@
 import {
   REPORT_TIME_ZONE, ReportRefused, buildMonthlyReport, isReportDue, londonMonthPeriod,
-  monthlyReportSendDecided, renderMonthlyReport, reportMonthName, reportTimingFor,
+  monthlyReportSendDecided, renderMonthlyReport, reportHasSubstance, reportMonthName, reportTimingFor,
   requestMonthlyReportSend, zonedDateKey,
   type MonthlyReportDeps,
 } from "@launchos/core";
@@ -50,6 +50,11 @@ export interface MonthlyReportsResult {
   requested: number;
   /** Clients whose report for the period was already published, so left alone. */
   skipped: number;
+  /**
+   * Clients whose month contained nothing worth reporting. Their report was
+   * written and left a draft: no PDF, and no card asking the owner to send it.
+   */
+  empty: number;
   /** Clients whose report could not be built; the rest still were. */
   failed: number;
 }
@@ -135,6 +140,7 @@ export async function runMonthlyReports(
   let rendered = 0;
   let requested = 0;
   let skipped = 0;
+  let empty = 0;
 
   const label = `monthly reports (${organisationId})`;
   const summary = await sweep(clients, { label, id: (client) => client.id, logger }, async (client) => {
@@ -149,6 +155,20 @@ export async function runMonthlyReports(
       return;
     }
     reports += 1;
+
+    // Nothing happened for this client this month, so there is nothing to send.
+    // The row stays a draft — the record that the month was considered and
+    // found empty — but no PDF is rendered and no card is raised. A queue of
+    // cards about nothing is a queue nobody reads, which is where the real
+    // ones get lost. If data arrives later, a re-run finds it and asks then.
+    if (!reportHasSubstance(built.report.stats)) {
+      empty += 1;
+      logger.info(
+        { organisationId, clientId: client.id, reportId: built.report.id },
+        "monthly report left a draft: nothing happened this month",
+      );
+      return;
+    }
 
     await renderMonthlyReport(db, organisationId, { reportId: built.report.id, actorKind: "system" }, deps);
     rendered += 1;
@@ -172,7 +192,7 @@ export async function runMonthlyReports(
   });
 
   const result: MonthlyReportsResult = {
-    periodStart, monthName, clients: clients.length, reports, rendered, requested, skipped, failed: summary.failed,
+    periodStart, monthName, clients: clients.length, reports, rendered, requested, skipped, empty, failed: summary.failed,
   };
   // Logged here, not by the caller: the throw below discards the return value,
   // and the failing run is the one case where the operator most needs to know

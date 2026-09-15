@@ -348,6 +348,7 @@ export type {
   MonthlyReportResult, RenderMonthlyReportResult, MonthlyReportDeps, MonthlyReportDocumentInput,
 } from "./reports/monthly-report.js";
 export { documentBodyFromMarkdown } from "./reports/markdown-document.js";
+export { reportHasSubstance, UPTIME_SUBSTANCE_BELOW } from "./reports/report-substance.js";
 export type { ReportPeriod } from "./reports/build-client-report.js";
 export { publishClientReport, publishClientReportTx, PublishClientReportInput } from "./reports/publish.js";
 // The `report_send` gate: nothing reaches a client until a person has read it.

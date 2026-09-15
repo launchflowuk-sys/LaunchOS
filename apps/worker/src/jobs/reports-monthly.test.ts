@@ -26,7 +26,12 @@ async function organisation(db: Db, slug: string) {
  * out. The period starts on 5 September, so at NOW (1 September) the August
  * report is due: the month has ended and payment is four days away.
  */
-async function client(db: Db, organisationId: string, name: string, opts: { subscribed?: boolean } = {}) {
+async function client(
+  db: Db,
+  organisationId: string,
+  name: string,
+  opts: { subscribed?: boolean; happened?: boolean } = {},
+) {
   const [row] = await db.insert(schema.clients).values({
     organisationId, name, slug: `${name.toLowerCase()}-${randomUUID()}`, email: `${randomUUID()}@grays.test`,
   }).returning();
@@ -36,6 +41,17 @@ async function client(db: Db, organisationId: string, name: string, opts: { subs
       currentPeriodStart: new Date("2026-09-05T00:00:00Z"),
       currentPeriodEnd: new Date("2026-10-05T00:00:00Z"),
       amountPence: 20000, currency: "GBP",
+    });
+  }
+  // One case raised inside the reported month, so the client has a month worth
+  // reporting on. Without it the sweep now correctly declines to raise a card
+  // — `reportHasSubstance` — and every assertion about rendering and asking
+  // would be testing the empty path while claiming to test the full one.
+  if (opts.happened !== false) {
+    await db.insert(schema.tickets).values({
+      organisationId, clientId: row!.id, subject: "Contact form stopped emailing",
+      status: "resolved", createdAt: new Date("2026-08-12T09:00:00Z"),
+      resolvedAt: new Date("2026-08-12T15:30:00Z"),
     });
   }
   return row!;
@@ -49,6 +65,33 @@ function sendCards(db: Db, organisationId: string) {
 }
 
 describe("runMonthlyReports", () => {
+  /**
+   * The thirteen empty cards. A client whose month contained nothing at all
+   * used to get a PDF of zeroes and a decision to make about sending it; the
+   * report is still written, so the month is on record as considered, but
+   * nothing is rendered and nobody is asked.
+   */
+  it("writes the report but renders and asks nothing when the month was empty", async () => {
+    await withTestDb(async (db) => {
+      const { orgId } = await organisation(db, "mr-empty");
+      const quiet0 = quiet();
+      const render = vi.fn();
+      await client(db, orgId, "Silent", { happened: false });
+
+      const result = await runMonthlyReports(db, orgId, { now: NOW, logger: quiet0, render });
+
+      expect(result).toMatchObject({ clients: 1, reports: 1, rendered: 0, requested: 0, empty: 1, failed: 0 });
+      expect(render).not.toHaveBeenCalled();
+      expect(await sendCards(db, orgId)).toHaveLength(0);
+
+      // The row exists and is still a draft, so data arriving later is picked
+      // up by a re-run rather than the month being lost.
+      const [report] = await db.select({ status: schema.clientReports.status })
+        .from(schema.clientReports).where(eq(schema.clientReports.organisationId, orgId));
+      expect(report?.status).toBe("draft");
+    });
+  });
+
   it("compiles the London month, renders the PDF and raises one send card per active client", async () => {
     await withTestDb(async (db) => {
       const { orgId } = await organisation(db, "mr");
@@ -61,7 +104,7 @@ describe("runMonthlyReports", () => {
 
       expect(result).toEqual({
         periodStart: "2026-08-01", monthName: "August 2026",
-        clients: 1, reports: 1, rendered: 1, requested: 1, skipped: 0, failed: 0,
+        clients: 1, reports: 1, rendered: 1, requested: 1, skipped: 0, empty: 0, failed: 0,
       });
 
       const [report] = await db.select().from(schema.clientReports).where(eq(schema.clientReports.clientId, active.id));
@@ -185,11 +228,19 @@ describe("runMonthlyReports", () => {
         currentPeriodEnd: new Date("2026-10-05T00:00:00Z"),
         amountPence: 20000, currency: "GBP",
       });
+      // And a month worth reporting on, so the run reaches the send gate at
+      // all: an empty month is declined earlier now, which would make this
+      // pass for the wrong reason.
+      await db.insert(schema.tickets).values({
+        organisationId: orgId, clientId: silent!.id, subject: "Mailbox full",
+        status: "resolved", createdAt: new Date("2026-08-03T11:00:00Z"),
+        resolvedAt: new Date("2026-08-03T12:00:00Z"),
+      });
       const logger = quiet();
 
       const result = await runMonthlyReports(db, orgId, { now: NOW, logger });
 
-      expect(result).toMatchObject({ clients: 1, reports: 1, rendered: 1, requested: 0, failed: 0 });
+      expect(result).toMatchObject({ clients: 1, reports: 1, rendered: 1, requested: 0, empty: 0, failed: 0 });
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({ organisationId: orgId }),
         "monthly report has nobody to send to",

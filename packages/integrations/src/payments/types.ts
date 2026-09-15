@@ -7,6 +7,16 @@ export interface PaymentsCustomer {
   email?: string;
 }
 
+export interface CancelSubscriptionOptions {
+  /**
+   * Let the paid-for period finish rather than stopping now. In Stripe this is
+   * `cancel_at_period_end`, which leaves the subscription `active` until the
+   * period closes — so a subscription cancelled this way still reports an
+   * active status, and that is correct, not a bug to paper over.
+   */
+  readonly atPeriodEnd?: boolean;
+}
+
 export interface PaymentsSubscription {
   id: string;
   customerId: string;
@@ -229,7 +239,18 @@ export interface PaymentsAdapter {
   /** Every subscription in every status, across all pages. */
   listSubscriptions(): Promise<PaymentsSubscriptionDetail[]>;
   createSubscription(input: CreateSubscriptionInput): Promise<{ subscription: PaymentsSubscription; invoice: PaymentsInvoice }>;
-  cancelSubscription(subscriptionId: string): Promise<PaymentsSubscription>;
+  /**
+   * Ends a subscription. Immediately by default; `atPeriodEnd` instead lets the
+   * period the client has already paid for run out.
+   *
+   * The distinction is not cosmetic. Cancelling on the spot stops the service
+   * mid-period and takes back days the client has paid for, which is right when
+   * an owner ends a subscription deliberately and wrong when a client asks to
+   * cancel and is told their plan runs to the end of the month. The option
+   * exists so each caller can say which it meant rather than inheriting
+   * whichever the provider does by default.
+   */
+  cancelSubscription(subscriptionId: string, options?: CancelSubscriptionOptions): Promise<PaymentsSubscription>;
   listInvoices(customerId: string): Promise<PaymentsInvoice[]>;
   /**
    * The processor's own ledger since a moment, so its cut can be counted.

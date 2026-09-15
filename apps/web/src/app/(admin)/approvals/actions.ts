@@ -24,6 +24,7 @@ import {
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { getPayments } from "@/lib/integrations";
 import { env } from "@/lib/env";
 import { installWebEnqueue, sendJob } from "@/lib/queue";
 import { requirePermission } from "@/lib/permissions";
@@ -177,12 +178,26 @@ async function decide(formData: FormData, status: "approved" | "rejected"): Prom
       // decision is carried out and the client's portal users are emailed.
       const payload = NonAgentPayload.safeParse(before.payload);
       if (payload.success && payload.data.action === SUBSCRIPTION_CHANGE_ACTION) {
-        const applied = await applySubscriptionChangeDecision(getDb(), session.organisationId, {
-          approvalId,
-          actorId: session.userId,
-        });
+        const applied = await applySubscriptionChangeDecision(
+          getDb(),
+          session.organisationId,
+          { approvalId, actorId: session.userId },
+          process.env,
+          getPayments(),
+        );
         revalidatePath(`/clients/${applied.clientId}`);
         revalidatePath("/portal/plan");
+        // The record moved and the client has been emailed, but the card is
+        // still live — said here rather than left in the audit log, because the
+        // person who just approved it is the only one who can put it right.
+        if (applied.providerCancellation === "failed") {
+          return {
+            status: "error",
+            message:
+              "Cancellation recorded and the client notified, but Stripe would not cancel the subscription: " +
+              `${applied.providerError ?? "no reason given"}. Cancel it by hand on the client's billing tab.`,
+          };
+        }
       } else if (payload.success && payload.data.action === CONTENT_PUBLISH_ACTION) {
         // A content item asking to go out: approve makes it `approved` for the
         // publish sweep, reject sends it back — both verdicts land on the item.

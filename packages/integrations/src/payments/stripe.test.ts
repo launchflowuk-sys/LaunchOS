@@ -1,5 +1,5 @@
 import Stripe from "stripe";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { StripePaymentsAdapter } from "./stripe.js";
 
 const SECRET_KEY = "sk_test_dummy";
@@ -140,5 +140,30 @@ describe("StripePaymentsAdapter", () => {
     );
     const cancelled = await adapter.cancelSubscription("sub_1");
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  /**
+   * At period end is `update({ cancel_at_period_end: true })`, not `cancel`.
+   * Getting this wrong takes back days a client has already paid for, so the
+   * test asserts `cancel` is never reached rather than only checking the
+   * returned status — which stays `active`, exactly as Stripe reports it.
+   */
+  it("schedules a cancellation for the period end without ending it now", async () => {
+    const update = vi.fn(async () => ({
+      id: "sub_1", customer: "cus_1", status: "active", cancel_at_period_end: true,
+      items: { data: [{ current_period_start: 0, current_period_end: 0, price: { unit_amount: 4500, currency: "gbp" } }] },
+      start_date: 0,
+    }));
+    const cancel = vi.fn();
+    const adapter = withFakeClient(
+      new StripePaymentsAdapter({ secretKey: SECRET_KEY, webhookSecret: WEBHOOK_SECRET }),
+      { subscriptions: { update, cancel } },
+    );
+
+    const scheduled = await adapter.cancelSubscription("sub_1", { atPeriodEnd: true });
+
+    expect(update).toHaveBeenCalledWith("sub_1", { cancel_at_period_end: true });
+    expect(cancel).not.toHaveBeenCalled();
+    expect(scheduled.status).toBe("active");
   });
 });
