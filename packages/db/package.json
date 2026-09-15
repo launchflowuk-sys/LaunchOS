@@ -21,7 +21,8 @@
     "studio": "drizzle-kit studio",
     "seed": "tsx src/seed.ts",
     "bootstrap": "tsx src/bootstrap.ts",
-    "reconcile-support-emails": "tsx src/scripts/reconcile-support-emails.ts"
+    "reconcile-support-emails": "tsx src/scripts/reconcile-support-emails.ts",
+    "seed-onboarding-templates": "tsx src/scripts/seed-onboarding-templates.ts"
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
