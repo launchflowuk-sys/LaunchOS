@@ -94,9 +94,27 @@
   @media print {
     body { background: #fff; font-size: 10.5pt; }
     .sheet { border: 0; max-width: none; }
-    section { padding-top: 1.4rem; break-inside: avoid; }
+
+    /* Sections flow across pages. `break-inside: avoid` on every section looked
+       tidier in theory and was worse in practice: a section longer than a page
+       cannot be kept whole, so the engine gave up and left half-empty pages
+       before the long ones. Headings stay with their content instead, which is
+       the rule that actually prevents an orphaned title at a page foot. */
+    section { padding-top: 1.4rem; break-inside: auto; }
     h1 { font-size: 22pt; } h2 { font-size: 13pt; }
-    table, .panel, .flag, .yesno > div { break-inside: avoid; }
+    h1, h2, h3 { break-after: avoid; break-inside: avoid; }
+
+    /* Things small enough to keep whole, kept whole. */
+    table, .panel, .flag, .yesno > div, .note, li { break-inside: avoid; }
+    thead { display: table-header-group; }
+    tr { break-inside: avoid; }
+
+    /* No line left alone at the top or bottom of a page. */
+    p, li { orphans: 3; widows: 3; }
+
+    /* Links print as text; a bare URL in the margin helps nobody on paper. */
+    a { color: #141b29; text-decoration: none; }
+
     @page { margin: 16mm 14mm; }
   }
 </style>
@@ -137,19 +155,52 @@
           to be looked after and, on the bigger plans, for someone to write and post for them and run their
           advertising.
         </p>
+        <p class="body">There are three published packages. They build on each other.</p>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>Plan</th><th class="num">Monthly</th><th>What they get</th></tr></thead>
+            <thead><tr><th>Package</th><th>What the client gets</th><th>What it asks of you</th></tr></thead>
             <tbody>
-              <tr><td>Presence</td><td class="num">£45</td><td>Hosting, updates, backups, monitoring, a monthly report, small changes on request.</td></tr>
-              <tr><td>Standard</td><td class="num">£110</td><td>All of that, plus eight social posts, four articles and four Google Business updates a month.</td></tr>
-              <tr><td>Growth</td><td class="num">£220</td><td>All of that, plus advertising managed, a monthly call, same-day replies and WhatsApp.</td></tr>
+              <tr>
+                <td><strong>Presence</strong></td>
+                <td>The website looked after: hosting, updates, backups, uptime monitoring, a monthly report, and small changes on request.</td>
+                <td>Keep it up, keep it current, and make the monthly report tell the truth. No posting on this package.</td>
+              </tr>
+              <tr>
+                <td><strong>Standard</strong></td>
+                <td>All of Presence, plus a written content programme every month &mdash; social posts, articles for the site, and Google Business updates.</td>
+                <td>You are the editor. Every post is drafted before you see it; your judgement decides whether it goes out, and whether it sounds like the client rather than like us.</td>
+              </tr>
+              <tr>
+                <td><strong>Growth</strong></td>
+                <td>All of Standard, plus their advertising managed, a monthly call, same-day replies and WhatsApp access.</td>
+                <td>The highest touch we offer. A Growth client should never have to chase us for anything &mdash; if they do, something has already gone wrong.</td>
+              </tr>
             </tbody>
           </table>
         </div>
+
+        <h3 style="margin-top: 0.75rem">Most of our clients are not on one of those three</h3>
+        <p class="body">
+          Shoji has been building websites for fifteen years, and a lot of these clients came with him. Some have been
+          paying the same amount since before these packages existed. Several are friends of twenty years. They are on
+          <strong>personalised arrangements, agreed one at a time</strong>, that do not map neatly onto the table above
+          &mdash; and that is deliberate, not untidy. It is how a small firm keeps clients for a decade.
+        </p>
+        <p class="body">You will meet this on your first day, so it is worth being straight about it now.</p>
+
+        <div class="flag">
+          <strong>What a client pays never decides what work you do.</strong> LaunchOS has a switch per client for each
+          service &mdash; social, articles, Google Business, advertising. <strong>The switch is the authority, not the
+          invoice.</strong> If social is switched on, we post for them, whatever they pay. If it is off, we do not,
+          even on the largest package. Shoji sets those switches; your job is to read them and work to them.
+        </div>
+
         <p class="note">
-          <b>No VAT is charged.</b> LaunchFlow UK Limited is not VAT registered, so prices are prices. If a client asks
-          about VAT, that is the whole answer.
+          <b>You will be able to see what people pay, and it is not your subject.</b> Billing sits alongside everything
+          else in the system, so figures will cross your screen. Never quote a price, never compare two clients, and
+          never reassure a client about what they or anyone else pays &mdash; not even kindly. Anything about money goes
+          to Shoji, every time. <b>LaunchFlow UK Limited is not VAT registered</b>, so if a client asks about VAT, that
+          one fact is the whole answer.
         </p>
       </div>
     </section>
@@ -188,6 +239,76 @@
           So this is not a job where you write everything from scratch. It is closer to being an editor with authority:
           the first draft usually exists, and your job is to judge whether it is good enough to send, fix it when it
           is not, and notice when the machine is wrong.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>Two things worth knowing before you start</h2>
+
+        <h3 style="margin-top: 0">Where an article actually goes</h3>
+        <p class="body">
+          Some of our clients&rsquo; websites are WordPress; most are custom applications we built. When you approve an
+          article, LaunchOS handles the difference for you &mdash; it writes the post straight into WordPress where
+          that is what the site is, and for everything else it serves the post to the application, which fetches and
+          publishes it. You do not need to know which is which, and there is no separate process to remember.
+        </p>
+        <p class="body small">
+          What this means in practice: a post you approve appears on the client&rsquo;s site at the minute it was
+          scheduled for, on their own domain, at their own address. If it does not, that is a fault worth reporting
+          rather than a thing to work around.
+        </p>
+
+        <h3>An approval in the queue is always real work</h3>
+        <p class="body">
+          The system used to queue a monthly report for every client whether or not anything had happened that month,
+          which meant the queue filled with documents about nothing and stopped being worth reading. It no longer does
+          that: a month with nothing in it is recorded and left alone.
+        </p>
+        <p class="body">
+          So treat the approvals queue as a real list. <strong>If something is sitting in it, somebody is waiting on
+          it.</strong> Clearing it properly, rather than letting it grow, is one of the clearest signals of whether
+          this job is being done well.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <div class="stack">
+        <h2>What is not finished, and you should know it</h2>
+        <p class="body">
+          This is a young system that is still being built, and you would be joining it mid-build rather than after
+          it settled. That is honest rather than alarming &mdash; but you should hear it from us now and not discover
+          it in week two.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>Where</th><th>The state of it</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Google&nbsp;Business posting</td>
+                <td>Built and tested, not switched on &mdash; it needs an access approval from Google that is outside our control. Until it is live, the Google updates on the content packages are on hold and clients are not charged for work not done.</td>
+              </tr>
+              <tr>
+                <td>Social&nbsp;access</td>
+                <td>Works, but only once a client has granted it. Right now almost none have, which is why getting that access is the hardest and most valuable part of this job.</td>
+              </tr>
+              <tr>
+                <td>Advertising</td>
+                <td>The system watches ad accounts and reports on them, but no client has handed over an ad account yet. Growth is sold; the advertising side of it is still to be switched on client by client.</td>
+              </tr>
+              <tr>
+                <td>Everything&nbsp;else</td>
+                <td>Support, tasks, projects, content, reports, billing and the client portal are live and in daily use.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="note">
+          <b>Nobody expects you to fix this list.</b> It is here so you can tell the difference between &ldquo;this is
+          broken and I should say something&rdquo; and &ldquo;this is not turned on yet and Shoji knows&rdquo;. Knowing
+          which is which, and saying so clearly, is genuinely most of what a good first hire does.
         </p>
       </div>
     </section>
@@ -363,6 +484,7 @@
           <li><strong>Never promise a date Shoji has not agreed.</strong> "I will find out today" is always available and always better than a guess.</li>
           <li><strong>Never quote a price.</strong> Prices are on the website; anything else goes to Shoji. This is not negotiable even when the client pushes.</li>
           <li><strong>Never post about a client without their approval in the system.</strong> Not a verbal yes on the phone — the approval in LaunchOS.</li>
+          <li><strong>Deleting is a last resort, and it asks you to prove you mean it.</strong> Records can be removed where it makes sense &mdash; a website listed twice, a client who never signed &mdash; and the system will make you type the thing&rsquo;s own address before it goes, then refuse entirely if anything still depends on it. Archive rather than delete whenever archiving would do.</li>
           <li><strong>A client&rsquo;s data is theirs.</strong> Their enquiries, their customers&rsquo; details. It does not leave the system and it does not go in a personal spreadsheet.</li>
           <li><strong>If you break something, say so immediately.</strong> Everything is backed up and almost everything is reversible. A broken thing hidden for a day is the only version that becomes serious.</li>
         </ol>
