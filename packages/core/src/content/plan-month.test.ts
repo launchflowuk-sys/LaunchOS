@@ -5,6 +5,7 @@ import { withTestDb } from "@launchos/db/test";
 import { createTask } from "../tasks/create-task.js";
 import { cancelContentItem } from "./items.js";
 import type { ContentChannel } from "@launchos/db/schema";
+import { CONTENT_SERVICE_DEFAULTS } from "../clients/services.js";
 import { planContentMonth, slotsFor } from "./plan-month.js";
 import { auditRows, contentFixture, INCLUDES } from "./test-fixtures.js";
 
@@ -133,15 +134,59 @@ describe("planContentMonth", () => {
     });
   });
 
-  it("refuses without an active subscription and plans nothing for a package with no quotas", async () => {
+  /**
+   * The reversal. Every client Shoji has is on an old web-hosting
+   * subscription that includes no content, so requiring a package quantity
+   * meant switching social on produced nothing — for all of them. Billing is
+   * not the authority: the switch is.
+   *
+   * His words: *"the content writer is my employee who should not look at how
+   * much money someone pays but what I tell him to do."*
+   */
+  it("plans from the defaults when the package includes no content", async () => {
+    await withTestDb(async (db) => {
+      const empty = await contentFixture(db, {
+        includes: { ...INCLUDES, socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 },
+      });
+      const result = await planContentMonth(db, empty.orgId, { clientId: empty.clientId, periodKey: "2026-09" });
+
+      const social = result.items.filter((i) => i.channel === "facebook" || i.channel === "instagram").length;
+      expect(social).toBe(CONTENT_SERVICE_DEFAULTS.social);
+      expect(result.items.filter((i) => i.channel === "blog")).toHaveLength(CONTENT_SERVICE_DEFAULTS.blog);
+      expect(result.items.filter((i) => i.channel === "gbp")).toHaveLength(CONTENT_SERVICE_DEFAULTS.gbp);
+    });
+  });
+
+  /** No subscription at all is the same story: the switch decides, so it plans. */
+  it("plans without an active subscription", async () => {
     await withTestDb(async (db) => {
       const none = await contentFixture(db, { withSubscription: false });
-      await expect(planContentMonth(db, none.orgId, { clientId: none.clientId, periodKey: "2026-09" }))
-        .rejects.toMatchObject({ name: "ContentRefused", reason: "no_active_subscription" });
+      const result = await planContentMonth(db, none.orgId, { clientId: none.clientId, periodKey: "2026-09" });
+      expect(result.created).toBeGreaterThan(0);
+      // Recorded honestly: there was no subscription to plan from.
+      expect(result.items[0]!.metadata["plannedFromSubscriptionId"]).toBeNull();
+    });
+  });
 
-      const empty = await contentFixture(db, { includes: { ...INCLUDES, socialPostsPerMonth: 0, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 } });
-      const result = await planContentMonth(db, empty.orgId, { clientId: empty.clientId, periodKey: "2026-09" });
-      expect(result).toEqual({ created: 0, skipped: 0, unplanned: [], items: [] });
+  /** A package that states a quantity still wins — a Standard client bought eight. */
+  it("prefers the package's own quantity over the default", async () => {
+    await withTestDb(async (db) => {
+      const paid = await contentFixture(db, {
+        includes: { ...INCLUDES, socialPostsPerMonth: 8, blogPostsPerMonth: 0, gbpUpdatesPerMonth: 0 },
+      });
+      const result = await planContentMonth(db, paid.orgId, { clientId: paid.clientId, periodKey: "2026-09" });
+      expect(result.items.filter((i) => i.channel === "facebook" || i.channel === "instagram")).toHaveLength(8);
+      // And the silent ones still fall back.
+      expect(result.items.filter((i) => i.channel === "blog")).toHaveLength(CONTENT_SERVICE_DEFAULTS.blog);
+    });
+  });
+
+  /** Off is still nothing. That half of the rule is what the switch is for. */
+  it("still refuses when no content service is switched on", async () => {
+    await withTestDb(async (db) => {
+      const off = await contentFixture(db, { services: [] });
+      await expect(planContentMonth(db, off.orgId, { clientId: off.clientId, periodKey: "2026-09" }))
+        .rejects.toMatchObject({ name: "ContentRefused", reason: "service_inactive" });
     });
   });
 

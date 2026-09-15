@@ -58,13 +58,53 @@ export function servicesPaidFor(includes: PackageIncludes): ReadonlySet<ClientSe
 }
 
 /** The package as far as the switched-on services reach: every other quota reads as zero. */
+/**
+ * What we post for a client whose package says nothing about posting.
+ *
+ * **The switch is the instruction; the package is a billing artefact.** Shoji
+ * prices by relationship — a friend of twenty years on a £75 legacy plan, a
+ * new client on £110 — and every one of his existing clients is on an old
+ * web-hosting subscription that includes no content at all. Under the old rule
+ * that meant switching social on produced zero slots and the writer correctly
+ * wrote nothing, for every client he has. His words for why that is wrong:
+ * *"the content writer is my employee who should not look at how much money
+ * someone pays but what I tell him to do."*
+ *
+ * So a package quantity still wins when it states one — a Standard client
+ * bought eight posts and gets eight — and these fill the silence when it
+ * states zero. Four social posts is weekly, which is the least that reads as a
+ * living page; one article a month is what a small firm can actually supply
+ * facts for; two Google updates is fortnightly, which is what that surface
+ * rewards.
+ *
+ * They are not a licence to post for anybody: the service switch still has to
+ * be on, and switching it on is Shoji saying he has decided it is worth it.
+ */
+export const CONTENT_SERVICE_DEFAULTS = { social: 4, blog: 1, gbp: 2 } as const;
+
+/**
+ * The monthly quantities actually in force for a client.
+ *
+ * Off means zero, always — that half has not changed and is what stops a
+ * package being posted against before anybody has agreed to it. On means the
+ * package's number if it has one, and `CONTENT_SERVICE_DEFAULTS` if it does
+ * not.
+ *
+ * Every reader of an allowance goes through here — the planner, the recurring
+ * task generator, the worker's nightly sweep and the package-usage collector —
+ * so what gets planned and what counts as over the limit can never disagree.
+ */
 export function includesForServices(includes: PackageIncludes, active: ReadonlySet<ClientService>): PackageIncludes {
+  const resolve = (on: boolean, packaged: number, fallback: number): number =>
+    on ? (packaged > 0 ? packaged : fallback) : 0;
   return {
     ...includes,
+    // Ads are not a content channel and carry real money, so they stay a plain
+    // package-and-switch decision with no default.
     ads: includes.ads && active.has("ads"),
-    blogPostsPerMonth: active.has("blog") ? includes.blogPostsPerMonth : 0,
-    socialPostsPerMonth: active.has("social") ? includes.socialPostsPerMonth : 0,
-    gbpUpdatesPerMonth: active.has("gbp") ? includes.gbpUpdatesPerMonth : 0,
+    blogPostsPerMonth: resolve(active.has("blog"), includes.blogPostsPerMonth, CONTENT_SERVICE_DEFAULTS.blog),
+    socialPostsPerMonth: resolve(active.has("social"), includes.socialPostsPerMonth, CONTENT_SERVICE_DEFAULTS.social),
+    gbpUpdatesPerMonth: resolve(active.has("gbp"), includes.gbpUpdatesPerMonth, CONTENT_SERVICE_DEFAULTS.gbp),
   };
 }
 

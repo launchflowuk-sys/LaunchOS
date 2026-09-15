@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import type { ContentChannel, PackageIncludes } from "@launchos/db/schema";
+import { PACKAGE_INCLUDES_DEFAULT, type ContentChannel, type PackageIncludes } from "@launchos/db/schema";
 import { and, eq, isNull, like, sql } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
@@ -143,23 +143,36 @@ async function recurringTasksFor(db: Db, organisationId: string, clientId: strin
  * cancelled stays cancelled — it still occupies its key — so re-planning
  * never resurrects a post somebody took out.
  *
- * Quotas come from the client's *active subscription's* package, not the
- * client's `package_id`: what they are paying for this month is what they
- * get. No active subscription or a subscription with no package is a refusal
- * the caller can show; a package with zero quotas simply plans nothing.
+ * **What decides the quantity is the service switch, not the subscription.**
+ * A package quantity wins when it states one — a Standard client bought eight
+ * posts and gets eight — and `CONTENT_SERVICE_DEFAULTS` fills the silence when
+ * it states zero. A client with no active subscription, or one whose
+ * subscription carries no package, is planned from the defaults rather than
+ * refused.
+ *
+ * That is a deliberate reversal. Every client Shoji has is on an old
+ * web-hosting subscription that includes no content, so the old rule meant
+ * switching social on produced nothing, for everybody. Billing is not the
+ * authority here: switching a content service on is him deciding the work is
+ * worth doing at whatever they pay, and the only thing that still refuses is
+ * having no content service on at all.
  */
 export async function planContentMonth(db: Db, organisationId: string, input: PlanContentMonthInput): Promise<PlanContentMonthResult> {
   const v = PlanContentMonthInput.parse(input);
   await assertClientInOrganisation(db, organisationId, v.clientId);
 
+  // The package is read for its quantities where it has any, and its absence
+  // is not a refusal: a legacy subscription that includes no content, or no
+  // subscription at all, falls through to the defaults. Billing does not
+  // decide whether we post — the switch below does.
   const subscription = await activeSubscriptionForClient(db, organisationId, v.clientId);
-  if (!subscription) throw new ContentRefused("no_active_subscription", "The client has no active subscription to plan content from.");
-  if (!subscription.packageId) throw new ContentRefused("no_package", "The client's subscription has no package, so there are no content quotas.");
-  const [pkg] = await db.select({ includes: schema.packages.includes }).from(schema.packages).where(and(
-    eq(schema.packages.id, subscription.packageId),
-    eq(schema.packages.organisationId, organisationId),
-  ));
-  if (!pkg) throw new ContentRefused("no_package", "The client's package could not be found.");
+  const packaged = subscription?.packageId
+    ? await db.select({ includes: schema.packages.includes }).from(schema.packages).where(and(
+        eq(schema.packages.id, subscription.packageId),
+        eq(schema.packages.organisationId, organisationId),
+      ))
+    : [];
+  const packageIncludes = packaged[0]?.includes ?? PACKAGE_INCLUDES_DEFAULT;
 
   // Paying for posts is not the same as us posting. Only the services a person
   // has switched on get slots; the rest of the package reads as zero, so they
@@ -171,7 +184,7 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
       "No content service is switched on for this client. Switch on blog, social or Google Business posts under the client's Services tab first.",
     );
   }
-  const includes = includesForServices(pkg.includes, active);
+  const includes = includesForServices(packageIncludes, active);
 
   const channels = await db
     .select({ channel: schema.contentChannels.channel })
@@ -211,7 +224,10 @@ export async function planContentMonth(db: Db, organisationId: string, input: Pl
           scheduledFor: slot.scheduledFor,
           source: "agent",
           taskId,
-          metadata: { slot: slot.slot, sequence: slot.sequence, plannedFromSubscriptionId: subscription.id },
+          // Null where a client was planned from the defaults rather than a
+          // package — which is now the normal case, so the field records what
+          // happened instead of asserting a subscription that may not exist.
+          metadata: { slot: slot.slot, sequence: slot.sequence, plannedFromSubscriptionId: subscription?.id ?? null },
         }).returning();
         await recordAudit(tx, organisationId, {
           actorKind: v.actorKind, actorId: v.actorId, action: "content_item.planned",

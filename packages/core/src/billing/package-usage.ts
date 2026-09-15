@@ -5,6 +5,7 @@ import { and, asc, eq, gte, inArray, isNotNull, isNull, lt, sql } from "drizzle-
 import { z } from "zod";
 import { londonAt, parsePeriodKey } from "../content/schedule.js";
 import { periodKeyFor } from "../content/shared.js";
+import { activeServicesByClient, includesForServices } from "../clients/services.js";
 
 /**
  * How much of the package a client pays for they have actually used this
@@ -20,11 +21,17 @@ import { periodKeyFor } from "../content/shared.js";
  * person decides.
  *
  * Entitlement comes from the *active subscription's* package, never from
- * `clients.package_id` — what they are paying for this month is what they get,
- * the same rule `planContentMonth` plans a month by. A client with no active
- * subscription, or one whose subscription carries no package, is left out
- * entirely: they are not near a limit, because they have no limit to be near.
- * That is a different conversation and not this one.
+ * `clients.package_id`, and then through `includesForServices` — the same
+ * resolver `planContentMonth` plans by. That last step matters: a client on a
+ * legacy plan that includes no content is planned from
+ * `CONTENT_SERVICE_DEFAULTS` once a service is switched on, and measuring them
+ * against the package's zero would report every one of them as over their
+ * limit for ever. What we planned and what counts as over it have to come from
+ * one place.
+ *
+ * A client with no active subscription, or one whose subscription carries no
+ * package, is left out entirely: they are not near a limit, because they have
+ * no limit to be near. That is a different conversation and not this one.
  */
 
 /** Subscription statuses that still mean "they are paying us" — the same set `activeSubscriptionForClient` uses. */
@@ -270,13 +277,20 @@ export async function packageUsagePressure(
   const clients = await payingClients(db, organisationId);
   if (clients.length === 0) return [];
 
-  const [published, cases] = await Promise.all([
+  const [published, cases, services] = await Promise.all([
     publishedThisMonth(db, organisationId, periodKey),
     casesThisMonth(db, organisationId, monthStart, monthEnd),
+    activeServicesByClient(db, organisationId),
   ]);
 
   const pressured = clients.flatMap((client): ClientPackagePressure[] => {
-    const allowances = allowancesFor(client, published, cases);
+    // Through the same resolver the planner uses, or a client on a legacy plan
+    // would be measured against a zero allowance we never planned to.
+    const resolved = {
+      ...client,
+      includes: includesForServices(client.includes, services.get(client.clientId) ?? new Set()),
+    };
+    const allowances = allowancesFor(resolved, published, cases);
     if (allowances.length === 0) return [];
     return [{
       clientId: client.clientId,
