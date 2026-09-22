@@ -54,6 +54,9 @@ export type StatCardProps = {
 
 /** Written out in full: Tailwind only ships classes it can see as literals. */
 const CATEGORY_GROUND: Record<Category, string> = {
+  // The client's own accent, set on the portal shell. Not a fixed hue, because
+  // on that surface the colour belongs to them and not to us.
+  accent: "bg-primary",
   overview: "bg-kpi-navy",
   delivery: "bg-kpi-cobalt",
   support: "bg-kpi-purple",

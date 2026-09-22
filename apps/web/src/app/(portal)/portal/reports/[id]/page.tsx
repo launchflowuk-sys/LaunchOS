@@ -51,7 +51,7 @@ export default async function PortalReportPage({ params }: PageProps<"/portal/re
       <PageHeader
         title={periodLabel(report.periodStart, report.periodEnd)}
         description={`Published ${formatDate(report.publishedAt)}`}
-        category="money"
+        category="accent"
         actions={
           <>
             <Button asChild variant="secondary" className="print:hidden">
@@ -67,7 +67,7 @@ export default async function PortalReportPage({ params }: PageProps<"/portal/re
 
       <section aria-label="Headline figures" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {cards.map((card) => (
-          <StatCard key={card.label} label={card.label} value={card.value} category="money" />
+          <StatCard key={card.label} label={card.label} value={card.value} category="accent" />
         ))}
       </section>
 

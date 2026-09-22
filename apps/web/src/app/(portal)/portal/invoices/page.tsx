@@ -108,7 +108,7 @@ export default async function PortalInvoicesPage() {
       <PageHeader
         title="Invoices"
         description="Your invoices from LaunchFlow. Open one to print it or save it as a PDF."
-        category="money"
+        category="accent"
       />
 
       <div className="mb-8 grid gap-4 sm:grid-cols-3">
@@ -116,7 +116,7 @@ export default async function PortalInvoicesPage() {
           label="Outstanding"
           value={formatPence(outstandingPence, currency)}
           hint={outstandingPence === 0 ? "Nothing to pay right now" : "Sent and not yet settled"}
-          category="money"
+          category="accent"
           icon={Receipt}
         />
         <StatCard
@@ -129,7 +129,7 @@ export default async function PortalInvoicesPage() {
                 ? "1 invoice past its due date"
                 : `${overdue.length} invoices past their due date`
           }
-          category="support"
+          category="accent"
           icon={AlertTriangle}
           attention={overdue.length > 0}
         />
@@ -137,7 +137,7 @@ export default async function PortalInvoicesPage() {
           label="Paid to date"
           value={formatPence(paidPence, currency)}
           hint="Everything you have settled with us"
-          category="overview"
+          category="accent"
           icon={Wallet}
         />
       </div>

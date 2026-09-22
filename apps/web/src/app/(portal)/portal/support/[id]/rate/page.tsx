@@ -105,7 +105,7 @@ export default async function PortalRateTicketPage({ params, searchParams }: Pag
       <PageHeader
         title="Was this sorted?"
         description={ticket.subject}
-        category="support"
+        category="accent"
         actions={
           <Button asChild variant="secondary">
             <Link href={`/portal/support/${ticket.id}`}>

@@ -129,7 +129,7 @@ export default async function PortalDocumentsPage({ searchParams }: PageProps<"/
       <PageHeader
         title="Documents"
         description="Every PDF we have sent you — proposals, your handover, invoices and monthly reports. They are yours to keep."
-        category="delivery"
+        category="accent"
       />
 
       {drawers.length > 1 ? (

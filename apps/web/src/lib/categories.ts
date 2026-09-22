@@ -9,10 +9,18 @@
  * The class strings are written out in full rather than composed, because
  * Tailwind only ships a class it can see as a literal.
  */
-export type Category = "overview" | "delivery" | "support" | "money" | "automation" | "organisation";
+/**
+ * `accent` is the portal's, and the only one that is not a module: it paints a
+ * card in whatever colour the **client** has chosen for their own portal.
+ * The others name a part of the admin, which is a distinction that helps
+ * somebody who knows the modules and confuses somebody who does not.
+ */
+export type Category =
+  | "overview" | "delivery" | "support" | "money" | "automation" | "organisation" | "accent";
 
 /** Foreground: stat card numbers, small icons. */
 export const CATEGORY_TEXT: Record<Category, string> = {
+  accent: "text-primary",
   overview: "text-primary",
   delivery: "text-category-delivery",
   support: "text-category-support",
@@ -23,6 +31,7 @@ export const CATEGORY_TEXT: Record<Category, string> = {
 
 /** Fill: the 6px marker beside a nav group label, the page-header accent dot. */
 export const CATEGORY_DOT: Record<Category, string> = {
+  accent: "bg-primary",
   overview: "bg-primary",
   delivery: "bg-category-delivery",
   support: "bg-category-support",

@@ -30,7 +30,7 @@ export default async function NewPortalTicketPage() {
       <PageHeader
         title="New request"
         description="Tell us what has happened and we will pick it up."
-        category="support"
+        category="accent"
         actions={
           <Button asChild variant="secondary">
             <Link href="/portal/support">

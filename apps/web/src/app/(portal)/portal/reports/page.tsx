@@ -69,7 +69,7 @@ export default async function PortalReportsPage() {
       <PageHeader
         title="Reports"
         description="What we did on your account, month by month."
-        category="money"
+        category="accent"
       />
 
       <DataList

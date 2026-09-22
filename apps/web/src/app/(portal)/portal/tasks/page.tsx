@@ -120,7 +120,7 @@ export default async function PortalTasksPage() {
       <PageHeader
         title="Progress"
         description="Where the work on your account has got to."
-        category="delivery"
+        category="accent"
       />
 
       {/* The build first: it is the thing a client signs in to check. Anything

@@ -99,7 +99,7 @@ export default async function PortalPlanPage() {
       <PageHeader
         title="Plan"
         description="Your LaunchFlow package, what it includes, and how to change it."
-        category="money"
+        category="accent"
       />
 
       {!subscription ? (

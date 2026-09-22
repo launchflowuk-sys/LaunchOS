@@ -108,7 +108,7 @@ export default async function PortalTicketPage({ params }: PageProps<"/portal/su
       <PageHeader
         title={ticket.subject}
         description={`Raised ${formatDateTime(ticket.createdAt)}`}
-        category="support"
+        category="accent"
         actions={
           <Button asChild variant="secondary">
             <Link href="/portal/support">

@@ -61,7 +61,7 @@ export default async function PortalSitesPage() {
       <PageHeader
         title="Websites"
         description="The sites we build, host and look after for you."
-        category="delivery"
+        category="accent"
       />
 
       <DataList

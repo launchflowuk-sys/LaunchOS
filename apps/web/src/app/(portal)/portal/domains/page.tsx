@@ -64,7 +64,7 @@ export default async function PortalDomainsPage() {
       <PageHeader
         title="Domains"
         description="The domain names registered for you. Anything with auto-renew on, we renew for you."
-        category="delivery"
+        category="accent"
       />
 
       <DataList

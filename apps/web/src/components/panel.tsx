@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
  * this is for content that needs a box around it.
  */
 const TILE: Record<Category, string> = {
+  accent: "bg-primary/10 text-primary",
   overview: "bg-primary/10 text-primary",
   delivery: "bg-category-delivery/12 text-category-delivery",
   support: "bg-category-support/12 text-category-support",

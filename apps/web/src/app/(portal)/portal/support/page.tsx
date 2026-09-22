@@ -80,7 +80,7 @@ export default async function PortalSupportPage() {
       <PageHeader
         title="Support"
         description="Everything you have raised with us, and where each request has got to."
-        category="support"
+        category="accent"
         actions={
           <Button asChild size="lg">
             <Link href="/portal/support/new">New request</Link>

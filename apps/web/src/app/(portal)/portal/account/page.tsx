@@ -54,7 +54,7 @@ export default async function PortalAccountPage() {
       <PageHeader
         title="Account"
         description="Who we hold on file for you, and your sign-in details."
-        category="organisation"
+        category="accent"
       />
 
       <Section title="Signed in as">

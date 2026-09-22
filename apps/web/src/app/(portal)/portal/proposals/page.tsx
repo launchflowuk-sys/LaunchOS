@@ -152,7 +152,7 @@ export default async function PortalProposalsPage() {
       <PageHeader
         title="Proposals"
         description="What we quoted, what you agreed to, and a signed copy of each one."
-        category="delivery"
+        category="accent"
       />
 
       <DataList

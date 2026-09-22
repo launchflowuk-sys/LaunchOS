@@ -130,7 +130,7 @@ export default async function PortalContentPage() {
       <PageHeader
         title="Content"
         description="The posts we write and publish for you — what is coming up, what has gone out, and a place to send us your ideas."
-        category="delivery"
+        category="accent"
       />
 
       <Section title="Coming up" description="Posts being prepared or scheduled to go out.">
