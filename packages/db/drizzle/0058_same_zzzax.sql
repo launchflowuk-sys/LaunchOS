@@ -1,0 +1,1 @@
+ALTER TABLE "clients" ADD COLUMN "portal_theme" jsonb DEFAULT '{}'::jsonb NOT NULL;

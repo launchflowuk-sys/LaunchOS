@@ -33,6 +33,13 @@ export {
   type ClientDeletionReport, type DeletionBlocker, type DeletionWarning,
 } from "./clients/delete-client.js";
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
+export { clientDashboard, DASHBOARD_WINDOW_DAYS } from "./clients/dashboard.js";
+export {
+  getPortalTheme, setPortalTheme, readPortalTheme, SetPortalThemeInput, PortalThemeSchema,
+  PORTAL_ACCENTS, PORTAL_SURFACES, PORTAL_THEME_DEFAULT,
+} from "./clients/portal-theme.js";
+export type { PortalTheme, PortalAccent, PortalSurface } from "./clients/portal-theme.js";
+export type { ClientDashboard, DashboardTrend, UptimeSummary } from "./clients/dashboard.js";
 export type { ClientListRow } from "./clients/list-clients.js";
 export { slugify, uniqueClientSlug } from "./clients/slug.js";
 export { mergeClients, mergePreview, MergeRefused, MergeClientsInput, MergePreviewInput } from "./clients/merge-clients.js";

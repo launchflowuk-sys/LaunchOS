@@ -1,4 +1,4 @@
-import { boolean, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, jsonb, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { tenantColumns } from "./_shared.js";
 import { packages } from "./packages.js";
 
@@ -21,6 +21,13 @@ export const clients = pgTable(
     postcode: text("postcode"),
     country: text("country").default("GB").notNull(),
     websiteUrl: text("website_url"),
+    /**
+     * How this client's own portal looks to them — accent and surface, from
+     * the named sets in `core`'s `portal-theme`. Read through `readPortalTheme`
+     * rather than directly: jsonb means a hand-edited row could otherwise put
+     * anything into a CSS variable. `{}` is the default theme.
+     */
+    portalTheme: jsonb("portal_theme").$type<{ accent?: string; surface?: string }>().default({}).notNull(),
     industry: text("industry"),
     // "<slug>@<SUPPORT_EMAIL_DOMAIN>". Globally unique: inbound mail is routed
     // by address alone, so two organisations must never share one.
