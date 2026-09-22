@@ -27,6 +27,7 @@
 import { createDb, schema } from "@launchos/db";
 import { asc, eq } from "drizzle-orm";
 import { removeDemoClients, seedDemoClients } from "./demo-client.js";
+import { seedPortalShowcase } from "./portal-showcase.js";
 
 function arg(name: string): string | undefined {
   const hit = process.argv.slice(2).find((value) => value === `--${name}` || value.startsWith(`--${name}=`));
@@ -90,12 +91,17 @@ async function main(): Promise<void> {
   }
 
   const result = await seedDemoClients(db, org.id);
+  // The portal record is separate from the three sales records: those show a
+  // prospect the pipeline, this one gives the client portal six months of
+  // history to be designed against.
+  const portal = await seedPortalShowcase(db, org.id);
   console.log("");
   console.log(`  delivered  ${result.delivered.reference}  Riverside Dental Practice`);
   console.log(`  mid-build  ${result.inFlight.reference}  Thameside Garage`);
   console.log(`  open lead  ${result.openLead.reference}  Lumen Hair Studio`);
+  console.log(`  portal     six months of history   Northgate Blinds`);
   console.log("");
-  for (const [table, rowCount] of Object.entries(result.created).sort()) {
+  for (const [table, rowCount] of Object.entries({ ...result.created, ...portal.created }).sort()) {
     console.log(`  ${String(rowCount).padStart(3)}  ${table}`);
   }
 }
