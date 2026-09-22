@@ -1,253 +1,174 @@
-import { listSites, listTasks } from "@launchos/core";
-import { schema } from "@launchos/db";
-import { and, desc, eq, notInArray } from "drizzle-orm";
-import { CalendarDays, Globe, LifeBuoy, ListChecks, MessageCircle, Plus, Video } from "lucide-react";
+import { clientDashboard, DASHBOARD_WINDOW_DAYS } from "@launchos/core";
+import {
+  ArrowUpRight, CalendarDays, FileText, Globe, Image as ImageIcon, MessageCircle, Plus, Search, Sparkles,
+} from "lucide-react";
 import Link from "next/link";
-import { DataList, type DataListColumn } from "@/components/data-list";
-import { EmptyState } from "@/components/empty-state";
-import { PageHeader } from "@/components/page-header";
-import { SiteStatusBadge } from "@/components/portal/portal-status";
-import { Section } from "@/components/section";
-import { StatCard } from "@/components/stat-card";
-import { StatusBadge } from "@/components/status-badge";
+import {
+  ActivityFeed, DashboardTiles, MonthInNumbers, OutstandingNotice, ResponseChart, WebsiteHealth,
+} from "@/components/portal/dashboard";
 import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
-import { formatDateTime } from "@/lib/format";
 import { requireClient } from "@/lib/portal-session";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-const CLOSED_TICKET_STATUSES = ["resolved", "closed"] as const;
-/** Everything `task_status` offers except the two finished states. */
-const ACTIVE_TASK_STATUSES = ["todo", "in_progress", "blocked", "review"] as const;
-
 /**
- * The overview shows a shortlist, not the whole account: the tab for each
- * module is one tap away and holds the rest.
+ * The client's dashboard.
+ *
+ * Answers "is everything alright?" before a word has to be read — the state of
+ * the website, the domain, the plan and the open work, across the top — then
+ * the detail underneath for anyone who wants it.
+ *
+ * Every figure comes from one `clientDashboard` read against one `now`, so
+ * nothing on the page can contradict anything else on it. Where a figure has
+ * never been measured it says so; there is no placeholder data anywhere on
+ * this screen, which is the difference between a dashboard a client trusts and
+ * one they learn to ignore.
  */
-const PREVIEW_ROWS = 5;
 
-type SiteRow = { id: string; name: string; status: string };
-type RequestRow = { id: string; subject: string; status: string; lastMessageAt: Date | null; updatedAt: Date };
+/** What a client most often comes here to ask for. Ordered by how often they ask. */
+const REQUESTS = [
+  { label: "A change to my website", icon: Globe, href: "/portal/support/new?about=website" },
+  { label: "New page or content", icon: FileText, href: "/portal/support/new?about=content" },
+  { label: "Help being found on Google", icon: Search, href: "/portal/support/new?about=seo" },
+  { label: "Images or design work", icon: ImageIcon, href: "/portal/support/new?about=design" },
+  { label: "Something else entirely", icon: Sparkles, href: "/portal/support/new" },
+] as const;
 
-const SITE_COLUMNS: readonly DataListColumn<SiteRow>[] = [
-  { key: "name", header: "Website", primary: true, cell: (row) => row.name },
-  { key: "status", header: "Status", status: true, cell: (row) => <SiteStatusBadge value={row.status} /> },
-];
-
-const REQUEST_COLUMNS: readonly DataListColumn<RequestRow>[] = [
-  {
-    key: "subject",
-    header: "Request",
-    primary: true,
-    cell: (row) => (
-      <Link href={`/portal/support/${row.id}`} className="hover:underline">
-        {row.subject}
-      </Link>
-    ),
-  },
-  { key: "status", header: "Status", status: true, cell: (row) => <StatusBadge value={row.status} /> },
-  {
-    key: "updated",
-    header: "Last update",
-    cell: (row) => formatDateTime(row.lastMessageAt ?? row.updatedAt),
-  },
-];
+/** "Good morning" is worth getting right — it is the first thing on the page. */
+function greeting(now: Date): string {
+  const hour = Number(
+    new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Europe/London" }).format(now),
+  );
+  if (hour < 12) return "Good morning";
+  if (hour < 18) return "Good afternoon";
+  return "Good evening";
+}
 
 export default async function PortalHomePage() {
   const session = await requireClient();
-  const db = getDb();
-  const scope = { organisationId: session.organisationId, clientId: session.clientId };
-
-  const [sites, openRequests, openTasks] = await Promise.all([
-    listSites(db, scope.organisationId, { clientId: scope.clientId }),
-    // `client_visible` is not optional: the overdue sweep opens a ticket per
-    // unpaid invoice and an agent's `tickets_create` is internal by design.
-    // Both are this client's by `client_id` and neither is theirs to read.
-    db
-      .select({
-        id: schema.tickets.id,
-        subject: schema.tickets.subject,
-        status: schema.tickets.status,
-        updatedAt: schema.tickets.updatedAt,
-        lastMessageAt: schema.conversations.lastMessageAt,
-      })
-      .from(schema.tickets)
-      .leftJoin(schema.conversations, eq(schema.tickets.conversationId, schema.conversations.id))
-      .where(
-        and(
-          eq(schema.tickets.organisationId, scope.organisationId),
-          eq(schema.tickets.clientId, scope.clientId),
-          eq(schema.tickets.clientVisible, true),
-          notInArray(schema.tickets.status, [...CLOSED_TICKET_STATUSES]),
-        ),
-      )
-      .orderBy(desc(schema.tickets.createdAt)),
-    listTasks(db, scope.organisationId, {
-      clientId: scope.clientId,
-      clientVisible: true,
-      status: [...ACTIVE_TASK_STATUSES],
-    }),
-  ]);
-
-  const liveSites = sites.filter((site) => site.status === "live");
+  const now = new Date();
+  const data = await clientDashboard(getDb(), session.organisationId, session.clientId, now);
 
   const firstName = session.name.trim().split(/\s+/)[0] || session.name;
-  const allOnline = sites.length > 0 && liveSites.length === sites.length;
+  const today = new Intl.DateTimeFormat("en-GB", {
+    weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London",
+  }).format(now);
 
   return (
-    <>
-      {/* Not `PageHeader`: that carries the admin's category dot and a one-line
+    <div className="space-y-6">
+      {/* Not `PageHeader`: that carries a category dot and a one-line
           description, and this is a greeting. A client opens the portal a few
-          times a year, so the first thing it does is say hello and answer "is
-          everything alright" before they have to go looking. */}
-      <div className="mb-6">
-        <p className="label-caps text-primary">Your LaunchFlow workspace</p>
-        <h1 className="mt-1 text-title font-bold tracking-[-0.01em]">Hello, {firstName}.</h1>
-        <p className="mt-1.5 text-base text-muted-foreground">
-          Your websites, projects and support. All in one place.
-        </p>
-
-        {sites.length > 0 ? (
-          <p className="mt-3 flex items-center gap-2 text-row">
-            <span
-              aria-hidden
-              className={cn("size-2 shrink-0 rounded-full", allOnline ? "bg-success-fg" : "bg-warning-fg")}
-            />
-            {allOnline
-              ? `${sites.length === 1 ? "Your website is" : `${sites.length === 2 ? "Both" : `All ${sites.length}`} websites are`} online`
-              : `${liveSites.length} of ${sites.length} websites online`}
+          times a year and should be met rather than filed. */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="text-title font-bold tracking-[-0.015em]">
+            {greeting(now)}, {firstName}
+          </h1>
+          <p className="mt-1 text-base text-muted-foreground">
+            Here&rsquo;s what&rsquo;s happening with{" "}
+            <span className="font-medium text-foreground">{session.clientName}</span>.
           </p>
-        ) : null}
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row">
-          <Button asChild size="lg" className="max-sm:w-full">
+        </div>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <p className="hidden text-meta text-muted-foreground lg:block">{today}</p>
+          {data.site ? (
+            <Button asChild variant="secondary">
+              <a href={data.site.primaryUrl} target="_blank" rel="noreferrer noopener">
+                View website
+                <ArrowUpRight aria-hidden strokeWidth={2} className="size-4" />
+              </a>
+            </Button>
+          ) : null}
+          <Button asChild>
             <Link href="/portal/support/new">
               <Plus aria-hidden strokeWidth={2} className="size-4" />
-              New request
-            </Link>
-          </Button>
-          <Button asChild variant="secondary" size="lg" className="max-sm:w-full">
-            <Link href="/book">
-              <CalendarDays aria-hidden strokeWidth={1.75} className="size-4" />
-              Book a call
+              Request something
             </Link>
           </Button>
         </div>
       </div>
 
-      {/* All three navy, deliberately, and not the admin's category hues.
-          The admin uses colour to say *which module* a figure belongs to,
-          which only helps somebody who knows the modules. A client has one
-          account: three colours here would imply a distinction that is not
-          there, and docs/CLIENT PORTAL.png shows them uniform. */}
-      <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Websites live"
-          value={liveSites.length}
-          hint={
-            sites.length === 0
-              ? "Nothing live yet"
-              : liveSites.length === sites.length
-                ? "All of your sites are online"
-                : `${sites.length} on your account`
-          }
-          href="/portal/sites"
-          category="overview"
-          icon={Globe}
-        />
-        <StatCard
-          label="Open requests"
-          value={openRequests.length}
-          hint={openRequests.length === 0 ? "Nothing waiting on us" : "We are on it"}
-          href="/portal/support"
-          category="overview"
-          icon={LifeBuoy}
-        />
-        <StatCard
-          label="Work under way"
-          value={openTasks.length}
-          hint={openTasks.length === 0 ? "Nothing scheduled right now" : "Jobs in progress for you"}
-          href="/portal/tasks"
-          category="overview"
-          icon={ListChecks}
-        />
+      {/* Money owing goes above everything. It is the one thing on this page a
+          client would be annoyed to find out about later. */}
+      <OutstandingNotice data={data} />
+
+      <DashboardTiles data={data} />
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
+        <WebsiteHealth data={data} now={now} />
+
+        <div className="rounded-2xl border bg-card p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="text-figure font-semibold tracking-[-0.01em]">What we&rsquo;ve been doing</h2>
+            <Link href="/portal/tasks" className="shrink-0 text-meta font-medium text-primary hover:underline">
+              See all
+            </Link>
+          </div>
+          <div className="mt-3">
+            <ActivityFeed items={data.activity} />
+          </div>
+        </div>
       </div>
 
-      {/* The work on the left, the way to a person on the right. A client
-          who has come here to check something reads the left column; a client
-          who has come here because something is wrong wants the right one, and
-          it should not be underneath two panels of things that are fine. */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="min-w-0 space-y-6">
-      <Section
-        title="Your websites"
-        description="How each site we host for you is doing."
-        actions={
-          sites.length > PREVIEW_ROWS ? (
-            <Button asChild variant="secondary" size="sm">
-              <Link href="/portal/sites">See all websites</Link>
-            </Button>
-          ) : null
-        }
-      >
-        <DataList
-          rows={sites.slice(0, PREVIEW_ROWS)}
-          columns={SITE_COLUMNS}
-          getRowKey={(row) => row.id}
-          caption="Your websites"
-          empty={
-            <EmptyState icon={Globe}>
-              No websites on your account yet. We will add yours here as soon as it is under way.
-            </EmptyState>
-          }
-        />
-      </Section>
-
-      <Section
-        title="Open requests"
-        description="Anything you have raised that we have not closed off."
-        actions={
-          <Button asChild size="sm">
-            <Link href="/portal/support/new">Raise a request</Link>
-          </Button>
-        }
-      >
-        <DataList
-          rows={openRequests.slice(0, PREVIEW_ROWS)}
-          columns={REQUEST_COLUMNS}
-          getRowKey={(row) => row.id}
-          caption="Open requests"
-          empty={
-            <EmptyState icon={LifeBuoy}>
-              No open requests. Need help with something? Raise a request and we will pick it up.
-            </EmptyState>
-          }
-        />
-        {openRequests.length > PREVIEW_ROWS ? (
-          <p className="mt-3 text-sm">
-            <Link href="/portal/support" className="font-medium text-primary hover:underline">
-              See all {openRequests.length} requests
-            </Link>
+      <div className="rounded-2xl border bg-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-figure font-semibold tracking-[-0.01em]">Your last {DASHBOARD_WINDOW_DAYS} days</h2>
+          <p className="text-meta text-muted-foreground">
+            Measured from our own checks — not an estimate.
           </p>
-        ) : null}
-        </Section>
         </div>
 
-        {/* The one saturated surface on the page, and the only thing on it is
-            a way to reach us. `/book` reads the portal session on the server
-            and pre-fills the name and email — nothing personal is in the link. */}
+        <div className="mt-4">
+          <MonthInNumbers data={data} />
+        </div>
+
+        {data.uptime.responseSeries.length >= 3 ? (
+          <div className="mt-5 border-t pt-5">
+            <p className="text-row font-medium">How quickly your site answered</p>
+            <p className="mt-0.5 text-meta text-muted-foreground">
+              Lower is better. We check every few minutes, day and night.
+            </p>
+            <ResponseChart points={data.uptime.responseSeries} className="mt-3" />
+          </div>
+        ) : null}
+      </div>
+
+      {/* The way to a person, last on the page and the only saturated surface
+          on it. Somebody who came here because something is wrong reaches this
+          by scrolling past everything that is fine — which is the right order,
+          because the tiles above may already have answered them. */}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="rounded-2xl border bg-card p-5 sm:p-6">
+          <h2 className="text-figure font-semibold tracking-[-0.01em]">Need something?</h2>
+          <p className="mt-1 text-row text-muted-foreground">
+            Tell us what you need and we&rsquo;ll take care of it.
+          </p>
+          <ul className="mt-4 grid gap-1.5 sm:grid-cols-2">
+            {REQUESTS.map((request) => (
+              <li key={request.label}>
+                <Link
+                  href={request.href}
+                  className="flex items-center gap-3 rounded-xl border px-3.5 py-3 transition-colors hover:border-primary/40 hover:bg-primary-soft/40"
+                >
+                  <request.icon aria-hidden strokeWidth={1.75} className="size-5 shrink-0 text-primary" />
+                  <span className="min-w-0 flex-1 truncate text-row font-medium">{request.label}</span>
+                  <span aria-hidden className="shrink-0 text-muted-foreground">
+                    ›
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+
         <aside className="min-w-0">
-          <div className="rounded-[20px] bg-primary p-6 text-primary-foreground">
-            <span
-              aria-hidden
-              className="flex size-11 items-center justify-center rounded-[14px] bg-white/15"
-            >
-              <Video className="size-5" strokeWidth={1.75} />
+          <div className="rounded-2xl bg-primary p-6 text-primary-foreground">
+            <span aria-hidden className="flex size-11 items-center justify-center rounded-[14px] bg-white/15">
+              <CalendarDays className="size-5" strokeWidth={1.75} />
             </span>
             <h2 className="mt-4 text-figure font-bold leading-tight tracking-[-0.01em]">
-              Let&rsquo;s talk about your website.
+              Rather talk it through?
             </h2>
             <p className="mt-2 text-row text-primary-foreground/85">
               Book a short video call at a time that suits you.
@@ -259,12 +180,14 @@ export default async function PortalHomePage() {
               </Link>
             </Button>
             <div className="mt-5 border-t border-white/20 pt-5">
-              <Link href="/portal/support/new" className="flex items-start gap-3 group">
+              <Link href="/portal/support/new" className="group flex items-start gap-3">
                 <MessageCircle aria-hidden strokeWidth={1.75} className="mt-0.5 size-5 shrink-0" />
                 <span>
                   <span className="block font-semibold group-hover:underline">Prefer to message us?</span>
                   <span className="block text-meta text-primary-foreground/80">
-                    Our support team is always here to help.
+                    {data.support.firstResponseHours === null
+                      ? "We usually reply the same day."
+                      : `We usually reply within ${Math.max(1, Math.round(data.support.firstResponseHours))} hours.`}
                   </span>
                 </span>
               </Link>
@@ -272,6 +195,6 @@ export default async function PortalHomePage() {
           </div>
         </aside>
       </div>
-    </>
+    </div>
   );
 }

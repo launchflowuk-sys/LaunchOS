@@ -4,6 +4,8 @@ import { PortalBell } from "@/components/portal/portal-bell";
 import { PortalHelpCard, PortalNavList } from "@/components/portal/portal-rail";
 import { PortalRailSheet } from "@/components/portal/portal-rail-sheet";
 import { PortalSearch } from "@/components/portal/portal-search";
+import { getPortalTheme, portalThemeVars } from "@launchos/core";
+import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
 
 // The whole portal shell reads the session, so nothing here is prerenderable.
@@ -31,9 +33,17 @@ function businessInitials(name: string): string {
  */
 export default async function PortalLayout({ children }: LayoutProps<"/portal">) {
   const session = await requireClient();
+  const theme = await getPortalTheme(getDb(), session.organisationId, session.clientId);
 
   return (
-    <div className="flex min-h-screen flex-1 bg-background print:block print:bg-white">
+    // The client's chosen accent, set as CSS variables on the shell rather than
+    // in a stylesheet: the palette is data, and a second copy in CSS is a copy
+    // that can disagree with it. Everything below inherits through `--primary`,
+    // so no component needs to know a theme exists.
+    <div
+      className="flex min-h-screen flex-1 bg-background print:block print:bg-white"
+      style={portalThemeVars(theme) as React.CSSProperties}
+    >
       {/* `contents` keeps the rail a direct flex child of the row while giving
           `print:hidden` something to switch off. */}
       <div className="contents print:hidden">

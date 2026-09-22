@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./queue": "./src/queue/queues.ts"
+    "./queue": "./src/queue/queues.ts",
+    "./portal-theme": "./src/clients/portal-theme-tokens.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -1,4 +1,4 @@
-import { listContacts } from "@launchos/core";
+import { getPortalTheme, listContacts } from "@launchos/core";
 import { Users } from "lucide-react";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -9,6 +9,7 @@ import { TwoFactorPanel } from "@/components/two-factor/two-factor-panel";
 import { getDb } from "@/lib/db";
 import { requireClient } from "@/lib/portal-session";
 import { getAuthUser } from "@/lib/session";
+import { AppearanceForm } from "./appearance-form";
 import { ChangePasswordForm } from "./change-password-form";
 
 export const dynamic = "force-dynamic";
@@ -41,9 +42,10 @@ const CONTACT_COLUMNS: readonly DataListColumn<ContactRow>[] = [
 
 export default async function PortalAccountPage() {
   const session = await requireClient();
-  const [contacts, authUser] = await Promise.all([
+  const [contacts, authUser, theme] = await Promise.all([
     listContacts(getDb(), session.organisationId, session.clientId),
     getAuthUser(),
+    getPortalTheme(getDb(), session.organisationId, session.clientId),
   ]);
   const twoFactorEnabled = authUser?.twoFactorEnabled === true;
 
@@ -86,6 +88,15 @@ export default async function PortalAccountPage() {
             </EmptyState>
           }
         />
+      </Section>
+
+      <Section
+        title="Appearance"
+        description="Make this portal look like your business. Everyone at your company sees the same."
+      >
+        <div className="rounded-[20px] border bg-card p-5">
+          <AppearanceForm initial={theme} />
+        </div>
       </Section>
 
       <Section title="Password" description="Changing it signs you out everywhere else.">

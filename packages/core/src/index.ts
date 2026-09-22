@@ -36,7 +36,7 @@ export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/
 export { clientDashboard, DASHBOARD_WINDOW_DAYS } from "./clients/dashboard.js";
 export {
   getPortalTheme, setPortalTheme, readPortalTheme, SetPortalThemeInput, PortalThemeSchema,
-  PORTAL_ACCENTS, PORTAL_SURFACES, PORTAL_THEME_DEFAULT,
+  PORTAL_ACCENTS, PORTAL_SURFACES, PORTAL_THEME_DEFAULT, portalThemeVars,
 } from "./clients/portal-theme.js";
 export type { PortalTheme, PortalAccent, PortalSurface } from "./clients/portal-theme.js";
 export type { ClientDashboard, DashboardTrend, UptimeSummary } from "./clients/dashboard.js";
