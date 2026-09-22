@@ -27,6 +27,7 @@ import {
   Package,
   Receipt,
   Archive,
+  Database,
   Download,
   Settings,
   TrendingUp,
@@ -173,6 +174,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Packages", href: "/settings/packages", icon: Package, permission: "settings" },
       { label: "Task templates", href: "/settings/task-templates", icon: LayoutTemplate, permission: "settings" },
       { label: "Export", href: "/settings/export", icon: Download, permission: "settings" },
+      { label: "Demo data", href: "/settings/demo-data", icon: Database, permission: "settings" },
     ],
   },
 ];

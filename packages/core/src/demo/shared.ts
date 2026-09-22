@@ -1,6 +1,6 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
-import { and, eq, inArray, like } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 
 /**
  * What every demo record has in common, and the one function that removes all
@@ -107,6 +107,52 @@ export function periodKey(now: Date): string {
  *    which was correct while there was one demo client and quietly left the
  *    others behind the moment there were three.
  */
+export interface DemoDataSummary {
+  /** Demo clients present, by name, so the panel can say what it is about to remove. */
+  clients: readonly string[];
+  /** Rows hanging off them, the ones worth counting before you delete. */
+  rows: { tickets: number; tasks: number; invoices: number; reports: number; uptimeChecks: number };
+}
+
+/**
+ * What demo data this organisation currently holds.
+ *
+ * Exists so the admin panel can say "this will remove 3 clients and 1,098
+ * checks" rather than asking somebody to press a destructive button on faith.
+ */
+export async function demoDataSummary(db: Db, organisationId: string): Promise<DemoDataSummary> {
+  const clients = await db
+    .select({ id: schema.clients.id, name: schema.clients.name })
+    .from(schema.clients)
+    .where(and(eq(schema.clients.organisationId, organisationId), like(schema.clients.slug, `${DEMO_SLUG_PREFIX}%`)));
+
+  if (clients.length === 0) {
+    return { clients: [], rows: { tickets: 0, tasks: 0, invoices: 0, reports: 0, uptimeChecks: 0 } };
+  }
+
+  const ids = clients.map((c) => c.id);
+  const tally = async (table: typeof schema.tickets | typeof schema.tasks | typeof schema.invoices | typeof schema.clientReports) => {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(table)
+      .where(and(eq(table.organisationId, organisationId), inArray(table.clientId, ids)));
+    return row?.n ?? 0;
+  };
+
+  const [tickets, tasks, invoices, reports, checks] = await Promise.all([
+    tally(schema.tickets), tally(schema.tasks), tally(schema.invoices), tally(schema.clientReports),
+    db.select({ n: sql<number>`count(*)::int` })
+      .from(schema.uptimeChecks)
+      .innerJoin(schema.monitors, eq(schema.monitors.id, schema.uptimeChecks.monitorId))
+      .innerJoin(schema.sites, eq(schema.sites.id, schema.monitors.siteId))
+      .where(and(eq(schema.uptimeChecks.organisationId, organisationId), inArray(schema.sites.clientId, ids)))
+      .then((r) => r[0]?.n ?? 0),
+  ]);
+
+  return {
+    clients: clients.map((c) => c.name),
+    rows: { tickets, tasks, invoices, reports, uptimeChecks: checks },
+  };
+}
+
 export async function removeDemoClients(db: Db, organisationId: string): Promise<{ removed: number }> {
   const demoSubmissions = await db
     .select({ id: schema.briefSubmissions.id, sessionId: schema.briefSubmissions.sessionId })

@@ -933,3 +933,6 @@ export {
   DEMO_PROPOSAL_PREFIX,
 } from "./demo/demo-client.js";
 export type { DemoClientResult, DemoLeadResult, DemoSeedResult } from "./demo/demo-client.js";
+export { seedPortalShowcase } from "./demo/portal-showcase.js";
+export { demoDataSummary } from "./demo/shared.js";
+export type { DemoDataSummary } from "./demo/shared.js";
