@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { reportLeadSubmitted } from "@/lib/analytics";
+import { PriceCompare } from "./price-compare";
 import { Field, type FieldDef } from "./fields";
 import { SaveExit } from "./save-exit";
 import { useDraft } from "./use-draft";
@@ -196,7 +197,16 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
             ) : null}
 
             {isReview ? (
-              <Review stages={stages} answers={answers} onEdit={go} />
+              <>
+                {/* The last thing they read before sending it. Above the
+                    answers rather than below: by this point they know what
+                    they asked for, and the number is what makes them press
+                    the button. */}
+                <div className="mt-7">
+                  <PriceCompare answers={answers as never} variant="full" />
+                </div>
+                <Review stages={stages} answers={answers} onEdit={go} />
+              </>
             ) : (
               <div className="mt-7 grid grid-cols-1 gap-x-5 gap-y-6 sm:grid-cols-2">
                 {visible.map((field) => (
@@ -489,16 +499,23 @@ function BriefSoFar({ stages, answers }: { stages: readonly StageDef[]; answers:
           )}
         </Block>
 
-        {has("designDirection") || has("budget") ? (
+        {has("designDirection") ? (
           <Block title="DIRECTION">
-            {has("designDirection") ? <p className="text-[14px] text-[#111827]">{label("designDirection", answers.designDirection)}</p> : null}
-            {has("budget") ? <p className="text-[14px] text-[#626D80]">{label("budget", answers.budget)}</p> : null}
+            <p className="text-[14px] text-[#111827]">{label("designDirection", answers.designDirection)}</p>
           </Block>
         ) : null}
 
         <p className="mt-5 rounded-[14px] bg-[#F5F6F8] p-4 text-[13px] leading-relaxed text-[#626D80]">
           Taking shape, step by step. Your answers become a clear brief for your new website.
         </p>
+      </div>
+
+      {/* The running comparison, under the brief rather than over it: they came
+          to describe what they want, and the price is the reward for doing it,
+          not the thing shouting at them while they type. Renders nothing until
+          something has actually been chosen. */}
+      <div className="mt-4">
+        <PriceCompare answers={answers as never} />
       </div>
     </aside>
   );

@@ -19,7 +19,7 @@ const COMPLETE = {
   name: "Sam Taylor", phone: "07700900123",
   business: "Taylor Plumbing", industry: "Plumbing and heating",
   goals: ["enquiries", "bookings"], designDirection: "clean",
-  pages: ["home", "contact"], budget: "1500_3000", timeline: ["asap"],
+  pages: ["home", "contact"], ongoing: ["care", "social"], timeline: ["asap"],
   bookingServices: "Boiler servicing\nEmergency callouts",
 };
 
@@ -75,8 +75,8 @@ describe("submitBrief", () => {
       expect(version!.markdown).toContain("Taylor Plumbing");
       // The labels the customer saw, not the values we stored.
       expect(version!.markdown).toContain("More enquiries");
-      expect(version!.markdown).not.toContain("1500_3000");
-      expect(version!.markdown).toContain("£1,500 – £3,000");
+      expect(version!.markdown).not.toContain("social_raw");
+      expect(version!.markdown).toContain("Post on social media");
     });
   });
 
@@ -111,7 +111,7 @@ describe("submitBrief", () => {
       expect(result.status).toBe("incomplete");
       if (result.status !== "incomplete") return;
       expect(result.errors.business).toBeDefined();
-      expect(result.errors.budget).toBeDefined();
+      expect(result.errors.ongoing).toBeDefined();
 
       const [session] = await db.select().from(schema.briefSessions).where(eq(schema.briefSessions.id, sessionId));
       expect(session!.status).toBe("draft");

@@ -171,7 +171,7 @@ describe("exchangeResumeToken", () => {
         mutationId: crypto.randomUUID(), expectedRevision: 1,
         fields: {
           industry: "Plumbing", goals: ["enquiries"], designDirection: "clean",
-          pages: ["home"], budget: "1500_3000", timeline: ["asap"],
+          pages: ["home"], ongoing: ["care", "social"], timeline: ["asap"],
         },
       });
       await submitBrief(db, org.id, sessionId, { idempotencyKey: "press-key-one", expectedRevision: 2 });

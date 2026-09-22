@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ONGOING_OPTIONS } from "./pricing.js";
 
 /**
  * The eight stages, defined once.
@@ -73,14 +74,21 @@ export interface StageDef {
   fields: readonly FieldDef[];
 }
 
-/** Illustrative discovery bands, not a quotation. Kept here so they are one edit. */
-export const BUDGET_BANDS: readonly FieldOption[] = [
-  { value: "under_1500", label: "Under £1,500", hint: "A few pages, done properly" },
-  { value: "1500_3000", label: "£1,500 – £3,000", hint: "Most small business sites" },
-  { value: "3000_5000", label: "£3,000 – £5,000", hint: "Bookings, accounts, more pages" },
-  { value: "over_5000", label: "£5,000+", hint: "Shops and bespoke builds" },
-  { value: "unsure", label: "I'd like guidance", hint: "Tell us what it should cost" },
-];
+/**
+ * What they want us to keep doing once it is live.
+ *
+ * This replaced "what is your budget", and the swap is deliberate. A budget
+ * question anchors somebody on a build fee we do not charge, and invites them
+ * to talk themselves into the cheapest bracket before they have seen what
+ * they get. This asks about the thing we actually sell — a monthly retainer —
+ * and its answers drive both the price comparison and which package we
+ * recommend, so it earns its place twice.
+ */
+export const ONGOING_CHOICES: readonly FieldOption[] = ONGOING_OPTIONS.map((option) => ({
+  value: option.value,
+  label: option.label,
+  hint: option.hint,
+}));
 
 const GOALS: readonly FieldOption[] = [
   { value: "enquiries", label: "More enquiries", hint: "Calls, forms, messages" },
@@ -231,7 +239,7 @@ export const STAGES: readonly StageDef[] = [
     key: "content",
     navLabel: "Your content",
     eyebrow: "YOUR CONTENT",
-    nextHint: "Next: budget and timing",
+    nextHint: "Next: what happens after launch",
     title: "Words and pictures",
     blurb: "Most people have less ready than they think. That's normal.",
     fields: [
@@ -251,13 +259,16 @@ export const STAGES: readonly StageDef[] = [
   {
     step: 7,
     key: "timing",
-    navLabel: "Budget & timing",
-    eyebrow: "BUDGET & TIMING",
+    navLabel: "After launch",
+    eyebrow: "AFTER LAUNCH",
     nextHint: "Next: check it over",
-    title: "Budget and timing",
-    blurb: "Ranges to plan against, not a quote. We'll price it properly once we know the shape.",
+    title: "After it is live",
+    blurb: "There is no build fee. You pay nothing until your site is live and you have approved it — then a flat monthly amount for the work you pick here.",
     fields: [
-      { key: "budget", label: "Rough budget", kind: "single", required: true, options: BUDGET_BANDS },
+      {
+        key: "ongoing", label: "What would you like us to keep doing?", kind: "multi", required: true,
+        options: ONGOING_CHOICES,
+      },
       {
         key: "timeline", label: "When you need it", kind: "chips", required: true,
         options: [

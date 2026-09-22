@@ -17,7 +17,7 @@ const COMPLETE = {
   name: "Sam Taylor", phone: "07700900123",
   business: "Taylor Plumbing", industry: "Plumbing and heating",
   goals: ["enquiries"], designDirection: "clean",
-  pages: ["home", "contact"], budget: "1500_3000", timeline: ["asap"],
+  pages: ["home", "contact"], ongoing: ["care", "social"], timeline: ["asap"],
 };
 
 /** A draft with a lead attached and whatever answers are given. */

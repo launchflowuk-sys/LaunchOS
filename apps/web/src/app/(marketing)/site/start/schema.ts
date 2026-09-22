@@ -63,7 +63,7 @@ export const StartSchema = z.object({
   services: OptionalText(2000, "Keep this under 2000 characters"),
   goals: OptionalText(2000, "Keep this under 2000 characters"),
   timeline: OptionalText(200, "Keep this under 200 characters"),
-  budget: OptionalText(200, "Keep this under 200 characters"),
+  ongoing: OptionalText(200, "Keep this under 200 characters"),
 
   /** Which page they started from, for the lead's metadata. Never rendered back. */
   page: OptionalText(500),

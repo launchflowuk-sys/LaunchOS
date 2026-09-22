@@ -25,7 +25,7 @@ const COMPLETE = {
   business: "Taylor Plumbing", industry: "Plumbing and heating",
   goals: ["enquiries"], designDirection: "clean",
   pages: ["home", "contact"], features: ["enquiry_form"],
-  budget: "1500_3000", timeline: ["asap"],
+  ongoing: ["care", "social"], timeline: ["asap"],
 };
 
 /** A submitted brief, with its deterministic version one already written. */

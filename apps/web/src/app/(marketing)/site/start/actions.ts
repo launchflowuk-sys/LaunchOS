@@ -41,7 +41,7 @@ export async function startAction(
     services: read("services"),
     goals: read("goals"),
     timeline: read("timeline"),
-    budget: read("budget"),
+    ongoing: read("ongoing"),
     page: read("page"),
   });
   if (!parsed.success) return { status: "error", message: firstIssue(parsed.error, "Check the form and try again") };
@@ -67,7 +67,7 @@ export async function startAction(
     v.goals ? `What they want: ${v.goals}` : undefined,
     v.services ? `What they do: ${v.services}` : undefined,
     v.timeline ? `Timeline: ${v.timeline}` : undefined,
-    v.budget ? `Budget: ${v.budget}` : undefined,
+    v.ongoing ? `Wants us to keep doing: ${v.ongoing}` : undefined,
   ]
     .filter(Boolean)
     .join("\n\n") || "Started the project wizard.";
@@ -92,7 +92,7 @@ export async function startAction(
       ...(v.services ? { services: v.services } : {}),
       ...(v.goals ? { goals: v.goals } : {}),
       ...(v.timeline ? { timeline: v.timeline } : {}),
-      ...(v.budget ? { budget: v.budget } : {}),
+      ...(v.ongoing ? { ongoing: v.ongoing } : {}),
     },
   });
 

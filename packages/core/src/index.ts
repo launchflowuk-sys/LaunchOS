@@ -35,6 +35,10 @@ export {
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
 export { clientDashboard, DASHBOARD_WINDOW_DAYS } from "./clients/dashboard.js";
 export {
+  comparePricing, recommendedPackage, LAUNCHFLOW_PACKAGES, ONGOING_OPTIONS, MARKET_BASIS,
+} from "./brief-funnel/pricing.js";
+export type { PricingComparison, PricingAnswers, LaunchflowPackage } from "./brief-funnel/pricing.js";
+export {
   getPortalTheme, setPortalTheme, readPortalTheme, SetPortalThemeInput, PortalThemeSchema,
   PORTAL_ACCENTS, PORTAL_SURFACES, PORTAL_THEME_DEFAULT, portalThemeVars,
 } from "./clients/portal-theme.js";
@@ -873,7 +877,7 @@ export type { BriefSessionRow, SafeSession, PatchResult } from "./brief-funnel/s
 export { captureLeadFromDraft, isContactable, ContactFields } from "./brief-funnel/capture.js";
 export type { LeadCaptureResult } from "./brief-funnel/capture.js";
 export {
-  STAGES, BUDGET_BANDS, FIELDS_BY_KEY, stageFor, isFieldActive, activeAnswers,
+  STAGES, ONGOING_CHOICES, FIELDS_BY_KEY, stageFor, isFieldActive, activeAnswers,
   excludedAnswerKeys, validateStep, satisfiedSteps, canSubmit,
 } from "./brief-funnel/questionnaire.js";
 export type { StageDef, FieldDef, FieldKind, FieldOption, StepValidation } from "./brief-funnel/questionnaire.js";

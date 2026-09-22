@@ -150,7 +150,7 @@ describe("satisfiedSteps", () => {
       goals: ["enquiries"],
     };
 
-    // 4 needs a design direction, 5 needs pages, 7 needs budget and timeline.
+    // 4 needs a design direction, 5 needs pages, 7 needs the ongoing work and timeline.
     // 6 has nothing required, which is why this is not the progress bar.
     expect(satisfiedSteps(answers)).toEqual([1, 2, 3, 6]);
   });
@@ -161,7 +161,7 @@ describe("canSubmit", () => {
     name: "Sam", phone: "07700900123",
     business: "Taylor Plumbing", industry: "Plumbing",
     goals: ["enquiries"], designDirection: "clean",
-    pages: ["home", "contact"], budget: "1500_3000", timeline: ["asap"],
+    pages: ["home", "contact"], ongoing: ["care", "social"], timeline: ["asap"],
   };
 
   it("allows a brief with every requirement met", () => {
@@ -172,14 +172,14 @@ describe("canSubmit", () => {
     const result = canSubmit({});
     expect(result.ok).toBe(false);
     expect(Object.keys(result.errors)).toEqual(
-      expect.arrayContaining(["name", "business", "industry", "goals", "designDirection", "pages", "budget", "timeline"]),
+      expect.arrayContaining(["name", "business", "industry", "goals", "designDirection", "pages", "ongoing", "timeline"]),
     );
   });
 
   /** A client claiming it finished every step is exactly what must not be trusted. */
   it("refuses when one late stage is unanswered", () => {
-    const { budget, ...missingBudget } = complete;
-    expect(canSubmit(missingBudget).ok).toBe(false);
-    expect(canSubmit(missingBudget).errors.budget).toBeDefined();
+    const { ongoing, ...missingOngoing } = complete;
+    expect(canSubmit(missingOngoing).ok).toBe(false);
+    expect(canSubmit(missingOngoing).errors.ongoing).toBeDefined();
   });
 });
