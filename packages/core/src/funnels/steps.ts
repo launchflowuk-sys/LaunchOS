@@ -128,12 +128,18 @@ export function defaultFunnelSteps(): FunnelStep[] {
       contact: { askEmail: true, askBusiness: true, emailRequired: false },
     },
     {
-      key: "budget", kind: "choice", required: false,
-      question: "Roughly what have you set aside each month?",
+      // Was "roughly what have you set aside each month?", with bands starting
+      // at "under £250". Every package LaunchFlow sells falls inside that
+      // bottom band, so the question qualified nobody and scored everybody the
+      // same. Asking what they want us to *do* is both a better qualifier and
+      // the thing that picks their package — see `brief-funnel/pricing`.
+      key: "ongoing", kind: "choice", required: false,
+      question: "What would you like us to keep doing once it is live?",
+      help: "There is no build fee. You pay nothing until it is live and you have approved it.",
       options: [
-        { value: "under-250", label: "Under £250", points: 5 },
-        { value: "250-500", label: "£250 – £500", points: 20 },
-        { value: "over-500", label: "Over £500", points: 30 },
+        { value: "care", label: "Look after the website", points: 10 },
+        { value: "content", label: "Posts and articles as well", points: 25 },
+        { value: "ads", label: "Advertising too", points: 30 },
         { value: "unsure", label: "I would rather talk it through", points: 10 },
       ],
     },

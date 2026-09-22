@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { reportLeadSubmitted } from "@/lib/analytics";
+import type { PackageOption } from "@launchos/core/pricing";
 import { PriceCompare } from "./price-compare";
 import { Field, type FieldDef } from "./fields";
 import { SaveExit } from "./save-exit";
@@ -45,7 +46,13 @@ function isActive(field: FieldDef, answers: Record<string, unknown>): boolean {
   return held.some((value) => field.showWhen!.hasAny.includes(value));
 }
 
-export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
+export function BriefFunnel({
+  stages,
+  packages,
+}: {
+  stages: readonly StageDef[];
+  packages: readonly PackageOption[];
+}) {
   const { session, answers, ready, saveState, saveError, setField, flush, completeStep, submit, retry } = useDraft();
   const [step, setStep] = useState(1);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -203,7 +210,7 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
                     they asked for, and the number is what makes them press
                     the button. */}
                 <div className="mt-7">
-                  <PriceCompare answers={answers as never} variant="full" />
+                  <PriceCompare answers={answers as never} packages={packages} variant="full" />
                 </div>
                 <Review stages={stages} answers={answers} onEdit={go} />
               </>
@@ -261,7 +268,7 @@ export function BriefFunnel({ stages }: { stages: readonly StageDef[] }) {
 
         {/* The brief fills in as they answer. Never invents: anything unknown
             reads "Still to explore" rather than a plausible guess. */}
-        {!isIntro ? <BriefSoFar stages={stages} answers={answers} /> : null}
+        {!isIntro ? <BriefSoFar stages={stages} answers={answers} packages={packages} /> : null}
       </div>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[#DFE4EB] py-6 text-[13px] text-[#8A94A6]">
@@ -451,7 +458,7 @@ function Editorial() {
  * "Still to explore". A sidebar that guessed at a business name would be the
  * one part of this journey the customer could catch us making things up in.
  */
-function BriefSoFar({ stages, answers }: { stages: readonly StageDef[]; answers: Record<string, unknown> }) {
+function BriefSoFar({ stages, answers, packages }: { stages: readonly StageDef[]; answers: Record<string, unknown>; packages: readonly PackageOption[] }) {
   const label = (key: string, raw: unknown): string => {
     const field = stages.flatMap((s) => s.fields).find((f) => f.key === key);
     const one = (value: string) => field?.options?.find((option) => option.value === value)?.label ?? value;
@@ -515,7 +522,7 @@ function BriefSoFar({ stages, answers }: { stages: readonly StageDef[]; answers:
           not the thing shouting at them while they type. Renders nothing until
           something has actually been chosen. */}
       <div className="mt-4">
-        <PriceCompare answers={answers as never} />
+        <PriceCompare answers={answers as never} packages={packages} />
       </div>
     </aside>
   );

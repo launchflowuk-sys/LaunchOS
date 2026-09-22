@@ -34,10 +34,9 @@ export {
 } from "./clients/delete-client.js";
 export { listClients, getClient, escapeLike, ListClientsInput } from "./clients/list-clients.js";
 export { clientDashboard, DASHBOARD_WINDOW_DAYS } from "./clients/dashboard.js";
-export {
-  comparePricing, recommendedPackage, LAUNCHFLOW_PACKAGES, ONGOING_OPTIONS, MARKET_BASIS,
-} from "./brief-funnel/pricing.js";
-export type { PricingComparison, PricingAnswers, LaunchflowPackage } from "./brief-funnel/pricing.js";
+export { comparePricing, choosePackage, ONGOING_OPTIONS, MARKET_BASIS } from "./brief-funnel/pricing.js";
+export { funnelPackageOptions } from "./brief-funnel/package-options.js";
+export type { PricingComparison, PricingAnswers, PackageOption } from "./brief-funnel/pricing.js";
 export {
   getPortalTheme, setPortalTheme, readPortalTheme, SetPortalThemeInput, PortalThemeSchema,
   PORTAL_ACCENTS, PORTAL_SURFACES, PORTAL_THEME_DEFAULT, portalThemeVars,

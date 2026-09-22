@@ -103,14 +103,27 @@ export const ONGOING_OPTIONS: readonly { value: string; label: string; hint: str
   { value: "ads", label: "Run advertising", hint: "Google and Meta, managed" },
 ];
 
-/** Our three published tiers. Pence, so nothing here ever holds a float. */
-export const LAUNCHFLOW_PACKAGES = {
-  presence: { label: "Presence", monthlyPence: 4_500 },
-  standard: { label: "Standard", monthlyPence: 11_000 },
-  growth: { label: "Growth", monthlyPence: 22_000 },
-} as const;
-
-export type LaunchflowPackage = keyof typeof LAUNCHFLOW_PACKAGES;
+/**
+ * One of our packages, as the funnel needs to see it.
+ *
+ * **Shaped on the server from the `packages` table, never hardcoded here.**
+ * The three tiers were literals in this file until it became clear Shoji will
+ * add subscriptions — LaunchOS itself, a new tier, a one-off offering — and a
+ * price written twice is a price that will disagree with itself the first time
+ * one of them moves. The table is already the source of truth: it holds the
+ * monthly figure, what the package includes and the Stripe price it bills on.
+ *
+ * `covers` is what `servicesPaidFor` says the package pays for, computed by
+ * the caller because that function reaches for database types this module must
+ * not import.
+ */
+export interface PackageOption {
+  slug: string;
+  label: string;
+  monthlyPence: number;
+  /** The service keys this package pays for: `social`, `blog`, `gbp`, `ads`. */
+  covers: readonly string[];
+}
 
 export interface PricingComparison {
   /** What the same scope typically costs to build, elsewhere. */
@@ -119,9 +132,15 @@ export interface PricingComparison {
   marketMonthlyPence: number;
   /** What it costs to build with us. Zero, and the point of the whole screen. */
   launchflowBuildPence: 0;
-  /** The tier their choices land on. */
-  recommended: LaunchflowPackage;
+  /** The package their choices land on, or null when nothing we sell covers them. */
+  recommended: PackageOption | null;
   launchflowMonthlyPence: number;
+  /**
+   * Service keys they asked for that no active package covers. Never hidden:
+   * a funnel that silently drops "run my advertising" and recommends the
+   * cheapest tier has mis-sold before anybody has spoken to them.
+   */
+  uncovered: readonly string[];
   /** What they picked, priced, for the itemised view. Build items only. */
   buildItems: readonly { label: string; pence: number }[];
   /** The ongoing work they asked for, priced the usual way. */
@@ -139,17 +158,36 @@ export interface PricingAnswers {
 }
 
 /**
- * Which tier the choices land on.
+ * The cheapest package that covers everything they asked for.
  *
- * Derived from what they asked for rather than from a price they picked:
- * advertising is Growth, any written content is Standard, and looking after
- * the website alone is Presence. Matches what the packages actually include,
- * so the recommendation cannot drift from the product.
+ * Derived from the packages table rather than a hardcoded ladder, so adding a
+ * subscription — a new tier, LaunchOS itself — needs no change here: define it
+ * with the right `includes` and the funnel starts recommending it. Sorting by
+ * price and taking the first match is what makes "cheapest that covers" true
+ * however many there are, and in whatever order they arrive.
+ *
+ * Returns what it could not cover alongside, rather than falling back to a
+ * tier that does less than they asked for.
  */
-export function recommendedPackage(ongoing: readonly string[]): LaunchflowPackage {
-  if (ongoing.includes("ads")) return "growth";
-  if (ongoing.some((o) => o === "social" || o === "blog" || o === "gbp")) return "standard";
-  return "presence";
+export function choosePackage(
+  options: readonly PackageOption[],
+  ongoing: readonly string[],
+): { package: PackageOption | null; uncovered: readonly string[] } {
+  // `care` is what every retainer is: looking after the site is the floor, not
+  // a line item, so no package needs to declare it.
+  const wanted = ongoing.filter((o) => o !== "care");
+  if (options.length === 0) return { package: null, uncovered: wanted };
+
+  const byPrice = [...options].sort((a, b) => a.monthlyPence - b.monthlyPence);
+  const covering = byPrice.find((option) => wanted.every((w) => option.covers.includes(w)));
+  if (covering) return { package: covering, uncovered: [] };
+
+  // Nothing covers the lot. Offer the one that covers the most, and say plainly
+  // what is left over so it becomes a conversation rather than a surprise.
+  const best = byPrice.reduce((a, b) =>
+    b.covers.filter((c) => wanted.includes(c)).length > a.covers.filter((c) => wanted.includes(c)).length ? b : a,
+  );
+  return { package: best, uncovered: wanted.filter((w) => !best.covers.includes(w)) };
 }
 
 /** Adds up one group of picks against a rate table. */
@@ -175,7 +213,10 @@ function priceGroup(
  * because quoting £3,500 to somebody who has ticked nothing is a number with
  * no scope attached and reads as a scare tactic.
  */
-export function comparePricing(answers: PricingAnswers): PricingComparison {
+export function comparePricing(
+  answers: PricingAnswers,
+  packages: readonly PackageOption[] = [],
+): PricingComparison {
   const pages = priceGroup(answers.pages, MARKET_PAGES);
   const features = priceGroup(answers.features, MARKET_FEATURES);
   const content = priceGroup(answers.contentSupport, MARKET_CONTENT);
@@ -199,15 +240,18 @@ export function comparePricing(answers: PricingAnswers): PricingComparison {
     marketMonthlyPence += item.monthlyPence;
   }
 
-  const recommended = recommendedPackage(ongoing);
-  const launchflowMonthlyPence = ongoing.length === 0 ? 0 : LAUNCHFLOW_PACKAGES[recommended].monthlyPence;
+  const chosen = ongoing.length === 0
+    ? { package: null, uncovered: [] as readonly string[] }
+    : choosePackage(packages, ongoing);
+  const launchflowMonthlyPence = chosen.package?.monthlyPence ?? 0;
 
   return {
     marketBuildPence,
     marketMonthlyPence,
     launchflowBuildPence: 0,
-    recommended,
+    recommended: chosen.package,
     launchflowMonthlyPence,
+    uncovered: chosen.uncovered,
     buildItems,
     ongoingItems,
     firstYearSavingPence:

@@ -1,5 +1,7 @@
-import { STAGES } from "@launchos/core";
+import { funnelPackageOptions, STAGES, type PackageOption } from "@launchos/core";
 import type { Metadata } from "next";
+import { getDb } from "@/lib/db";
+import { publicOrganisationId } from "@/lib/public-organisation";
 import { BriefFunnel } from "./funnel";
 
 export const metadata: Metadata = {
@@ -22,12 +24,21 @@ export const metadata: Metadata = {
  * launchflow.co.uk — so this is `/start` on the public domain, which is the
  * link worth putting in an ad.
  */
-export default function StartPage() {
+export default async function StartPage() {
+  // Read from the packages table rather than written into the funnel: the list
+  // will grow, and a price that lives in two places disagrees with itself the
+  // first time one of them moves. An empty list is survivable — the comparison
+  // simply shows no monthly figure rather than inventing one.
+  const organisationId = await publicOrganisationId();
+  const packages: PackageOption[] = organisationId
+    ? await funnelPackageOptions(getDb(), organisationId)
+    : [];
+
   return (
     /* A main, not a section: this route sits outside the `(chrome)` group, so
        nothing above it provides the landmark any more. */
     <main className="min-h-dvh bg-[#F5F6F8]">
-      <BriefFunnel stages={STAGES} />
+      <BriefFunnel stages={STAGES} packages={packages} />
     </main>
   );
 }

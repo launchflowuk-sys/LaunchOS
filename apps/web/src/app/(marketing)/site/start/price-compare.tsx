@@ -2,7 +2,7 @@
 
 // The pricing subpath, not the `core` barrel: this is a client component and
 // recalculates on every tick, so it must not drag the database driver in.
-import { comparePricing, LAUNCHFLOW_PACKAGES, MARKET_BASIS, type PricingAnswers } from "@launchos/core/pricing";
+import { comparePricing, MARKET_BASIS, type PackageOption, type PricingAnswers } from "@launchos/core/pricing";
 
 /**
  * What this would cost elsewhere, updating as they choose.
@@ -21,12 +21,19 @@ function money(pence: number): string {
   return `£${Math.round(pence / 100).toLocaleString("en-GB")}`;
 }
 
-export function PriceCompare({ answers, variant = "strip" }: { answers: PricingAnswers; variant?: "strip" | "full" }) {
-  const c = comparePricing(answers);
+export function PriceCompare({
+  answers,
+  packages,
+  variant = "strip",
+}: {
+  answers: PricingAnswers;
+  packages: readonly PackageOption[];
+  variant?: "strip" | "full";
+}) {
+  const c = comparePricing(answers, packages);
   const anything = c.marketBuildPence > 0 || c.marketMonthlyPence > 0;
   if (!anything) return null;
 
-  const pkg = LAUNCHFLOW_PACKAGES[c.recommended];
 
   if (variant === "strip") {
     return (
@@ -59,7 +66,7 @@ export function PriceCompare({ answers, variant = "strip" }: { answers: PricingA
               </span>
               {c.launchflowMonthlyPence > 0 ? (
                 <span className="block text-[13px] text-[#4D5C70]">
-                  {money(c.launchflowMonthlyPence)}/month · {pkg.label}
+                  {money(c.launchflowMonthlyPence)}/month · {c.recommended?.label}
                 </span>
               ) : null}
             </dd>
@@ -104,7 +111,7 @@ export function PriceCompare({ answers, variant = "strip" }: { answers: PricingA
             <p className="mt-3 border-t border-[#CFE0F0] pt-3 text-[15px] text-[#141B29]">
               then <span className="font-semibold tabular-nums">{money(c.launchflowMonthlyPence)}</span> a month
               <span className="block text-[13px] text-[#4D5C70]">
-                {pkg.label} — cancel any time, 30 days&rsquo; notice
+                {c.recommended?.label} — cancel any time, 30 days&rsquo; notice
               </span>
             </p>
           ) : null}

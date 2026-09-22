@@ -152,7 +152,7 @@ describe("walking a funnel", () => {
       expect(buzz[0]?.link).toBe(`/leads/${contact.leadId}`);
 
       // A further answer does not buzz a second time.
-      await answerFunnelStep(db, organisationId, { funnelId: funnel.id, token: start.token, stepKey: "budget", choice: "over-500" }, env);
+      await answerFunnelStep(db, organisationId, { funnelId: funnel.id, token: start.token, stepKey: "ongoing", choice: "ads" }, env);
       expect(await db.select().from(schema.notifications)
         .where(and(eq(schema.notifications.userId, ownerUserId), eq(schema.notifications.kind, "funnel.hot_lead")))).toHaveLength(1);
 
@@ -164,7 +164,7 @@ describe("walking a funnel", () => {
         .toEqual(done.completedAt);
 
       const [lead] = await db.select().from(schema.leads).where(eq(schema.leads.id, done.leadId!));
-      expect(lead!.message).toContain("Over £500");
+      expect(lead!.message).toContain("Advertising too");
     });
   });
 
