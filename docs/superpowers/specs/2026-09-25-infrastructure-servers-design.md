@@ -201,8 +201,7 @@ Hard power-off/reset is deliberately absent — shut down is the safe one.
 
 ```
 packages/db/src/schema/infrastructure.ts        infra_connections, servers, enum
-packages/integrations/src/hetzner/              client.ts, mock.ts, types.ts (Zod)
-packages/integrations/src/coolify/              extend: listApplications, deploy, version
+packages/integrations/src/infra/                hetzner.ts, coolify-instance.ts (the existing single-server Coolify adapter stays as it is)
 packages/core/src/infrastructure/
   connections.ts      create / test / update / remove (encrypts)
   cost.ts             pure cost maths — no I/O
