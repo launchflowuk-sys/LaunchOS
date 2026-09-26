@@ -84,10 +84,13 @@ export function ServerActionsMenu({
     });
   }
 
+  // The row's status badge already says what is running; the menu just locks.
   if (pendingCommand) {
+    const busy = BUSY_LABEL[pendingCommand] ?? "Busy";
     return (
-      <Button type="button" variant="secondary" size="sm" disabled>
-        {BUSY_LABEL[pendingCommand] ?? "Busy"}
+      <Button type="button" variant="ghost" size="icon" className="size-8" disabled title={busy}>
+        <MoreHorizontal className="size-4" />
+        <span className="sr-only">Server actions — {busy}</span>
       </Button>
     );
   }
@@ -99,9 +102,7 @@ export function ServerActionsMenu({
     <>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          {/* Also inside the row's `<summary>` — stop the click from toggling
-              the cost breakdown open at the same time as the menu. */}
-          <Button type="button" variant="ghost" size="icon" className="size-8" onClick={(event) => event.stopPropagation()}>
+          <Button type="button" variant="ghost" size="icon" className="size-8">
             <MoreHorizontal className="size-4" />
             <span className="sr-only">Server actions</span>
           </Button>
@@ -170,8 +171,7 @@ export function RedeployButton({ connectionId, appUuid, appName }: { connectionI
       size="sm"
       className="h-6 px-2 text-xs"
       loading={isPending}
-      onClick={(event) => {
-        event.stopPropagation();
+      onClick={() => {
         if (!window.confirm(`Redeploy ${appName}?`)) return;
         startTransition(async () => {
           const result = await redeployAction(connectionId, appUuid, appName);

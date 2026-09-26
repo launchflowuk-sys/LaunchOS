@@ -31,9 +31,6 @@ export function BusinessSelect({
       value={value}
       disabled={isPending}
       className="h-9 min-w-36 text-sm"
-      // Sits inside a `<summary>` (the expandable server row); without this a
-      // click to open the dropdown also toggles the row's cost breakdown.
-      onClick={(event) => event.stopPropagation()}
       onChange={(event) => {
         const next = event.target.value;
         const previous = value;
