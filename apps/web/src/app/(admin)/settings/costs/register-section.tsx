@@ -67,8 +67,9 @@ function VatOptions() {
 }
 
 /** One editable row. Manual rows can change everything; synced rows only what the sync cannot know. */
-function Row({ row }: { row: RegisterEntry }) {
+function Row({ row, hasSyncedHetzner }: { row: RegisterEntry; hasSyncedHetzner: boolean }) {
   const synced = row.source === "sync";
+  const isHetzner = row.supplier === "hetzner";
   return (
     <tr className="border-t border-slate-100 align-middle">
       <td className="px-3 py-2">
@@ -123,9 +124,16 @@ function Row({ row }: { row: RegisterEntry }) {
               <input type="hidden" name="billingPeriod" value={row.billingPeriod} />
             </>
           )}
-          <NativeSelect name="business" defaultValue={row.business} aria-label="Business">
-            <BusinessOptions />
-          </NativeSelect>
+          {synced && isHetzner ? (
+            <>
+              <input type="hidden" name="business" value={row.business} />
+              <span className="text-xs text-slate-400">Set on Servers</span>
+            </>
+          ) : (
+            <NativeSelect name="business" defaultValue={row.business} aria-label="Business">
+              <BusinessOptions />
+            </NativeSelect>
+          )}
           <NativeSelect name="vatTreatment" defaultValue={row.vatTreatment} aria-label="VAT">
             <VatOptions />
           </NativeSelect>
@@ -134,6 +142,11 @@ function Row({ row }: { row: RegisterEntry }) {
           </Button>
         </ActionForm>
         {row.notes ? <p className="mt-1 pl-1 text-xs text-slate-500">{row.notes}</p> : null}
+        {!synced && isHetzner && hasSyncedHetzner ? (
+          <p className="mt-1 pl-1 text-xs text-amber-700">
+            Now synced per server — this hand-typed line probably double-counts. Delete it if so.
+          </p>
+        ) : null}
       </td>
       <td className="whitespace-nowrap px-3 py-2 text-right text-xs text-slate-500">
         {row.nextBillingAt ? formatDate(row.nextBillingAt) : "—"}
@@ -163,6 +176,7 @@ export function RegisterSection({
   missingRateCurrencies: readonly string[];
 }) {
   const unpriced = rows.filter((row) => row.renewalPrice === 0 && row.status !== "cancelled").length;
+  const hasSyncedHetzner = rows.some((row) => row.source === "sync" && row.supplier === "hetzner");
 
   return (
     <Section
@@ -229,7 +243,7 @@ export function RegisterSection({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <Row key={row.id} row={row} />
+              <Row key={row.id} row={row} hasSyncedHetzner={hasSyncedHetzner} />
             ))}
             <tr className="border-t-2 border-slate-200">
               <td className="px-3 py-3" colSpan={3}>
