@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { InlineAlert } from "@/components/inline-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,11 +39,30 @@ export interface EditingConnection {
 type TestResult = { ok: true; detail: string } | { ok: false; message: string } | null;
 
 export function ConnectionForm({ servers, editing }: { servers: readonly ServerChoice[]; editing?: EditingConnection }) {
+  const router = useRouter();
   const [state, formAction, pending] = useActionState(saveConnectionAction, INITIAL);
   const [provider, setProvider] = useState<"hetzner_cloud" | "coolify">(editing?.provider ?? "hetzner_cloud");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const isCoolify = provider === "coolify";
+
+  // "On saved reset the form" (spec): `useActionState` keeps returning the
+  // same `saved` state until another action runs, so the form has to reset
+  // itself here rather than relying on state to fall back to idle. Editing
+  // saves instead navigate away — there is nothing left on this page to
+  // reset once the row being edited no longer has a `?edit=` to match.
+  useEffect(() => {
+    if (state.status !== "saved") return;
+    if (editing) {
+      router.replace("/settings/infrastructure");
+      return;
+    }
+    formRef.current?.reset();
+    setProvider("hetzner_cloud");
+    setTestResult(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
 
   async function runTest(form: HTMLFormElement) {
     setTesting(true);
@@ -55,28 +75,27 @@ export function ConnectionForm({ servers, editing }: { servers: readonly ServerC
     }
   }
 
-  if (state.status === "saved") {
-    return (
-      <InlineAlert tone="success">
-        <strong>{state.label}</strong> saved.
-      </InlineAlert>
-    );
-  }
-
   return (
     <form
+      ref={formRef}
       action={formAction}
       onReset={() => setTestResult(null)}
       aria-label={editing ? "Edit connection" : "Add a connection"}
       className="max-w-xl space-y-5"
     >
       {editing ? <input type="hidden" name="id" value={editing.id} /> : null}
+      {/* The provider select below is disabled while editing, and a disabled
+          control is left out of the form's FormData entirely — including by
+          `testConnectionAction`'s direct `new FormData(form)` read. Without
+          this hidden mirror, testing a Coolify connection in edit mode would
+          silently test it as Hetzner. */}
+      {editing ? <input type="hidden" name="provider" value={editing.provider} /> : null}
 
       <div className="space-y-1.5">
         <Label htmlFor="provider">Provider</Label>
         <NativeSelect
           id="provider"
-          name="provider"
+          name={editing ? undefined : "provider"}
           value={provider}
           disabled={!!editing}
           onChange={(event) => setProvider(event.target.value === "coolify" ? "coolify" : "hetzner_cloud")}
@@ -123,6 +142,11 @@ export function ConnectionForm({ servers, editing }: { servers: readonly ServerC
       ) : null}
 
       {state.status === "error" ? <InlineAlert tone="danger">{state.message}</InlineAlert> : null}
+      {state.status === "saved" && !editing ? (
+        <InlineAlert tone="success">
+          <strong>{state.label}</strong> saved.
+        </InlineAlert>
+      ) : null}
 
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={pending}>{pending ? "Saving…" : editing ? "Save changes" : "Add connection"}</Button>
@@ -135,7 +159,7 @@ export function ConnectionForm({ servers, editing }: { servers: readonly ServerC
           {testing ? "Testing…" : "Test"}
         </Button>
         {editing ? (
-          <Button type="button" variant="ghost" onClick={() => window.location.assign("/settings/infrastructure")}>
+          <Button type="button" variant="ghost" onClick={() => router.push("/settings/infrastructure")}>
             Cancel
           </Button>
         ) : null}
