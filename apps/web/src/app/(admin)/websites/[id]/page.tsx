@@ -11,6 +11,7 @@ import { schema } from "@launchos/db";
 import { and, desc, eq } from "drizzle-orm";
 import { Activity, KeyRound, Network, ShieldAlert, TableProperties } from "lucide-react";
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { DataList, type DataListColumn } from "@/components/data-list";
 import { KeyValue } from "@/components/key-value";
@@ -21,7 +22,9 @@ import { Button } from "@/components/ui/button";
 import { getDb } from "@/lib/db";
 import { formatDateTime } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
+import { SkeletonRows } from "@/components/skeleton-rows";
 import { DeleteSiteSection } from "./delete-site-section";
+import { SiteEmailSection } from "./email-section";
 import { ReviewsPanel } from "./reviews-panel";
 import { WordPressConnection } from "./wordpress-connection";
 
@@ -202,6 +205,17 @@ export default async function WebsiteDetailPage({ params }: PageProps<"/websites
         description="This site can show its Google reviews without holding a Google key — we read the listing every morning and serve it on a public URL the site fetches."
       >
         <ReviewsPanel site={site} stored={reviews} />
+      </Section>
+
+      {/* Streamed: Hostinger answers in its own time and the rest of the
+          page should not wait for it. */}
+      <Section
+        title="Email"
+        description="Hostinger mailboxes on this website's domains — how full each one is and what the plan costs."
+      >
+        <Suspense fallback={<SkeletonRows rows={3} />}>
+          <SiteEmailSection organisationId={session.organisationId} siteId={site.id} />
+        </Suspense>
       </Section>
 
       <Section title="Domains" description="Every domain pointed at this website.">
