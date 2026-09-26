@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { mockHetznerClient } from "@launchos/integrations";
+import { MOCK_SERVERS, mockHetznerClient } from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection } from "./connections.js";
@@ -28,6 +28,36 @@ describe("syncInfrastructure", () => {
       expect(pizza.renewalPrice).toBe(549 + 572 + 50); // base + 100 GB volume + IPv4
       await syncInfrastructure(db, o.id, { env, now });
       expect(await db.select().from(schema.servers).where(eq(schema.servers.organisationId, o.id))).toHaveLength(2);
+    });
+  });
+
+  it("cancels the cost row of a server that disappears, and reactivates it when it returns", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      const conn = await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
+      await syncInfrastructure(db, o.id, { env, now });
+      const onlyFirst = () => mockHetznerClient({ servers: [MOCK_SERVERS[0]!] });
+      await syncInfrastructure(db, o.id, { env, now: new Date(now.getTime() + 60_000), hetzner: onlyFirst });
+      const byId = async () => new Map((await db.select().from(schema.supplierCosts).where(eq(schema.supplierCosts.organisationId, o.id))).map((c) => [c.externalId, c.status]));
+      let rows = await byId();
+      expect(rows.get(`${conn.id}:1`)).toBe("active");
+      expect(rows.get(`${conn.id}:2`)).toBe("cancelled");
+      await syncInfrastructure(db, o.id, { env, now: new Date(now.getTime() + 120_000) });
+      rows = await byId();
+      expect(rows.get(`${conn.id}:2`)).toBe("active");
+    });
+  });
+
+  it("cancels the orphan-snapshots line once there is nothing orphaned", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      const conn = await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
+      const orphaned = () => mockHetznerClient({ snapshots: [{ id: 99, sizeGb: 100, createdFrom: 777, description: "old" }] });
+      await syncInfrastructure(db, o.id, { env, now, hetzner: orphaned });
+      const line = async () => (await db.select().from(schema.supplierCosts).where(eq(schema.supplierCosts.externalId, `${conn.id}:orphan-snapshots`)))[0];
+      expect((await line())!.status).toBe("active");
+      await syncInfrastructure(db, o.id, { env, now });
+      expect((await line())!.status).toBe("cancelled");
     });
   });
 

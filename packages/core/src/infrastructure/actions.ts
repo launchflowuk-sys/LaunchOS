@@ -100,6 +100,8 @@ export type ServerView = typeof schema.servers.$inferSelect & {
   accountLabel: string;
   /** The Hetzner account's own `infra_connections.last_error` — a failing sync on the account this server belongs to, surfaced without a second query. */
   accountError: string | null;
+  /** The account's last successful sync did not see this server — deleted in Hetzner. Sync writes `seenAt` and `lastSyncedAt` from the same `now`. */
+  gone: boolean;
   coolify: { id: string; label: string; baseUrl: string } | null;
 };
 
@@ -116,6 +118,7 @@ export async function listServers(db: Db, organisationId: string): Promise<Serve
       ...s,
       accountLabel: account?.label ?? "?",
       accountError: account?.lastError ?? null,
+      gone: account?.lastSyncedAt != null && s.seenAt < account.lastSyncedAt,
       coolify: cf ? { id: cf.id, label: cf.label, baseUrl: cf.baseUrl! } : null,
     };
   });

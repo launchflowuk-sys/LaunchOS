@@ -63,6 +63,20 @@ describe("connections", () => {
     });
   });
 
+  it("cancels the removed connection's synced cost rows, and only those", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const gone = await createConnection(db, org.id, { provider: "hetzner_cloud", label: "A", token: "mock_a", actorId: "u1" }, deps);
+      const kept = await createConnection(db, org.id, { provider: "hetzner_cloud", label: "B", token: "mock_b", actorId: "u1" }, deps);
+      await syncInfrastructure(db, org.id, deps);
+      await removeConnection(db, org.id, { id: gone.id, actorId: "u1" });
+      const rows = await db.select().from(schema.supplierCosts).where(eq(schema.supplierCosts.organisationId, org.id));
+      const statusOf = (connId: string) => rows.filter((r) => r.externalId?.startsWith(`${connId}:`)).map((r) => r.status);
+      expect(statusOf(gone.id)).toEqual(["cancelled", "cancelled"]);
+      expect(statusOf(kept.id)).toEqual(["active", "active"]);
+    });
+  });
+
   it("imports Hetzner and Coolify tokens from env, splitting Coolify on the first | only", async () => {
     await withTestDb(async (db) => {
       const org = await makeOrg(db);

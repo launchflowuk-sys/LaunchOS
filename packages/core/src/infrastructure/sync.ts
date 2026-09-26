@@ -2,7 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { HetznerClient } from "@launchos/integrations";
 import { and, eq, isNull } from "drizzle-orm";
-import { connectionSecret, hetznerFor, listConnections, type InfraDeps } from "./connections.js";
+import { cancelSyncedCosts, connectionSecret, hetznerFor, listConnections, type InfraDeps } from "./connections.js";
 import { serverCost } from "./cost.js";
 
 const DAY = 86_400_000;
@@ -103,9 +103,13 @@ async function syncHetznerAccount(db: Db, organisationId: string, connectionId: 
   const liveIds = new Set(list.map((s) => s.id));
   const orphanCents = Math.round(snapshots.filter((s) => s.createdFrom === null || !liveIds.has(s.createdFrom))
     .reduce((a, s) => a + s.sizeGb * pricing.imageMilliCentsPerGbMonth, 0) / 1000);
+  const orphanId = `${connectionId}:orphan-snapshots`;
   if (orphanCents > 0) {
-    await upsertServerCost(db, organisationId, `${connectionId}:orphan-snapshots`, `Hetzner — snapshots of deleted servers (${label})`, orphanCents, "shared", label, now);
+    await upsertServerCost(db, organisationId, orphanId, `Hetzner — snapshots of deleted servers (${label})`, orphanCents, "shared", label, now);
   }
+  // A server gone from Hetzner (or no orphaned snapshots left) stops billing.
+  const seen = [...list.map((s) => `${connectionId}:${s.id}`), ...(orphanCents > 0 ? [orphanId] : [])];
+  await cancelSyncedCosts(db, organisationId, connectionId, seen, now);
   return list.length;
 }
 

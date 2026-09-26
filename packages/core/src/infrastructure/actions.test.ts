@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
+import { MOCK_SERVERS, mockHetznerClient } from "@launchos/integrations";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection } from "./connections.js";
@@ -74,6 +75,17 @@ describe("listServers", () => {
       await db.update(schema.infraConnections).set({ lastError: "boom" }).where(eq(schema.infraConnections.id, server.connectionId));
       const after = await listServers(db, org.id);
       expect(after.find((s) => s.id === server.id)).toMatchObject({ accountError: "boom" });
+    });
+  });
+
+  it("flags a server the last sync of its account did not see as gone", async () => {
+    await withTestDb(async (db) => {
+      const { org } = await seeded(db);
+      expect((await listServers(db, org.id)).every((s) => !s.gone)).toBe(true);
+      await syncInfrastructure(db, org.id, { env, now: new Date(Date.now() + 60_000), hetzner: () => mockHetznerClient({ servers: [MOCK_SERVERS[0]!] }) });
+      const after = await listServers(db, org.id);
+      expect(after.find((s) => s.hetznerId === 1)!.gone).toBe(false);
+      expect(after.find((s) => s.hetznerId === 2)!.gone).toBe(true);
     });
   });
 });

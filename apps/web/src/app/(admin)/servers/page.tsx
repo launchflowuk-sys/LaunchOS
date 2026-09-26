@@ -14,15 +14,13 @@ import { Sparkline } from "./sparkline";
 
 export const dynamic = "force-dynamic";
 
-const HOUR_MS = 60 * 60 * 1000;
-
 const BUSINESS_OPTIONS = COST_BUSINESSES.map((value) => ({ value, label: BUSINESS_LABELS[value] }));
 
 type CoolifyState = Awaited<ReturnType<typeof coolifyResourcesFor>> | null;
 
 function statusOf(server: ServerView): { tone: StatusTone; label: string } {
-  if (Date.now() - server.seenAt.getTime() > HOUR_MS) {
-    return { tone: "neutral", label: `Not seen since ${formatDateTime(server.seenAt)}` };
+  if (server.gone) {
+    return { tone: "neutral", label: `Gone since ${formatDateTime(server.seenAt)}` };
   }
   if (server.pendingAction) {
     return { tone: "info", label: BUSY_LABEL[server.pendingAction.command] ?? "Busy" };
@@ -91,10 +89,12 @@ export default async function ServersPage() {
     );
   };
 
-  const running = servers.filter((s) => s.status === "running").length;
-  const monthToDateTotal = servers.reduce((sum, s) => sum + (s.cost?.monthToDate ?? 0), 0);
-  const projectedTotal = servers.reduce((sum, s) => sum + (s.cost?.projectedMonth ?? 0), 0);
-  const attentionCount = servers.filter((s) => needsAttention(s, coolifyByServer.get(s.id) ?? null)).length;
+  // A server deleted in Hetzner stays listed as history but no longer bills or counts.
+  const live = servers.filter((s) => !s.gone);
+  const running = live.filter((s) => s.status === "running").length;
+  const monthToDateTotal = live.reduce((sum, s) => sum + (s.cost?.monthToDate ?? 0), 0);
+  const projectedTotal = live.reduce((sum, s) => sum + (s.cost?.projectedMonth ?? 0), 0);
+  const attentionCount = live.filter((s) => needsAttention(s, coolifyByServer.get(s.id) ?? null)).length;
 
   const byAccount = new Map<string, ServerView[]>();
   for (const s of servers) byAccount.set(s.accountLabel, [...(byAccount.get(s.accountLabel) ?? []), s]);
@@ -116,7 +116,7 @@ export default async function ServersPage() {
       <div className="mb-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Month to date" value={kpiMoney(monthToDateTotal)} category="automation" icon={ServerIcon} />
         <StatCard label="Projected month" value={kpiMoney(projectedTotal)} category="automation" icon={ServerIcon} />
-        <StatCard label="Servers" value={`${running} / ${servers.length}`} hint="running / total" category="automation" icon={ServerIcon} />
+        <StatCard label="Servers" value={`${running} / ${live.length}`} hint="running / total" category="automation" icon={ServerIcon} />
         <StatCard label="Needs attention" value={attentionCount} category="automation" icon={ServerIcon} attention={attentionCount > 0} />
       </div>
 

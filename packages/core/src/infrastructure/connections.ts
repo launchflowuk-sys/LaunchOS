@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import { coolifyInstanceClient, hetznerClient, type CoolifyInstanceClient, type HetznerClient } from "@launchos/integrations";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, like, notInArray } from "drizzle-orm";
 import { z } from "zod";
 import { recordAudit } from "../audit/record-audit.js";
 import { decryptSecret, encryptSecret, loadEncryptionKey } from "../secrets/encryption.js";
@@ -166,7 +166,34 @@ export async function updateConnection(
   return row!;
 }
 
+/**
+ * Stops a connection's synced Hetzner cost lines billing forward: every
+ * `sync` row under `${connectionId}:` not listed in `keep` goes `cancelled`.
+ * The sync's own upsert writes `active`, so a server that comes back
+ * reactivates its line. Returns how many rows it touched.
+ */
+export async function cancelSyncedCosts(db: Db, organisationId: string, connectionId: string, keep: string[], now: Date): Promise<number> {
+  const rows = await db
+    .update(schema.supplierCosts)
+    .set({ status: "cancelled", updatedAt: now })
+    .where(
+      and(
+        eq(schema.supplierCosts.organisationId, organisationId),
+        eq(schema.supplierCosts.supplier, "hetzner"),
+        eq(schema.supplierCosts.source, "sync"),
+        like(schema.supplierCosts.externalId, `${connectionId}:%`),
+        keep.length > 0 ? notInArray(schema.supplierCosts.externalId, keep) : undefined,
+      ),
+    )
+    .returning({ id: schema.supplierCosts.id });
+  return rows.length;
+}
+
 export async function removeConnection(db: Db, organisationId: string, input: { id: string; actorId: string }): Promise<void> {
+  const [owner] = await db.select({ id: schema.infraConnections.id }).from(schema.infraConnections).where(owned(organisationId, input.id));
+  if (!owner) return;
+  // Its servers cascade away with it; their cost lines must not bill forever.
+  const cancelledCosts = await cancelSyncedCosts(db, organisationId, owner.id, [], new Date());
   const [gone] = await db
     .delete(schema.infraConnections)
     .where(owned(organisationId, input.id))
@@ -179,6 +206,7 @@ export async function removeConnection(db: Db, organisationId: string, input: { 
     targetType: "infra_connection",
     targetId: gone.id,
     before: { label: gone.label, provider: gone.provider },
+    after: { cancelledCosts },
   });
 }
 
