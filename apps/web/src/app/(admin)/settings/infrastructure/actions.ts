@@ -91,7 +91,8 @@ export async function syncNowAction(): Promise<void> {
 /**
  * Local only: the repo `.env` holds the tokens as a carrier. Read the file
  * itself because `.env` has two `HETZNER_API_TOKENS` lines and process.env
- * keeps only one. Absent in production, so the button simply reports nothing.
+ * keeps only one. Refused outright in production: there, whatever `.env`
+ * the container happens to hold is not a token carrier Shoji chose.
  * Returns only labels and messages — the tokens themselves never leave
  * `importConnectionsFromEnv`/`createConnection`.
  */
@@ -101,6 +102,9 @@ export async function importFromEnvAction(): Promise<{
   failed: { label: string; message: string }[];
 }> {
   const session = await requireOwner();
+  if (process.env.NODE_ENV === "production") {
+    return { added: [], skipped: [], failed: [{ label: ".env", message: "Import from .env runs locally only — paste tokens into the form instead." }] };
+  }
   const candidates = [path.resolve(process.cwd(), ".env"), path.resolve(process.cwd(), "../../.env")];
   const file = candidates.find((p) => {
     try {
