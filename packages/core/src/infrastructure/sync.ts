@@ -15,6 +15,16 @@ const DAY = 86_400_000;
  * that window, and the server is locked out of every future action.
  */
 const PENDING_ACTION_STALE_MS = 15 * 60_000;
+/**
+ * How long a claim placeholder (`pendingAction.id === 0`) is left alone
+ * before it is treated as abandoned. `runServerAction` holds id `0` only for
+ * the length of one Hetzner request — clearing it sooner reopens the race
+ * the claim exists to prevent: a sync landing inside that window would clear
+ * the row, a second concurrent `runServerAction` would then pass the
+ * `pendingAction IS NULL` guard, and both would fire the action. Longer than
+ * any single Hetzner request should ever take.
+ */
+const CLAIM_PLACEHOLDER_GRACE_MS = 2 * 60_000;
 
 /**
  * One pass over every connection. Each connection is its own try/catch: a
@@ -69,8 +79,14 @@ async function syncHetznerAccount(db: Db, organisationId: string, connectionId: 
 
     if (row!.pendingAction) {
       const pending = row!.pendingAction;
-      const stale = now.getTime() - new Date(pending.startedAt).getTime() > PENDING_ACTION_STALE_MS;
-      if (pending.id === 0 || stale) {
+      const age = now.getTime() - new Date(pending.startedAt).getTime();
+      if (pending.id === 0) {
+        // Still inside the claim window — leave it; clearing early would let
+        // a second concurrent runServerAction fire the same action twice.
+        if (age > CLAIM_PLACEHOLDER_GRACE_MS) {
+          await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
+        }
+      } else if (age > PENDING_ACTION_STALE_MS) {
         await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
       } else {
         const action = await client.getAction(pending.id).catch(() => null);

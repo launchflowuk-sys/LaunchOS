@@ -102,16 +102,29 @@ describe("syncInfrastructure", () => {
     });
   });
 
-  it("clears a claim placeholder (id 0) even when getAction throws", async () => {
+  it("clears a claim placeholder (id 0) started 3 minutes ago even when getAction throws", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
+      await syncInfrastructure(db, o.id, { env, now });
+      const startedAt = new Date(now.getTime() - 3 * 60_000).toISOString();
+      await db.update(schema.servers).set({ pendingAction: { id: 0, command: "reboot", startedAt } }).where(eq(schema.servers.hetznerId, 1));
+      const throwing = () => ({ ...mockHetznerClient(), getAction: async () => { throw new Error("no such action"); } });
+      await syncInfrastructure(db, o.id, { env, now, hetzner: throwing });
+      const [s] = await db.select().from(schema.servers).where(eq(schema.servers.hetznerId, 1));
+      expect(s!.pendingAction).toBeNull();
+    });
+  });
+
+  it("keeps a fresh claim placeholder (id 0, started just now) — a concurrent runServerAction is still mid-flight", async () => {
     await withTestDb(async (db) => {
       const o = await org(db);
       await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
       await syncInfrastructure(db, o.id, { env, now });
       await db.update(schema.servers).set({ pendingAction: { id: 0, command: "reboot", startedAt: now.toISOString() } }).where(eq(schema.servers.hetznerId, 1));
-      const throwing = () => ({ ...mockHetznerClient(), getAction: async () => { throw new Error("no such action"); } });
-      await syncInfrastructure(db, o.id, { env, now, hetzner: throwing });
+      await syncInfrastructure(db, o.id, { env, now });
       const [s] = await db.select().from(schema.servers).where(eq(schema.servers.hetznerId, 1));
-      expect(s!.pendingAction).toBeNull();
+      expect(s!.pendingAction).toMatchObject({ id: 0, command: "reboot" });
     });
   });
 
