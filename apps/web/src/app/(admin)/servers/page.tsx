@@ -1,4 +1,4 @@
-import { BUSINESS_LABELS, convert, COST_BUSINESSES, coolifyResourcesFor, listServers, ratesForCurrencies, type ServerView } from "@launchos/core";
+import { BUSINESS_LABELS, convert, COST_BUSINESSES, coolifyResourcesFor, listServers, ratesForCurrencies, settlePendingActions, type ServerView } from "@launchos/core";
 import { Lock, Server as ServerIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { EmptyState, PageHeader } from "@/components/page-header";
@@ -67,6 +67,8 @@ export default async function ServersPage() {
   }
 
   const db = getDb();
+  // A finished reboot should not read "Rebooting…" until the next 15-minute sync.
+  await settlePendingActions(db, session.organisationId);
   const servers = await listServers(db, session.organisationId);
   const [coolifyResults, rates] = await Promise.all([
     Promise.all(servers.map((s): Promise<CoolifyState> => (s.coolify ? coolifyResourcesFor(db, session.organisationId, s.coolify.id) : Promise.resolve(null)))),

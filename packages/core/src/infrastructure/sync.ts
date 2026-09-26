@@ -1,7 +1,7 @@
 import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { HetznerClient } from "@launchos/integrations";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNotNull, isNull } from "drizzle-orm";
 import { cancelSyncedCosts, connectionSecret, coolifyFor, hetznerFor, listConnections, type InfraDeps } from "./connections.js";
 import { serverCost } from "./cost.js";
 
@@ -89,24 +89,7 @@ async function syncHetznerAccount(db: Db, organisationId: string, connectionId: 
       .onConflictDoUpdate({ target: [schema.servers.organisationId, schema.servers.connectionId, schema.servers.hetznerId], set: values })
       .returning();
 
-    if (row!.pendingAction) {
-      const pending = row!.pendingAction;
-      const age = now.getTime() - new Date(pending.startedAt).getTime();
-      if (pending.id === 0) {
-        // Still inside the claim window — leave it; clearing early would let
-        // a second concurrent runServerAction fire the same action twice.
-        if (age > CLAIM_PLACEHOLDER_GRACE_MS) {
-          await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
-        }
-      } else if (age > PENDING_ACTION_STALE_MS) {
-        await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
-      } else {
-        const action = await client.getAction(pending.id).catch(() => null);
-        if (action && action.status !== "running") {
-          await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
-        }
-      }
-    }
+    await settlePendingAction(db, organisationId, row!, client, now);
 
     await upsertServerCost(db, organisationId, `${connectionId}:${server.id}`, `Hetzner — ${server.name} (${server.serverType.toUpperCase()})`, cost.projectedMonth, row!.business, label, now);
   }
@@ -123,6 +106,57 @@ async function syncHetznerAccount(db: Db, organisationId: string, connectionId: 
   const seen = [...list.map((s) => `${connectionId}:${s.id}`), ...(orphanCents > 0 ? [orphanId] : [])];
   await cancelSyncedCosts(db, organisationId, connectionId, seen, now);
   return list.length;
+}
+
+type ServerRow = typeof schema.servers.$inferSelect;
+
+/**
+ * Clears a server's `pending_action` once Hetzner says it has finished, or
+ * once it is stale. Called by the sync for every server, and by
+ * `settlePendingActions` on each /servers load so a finished reboot does not
+ * read "Rebooting…" until the next 15-minute sync.
+ */
+export async function settlePendingAction(db: Db, organisationId: string, row: Pick<ServerRow, "id" | "pendingAction">, client: HetznerClient, now: Date) {
+  const pending = row.pendingAction;
+  if (!pending) return;
+  const age = now.getTime() - new Date(pending.startedAt).getTime();
+  let done: boolean;
+  if (pending.id === 0) {
+    // Still inside the claim window — leave it; clearing early would let
+    // a second concurrent runServerAction fire the same action twice.
+    done = age > CLAIM_PLACEHOLDER_GRACE_MS;
+  } else if (age > PENDING_ACTION_STALE_MS) {
+    done = true;
+  } else {
+    const action = await client.getAction(pending.id).catch(() => null);
+    done = !!action && action.status !== "running";
+  }
+  if (!done) return;
+  await db.update(schema.servers).set({ pendingAction: null })
+    .where(and(eq(schema.servers.organisationId, organisationId), eq(schema.servers.id, row.id)));
+}
+
+/**
+ * Settles every server with a real Hetzner action id (claim placeholders are
+ * left to the sync), one client per account. Never throws: a revoked token
+ * leaves its rows for the sync's staleness rule rather than breaking the page.
+ */
+export async function settlePendingActions(db: Db, organisationId: string, deps: InfraDeps & { now?: Date } = {}) {
+  const now = deps.now ?? new Date();
+  const rows = (await db.select({ id: schema.servers.id, connectionId: schema.servers.connectionId, pendingAction: schema.servers.pendingAction })
+    .from(schema.servers)
+    .where(and(eq(schema.servers.organisationId, organisationId), isNotNull(schema.servers.pendingAction))))
+    .filter((r) => (r.pendingAction?.id ?? 0) > 0);
+  for (const connectionId of new Set(rows.map((r) => r.connectionId))) {
+    try {
+      const client = hetznerFor(deps, await connectionSecret(db, organisationId, connectionId, deps.env));
+      for (const row of rows.filter((r) => r.connectionId === connectionId)) {
+        await settlePendingAction(db, organisationId, row, client, now);
+      }
+    } catch {
+      // swallowed on purpose — see above; the sync reports account errors
+    }
+  }
 }
 
 async function upsertServerCost(db: Db, organisationId: string, externalId: string, name: string, cents: number, business: typeof schema.servers.$inferSelect["business"], account: string, now: Date) {

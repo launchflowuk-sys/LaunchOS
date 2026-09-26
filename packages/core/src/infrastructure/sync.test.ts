@@ -5,7 +5,7 @@ import { MOCK_SERVERS, mockCoolifyInstanceClient, mockHetznerClient } from "@lau
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection } from "./connections.js";
-import { syncInfrastructure } from "./sync.js";
+import { settlePendingActions, syncInfrastructure } from "./sync.js";
 
 const env = { SECRETS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
 const now = new Date("2026-09-25T12:00:00Z");
@@ -148,6 +148,44 @@ describe("syncInfrastructure", () => {
       await syncInfrastructure(db, o.id, { env, now, hetzner: () => client });
       const [s] = await db.select().from(schema.servers).where(eq(schema.servers.hetznerId, 1));
       expect(s!.pendingAction).toBeNull();
+    });
+  });
+
+  it("settlePendingActions settles finished actions without a full sync, one client per connection", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
+      await syncInfrastructure(db, o.id, { env, now });
+      const startedAt = now.toISOString();
+      await db.update(schema.servers).set({ pendingAction: { id: 7, command: "reboot", startedAt } }).where(and(eq(schema.servers.organisationId, o.id), eq(schema.servers.hetznerId, 1)));
+      await db.update(schema.servers).set({ pendingAction: { id: 8, command: "poweron", startedAt } }).where(and(eq(schema.servers.organisationId, o.id), eq(schema.servers.hetznerId, 2)));
+      let clients = 0;
+      const hetzner = () => {
+        clients += 1;
+        return { ...mockHetznerClient(), listServers: async () => { throw new Error("must not list"); }, getAction: async (id: number) => ({ id, status: id === 7 ? ("success" as const) : ("running" as const), error: null }) };
+      };
+      await settlePendingActions(db, o.id, { env, now, hetzner });
+      expect(clients).toBe(1);
+      const rows = await db.select().from(schema.servers).where(eq(schema.servers.organisationId, o.id));
+      expect(rows.find((s) => s.hetznerId === 1)!.pendingAction).toBeNull();
+      expect(rows.find((s) => s.hetznerId === 2)!.pendingAction).toMatchObject({ id: 8 });
+    });
+  });
+
+  it("settlePendingActions leaves a claim placeholder alone and makes no provider call when nothing is pending", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      await createConnection(db, o.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u" }, { env });
+      await syncInfrastructure(db, o.id, { env, now });
+      let clients = 0;
+      const hetzner = () => { clients += 1; return mockHetznerClient(); };
+      await settlePendingActions(db, o.id, { env, now, hetzner });
+      expect(clients).toBe(0);
+      await db.update(schema.servers).set({ pendingAction: { id: 0, command: "reboot", startedAt: now.toISOString() } }).where(and(eq(schema.servers.organisationId, o.id), eq(schema.servers.hetznerId, 1)));
+      await settlePendingActions(db, o.id, { env, now, hetzner });
+      expect(clients).toBe(0);
+      const [s] = await db.select().from(schema.servers).where(and(eq(schema.servers.organisationId, o.id), eq(schema.servers.hetznerId, 1)));
+      expect(s!.pendingAction).toMatchObject({ id: 0 });
     });
   });
 
