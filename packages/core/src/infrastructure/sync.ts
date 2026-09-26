@@ -2,7 +2,7 @@ import type { Db } from "@launchos/db";
 import { schema } from "@launchos/db";
 import type { HetznerClient } from "@launchos/integrations";
 import { and, eq, isNull } from "drizzle-orm";
-import { cancelSyncedCosts, connectionSecret, hetznerFor, listConnections, type InfraDeps } from "./connections.js";
+import { cancelSyncedCosts, connectionSecret, coolifyFor, hetznerFor, listConnections, type InfraDeps } from "./connections.js";
 import { serverCost } from "./cost.js";
 
 const DAY = 86_400_000;
@@ -38,10 +38,10 @@ export async function syncInfrastructure(db: Db, organisationId: string, deps: I
   const report: { label: string; ok: boolean; error?: string }[] = [];
   let serverCount = 0;
 
-  for (const conn of connections.filter((c) => c.provider === "hetzner_cloud")) {
+  // Each connection is its own try/catch and records its own outcome.
+  const attempt = async (conn: (typeof connections)[number], run: (token: string) => Promise<void>) => {
     try {
-      const client = hetznerFor(deps, await connectionSecret(db, organisationId, conn.id, deps.env));
-      serverCount += await syncHetznerAccount(db, organisationId, conn.id, conn.label, client, now);
+      await run(await connectionSecret(db, organisationId, conn.id, deps.env));
       await markConnection(db, organisationId, conn.id, null, now);
       report.push({ label: conn.label, ok: true });
     } catch (error) {
@@ -49,6 +49,18 @@ export async function syncInfrastructure(db: Db, organisationId: string, deps: I
       await markConnection(db, organisationId, conn.id, message, now);
       report.push({ label: conn.label, ok: false, error: message });
     }
+  };
+
+  for (const conn of connections.filter((c) => c.provider === "hetzner_cloud")) {
+    await attempt(conn, async (token) => {
+      serverCount += await syncHetznerAccount(db, organisationId, conn.id, conn.label, hetznerFor(deps, token), now);
+    });
+  }
+  // Coolify is checked for reachability only (GET /api/v1/version).
+  for (const conn of connections.filter((c) => c.provider === "coolify" && c.baseUrl)) {
+    await attempt(conn, async (token) => {
+      await coolifyFor(deps, conn.baseUrl!, token).version();
+    });
   }
 
   await linkCoolifyByIp(db, organisationId, connections);

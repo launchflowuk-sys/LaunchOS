@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
-import { MOCK_SERVERS, mockHetznerClient } from "@launchos/integrations";
+import { MOCK_SERVERS, mockCoolifyInstanceClient, mockHetznerClient } from "@launchos/integrations";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection } from "./connections.js";
@@ -103,6 +103,25 @@ describe("syncInfrastructure", () => {
       expect(b!.lastError).toBe("boom");
       expect(g!.lastError).toBeNull();
       expect(g!.lastSyncedAt).not.toBeNull();
+    });
+  });
+
+  it("checks each Coolify connection's reachability on its own", async () => {
+    await withTestDb(async (db) => {
+      const o = await org(db);
+      const good = await createConnection(db, o.id, { provider: "coolify", label: "Good", baseUrl: "http://10.9.0.1:8000", token: "mock_g", actorId: "u" }, { env });
+      const bad = await createConnection(db, o.id, { provider: "coolify", label: "Bad", baseUrl: "http://10.9.0.9:8000", token: "mock_b", actorId: "u" }, { env });
+      const coolify = (url: string, token: string) => {
+        if (url.includes("10.9.0.9")) return { ...mockCoolifyInstanceClient(), version: async () => { throw new Error("connect ECONNREFUSED"); } };
+        expect(token).toBe("mock_g");
+        return mockCoolifyInstanceClient();
+      };
+      const out = await syncInfrastructure(db, o.id, { env, now, coolify });
+      expect(out.connections).toEqual(expect.arrayContaining([{ label: "Good", ok: true }, { label: "Bad", ok: false, error: "connect ECONNREFUSED" }]));
+      const [g] = await db.select().from(schema.infraConnections).where(eq(schema.infraConnections.id, good.id));
+      const [b] = await db.select().from(schema.infraConnections).where(eq(schema.infraConnections.id, bad.id));
+      expect(g).toMatchObject({ lastError: null, lastSyncedAt: now });
+      expect(b).toMatchObject({ lastError: "connect ECONNREFUSED", lastSyncedAt: null });
     });
   });
 
