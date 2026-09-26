@@ -6,6 +6,15 @@ import { connectionSecret, hetznerFor, listConnections, type InfraDeps } from ".
 import { serverCost } from "./cost.js";
 
 const DAY = 86_400_000;
+/**
+ * A pending action older than this is cleared unconditionally, even if
+ * `getAction` keeps failing (pruned id, revoked token, deleted connection)
+ * or never leaves "running". Without this, a claim id of `0` — written for
+ * an instant while `runServerAction` is between claiming the row and
+ * learning Hetzner's real action id — 404s forever if the process dies in
+ * that window, and the server is locked out of every future action.
+ */
+const PENDING_ACTION_STALE_MS = 15 * 60_000;
 
 /**
  * One pass over every connection. Each connection is its own try/catch: a
@@ -59,9 +68,15 @@ async function syncHetznerAccount(db: Db, organisationId: string, connectionId: 
       .returning();
 
     if (row!.pendingAction) {
-      const action = await client.getAction(row!.pendingAction.id).catch(() => null);
-      if (action && action.status !== "running") {
+      const pending = row!.pendingAction;
+      const stale = now.getTime() - new Date(pending.startedAt).getTime() > PENDING_ACTION_STALE_MS;
+      if (pending.id === 0 || stale) {
         await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
+      } else {
+        const action = await client.getAction(pending.id).catch(() => null);
+        if (action && action.status !== "running") {
+          await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, row!.id));
+        }
       }
     }
 

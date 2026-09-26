@@ -48,7 +48,15 @@ export async function runServerAction(db: Db, organisationId: string, raw: z.inp
     const description = input.command === "create_image" ? `LaunchOS ${now.toISOString().slice(0, 16)}` : undefined;
     action = await client.runAction(server.hetznerId, input.command, description);
   } catch (error) {
-    await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, server.id));
+    // The provider's error is what the caller needs to see. If releasing the
+    // claim also fails, that must not mask it — the row is left claimed and
+    // syncInfrastructure's staleness check (PENDING_ACTION_STALE_MS) cleans
+    // it up later rather than losing the original failure here.
+    try {
+      await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, server.id));
+    } catch {
+      // swallowed on purpose — see comment above
+    }
     throw error;
   }
 
