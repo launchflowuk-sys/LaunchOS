@@ -35,3 +35,4 @@ export * from "./supplier-costs.js";
 export * from "./fx-rates.js";
 export * from "./usage.js";
 export * from "./subscription-lines.js";
+export * from "./infrastructure.js";
