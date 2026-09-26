@@ -939,3 +939,5 @@ export type { DemoClientResult, DemoLeadResult, DemoSeedResult } from "./demo/de
 export { seedPortalShowcase } from "./demo/portal-showcase.js";
 export { demoDataSummary } from "./demo/shared.js";
 export type { DemoDataSummary } from "./demo/shared.js";
+
+export * from "./infrastructure/index.js";
