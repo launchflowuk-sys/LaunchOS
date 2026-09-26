@@ -22,6 +22,7 @@ import { handleAgentRun, type AgentRunJob } from "./jobs/agent-run.js";
 import { handleAgentResume, type AgentResumeJob } from "./jobs/agent-resume.js";
 import { handleInboundMessage, type InboundMessageJob } from "./jobs/inbound-message.js";
 import { handleCostsReconcile } from "./jobs/costs-reconcile.js";
+import { handleInfraSync } from "./jobs/infra-sync.js";
 import { handleOutboundMessage, type OutboundMessageJob } from "./jobs/outbound-message.js";
 import { handleGenerateOnboarding, runOverdueSweep, runRecurringSweep, type GenerateOnboardingJob } from "./jobs/task-generation.js";
 import { dispatchEvent } from "./jobs/dispatch-event.js";
@@ -184,6 +185,12 @@ async function main() {
         ),
         "costs reconcile",
       );
+    });
+  });
+
+  await boss.work(QUEUE.infraSync, async () => {
+    await sweepOrganisations(db, "infra sync", async (organisationId) => {
+      await handleInfraSync({ db, logger: console, env: process.env }, { organisationId });
     });
   });
 
@@ -408,6 +415,7 @@ async function main() {
   // the ledger before it is compared against the bills, and long before
   // anybody opens Profit in the morning.
   await boss.schedule(QUEUE.costsReconcile, "20 4 * * *", {}, { tz: "Europe/London" });
+  await boss.schedule(QUEUE.infraSync, "*/15 * * * *", {}, { tz: "Europe/London" });
   await boss.schedule(QUEUE.adsIngest, "30 6 * * *", {}, { tz: "Europe/London" });
   // Daily, not weekly. A site added on Monday waited until Sunday for its
   // first picture, so the websites screen showed empty slots for most sites

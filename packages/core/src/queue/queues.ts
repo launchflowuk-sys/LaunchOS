@@ -123,6 +123,7 @@ export const QUEUE = {
   tasksGenerateOnboarding: "tasks.generate-onboarding",
   tasksGenerateRecurring: "tasks.generate-recurring",
   costsReconcile: "costs.reconcile",
+  infraSync: "infra.sync",
   tasksCheckOverdue: "tasks.check-overdue",
   paymentsWebhook: "payments.webhook",
   adsIngest: "ads.ingest",
@@ -180,6 +181,8 @@ export const QUEUE_POLICY: Readonly<Record<QueueName, QueuePolicy>> = {
   "tasks.generate-onboarding": "short",
   "tasks.generate-recurring": "standard",
   "costs.reconcile": "standard",
+  // A 15-minute cron, payload `{}`, one job per tick.
+  "infra.sync": "standard",
   "tasks.check-overdue": "standard",
   "payments.webhook": "short",
   "ads.ingest": "standard",
