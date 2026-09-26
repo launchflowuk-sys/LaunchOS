@@ -29,6 +29,7 @@ export * from "./registrar/index.js";
 import { createRegistrarAdapterFromEnv } from "./registrar/hostinger.js";
 import type { RegistrarAdapter } from "./registrar/types.js";
 export * from "./adapter-guard.js";
+export * from "./infra/index.js";
 
 export interface Integrations {
   uptime: UptimeProbe;
