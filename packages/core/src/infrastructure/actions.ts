@@ -14,8 +14,11 @@ const NAMED = new Set<ServerCommand>(["reboot", "shutdown"]);
 
 const RunInput = z.object({ serverId: z.string().uuid(), command: z.enum(SERVER_COMMANDS), confirmName: z.string().optional(), actorId: z.string().min(1) });
 
+const serverOf = (organisationId: string, serverId: string) =>
+  and(eq(schema.servers.organisationId, organisationId), eq(schema.servers.id, serverId));
+
 async function ownedServer(db: Db, organisationId: string, serverId: string) {
-  const [s] = await db.select().from(schema.servers).where(and(eq(schema.servers.organisationId, organisationId), eq(schema.servers.id, serverId)));
+  const [s] = await db.select().from(schema.servers).where(serverOf(organisationId, serverId));
   if (!s) throw new Error("Server not found.");
   return s;
 }
@@ -53,7 +56,7 @@ export async function runServerAction(db: Db, organisationId: string, raw: z.inp
     // syncInfrastructure's staleness check (PENDING_ACTION_STALE_MS) cleans
     // it up later rather than losing the original failure here.
     try {
-      await db.update(schema.servers).set({ pendingAction: null }).where(eq(schema.servers.id, server.id));
+      await db.update(schema.servers).set({ pendingAction: null }).where(serverOf(organisationId, server.id));
     } catch {
       // swallowed on purpose — see comment above
     }
@@ -62,7 +65,7 @@ export async function runServerAction(db: Db, organisationId: string, raw: z.inp
 
   await db.update(schema.servers)
     .set({ pendingAction: { id: action.id, command: input.command, startedAt: now.toISOString() }, updatedAt: now })
-    .where(eq(schema.servers.id, server.id));
+    .where(serverOf(organisationId, server.id));
   await recordAudit(db, organisationId, {
     actorKind: "user", actorId: input.actorId, action: `infra.server.${input.command}`, targetType: "server", targetId: server.id,
     after: { name: server.name, hetznerId: server.hetznerId, hetznerActionId: action.id },
@@ -74,7 +77,7 @@ export async function setServerBusiness(db: Db, organisationId: string, input: {
   const business = z.enum(COST_BUSINESSES).parse(input.business);
   const server = await ownedServer(db, organisationId, input.serverId);
   if (server.business === business) return;
-  await db.update(schema.servers).set({ business, updatedAt: new Date() }).where(eq(schema.servers.id, server.id));
+  await db.update(schema.servers).set({ business, updatedAt: new Date() }).where(serverOf(organisationId, server.id));
   await db.update(schema.supplierCosts).set({ business })
     .where(and(eq(schema.supplierCosts.organisationId, organisationId), eq(schema.supplierCosts.supplier, "hetzner"),
       eq(schema.supplierCosts.externalId, `${server.connectionId}:${server.hetznerId}`)));

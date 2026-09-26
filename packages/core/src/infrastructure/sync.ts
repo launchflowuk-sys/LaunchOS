@@ -181,7 +181,7 @@ async function linkCoolifyByIp(db: Db, organisationId: string, connections: Awai
       .where(and(eq(schema.servers.organisationId, organisationId), eq(schema.servers.ipv4, host)));
     if (srv) {
       await db.update(schema.infraConnections).set({ serverId: srv.id })
-        .where(and(eq(schema.infraConnections.id, c.id), isNull(schema.infraConnections.serverId)));
+        .where(and(eq(schema.infraConnections.organisationId, organisationId), eq(schema.infraConnections.id, c.id), isNull(schema.infraConnections.serverId)));
     }
   }
 }
