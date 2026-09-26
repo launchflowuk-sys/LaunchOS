@@ -115,6 +115,9 @@ export async function updateConnection(
   const input = UpdateConnectionInput.parse(raw);
   const [before] = await db.select().from(schema.infraConnections).where(owned(organisationId, input.id));
   if (!before) throw new Error("Connection not found.");
+  if (input.baseUrl === null && before.provider === "coolify") {
+    throw new Error("A Coolify connection needs its URL, e.g. http://1.2.3.4:8000");
+  }
   if (input.serverId) {
     const [srv] = await db
       .select({ id: schema.servers.id })
@@ -122,12 +125,23 @@ export async function updateConnection(
       .where(and(eq(schema.servers.organisationId, organisationId), eq(schema.servers.id, input.serverId)));
     if (!srv) throw new Error("Server not found.");
   }
+  const baseUrlChanged = input.baseUrl !== undefined && input.baseUrl !== before.baseUrl;
   let tokenEncrypted: string | undefined;
   if (input.token) {
     const baseUrl = input.baseUrl ?? before.baseUrl;
     const test = await testConnection({ provider: before.provider, baseUrl, token: input.token }, deps);
     if (!test.ok) throw new Error(test.message);
     tokenEncrypted = encryptSecret(input.token, loadEncryptionKey(deps.env));
+  } else if (baseUrlChanged) {
+    // A URL change alone still has to prove the *stored* token works against
+    // the new host — otherwise a typo'd or hostile URL is saved unverified and
+    // the next sync/deploy hands that host the real production token. The
+    // decrypted value lives only in this branch; it is never returned,
+    // logged, or audited.
+    const key = loadEncryptionKey(deps.env);
+    const currentToken = decryptSecret(before.tokenEncrypted, key);
+    const test = await testConnection({ provider: before.provider, baseUrl: input.baseUrl, token: currentToken }, deps);
+    if (!test.ok) throw new Error(test.message);
   }
   const [row] = await db
     .update(schema.infraConnections)
