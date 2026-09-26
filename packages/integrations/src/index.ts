@@ -26,6 +26,7 @@ export * from "./search-console/index.js";
 export * from "./reviews/index.js";
 export * from "./screenshots/index.js";
 export * from "./registrar/index.js";
+export * from "./mail/hostinger-mail.js";
 import { createRegistrarAdapterFromEnv } from "./registrar/hostinger.js";
 import type { RegistrarAdapter } from "./registrar/types.js";
 export * from "./adapter-guard.js";
