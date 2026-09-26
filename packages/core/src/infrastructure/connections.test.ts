@@ -3,7 +3,7 @@ import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { connectionSecret, createConnection, importConnectionsFromEnv, listConnections, listServerOptions, removeConnection, updateConnection } from "./connections.js";
+import { BaseUrl, connectionSecret, createConnection, importConnectionsFromEnv, listConnections, listServerOptions, removeConnection, updateConnection } from "./connections.js";
 import { syncInfrastructure } from "./sync.js";
 
 const env = { SECRETS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
@@ -157,7 +157,39 @@ describe("connections", () => {
     });
   });
 
-  it("refuses a Coolify baseUrl change the provider rejects, leaving the stored URL unchanged", async () => {
+  it("refuses a URL change without the token, never sending the stored token to the new host", async () => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      const row = await createConnection(
+        db,
+        org.id,
+        { provider: "coolify", label: "C", baseUrl: "http://good:8000", token: "mock_x", actorId: "u1" },
+        deps,
+      );
+      const seen: string[] = [];
+      const spying = { ...deps, coolify: (url: string, token: string) => { seen.push(`${url} ${token}`); return { version: async () => "4" } as never; } };
+      await expect(
+        updateConnection(db, org.id, { id: row.id, baseUrl: "http://evil:8000", actorId: "u1" }, spying),
+      ).rejects.toThrow("Enter the token again when you change the URL.");
+      expect(seen).toEqual([]);
+      const [again] = await listConnections(db, org.id);
+      expect(again!.baseUrl).toBe("http://good:8000");
+    });
+  });
+
+  it.each(["ftp://1.2.3.4:8000", "http://x/?q=1", "http://x/#frag", "not a url"])("refuses the base URL %s", async (baseUrl) => {
+    await withTestDb(async (db) => {
+      const org = await makeOrg(db);
+      await expect(
+        createConnection(db, org.id, { provider: "coolify", label: "C", baseUrl, token: "mock_x", actorId: "u1" }, deps),
+      ).rejects.toThrow(/URL/);
+      const row = await createConnection(db, org.id, { provider: "coolify", label: "C", baseUrl: "https://good:8000", token: "mock_x", actorId: "u1" }, deps);
+      await expect(updateConnection(db, org.id, { id: row.id, baseUrl, token: "mock_y", actorId: "u1" }, deps)).rejects.toThrow(/URL/);
+      expect(BaseUrl.safeParse(baseUrl).success).toBe(false);
+    });
+  });
+
+  it("refuses a Coolify URL and token change the provider rejects, leaving the stored URL unchanged", async () => {
     await withTestDb(async (db) => {
       const org = await makeOrg(db);
       const row = await createConnection(
@@ -177,7 +209,7 @@ describe("connections", () => {
         }) as never,
       };
       await expect(
-        updateConnection(db, org.id, { id: row.id, baseUrl: "http://evil:8000", actorId: "u1" }, rejecting),
+        updateConnection(db, org.id, { id: row.id, baseUrl: "http://evil:8000", token: "mock_y", actorId: "u1" }, rejecting),
       ).rejects.toThrow(/refused/);
       const [again] = await listConnections(db, org.id);
       expect(again!.baseUrl).toBe("http://good:8000");

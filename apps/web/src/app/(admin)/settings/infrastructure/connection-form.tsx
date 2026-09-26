@@ -119,7 +119,7 @@ export function ConnectionForm({ servers, editing }: { servers: readonly ServerC
 
       <div className="space-y-1.5">
         <Label htmlFor="token">Token</Label>
-        <Input id="token" name="token" type="password" autoComplete="off" required={!editing} placeholder={editing ? "Leave blank to keep the current token" : undefined} />
+        <Input id="token" name="token" type="password" autoComplete="off" required={!editing} placeholder={editing ? "Leave blank to keep it — required if the URL changes" : undefined} />
       </div>
 
       {isCoolify ? (

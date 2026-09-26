@@ -22,11 +22,31 @@ export interface InfraDeps {
 export const hetznerFor = (deps: InfraDeps, token: string) => (deps.hetzner ?? hetznerClient)(token);
 export const coolifyFor = (deps: InfraDeps, url: string, token: string) => (deps.coolify ?? coolifyInstanceClient)(url, token);
 
+/**
+ * A Coolify instance's root: http(s) only, nothing after the path. The token
+ * is sent to whatever host this names, so it is checked before any provider
+ * call — `testConnectionAction` parses its input through it too.
+ */
+export const BaseUrl = z
+  .string()
+  .trim()
+  .refine(
+    (value) => {
+      try {
+        const url = new URL(value);
+        return (url.protocol === "http:" || url.protocol === "https:") && url.search === "" && url.hash === "";
+      } catch {
+        return false;
+      }
+    },
+    { message: "Enter the URL as http(s)://host:port, with no ?query or #fragment." },
+  );
+
 export const ConnectionInput = z
   .object({
     provider: z.enum(["hetzner_cloud", "coolify"]),
     label: z.string().trim().min(1).max(80),
-    baseUrl: z.string().trim().url().nullish(),
+    baseUrl: BaseUrl.nullish(),
     token: z.string().trim().min(1).max(500),
     actorId: z.string().min(1),
   })
@@ -100,7 +120,7 @@ export async function createConnection(db: Db, organisationId: string, raw: Conn
 export const UpdateConnectionInput = z.object({
   id: z.string().uuid(),
   label: z.string().trim().min(1).max(80).optional(),
-  baseUrl: z.string().trim().url().nullish(),
+  baseUrl: BaseUrl.nullish(),
   token: z.string().trim().min(1).max(500).optional(),
   serverId: z.string().uuid().nullish(),
   actorId: z.string().min(1),
@@ -126,22 +146,15 @@ export async function updateConnection(
     if (!srv) throw new Error("Server not found.");
   }
   const baseUrlChanged = input.baseUrl !== undefined && input.baseUrl !== before.baseUrl;
+  // The stored token is never sent to a new host: a typo'd or hostile URL
+  // would otherwise receive the real production token on the next call.
+  if (baseUrlChanged && !input.token) throw new Error("Enter the token again when you change the URL.");
   let tokenEncrypted: string | undefined;
   if (input.token) {
     const baseUrl = input.baseUrl ?? before.baseUrl;
     const test = await testConnection({ provider: before.provider, baseUrl, token: input.token }, deps);
     if (!test.ok) throw new Error(test.message);
     tokenEncrypted = encryptSecret(input.token, loadEncryptionKey(deps.env));
-  } else if (baseUrlChanged) {
-    // A URL change alone still has to prove the *stored* token works against
-    // the new host — otherwise a typo'd or hostile URL is saved unverified and
-    // the next sync/deploy hands that host the real production token. The
-    // decrypted value lives only in this branch; it is never returned,
-    // logged, or audited.
-    const key = loadEncryptionKey(deps.env);
-    const currentToken = decryptSecret(before.tokenEncrypted, key);
-    const test = await testConnection({ provider: before.provider, baseUrl: input.baseUrl, token: currentToken }, deps);
-    if (!test.ok) throw new Error(test.message);
   }
   const [row] = await db
     .update(schema.infraConnections)

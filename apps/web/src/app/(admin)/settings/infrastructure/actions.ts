@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  BaseUrl,
   createConnection,
   importConnectionsFromEnv,
   removeConnection,
@@ -61,11 +62,17 @@ export async function saveConnectionAction(_previous: ConnectionState, form: For
   }
 }
 
-/** Calls the provider without saving anything. Never returns the token. */
+/**
+ * Calls the provider without saving anything. Never returns the token. The
+ * URL goes through the same check as a save — the typed token is sent to it.
+ */
 export async function testConnectionAction(form: FormData) {
   await requireOwner();
   const provider = String(form.get("provider")) === "coolify" ? "coolify" : "hetzner_cloud";
-  return testConnection({ provider, baseUrl: String(form.get("baseUrl") ?? "") || null, token: String(form.get("token") ?? "") });
+  const rawUrl = String(form.get("baseUrl") ?? "").trim();
+  const baseUrl = rawUrl ? BaseUrl.safeParse(rawUrl) : null;
+  if (baseUrl && !baseUrl.success) return { ok: false as const, message: baseUrl.error.issues[0]?.message ?? "Invalid URL." };
+  return testConnection({ provider, baseUrl: baseUrl?.data ?? null, token: String(form.get("token") ?? "") });
 }
 
 export async function removeConnectionAction(form: FormData): Promise<void> {
