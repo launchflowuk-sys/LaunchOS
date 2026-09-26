@@ -190,6 +190,21 @@ export async function listConnections(db: Db, organisationId: string): Promise<C
     .orderBy(asc(schema.infraConnections.provider), asc(schema.infraConnections.label));
 }
 
+export interface ServerOption {
+  id: string;
+  name: string;
+  ipv4: string | null;
+}
+
+/** For the Coolify "server" select on the Infrastructure screen. */
+export async function listServerOptions(db: Db, organisationId: string): Promise<ServerOption[]> {
+  return db
+    .select({ id: schema.servers.id, name: schema.servers.name, ipv4: schema.servers.ipv4 })
+    .from(schema.servers)
+    .where(eq(schema.servers.organisationId, organisationId))
+    .orderBy(asc(schema.servers.name));
+}
+
 /** The only reader of plaintext. Server-side callers only. */
 export async function connectionSecret(db: Db, organisationId: string, id: string, env?: NodeJS.ProcessEnv): Promise<string> {
   const [row] = await db.select({ t: schema.infraConnections.tokenEncrypted }).from(schema.infraConnections).where(owned(organisationId, id));

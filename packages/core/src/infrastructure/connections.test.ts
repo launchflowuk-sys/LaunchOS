@@ -3,7 +3,8 @@ import { schema, type Db } from "@launchos/db";
 import { withTestDb } from "@launchos/db/test";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { connectionSecret, createConnection, importConnectionsFromEnv, listConnections, removeConnection, updateConnection } from "./connections.js";
+import { connectionSecret, createConnection, importConnectionsFromEnv, listConnections, listServerOptions, removeConnection, updateConnection } from "./connections.js";
+import { syncInfrastructure } from "./sync.js";
 
 const env = { SECRETS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
 const deps = { env };
@@ -181,6 +182,19 @@ describe("connections", () => {
       await expect(updateConnection(db, org.id, { id: row.id, baseUrl: null, actorId: "u1" }, deps)).rejects.toThrow(/URL/);
       const [again] = await listConnections(db, org.id);
       expect(again!.baseUrl).toBe("http://good:8000");
+    });
+  });
+
+  it("lists server options tenancy-filtered", async () => {
+    await withTestDb(async (db) => {
+      const a = await makeOrg(db);
+      const b = await makeOrg(db);
+      await createConnection(db, a.id, { provider: "hetzner_cloud", label: "H", token: "mock_1", actorId: "u1" }, deps);
+      await syncInfrastructure(db, a.id, deps);
+      const optionsA = await listServerOptions(db, a.id);
+      expect(optionsA.length).toBeGreaterThan(0);
+      expect(optionsA[0]).toEqual(expect.objectContaining({ id: expect.any(String), name: expect.any(String) }));
+      expect(await listServerOptions(db, b.id)).toEqual([]);
     });
   });
 });
