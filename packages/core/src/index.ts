@@ -941,3 +941,5 @@ export { demoDataSummary } from "./demo/shared.js";
 export type { DemoDataSummary } from "./demo/shared.js";
 
 export * from "./infrastructure/index.js";
+export { siteEmailSummary, STORAGE_WARN_PCT, STORAGE_FULL_PCT } from "./email-hosting/site-email.js";
+export type { SiteEmailSummary, SiteEmailOrder, SiteMailbox, SiteEmailCost, SiteEmailDeps } from "./email-hosting/site-email.js";
