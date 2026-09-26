@@ -98,6 +98,8 @@ export async function redeployApp(db: Db, organisationId: string, input: { conne
 
 export type ServerView = typeof schema.servers.$inferSelect & {
   accountLabel: string;
+  /** The Hetzner account's own `infra_connections.last_error` — a failing sync on the account this server belongs to, surfaced without a second query. */
+  accountError: string | null;
   coolify: { id: string; label: string; baseUrl: string } | null;
 };
 
@@ -109,7 +111,13 @@ export async function listServers(db: Db, organisationId: string): Promise<Serve
   const byId = new Map(conns.map((c) => [c.id, c]));
   return rows.map((s) => {
     const cf = conns.find((c) => c.provider === "coolify" && c.serverId === s.id && c.baseUrl);
-    return { ...s, accountLabel: byId.get(s.connectionId)?.label ?? "?", coolify: cf ? { id: cf.id, label: cf.label, baseUrl: cf.baseUrl! } : null };
+    const account = byId.get(s.connectionId);
+    return {
+      ...s,
+      accountLabel: account?.label ?? "?",
+      accountError: account?.lastError ?? null,
+      coolify: cf ? { id: cf.id, label: cf.label, baseUrl: cf.baseUrl! } : null,
+    };
   });
 }
 

@@ -8,7 +8,8 @@ import { getDb } from "@/lib/db";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { requireAdmin } from "@/lib/session";
 import { BusinessSelect } from "./business-select";
-import { BUSY_LABEL, RedeployButton, ServerActionsMenu } from "./server-actions-menu";
+import { BUSY_LABEL } from "./labels";
+import { RedeployButton, ServerActionsMenu } from "./server-actions-menu";
 import { Sparkline } from "./sparkline";
 
 export const dynamic = "force-dynamic";
@@ -37,13 +38,14 @@ function resourceDot(state: string, health: string | null): string {
   return "bg-danger-solid";
 }
 
-/** Whether a server counts toward "Needs attention" — status, a stuck pending action, backups off, a dead Coolify, an unhealthy app, or traffic past 80%. */
+/** Whether a server counts toward "Needs attention" — status, a stuck pending action, backups off, its account failing to sync, a dead Coolify, an unhealthy app, or traffic past 80%. */
 function needsAttention(server: ServerView, coolify: CoolifyState): boolean {
   const trafficOver80 = server.includedTrafficBytes > 0 && server.outgoingTrafficBytes / server.includedTrafficBytes > 0.8;
   return (
     server.status !== "running" ||
     server.pendingAction !== null ||
     !server.backupsEnabled ||
+    server.accountError !== null ||
     (coolify !== null && !coolify.ok) ||
     (coolify?.ok === true && coolify.resources.some((r) => r.state !== "running")) ||
     trafficOver80
@@ -129,7 +131,12 @@ export default async function ServersPage() {
       ) : (
         [...byAccount.entries()].map(([account, rows]) => (
           <div key={account} className="mb-8 min-w-0 overflow-hidden rounded-[20px] border bg-card">
-            <div className="border-b bg-muted/40 px-5 py-3 text-sm font-semibold">{account}</div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b bg-muted/40 px-5 py-3 text-sm font-semibold">
+              {account}
+              {rows[0]?.accountError ? (
+                <span className="rounded-full bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger-fg">{rows[0].accountError}</span>
+              ) : null}
+            </div>
             <div className="overflow-x-auto">
               <div className="min-w-[1180px]">
                 <div className="label-caps flex items-center gap-4 border-b px-5 py-3 text-muted-foreground">
@@ -159,6 +166,9 @@ function ServerRow({ server, coolify, money }: { server: ServerView; coolify: Co
   const status = statusOf(server);
   const cost = server.cost;
   const trafficPct = server.includedTrafficBytes > 0 ? Math.round((server.outgoingTrafficBytes / server.includedTrafficBytes) * 100) : 0;
+  // The full month's base server price, not what has accrued so far: the
+  // projected total less the variable components already tracked below.
+  const monthlyBaseCents = cost ? cost.projectedMonth - cost.backups - cost.volumes - cost.primaryIps - cost.snapshots - cost.traffic : 0;
 
   return (
     <details className="group border-b px-5 last:border-0 open:bg-muted/30">
@@ -239,7 +249,7 @@ function ServerRow({ server, coolify, money }: { server: ServerView; coolify: Co
             serverName={server.name}
             status={server.status}
             backupsEnabled={server.backupsEnabled}
-            monthlyCents={cost?.monthToDate ?? 0}
+            monthlyBaseCents={monthlyBaseCents}
             pendingCommand={server.pendingAction?.command}
           />
         </span>

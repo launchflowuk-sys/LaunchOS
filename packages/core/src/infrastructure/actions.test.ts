@@ -4,7 +4,7 @@ import { withTestDb } from "@launchos/db/test";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createConnection } from "./connections.js";
-import { redeployApp, runServerAction, setServerBusiness } from "./actions.js";
+import { listServers, redeployApp, runServerAction, setServerBusiness } from "./actions.js";
 import { syncInfrastructure } from "./sync.js";
 
 const env = { SECRETS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
@@ -60,6 +60,20 @@ describe("runServerAction", () => {
       expect(after!.pendingAction).toBeNull();
       const auditRows = await db.select().from(schema.auditLog).where(eq(schema.auditLog.action, "infra.server.poweron"));
       expect(auditRows).toHaveLength(0);
+    });
+  });
+});
+
+describe("listServers", () => {
+  it("carries the server's own account label and the account's lastError, not just the Coolify link", async () => {
+    await withTestDb(async (db) => {
+      const { org, server } = await seeded(db);
+      const before = await listServers(db, org.id);
+      expect(before.find((s) => s.id === server.id)).toMatchObject({ accountLabel: "H", accountError: null });
+
+      await db.update(schema.infraConnections).set({ lastError: "boom" }).where(eq(schema.infraConnections.id, server.connectionId));
+      const after = await listServers(db, org.id);
+      expect(after.find((s) => s.id === server.id)).toMatchObject({ accountError: "boom" });
     });
   });
 });

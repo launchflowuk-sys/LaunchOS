@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { redeployAction, serverAction } from "./actions";
+import { BUSY_LABEL } from "./labels";
 
 /**
  * A command this menu can send. Deliberately a small, closed set — the six
@@ -33,18 +34,9 @@ const LABEL: Record<Command, string> = {
   disable_backup: "Turn off backups",
 };
 
-export const BUSY_LABEL: Record<string, string> = {
-  reboot: "Rebooting…",
-  shutdown: "Shutting down…",
-  poweron: "Powering on…",
-  create_image: "Taking snapshot…",
-  enable_backup: "Turning on backups…",
-  disable_backup: "Turning off backups…",
-};
-
-function noteFor(command: Command, monthlyCents: number): string | null {
+function noteFor(command: Command, monthlyBaseCents: number): string | null {
   if (command === "create_image") return "Costs about €0.0143 per GB per month while kept.";
-  if (command === "enable_backup") return `+20% — about €${((monthlyCents * 0.2) / 100).toFixed(2)}/month.`;
+  if (command === "enable_backup") return `+20% — about €${((monthlyBaseCents * 0.2) / 100).toFixed(2)}/month.`;
   return null;
 }
 
@@ -53,15 +45,21 @@ export function ServerActionsMenu({
   serverName,
   status,
   backupsEnabled,
-  monthlyCents,
+  monthlyBaseCents,
   pendingCommand,
 }: {
   serverId: string;
   serverName: string;
   status: string;
   backupsEnabled: boolean;
-  /** The server's `cost.monthToDate` in EUR cents — feeds the snapshot/backup cost notes. */
-  monthlyCents: number;
+  /**
+   * The server's projected *base* price for the full month, in EUR cents —
+   * `cost.projectedMonth` less the variable components (backups, volumes,
+   * IPv4, snapshots, traffic). Feeds the "turn on backups" cost note. Not
+   * `cost.monthToDate`: that is only what has accrued so far this month, so
+   * early in the month it understates the backups uplift to near zero.
+   */
+  monthlyBaseCents: number;
   /** `server.pendingAction?.command`, if Hetzner is already mid-action on this server. */
   pendingCommand?: string | null | undefined;
 }) {
@@ -130,7 +128,7 @@ export function ServerActionsMenu({
               <DialogHeader>
                 <DialogTitle>{LABEL[open]} — {serverName}</DialogTitle>
                 <DialogDescription>
-                  {noteFor(open, monthlyCents) ?? `This is sent straight to Hetzner for ${serverName}.`}
+                  {noteFor(open, monthlyBaseCents) ?? `This is sent straight to Hetzner for ${serverName}.`}
                 </DialogDescription>
               </DialogHeader>
               {requiresName ? (
