@@ -111,6 +111,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { label: "Websites", href: "/websites", icon: Globe },
       { label: "Site builds", href: "/site-builds", icon: Hammer },
       { label: "Domains", href: "/domains", icon: Network },
+      { label: "Servers", href: "/servers", icon: Server, permission: "settings" },
       { label: "Tasks", href: "/tasks", icon: SquareCheckBig },
       { label: "Content", href: "/content", icon: Newspaper, permission: "content" },
       // The public portfolio. Gated on `content` beside the content calendar:
