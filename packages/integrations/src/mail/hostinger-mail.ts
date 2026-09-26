@@ -10,7 +10,8 @@ import { DnsApiError, DnsHttpClient, type DnsFetch } from "../dns/http.js";
  * classified errors that never carry the token).
  *
  * Nothing links an email order to its bill: a subscription has no domain. The
- * two share an expiry to the second, so matching them is the caller's job
+ * two are bought in the same transaction (same `created_at` to the second),
+ * so matching them is the caller's job
  * (`packages/core/src/email-hosting`), not something guessed here.
  */
 
@@ -52,6 +53,8 @@ export interface EmailSubscription {
   billingPeriod: number;
   billingPeriodUnit: string;
   autoRenewed: boolean;
+  /** When it was bought — equal to its email order's `created_at`, which is how the two are paired. */
+  createdAt: Date | null;
   expiresAt: Date | null;
   nextBillingAt: Date | null;
 }
@@ -104,6 +107,7 @@ const SubscriptionEntry = z.object({
   billing_period: z.number().nullish(),
   billing_period_unit: z.string().nullish(),
   is_auto_renewed: z.boolean().nullish(),
+  created_at: z.string().nullish(),
   expires_at: z.string().nullish(),
   next_billing_at: z.string().nullish(),
 });
@@ -186,6 +190,7 @@ export function hostingerMailClient(
           billingPeriod: s.billing_period ?? 1,
           billingPeriodUnit: s.billing_period_unit ?? "year",
           autoRenewed: s.is_auto_renewed ?? true,
+          createdAt: toDate(s.created_at),
           expiresAt: toDate(s.expires_at),
           nextBillingAt: toDate(s.next_billing_at),
         }));

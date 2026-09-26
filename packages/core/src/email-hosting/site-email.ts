@@ -12,14 +12,16 @@ import { convert, monthlyMinor } from "../costs/normalise.js";
  * record to audit and nothing to go stale.
  *
  * **Cost is matched, never guessed.** A Hostinger subscription carries no
- * domain; the only link to its email order is that both expire at the same
- * moment. So a subscription is paired with an order only when exactly one
- * email subscription expires within 48 hours of it *and* no other order on the
- * account claims that subscription too. Anything else is "unknown", shown as
- * such, because a plausible wrong price is worse than an honest blank.
+ * domain. What links it to its email order is the purchase: both are created
+ * in the same transaction, the same second on the live account (checked 26 Sep
+ * 2026 — 28 of 30 orders pair uniquely; expiry dates paired only 2). So an
+ * order takes the one email subscription created within 10 minutes of it, and
+ * only when no other order on the account sits inside that subscription's
+ * window too. Anything else is "unknown", shown as such, because a plausible
+ * wrong price is worse than an honest blank.
  */
 
-const MATCH_WINDOW_MS = 48 * 60 * 60 * 1000;
+const MATCH_WINDOW_MS = 10 * 60 * 1000;
 /** Storage at or past these fractions is orange, then red. Mirrored by the UI. */
 export const STORAGE_WARN_PCT = 70;
 export const STORAGE_FULL_PCT = 90;
@@ -104,9 +106,9 @@ function matchSubscription(
   subs: readonly EmailSubscription[],
 ): EmailSubscription | null {
   const near = (a: Date | null, b: Date | null) => a !== null && b !== null && Math.abs(a.getTime() - b.getTime()) <= MATCH_WINDOW_MS;
-  const candidates = subs.filter((s) => near(s.expiresAt, target.expiresAt));
+  const candidates = subs.filter((s) => near(s.createdAt, target.createdAt));
   if (candidates.length !== 1) return null;
-  const claimants = allOrders.filter((o) => near(o.expiresAt, candidates[0]!.expiresAt));
+  const claimants = allOrders.filter((o) => near(o.createdAt, candidates[0]!.createdAt));
   return claimants.length === 1 ? candidates[0]! : null;
 }
 

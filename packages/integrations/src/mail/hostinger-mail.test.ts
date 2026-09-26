@@ -91,6 +91,7 @@ describe("hostingerMailClient", () => {
 
     expect(subs).toHaveLength(1);
     expect(subs[0]).toMatchObject({ id: "s1", renewalPrice: 3588, currencyCode: "USD", billingPeriod: 1, billingPeriodUnit: "year" });
+    expect(subs[0]!.createdAt?.toISOString()).toBe("2026-09-22T11:52:20.000Z");
     expect(subs[0]!.expiresAt?.toISOString()).toBe("2027-09-22T11:52:24.000Z");
     expect(subs[0]!.nextBillingAt?.toISOString()).toBe("2027-09-15T11:52:24.000Z");
   });

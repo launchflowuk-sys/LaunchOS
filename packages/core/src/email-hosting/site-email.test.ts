@@ -13,6 +13,10 @@ import { setEnqueue } from "../events/emit.js";
 import { siteEmailSummary } from "./site-email.js";
 
 const EXPIRES = new Date("2027-09-22T11:52:24Z");
+/** Purchase time: an order and its subscription share this to the second. */
+const BOUGHT = new Date("2026-09-22T11:52:24Z");
+const BOUGHT_2 = new Date("2026-03-01T09:00:00Z");
+const BOUGHT_9 = new Date("2025-01-01T09:00:00Z");
 const NOW = new Date("2026-09-26T12:00:00Z");
 
 async function setup(db: Db) {
@@ -30,7 +34,7 @@ async function setup(db: Db) {
 }
 
 function order(id: string, domain: string, extra: Partial<MailOrder> = {}): MailOrder {
-  return { id, status: "active", isTrial: false, seats: 5, domain, planTitle: "Starter Business Email", createdAt: null, expiresAt: EXPIRES, ...extra };
+  return { id, status: "active", isTrial: false, seats: 5, domain, planTitle: "Starter Business Email", createdAt: BOUGHT, expiresAt: EXPIRES, ...extra };
 }
 
 function box(address: string, usedKb: number, quotaKb = 1_000_000): MailboxUsage {
@@ -47,7 +51,8 @@ function sub(id: string, extra: Partial<EmailSubscription> = {}): EmailSubscript
     billingPeriod: 1,
     billingPeriodUnit: "year",
     autoRenewed: true,
-    expiresAt: new Date(EXPIRES.getTime() + 60_000),
+    createdAt: BOUGHT,
+    expiresAt: EXPIRES,
     nextBillingAt: new Date("2027-09-15T11:52:24Z"),
     ...extra,
   };
@@ -63,11 +68,15 @@ describe("siteEmailSummary", () => {
       const mail = mockHostingerMailClient({
         orders: [
           order("OR1", primary),
-          order("OR2", extra, { seats: 2, expiresAt: new Date("2028-01-01T00:00:00Z") }),
-          order("OR9", "someone-else.test", { expiresAt: new Date("2029-01-01T00:00:00Z") }),
+          order("OR2", extra, { seats: 2, createdAt: BOUGHT_2 }),
+          order("OR9", "someone-else.test", { createdAt: BOUGHT_9 }),
         ],
         mailboxes: { OR1: [box(`info@${primary}`, 800_000), box(`sales@${primary}`, 950_000)], OR2: [box(`a@${extra}`, 10)] },
-        subscriptions: [sub("s1"), sub("s2", { expiresAt: new Date("2028-01-01T00:00:00Z") })],
+        subscriptions: [
+          sub("s1"),
+          sub("s2", { createdAt: BOUGHT_2, renewalPrice: 2400 }),
+          sub("s9", { createdAt: BOUGHT_9 }),
+        ],
       });
 
       const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
@@ -86,34 +95,62 @@ describe("siteEmailSummary", () => {
       expect(main.renewsAt?.toISOString()).toBe("2027-09-15T11:52:24.000Z");
       expect(main.mailboxes[0]).toMatchObject({ address: `info@${primary}`, storagePct: 80, monthlyShareMinor: 150 });
       expect(main.mailboxes[1]!.storagePct).toBe(95);
+      expect(result.orders.find((o) => o.orderId === "OR2")!.cost?.monthlyCostMinor).toBe(200);
       expect(result.missingRate).toEqual([]);
     });
   });
 
-  it("marks cost unknown when two orders share one subscription's expiry", async () => {
+  it("matches on purchase time, not expiry", async () => {
     await withTestDb(async (db) => {
       const { orgId, siteId, primary } = await setup(db);
       const mail = mockHostingerMailClient({
-        orders: [order("OR1", primary), order("OR9", "elsewhere.test")],
+        // Expiries a year apart: the old rule would have found nothing.
+        orders: [order("OR1", primary, { expiresAt: new Date("2027-09-22T11:52:24Z") })],
+        subscriptions: [sub("s1", { createdAt: new Date(BOUGHT.getTime() + 3 * 60_000), expiresAt: new Date("2028-09-22T00:00:00Z") })],
+      });
+      const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
+      if (!result.ok) throw new Error(result.message);
+      expect(result.orders[0]!.cost?.monthlyCostMinor).toBe(300);
+    });
+  });
+
+  it("marks cost unknown when a subscription only shares the expiry", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, siteId, primary } = await setup(db);
+      const mail = mockHostingerMailClient({
+        orders: [order("OR1", primary)],
+        subscriptions: [sub("s1", { createdAt: new Date("2026-08-01T00:00:00Z") })],
+      });
+      const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
+      if (!result.ok) throw new Error(result.message);
+      expect(result.orders[0]!.cost).toBeNull();
+    });
+  });
+
+  it("marks cost unknown when two subscriptions fall inside the window", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, siteId, primary } = await setup(db);
+      const mail = mockHostingerMailClient({
+        orders: [order("OR1", primary)],
+        subscriptions: [sub("s1"), sub("s2", { createdAt: new Date(BOUGHT.getTime() + 5 * 60_000) })],
+      });
+      const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
+      if (!result.ok) throw new Error(result.message);
+      expect(result.orders[0]!.cost).toBeNull();
+    });
+  });
+
+  it("marks cost unknown when two orders claim one subscription", async () => {
+    await withTestDb(async (db) => {
+      const { orgId, siteId, primary } = await setup(db);
+      const mail = mockHostingerMailClient({
+        orders: [order("OR1", primary), order("OR9", "elsewhere.test", { createdAt: new Date(BOUGHT.getTime() + 4 * 60_000) })],
         subscriptions: [sub("s1")],
       });
       const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
       if (!result.ok) throw new Error(result.message);
       expect(result.orders[0]!.cost).toBeNull();
       expect(result.totals.monthlyCostGbpMinor).toBeNull();
-    });
-  });
-
-  it("marks cost unknown when no subscription matches", async () => {
-    await withTestDb(async (db) => {
-      const { orgId, siteId, primary } = await setup(db);
-      const mail = mockHostingerMailClient({
-        orders: [order("OR1", primary)],
-        subscriptions: [sub("s1", { expiresAt: new Date("2027-12-25T00:00:00Z") })],
-      });
-      const result = await siteEmailSummary(db, orgId, siteId, { mail, now: NOW });
-      if (!result.ok) throw new Error(result.message);
-      expect(result.orders[0]!.cost).toBeNull();
     });
   });
 
